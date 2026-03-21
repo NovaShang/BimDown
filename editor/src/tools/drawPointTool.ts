@@ -35,7 +35,7 @@ export const drawPointTool: ToolHandler = {
       tableName: target.tableName,
       discipline: target.discipline,
       geometry: 'point',
-      position: { x: pt.x - w / 2, y: pt.y - h / 2 },
+      position: { x: pt.x, y: pt.y },
       width: w,
       height: h,
       attrs: { ...mergedAttrs, id, size_x: String(w), size_y: String(h) },
