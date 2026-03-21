@@ -227,7 +227,7 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   for (const el of elements) {
     try {
       const bbox = (el as SVGGraphicsElement).getBBox();
-      const ctm = (el as SVGGraphicsElement).getCTM();
+      const ctm = (el as SVGGraphicsElement).getScreenCTM();
       if (!ctm) continue;
 
       const pt1 = svg.createSVGPoint();
