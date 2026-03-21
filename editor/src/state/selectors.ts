@@ -49,7 +49,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   return orderedLayers
-    .filter(l => state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architectural') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
@@ -138,6 +138,7 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
+    if (discipline !== state.activeDiscipline && discipline !== 'architectural') continue;
     const svgString = serializeToSvg(groupElements, vbStr);
     const csvRows = elementsToCsvRows(groupElements);
     const processed = processSvg(tableName, svgString, csvRows);
@@ -153,25 +154,5 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
 }
 
 export function getActiveDiscipline(state: EditorState): string | null {
-  if (state.activeDiscipline) return state.activeDiscipline;
-
-  // Auto-detect from selected element
-  if (state.selectedIds.size > 0) {
-    const data = getSelectedElementData(state);
-    const first = data.values().next();
-    if (!first.done) return first.value.discipline;
-  }
-
-  // Auto-detect from visible layers
-  const floor = getVisibleFloor(state);
-  if (!floor) return null;
-
-  const disciplines = new Set(
-    floor.layers
-      .filter(l => state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
-      .map(l => l.discipline)
-  );
-
-  if (disciplines.size === 1) return disciplines.values().next().value!;
-  return null;
+  return state.activeDiscipline;
 }

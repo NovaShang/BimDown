@@ -26,8 +26,6 @@ export const initialState: EditorState = {
 
   marquee: null,
 
-  expandedDisciplines: new Set(['architectural', 'structural', 'hvac', 'plumbing', 'electrical']),
-
   document: null,
   history: emptyHistory,
   editMode: false,
@@ -43,6 +41,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const { project, grids } = action;
       let currentLevel = '';
       let visibleLayers = new Set<string>();
+      let activeDiscipline: string | null = null;
 
       if (project.floors.size > 0) {
         const firstLevel = project.levels.find(l => project.floors.has(l.id));
@@ -51,11 +50,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           const floor = project.floors.get(firstLevel.id);
           if (floor) {
             visibleLayers = new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`));
+            if (floor.layers.length > 0) activeDiscipline = floor.layers[0].discipline;
           }
         }
       }
 
-      return { ...state, project, grids, loading: false, currentLevel, visibleLayers };
+      return { ...state, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
     }
 
     case 'SET_LOADING':
@@ -93,10 +93,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const visibleLayers = floor
         ? new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`))
         : new Set<string>();
+        
+      let activeDiscipline = state.activeDiscipline;
+      if (floor && floor.layers.length > 0) {
+        const hasDiscipline = floor.layers.some(l => l.discipline === state.activeDiscipline);
+        if (!hasDiscipline) activeDiscipline = floor.layers[0].discipline;
+      }
+        
       return {
         ...state,
         currentLevel: action.levelId,
         visibleLayers,
+        activeDiscipline,
         selectedIds: new Set(),
         hoveredId: null,
         activeFilter: null,
@@ -207,13 +215,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'SET_MARQUEE':
       return { ...state, marquee: action.marquee };
-
-    case 'TOGGLE_DISCIPLINE_EXPAND': {
-      const next = new Set(state.expandedDisciplines);
-      if (next.has(action.discipline)) next.delete(action.discipline);
-      else next.add(action.discipline);
-      return { ...state, expandedDisciplines: next };
-    }
 
     // --- Document editing actions ---
 

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getLevelsWithData, getSelectedElementData, getActiveDiscipline } from '../state/selectors.ts';
+import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getLevelsWithData, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
 import { persistDocument } from '../utils/persist.ts';
@@ -60,13 +60,13 @@ export default function EditorShell() {
   // Use document model for rendering when available
   const processedLayers = useMemo(
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
-    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers],
+    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline],
   );
   const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel]);
   const layerGroups = useMemo(() => getLayerGroups(state), [state.project, state.currentLevel]);
   const levelsWithData = useMemo(() => getLevelsWithData(state), [state.project]);
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
-  const activeDiscipline = useMemo(() => getActiveDiscipline(state), [state.activeDiscipline, state.selectedIds, state.visibleLayers, state.project, state.currentLevel]);
+  const activeDiscipline = state.activeDiscipline;
 
   // Set base viewBox when it changes
   useEffect(() => {
@@ -119,7 +119,6 @@ export default function EditorShell() {
         layerGroups={layerGroups}
         visibleLayers={state.visibleLayers}
         showGrid={state.showGrid}
-        expandedDisciplines={state.expandedDisciplines}
       />
       <div className="canvas-area">
         <Canvas
@@ -127,6 +126,7 @@ export default function EditorShell() {
           viewBox={viewBox}
           gridSvg={gridSvg}
           activeFilter={state.activeFilter}
+          activeDiscipline={activeDiscipline}
         />
         <FloatingToolbar activeDiscipline={activeDiscipline} />
         {selectedData.size > 0 && (

@@ -15,9 +15,10 @@ interface CanvasProps {
   viewBox: { x: number; y: number; w: number; h: number } | null;
   gridSvg?: string;
   activeFilter: string | null;
+  activeDiscipline: string | null;
 }
 
-export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: CanvasProps) {
+export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeDiscipline }: CanvasProps) {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -289,14 +290,18 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
         )}
 
         {/* Data layers */}
-        {layers.map(layer => (
-          <g
-            key={layer.key}
-            className={`data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''}`}
-            data-layer={layer.key}
-            dangerouslySetInnerHTML={{ __html: layer.html }}
-          />
-        ))}
+        {layers.map(layer => {
+          const isBackground = layer.discipline === 'architectural' && activeDiscipline !== 'architectural';
+          return (
+            <g
+              key={layer.key}
+              className={`data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`}
+              data-layer={layer.key}
+              style={isBackground ? { pointerEvents: 'none', opacity: 0.35 } : undefined}
+              dangerouslySetInnerHTML={{ __html: layer.html }}
+            />
+          );
+        })}
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} />

@@ -268,6 +268,7 @@ html, body, #root {
   background: var(--bg-canvas);
   position: relative;
   overflow: hidden;
+  user-select: none;
 }
 
 .canvas.cursor-default { cursor: default; }

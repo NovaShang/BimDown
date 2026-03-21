@@ -35,8 +35,6 @@ export interface EditorState {
 
   marquee: { x1: number; y1: number; x2: number; y2: number } | null;
 
-  expandedDisciplines: Set<string>;
-
   // Document model (editing)
   document: DocumentState | null;
   history: HistoryState;
@@ -72,7 +70,6 @@ export type EditorAction =
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SET_HOVER'; id: string | null }
   | { type: 'SET_MARQUEE'; marquee: { x1: number; y1: number; x2: number; y2: number } | null }
-  | { type: 'TOGGLE_DISCIPLINE_EXPAND'; discipline: string }
   // Document editing actions
   | { type: 'INIT_DOCUMENT'; document: DocumentState }
   | { type: 'MOVE_ELEMENTS'; ids: string[]; dx: number; dy: number; preview?: boolean }

@@ -1,6 +1,6 @@
 import type { Level } from '../types.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
-import { useEditorDispatch } from '../state/EditorContext.tsx';
+import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { LayerGroup } from '../state/editorTypes.ts';
 
 interface LeftPanelProps {
@@ -9,7 +9,6 @@ interface LeftPanelProps {
   layerGroups: LayerGroup[];
   visibleLayers: Set<string>;
   showGrid: boolean;
-  expandedDisciplines: Set<string>;
 }
 
 export default function LeftPanel({
@@ -18,9 +17,16 @@ export default function LeftPanel({
   layerGroups,
   visibleLayers,
   showGrid,
-  expandedDisciplines,
 }: LeftPanelProps) {
   const dispatch = useEditorDispatch();
+  const { activeDiscipline } = useEditorState();
+
+  const currentGroup = layerGroups.find(g => g.discipline === activeDiscipline);
+  const currentGroupLayers = currentGroup ? [...currentGroup.layers].sort((a, b) => {
+    const oa = LAYER_STYLES[a.tableName]?.order ?? 99;
+    const ob = LAYER_STYLES[b.tableName]?.order ?? 99;
+    return oa - ob;
+  }) : [];
 
   return (
     <div className="left-panel">
@@ -42,14 +48,42 @@ export default function LeftPanel({
         </div>
       </div>
 
+      {/* Discipline Switcher */}
+      <div className="panel-section floor-section">
+        <div className="section-header">Disciplines</div>
+        <div className="floor-list">
+          {layerGroups.map(group => {
+            const color = DISCIPLINE_COLORS[group.discipline] || '#888';
+            return (
+              <button
+                key={group.discipline}
+                className={`floor-btn ${activeDiscipline === group.discipline ? 'active' : ''}`}
+                onClick={() => dispatch({ type: 'SET_DISCIPLINE', discipline: group.discipline })}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <span className="discipline-dot" style={{ background: color }} />
+                  <span className="floor-name">
+                    {group.discipline.charAt(0).toUpperCase() + group.discipline.slice(1)}
+                  </span>
+                </div>
+                <span className="floor-elev" style={{ marginLeft: 0 }}>{group.layers.length} layers</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
       {/* Layers */}
       <div className="panel-section layer-section">
-        <div className="section-header">Layers</div>
+        <div className="section-header">
+          Layers {activeDiscipline ? `(${activeDiscipline.charAt(0).toUpperCase() + activeDiscipline.slice(1)})` : ''}
+        </div>
 
         {/* Grid toggle */}
         <button
           className={`layer-item ${showGrid ? '' : 'off'}`}
           onClick={() => dispatch({ type: 'TOGGLE_GRID' })}
+          style={{ marginBottom: '8px' }}
         >
           <span className="layer-dot" style={{ background: '#ef476f' }} />
           <span className="layer-icon">┼</span>
@@ -59,53 +93,28 @@ export default function LeftPanel({
           </span>
         </button>
 
-        {/* Discipline groups */}
-        {layerGroups.map(group => {
-          const expanded = expandedDisciplines.has(group.discipline);
-          const color = DISCIPLINE_COLORS[group.discipline] || '#888';
-          const sortedLayers = [...group.layers].sort((a, b) => {
-            const oa = LAYER_STYLES[a.tableName]?.order ?? 99;
-            const ob = LAYER_STYLES[b.tableName]?.order ?? 99;
-            return oa - ob;
-          });
-
-          return (
-            <div key={group.discipline} className="discipline-group">
+        <div className="discipline-group">
+          {currentGroupLayers.map(layer => {
+            const key = `${layer.discipline}/${layer.tableName}`;
+            const style = LAYER_STYLES[layer.tableName];
+            const isVisible = visibleLayers.has(key);
+            return (
               <button
-                className="discipline-header"
-                onClick={() => dispatch({ type: 'TOGGLE_DISCIPLINE_EXPAND', discipline: group.discipline })}
+                key={key}
+                className={`layer-item ${isVisible ? '' : 'off'}`}
+                onClick={() => dispatch({ type: 'TOGGLE_LAYER', key })}
               >
-                <span className="expand-arrow">{expanded ? '▾' : '▸'}</span>
-                <span className="discipline-dot" style={{ background: color }} />
-                <span className="discipline-name">
-                  {group.discipline.charAt(0).toUpperCase() + group.discipline.slice(1)}
+                <span className="layer-dot" style={{ background: style?.color || '#888' }} />
+                <span className="layer-icon">{style?.icon || '◻'}</span>
+                <span className="layer-label">{style?.displayName || layer.tableName}</span>
+                <span className="layer-count">{layer.csvRows.size}</span>
+                <span className={`layer-eye ${isVisible ? 'visible' : 'hidden'}`}>
+                  {isVisible ? '◉' : '○'}
                 </span>
-                <span className="discipline-count">{group.layers.length}</span>
               </button>
-
-              {expanded && sortedLayers.map(layer => {
-                const key = `${layer.discipline}/${layer.tableName}`;
-                const style = LAYER_STYLES[layer.tableName];
-                const isVisible = visibleLayers.has(key);
-                return (
-                  <button
-                    key={key}
-                    className={`layer-item ${isVisible ? '' : 'off'}`}
-                    onClick={() => dispatch({ type: 'TOGGLE_LAYER', key })}
-                  >
-                    <span className="layer-dot" style={{ background: style?.color || '#888' }} />
-                    <span className="layer-icon">{style?.icon || '◻'}</span>
-                    <span className="layer-label">{style?.displayName || layer.tableName}</span>
-                    <span className="layer-count">{layer.csvRows.size}</span>
-                    <span className={`layer-eye ${isVisible ? 'visible' : 'hidden'}`}>
-                      {isVisible ? '◉' : '○'}
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
     </div>
   );
