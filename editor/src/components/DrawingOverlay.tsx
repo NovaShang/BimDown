@@ -4,19 +4,32 @@ interface DrawingOverlayProps {
   drawingState: DrawingState;
   activeTool: Tool;
   scale: number;
+  drawingAttrs: Record<string, string>;
+  tableName: string | null;
 }
 
-export default function DrawingOverlay({ drawingState, activeTool, scale }: DrawingOverlayProps) {
+export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName }: DrawingOverlayProps) {
   const { points, cursor } = drawingState;
 
   if (activeTool === 'draw_line') {
     if (points.length === 1 && cursor) {
+      // Show real thickness for walls/ducts/pipes
+      const thickness = resolveLineThickness(tableName, drawingAttrs);
+      const showThick = thickness > 0;
       return (
         <g className="drawing-overlay" transform="scale(1,-1)">
+          {showThick ? (
+            <line
+              x1={points[0].x} y1={points[0].y}
+              x2={cursor.x} y2={cursor.y}
+              stroke="#4fc3f7" strokeWidth={thickness} strokeLinecap="butt"
+              opacity="0.35"
+            />
+          ) : null}
           <line
             x1={points[0].x} y1={points[0].y}
             x2={cursor.x} y2={cursor.y}
-            stroke="#4fc3f7" strokeWidth={0.3 / scale} strokeDasharray={`${0.6 / scale},${0.3 / scale}`}
+            stroke="#4fc3f7" strokeWidth={0.12 / scale} strokeDasharray={`${0.6 / scale},${0.3 / scale}`}
           />
           <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="#4fc3f7" />
           <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#4fc3f7" opacity="0.6" />
@@ -28,16 +41,20 @@ export default function DrawingOverlay({ drawingState, activeTool, scale }: Draw
 
   if (activeTool === 'draw_point') {
     if (cursor) {
+      const w = parseFloat(drawingAttrs.size_x || '0.3');
+      const h = parseFloat(drawingAttrs.size_y || '0.3');
+      const hw = w / 2;
+      const hh = h / 2;
       return (
         <g className="drawing-overlay" transform="scale(1,-1)">
           <rect
-            x={cursor.x - (0.45 / scale)} y={cursor.y - (0.45 / scale)}
-            width={0.9 / scale} height={0.9 / scale}
-            fill="#4fc3f7" opacity="0.4"
-            stroke="#4fc3f7" strokeWidth={0.15 / scale}
+            x={cursor.x - hw} y={cursor.y - hh}
+            width={w} height={h}
+            fill="#4fc3f7" opacity="0.25"
+            stroke="#4fc3f7" strokeWidth={0.09 / scale}
           />
-          <line x1={cursor.x - (0.9 / scale)} y1={cursor.y} x2={cursor.x + (0.9 / scale)} y2={cursor.y} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
-          <line x1={cursor.x} y1={cursor.y - (0.9 / scale)} x2={cursor.x} y2={cursor.y + (0.9 / scale)} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
+          <line x1={cursor.x - hw - (0.3 / scale)} y1={cursor.y} x2={cursor.x + hw + (0.3 / scale)} y2={cursor.y} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
+          <line x1={cursor.x} y1={cursor.y - hh - (0.3 / scale)} x2={cursor.x} y2={cursor.y + hh + (0.3 / scale)} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
         </g>
       );
     }
@@ -95,4 +112,17 @@ export default function DrawingOverlay({ drawingState, activeTool, scale }: Draw
   }
 
   return null;
+}
+
+function resolveLineThickness(tableName: string | null, da: Record<string, string>): number {
+  if (!tableName) return 0;
+  if (tableName === 'wall' || tableName === 'structure_wall') {
+    const v = parseFloat(da.thickness);
+    return v > 0 ? v : 0;
+  }
+  if (da.size_x) {
+    const v = parseFloat(da.size_x);
+    return v > 0 ? v : 0;
+  }
+  return 0;
 }

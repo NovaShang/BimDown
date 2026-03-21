@@ -34,10 +34,15 @@ export const drawLineTool: ToolHandler = {
       const start = points[0];
       const end = pt;
 
-      const existingIds = new Set(
-        Array.from((ctx as any).getState?.() || {}).length ? [] : []
-      );
-      const id = generateId(target.tableName, existingIds);
+      const id = generateId(target.tableName, new Set());
+      const da = state.drawingAttrs;
+
+      // Resolve strokeWidth: walls use 'thickness', ducts/pipes use 'size_x'
+      const strokeWidth = resolveStrokeWidth(target.tableName, da);
+
+      // Merge drawingAttrs into element attrs
+      const baseAttrs = defaultAttrs(target.tableName, '');
+      const mergedAttrs = { ...baseAttrs, ...da, id };
 
       const element: LineElement = {
         id,
@@ -46,8 +51,8 @@ export const drawLineTool: ToolHandler = {
         geometry: 'line',
         start,
         end,
-        strokeWidth: getDefaultStrokeWidth(target.tableName),
-        attrs: { id, ...defaultAttrs(target.tableName, '') },
+        strokeWidth,
+        attrs: mergedAttrs,
       };
 
       ctx.dispatch({ type: 'CREATE_ELEMENT', element });
@@ -76,9 +81,20 @@ export const drawLineTool: ToolHandler = {
   },
 };
 
-function getDefaultStrokeWidth(tableName: string): number {
+function resolveStrokeWidth(tableName: string, da: Record<string, string>): number {
+  // Wall thickness → strokeWidth
+  if (tableName === 'wall' || tableName === 'structure_wall') {
+    const v = parseFloat(da.thickness);
+    if (v > 0) return v;
+    return 0.2;
+  }
+  // Ducts/pipes/conduits — use size_x as visual width
+  if (da.size_x) {
+    const v = parseFloat(da.size_x);
+    if (v > 0) return v;
+  }
+  // Fallbacks
   switch (tableName) {
-    case 'wall': case 'structure_wall': return 0.2;
     case 'duct': return 0.2;
     case 'pipe': return 0.05;
     case 'conduit': return 0.025;

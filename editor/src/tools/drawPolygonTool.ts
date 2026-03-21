@@ -67,6 +67,8 @@ function createPolygon(ctx: ToolContext, vertices: { x: number; y: number }[]) {
   if (!target) return;
 
   const id = generateId(target.tableName, new Set());
+  const baseAttrs = defaultAttrs(target.tableName, '');
+  const mergedAttrs = { ...baseAttrs, ...state.drawingAttrs, id };
 
   const element: PolygonElement = {
     id,
@@ -74,7 +76,7 @@ function createPolygon(ctx: ToolContext, vertices: { x: number; y: number }[]) {
     discipline: target.discipline,
     geometry: 'polygon',
     vertices,
-    attrs: { id, ...defaultAttrs(target.tableName, '') },
+    attrs: mergedAttrs,
   };
 
   ctx.dispatch({ type: 'CREATE_ELEMENT', element });

@@ -438,6 +438,110 @@ html, body, #root {
   pointer-events: none;
 }
 
+/* ─── Drawing Properties Bar ─────────────────── */
+.drawing-props-bar {
+  position: absolute;
+  bottom: 60px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 5px 12px;
+  box-shadow: 0 4px 24px rgba(0,0,0,0.4);
+  z-index: 30;
+  animation: dpBarIn 180ms ease;
+  white-space: nowrap;
+}
+
+@keyframes dpBarIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(6px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+.dp-label {
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.dp-separator {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+  flex-shrink: 0;
+}
+
+.dp-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.dp-field-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  user-select: none;
+}
+
+.dp-input {
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--bg-input);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 3px 6px;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+  transition: border-color var(--transition);
+}
+
+.dp-input:focus {
+  outline: none;
+  border-color: var(--dp-color, var(--accent));
+}
+
+.dp-number-wrap {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.dp-number {
+  width: 60px;
+  text-align: right;
+  -moz-appearance: textfield;
+}
+
+.dp-number::-webkit-inner-spin-button,
+.dp-number::-webkit-outer-spin-button {
+  opacity: 1;
+}
+
+.dp-text {
+  width: 80px;
+}
+
+.dp-select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 16px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
+}
+
+.dp-unit {
+  font-size: 9px;
+  color: var(--text-muted);
+  user-select: none;
+}
+
 /* ─── Floating Toolbar ────────────────────────── */
 .floating-toolbar {
   position: absolute;

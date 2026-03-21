@@ -39,6 +39,7 @@ export interface EditorState {
   history: HistoryState;
   editMode: boolean;
   drawingTarget: { tableName: string; discipline: string } | null;
+  drawingAttrs: Record<string, string>;  // editable properties for the next element to create
   drawingState: DrawingState | null;
   documentVersion: number;  // bumped on every mutation, triggers auto-persist
   lastMutation: { version: number; keys: string[] } | null;
@@ -76,6 +77,7 @@ export type EditorAction =
   | { type: 'SET_EDIT_MODE'; active: boolean }
   | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }
   | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string } | null }
+  | { type: 'SET_DRAWING_ATTRS'; attrs: Record<string, string> }
   | { type: 'RELOAD_ELEMENTS'; elements: CanonicalElement[] }
   | { type: 'UNDO' }
   | { type: 'REDO' }

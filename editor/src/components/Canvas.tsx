@@ -177,6 +177,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
         selectedIds: s.selectedIds,
         hoveredId: s.hoveredId,
         drawingTarget: s.drawingTarget,
+        drawingAttrs: s.drawingAttrs,
         drawingState: s.drawingState,
         document: s.document,
       };
@@ -444,7 +445,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
 
         {/* Drawing preview overlay */}
         {state.drawingState && (
-          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={transform.scale} />
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={transform.scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} />
         )}
       </svg>
 

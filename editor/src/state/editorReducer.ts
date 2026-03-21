@@ -1,6 +1,8 @@
 import type { EditorState, EditorAction } from './editorTypes.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
+import { defaultAttrs } from '../model/defaults.ts';
+import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 
 export const initialState: EditorState = {
   project: null,
@@ -29,6 +31,7 @@ export const initialState: EditorState = {
   history: emptyHistory,
   editMode: false,
   drawingTarget: null,
+  drawingAttrs: {},
   drawingState: null,
   documentVersion: 0,
   lastMutation: null,
@@ -364,7 +367,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, drawingState: action.state };
 
     case 'SET_DRAWING_TARGET':
-      return { ...state, drawingTarget: action.target };
+      return {
+        ...state,
+        drawingTarget: action.target,
+        drawingAttrs: action.target ? getDefaultDrawingAttrs(action.target.tableName) : {},
+      };
+
+    case 'SET_DRAWING_ATTRS':
+      return { ...state, drawingAttrs: action.attrs };
 
     case 'RELOAD_ELEMENTS': {
       if (!state.document) return state;

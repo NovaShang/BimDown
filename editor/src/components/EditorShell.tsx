@@ -7,6 +7,7 @@ import { persistDocument } from '../utils/persist.ts';
 import LeftPanel from './LeftPanel.tsx';
 import Canvas from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
+import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
 import FloatingProperties from './FloatingProperties.tsx';
 
 export default function EditorShell() {
@@ -95,6 +96,7 @@ export default function EditorShell() {
           activeFilter={state.activeFilter}
           activeDiscipline={activeDiscipline}
         />
+        <DrawingPropertiesBar />
         <FloatingToolbar activeDiscipline={activeDiscipline} />
         {selectedData.size > 0 && (
           <FloatingProperties selectedData={selectedData} />

@@ -30,6 +30,7 @@ export interface ToolStateSnapshot {
   selectedIds: Set<string>;
   hoveredId: string | null;
   drawingTarget: { tableName: string; discipline: string } | null;
+  drawingAttrs: Record<string, string>;
   drawingState: { points: { x: number; y: number }[]; cursor: { x: number; y: number } | null } | null;
   document: DocumentState | null;
 }

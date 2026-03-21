@@ -20,9 +20,12 @@ export const drawPointTool: ToolHandler = {
     const target = state.drawingTarget;
     if (!target) return;
 
-    const defaults = defaultAttrs(target.tableName, '');
-    const w = parseFloat(defaults.size_x || '0.3');
-    const h = parseFloat(defaults.size_y || '0.3');
+    const da = state.drawingAttrs;
+    const baseDefaults = defaultAttrs(target.tableName, '');
+    const mergedAttrs = { ...baseDefaults, ...da };
+
+    const w = parseFloat(mergedAttrs.size_x || '0.3');
+    const h = parseFloat(mergedAttrs.size_y || '0.3');
 
     const id = generateId(target.tableName, new Set());
 
@@ -34,7 +37,7 @@ export const drawPointTool: ToolHandler = {
       position: { x: pt.x - w / 2, y: pt.y - h / 2 },
       width: w,
       height: h,
-      attrs: { id, ...defaults },
+      attrs: { ...mergedAttrs, id, size_x: String(w), size_y: String(h) },
     };
 
     ctx.dispatch({ type: 'CREATE_ELEMENT', element });
