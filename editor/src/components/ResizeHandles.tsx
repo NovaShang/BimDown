@@ -108,10 +108,10 @@ export default function ResizeHandles({ element, svgRef }: ResizeHandlesProps) {
     const hw = width / 2;
     const hh = height / 2;
     const corners = [
-      { x: position.x - hw, y: position.y - hh, cursor: 'nwse-resize' },
-      { x: position.x + hw, y: position.y - hh, cursor: 'nesw-resize' },
-      { x: position.x + hw, y: position.y + hh, cursor: 'nwse-resize' },
-      { x: position.x - hw, y: position.y + hh, cursor: 'nesw-resize' },
+      { x: position.x - hw, y: position.y - hh, cursor: 'nesw-resize' },
+      { x: position.x + hw, y: position.y - hh, cursor: 'nwse-resize' },
+      { x: position.x + hw, y: position.y + hh, cursor: 'nesw-resize' },
+      { x: position.x - hw, y: position.y + hh, cursor: 'nwse-resize' },
     ];
 
     return (
