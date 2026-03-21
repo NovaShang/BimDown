@@ -8,20 +8,18 @@ interface MinimapProps {
   gridSvg?: string;
   transform: ViewTransform;
   setTransform: React.Dispatch<React.SetStateAction<ViewTransform>>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
 const MINIMAP_W = 180;
 const MINIMAP_H = 120;
 
-export default function Minimap({ layers, viewBox, gridSvg, transform, setTransform }: MinimapProps) {
+export default function Minimap({ layers, viewBox, gridSvg, transform, setTransform, containerRef }: MinimapProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Calculate viewport rect in SVG coordinates
-  // The main canvas applies CSS transform: translate(tx, ty) scale(s)
-  // and uses the viewBox directly. The visible area in SVG coords is:
-  const canvasEl = document.querySelector('.canvas') as HTMLElement | null;
-  const cw = canvasEl?.clientWidth ?? 800;
-  const ch = canvasEl?.clientHeight ?? 600;
+  const cw = containerRef.current?.clientWidth ?? 800;
+  const ch = containerRef.current?.clientHeight ?? 600;
 
   // Visible SVG region accounting for pan/zoom
   const visX = viewBox.x - (transform.x / transform.scale) * (viewBox.w / cw);

@@ -519,7 +519,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
 
       {/* Minimap */}
-      <Minimap layers={layers} viewBox={viewBox} gridSvg={gridSvg} transform={transform} setTransform={setTransform} />
+      <Minimap layers={layers} viewBox={viewBox} gridSvg={gridSvg} transform={transform} setTransform={setTransform} containerRef={containerRef} />
 
       {/* Hover tooltip */}
       {hoveredId && (
