@@ -20,7 +20,8 @@ export default function LeftPanel({
   showGrid,
 }: LeftPanelProps) {
   const dispatch = useEditorDispatch();
-  const { activeDiscipline } = useEditorState();
+  const { activeDiscipline, viewMode: rawViewMode } = useEditorState();
+  const viewMode = rawViewMode ?? '2d';
 
   const currentGroup = layerGroups.find(g => g.discipline === activeDiscipline);
   const currentGroupLayers = currentGroup ? [...currentGroup.layers].sort((a, b) => {
@@ -28,8 +29,6 @@ export default function LeftPanel({
     const ob = LAYER_STYLES[b.tableName]?.order ?? 99;
     return oa - ob;
   }) : [];
-
-  const viewMode = useEditorState().viewMode ?? '2d';
 
   return (
     <div className="left-panel">
