@@ -471,10 +471,10 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
       {/* Status bar */}
       <div className="canvas-status">
         <span className="status-tool" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          {activeTool === 'select' ? <><Icon name="select" width={14} height={14} /> Select</>
-            : activeTool === 'pan' ? <><Icon name="pan" width={14} height={14} /> Pan</>
-            : activeTool === 'zoom' ? <><Icon name="zoom" width={14} height={14} /> Zoom</>
-            : activeTool.startsWith('draw_') ? <><Icon name={state.drawingTarget?.tableName || 'wall'} width={14} height={14} /> Draw</>
+          {activeTool === 'select' ? <><Icon name="select" width={16} height={16} /> Select</>
+            : activeTool === 'pan' ? <><Icon name="pan" width={16} height={16} /> Pan</>
+            : activeTool === 'zoom' ? <><Icon name="zoom" width={16} height={16} /> Zoom</>
+            : activeTool.startsWith('draw_') ? <><Icon name={state.drawingTarget?.tableName || 'wall'} width={16} height={16} /> Draw</>
             : activeTool}
         </span>
         {selectedIds.size > 0 && (

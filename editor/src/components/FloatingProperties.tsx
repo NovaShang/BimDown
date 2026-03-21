@@ -84,7 +84,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
     <div className="floating-properties">
       <div className="fp-header">
         <div className="fp-title">
-          <span className="fp-type-icon" style={{ color: style?.color }}><Icon name={firstData.tableName} width={16} height={16} /></span>
+          <span className="fp-type-icon" style={{ color: style?.color }}><Icon name={firstData.tableName} width={20} height={20} /></span>
           <span className="fp-type-name">{style?.displayName || firstData.tableName}</span>
           <span className="fp-id">{firstId}</span>
         </div>

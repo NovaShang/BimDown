@@ -24,7 +24,7 @@ export default function DrawingPropertiesBar() {
   return (
     <div className="drawing-props-bar" style={{ '--dp-color': disciplineColor } as React.CSSProperties}>
       <span className="dp-label" style={{ color: disciplineColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
-        <Icon name={target.tableName} width={16} height={16} /> {style?.displayName || target.tableName}
+        <Icon name={target.tableName} width={20} height={20} /> {style?.displayName || target.tableName}
       </span>
       <div className="dp-separator" />
       {fields.map(f => (

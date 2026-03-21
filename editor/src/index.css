@@ -225,7 +225,7 @@ html, body, #root {
 
 .layer-icon {
   font-size: 10px;
-  width: 14px;
+  width: 18px;
   text-align: center;
   flex-shrink: 0;
 }
@@ -243,7 +243,7 @@ html, body, #root {
 .layer-eye {
   font-size: 9px;
   flex-shrink: 0;
-  width: 14px;
+  width: 18px;
   text-align: center;
 }
 
@@ -469,24 +469,11 @@ html, body, #root {
   user-select: none;
 }
 
-.dp-separator {
-  width: 1px;
-  height: 20px;
-  background: var(--border);
-  flex-shrink: 0;
-}
-
-.dp-field {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.dp-field-label {
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  user-select: none;
+/* External SVGs styles */
+.icon-wrapper svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: var(--icon-stroke-width, 1.4);
 }
 
 .dp-input {
