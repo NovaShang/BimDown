@@ -2,6 +2,7 @@ import type { Level } from '../types.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { LayerGroup } from '../state/editorTypes.ts';
+import { Icon } from './Icons.tsx';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -86,10 +87,10 @@ export default function LeftPanel({
           style={{ marginBottom: '8px' }}
         >
           <span className="layer-dot" style={{ background: '#ef476f' }} />
-          <span className="layer-icon">┼</span>
+          <span className="layer-icon"><Icon name="grid" width={14} height={14} /></span>
           <span className="layer-label">Grids</span>
           <span className={`layer-eye ${showGrid ? 'visible' : 'hidden'}`}>
-            {showGrid ? '◉' : '○'}
+            <Icon name={showGrid ? 'eye-visible' : 'eye-hidden'} width={16} height={16} />
           </span>
         </button>
 
@@ -105,11 +106,11 @@ export default function LeftPanel({
                 onClick={() => dispatch({ type: 'TOGGLE_LAYER', key })}
               >
                 <span className="layer-dot" style={{ background: style?.color || '#888' }} />
-                <span className="layer-icon">{style?.icon || '◻'}</span>
+                <span className="layer-icon"><Icon name={layer.tableName} width={14} height={14} /></span>
                 <span className="layer-label">{style?.displayName || layer.tableName}</span>
                 <span className="layer-count">{layer.csvRows.size}</span>
                 <span className={`layer-eye ${isVisible ? 'visible' : 'hidden'}`}>
-                  {isVisible ? '◉' : '○'}
+                  <Icon name={isVisible ? 'eye-visible' : 'eye-hidden'} width={16} height={16} />
                 </span>
               </button>
             );

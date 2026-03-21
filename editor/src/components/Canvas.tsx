@@ -15,6 +15,7 @@ import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { ElementNode } from './ElementNode.tsx';
 import { WallJoins } from './WallJoins.tsx';
+import { Icon } from './Icons.tsx';
 
 interface CanvasProps {
   layers: ProcessedLayer[];
@@ -469,11 +470,11 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
 
       {/* Status bar */}
       <div className="canvas-status">
-        <span className="status-tool">
-          {activeTool === 'select' ? '⬚ Select'
-            : activeTool === 'pan' ? '✋ Pan'
-            : activeTool === 'zoom' ? '🔍 Zoom'
-            : activeTool.startsWith('draw_') ? '✏ Draw'
+        <span className="status-tool" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          {activeTool === 'select' ? <><Icon name="select" width={14} height={14} /> Select</>
+            : activeTool === 'pan' ? <><Icon name="pan" width={14} height={14} /> Pan</>
+            : activeTool === 'zoom' ? <><Icon name="zoom" width={14} height={14} /> Zoom</>
+            : activeTool.startsWith('draw_') ? <><Icon name={state.drawingTarget?.tableName || 'wall'} width={14} height={14} /> Draw</>
             : activeTool}
         </span>
         {selectedIds.size > 0 && (

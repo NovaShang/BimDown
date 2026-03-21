@@ -7,10 +7,13 @@ interface FloatingToolbarProps {
   activeDiscipline: string | null;
 }
 
-const TOOLS: { tool: Tool; label: string; icon: string; shortcut: string }[] = [
-  { tool: 'select', label: 'Select', icon: '⬚', shortcut: 'V' },
-  { tool: 'pan', label: 'Pan', icon: '✋', shortcut: 'H' },
-  { tool: 'zoom', label: 'Zoom', icon: '🔍', shortcut: 'Z' },
+import { Icon } from './Icons.tsx';
+import type { IconName } from './Icons.tsx';
+
+const TOOLS: { tool: Tool; label: string; icon: IconName; shortcut: string }[] = [
+  { tool: 'select', label: 'Select', icon: 'select', shortcut: 'V' },
+  { tool: 'pan', label: 'Pan', icon: 'pan', shortcut: 'H' },
+  { tool: 'zoom', label: 'Zoom', icon: 'zoom', shortcut: 'Z' },
 ];
 
 function getDrawTool(tableName: string): Tool {
@@ -64,7 +67,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
             }}
             title={`${t.label} (${t.shortcut})`}
           >
-            <span className="toolbar-icon">{t.icon}</span>
+            <span className="toolbar-icon">
+              <Icon name={t.icon} />
+            </span>
           </button>
         ))}
       </div>
@@ -90,7 +95,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
                   '--tool-color': isActive ? disciplineColor : undefined,
                 } as React.CSSProperties}
               >
-                <span className="toolbar-icon">{style.icon}</span>
+                <span className="toolbar-icon">
+                  <Icon name={table} />
+                </span>
               </button>
             );
           })}
@@ -108,7 +115,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           title="Undo (Ctrl+Z)"
           disabled={!canUndo}
         >
-          <span className="toolbar-icon">↩</span>
+          <span className="toolbar-icon"><Icon name="undo" /></span>
         </button>
         <button
           className={`toolbar-btn ${!canRedo ? 'disabled' : ''}`}
@@ -116,7 +123,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           title="Redo (Ctrl+Y)"
           disabled={!canRedo}
         >
-          <span className="toolbar-icon">↪</span>
+          <span className="toolbar-icon"><Icon name="redo" /></span>
         </button>
       </div>
     </div>

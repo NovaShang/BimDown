@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch } from '../state/EditorContext.tsx';
+import { Icon } from './Icons.tsx';
 
 interface FloatingPropertiesProps {
   selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>;
@@ -83,7 +84,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
     <div className="floating-properties">
       <div className="fp-header">
         <div className="fp-title">
-          <span className="fp-type-icon" style={{ color: style?.color }}>{style?.icon || '◻'}</span>
+          <span className="fp-type-icon" style={{ color: style?.color }}><Icon name={firstData.tableName} width={16} height={16} /></span>
           <span className="fp-type-name">{style?.displayName || firstData.tableName}</span>
           <span className="fp-id">{firstId}</span>
         </div>

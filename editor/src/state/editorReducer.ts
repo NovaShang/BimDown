@@ -1,7 +1,7 @@
 import type { EditorState, EditorAction } from './editorTypes.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
-import { defaultAttrs } from '../model/defaults.ts';
+
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 
 export const initialState: EditorState = {

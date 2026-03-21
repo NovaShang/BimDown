@@ -1,6 +1,7 @@
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getDrawingFields } from '../model/drawingSchema.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
+import { Icon } from './Icons.tsx';
 
 export default function DrawingPropertiesBar() {
   const state = useEditorState();
@@ -22,8 +23,8 @@ export default function DrawingPropertiesBar() {
 
   return (
     <div className="drawing-props-bar" style={{ '--dp-color': disciplineColor } as React.CSSProperties}>
-      <span className="dp-label" style={{ color: disciplineColor }}>
-        {style?.icon || '+'} {style?.displayName || target.tableName}
+      <span className="dp-label" style={{ color: disciplineColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
+        <Icon name={target.tableName} width={16} height={16} /> {style?.displayName || target.tableName}
       </span>
       <div className="dp-separator" />
       {fields.map(f => (
