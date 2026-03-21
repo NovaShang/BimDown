@@ -44,6 +44,7 @@ export interface EditorState {
   drawingTarget: { tableName: string; discipline: string } | null;
   drawingState: DrawingState | null;
   documentVersion: number;  // bumped on every mutation, triggers auto-persist
+  lastMutation: { version: number; keys: string[] } | null;
 }
 
 export interface DrawingState {

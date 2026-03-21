@@ -34,6 +34,7 @@ export const initialState: EditorState = {
   drawingTarget: null,
   drawingState: null,
   documentVersion: 0,
+  lastMutation: null,
 };
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
@@ -217,7 +218,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     // --- Document editing actions ---
 
     case 'INIT_DOCUMENT':
-      return { ...state, document: action.document, history: emptyHistory };
+      return { ...state, document: action.document, history: emptyHistory, documentVersion: 0, lastMutation: null };
 
     case 'MOVE_ELEMENTS': {
       if (!state.document) return state;
@@ -236,15 +237,21 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
+      const keys = new Set<string>();
       for (const id of ids) {
-        before.set(id, state.document.elements.get(id) ?? null);
-        after.set(id, next.get(id) ?? null);
+        const pre = state.document.elements.get(id);
+        const post = next.get(id);
+        before.set(id, pre ?? null);
+        after.set(id, post ?? null);
+        if (pre) keys.add(`${pre.discipline}/${pre.tableName}`);
+        if (post) keys.add(`${post.discipline}/${post.tableName}`);
       }
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Move elements', before, after)),
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
       };
     }
 
@@ -259,6 +266,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Create element', before, after)),
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: [`${action.element.discipline}/${action.element.tableName}`] },
         selectedIds: new Set([action.element.id]),
       };
     }
@@ -279,11 +287,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (before.size === 0) return state;
       const nextSelected = new Set(state.selectedIds);
       for (const id of action.ids) nextSelected.delete(id);
+      
+      const keys = new Set<string>();
+      for (const el of before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+      
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Delete elements', before, after)),
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) },
         selectedIds: nextSelected,
         editMode: false,
       };
@@ -303,6 +316,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Update properties', before, after)),
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: [`${updated.discipline}/${updated.tableName}`] }
       };
     }
 
@@ -323,20 +337,30 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Resize element', before, after)),
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: [`${resized.discipline}/${resized.tableName}`] }
       };
     }
 
     case 'COMMIT_PREVIEW': {
       if (!state.document) return state;
+      const keys = new Set<string>();
+      for (const el of action.before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+      for (const el of action.after.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
       return {
         ...state,
         history: pushCommand(state.history, createCommand(action.description, action.before, action.after)),
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
       };
     }
 
     case 'UNDO': {
-      if (!state.document) return state;
+      if (!state.document || state.history.undoStack.length === 0) return state;
+      const cmd = state.history.undoStack[state.history.undoStack.length - 1];
+      const keys = new Set<string>();
+      for (const el of cmd.before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+      for (const el of cmd.after.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+      
       const result = applyUndo(state.history, state.document.elements);
       if (!result) return state;
       return {
@@ -344,11 +368,17 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: result.elements },
         history: result.history,
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
       };
     }
 
     case 'REDO': {
-      if (!state.document) return state;
+      if (!state.document || state.history.redoStack.length === 0) return state;
+      const cmd = state.history.redoStack[state.history.redoStack.length - 1];
+      const keys = new Set<string>();
+      for (const el of cmd.before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+      for (const el of cmd.after.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+      
       const result = applyRedo(state.history, state.document.elements);
       if (!result) return state;
       return {
@@ -356,6 +386,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: result.elements },
         history: result.history,
         documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
       };
     }
 

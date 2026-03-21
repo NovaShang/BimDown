@@ -5,13 +5,18 @@ import { groupByLayer, serializeToSvg, serializeToCsv } from '../model/serialize
  * Persist document state to disk via Vite middleware.
  * Serializes all layers to CSV + SVG and POSTs to /api/save.
  */
-export async function persistDocument(doc: DocumentState, viewBox: string): Promise<void> {
+export async function persistDocument(doc: DocumentState, viewBox: string, changedKeys?: Set<string>): Promise<void> {
   const elements = Array.from(doc.elements.values());
   const groups = groupByLayer(elements);
+  
+  const keysToProcess = changedKeys ? new Set([...groups.keys(), ...changedKeys]) : new Set(groups.keys());
 
   const files: { path: string; content: string }[] = [];
 
-  for (const [key, groupElements] of groups) {
+  for (const key of keysToProcess) {
+    if (changedKeys && !changedKeys.has(key)) continue;
+
+    const groupElements = groups.get(key) || [];
     const [discipline, tableName] = key.split('/');
     const levelId = doc.levelId;
 
