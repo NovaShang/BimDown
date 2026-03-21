@@ -5,11 +5,15 @@ import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 interface ResizeHandlesProps {
   element: CanonicalElement;
   svgRef: React.RefObject<SVGSVGElement | null>;
+  scale: number;
 }
 
-const HANDLE_RADIUS = 0.12;
+const HANDLE_RADIUS = 0.36;
 
-export default function ResizeHandles({ element, svgRef }: ResizeHandlesProps) {
+export default function ResizeHandles({ element, svgRef, scale }: ResizeHandlesProps) {
+  const r = HANDLE_RADIUS / scale;
+  const sw = 0.09 / scale;
+  
   const dispatch = useEditorDispatch();
   const state = useEditorState();
   const stateRef = useRef(state);
@@ -72,8 +76,8 @@ export default function ResizeHandles({ element, svgRef }: ResizeHandlesProps) {
         {/* Start endpoint */}
         <circle
           cx={element.start.x} cy={element.start.y}
-          r={HANDLE_RADIUS}
-          fill="#0d99ff" stroke="white" strokeWidth="0.03"
+          r={r}
+          fill="#0d99ff" stroke="white" strokeWidth={sw}
           cursor="move"
           onPointerDown={handleDrag((x, y) => {
             dispatch({
@@ -87,8 +91,8 @@ export default function ResizeHandles({ element, svgRef }: ResizeHandlesProps) {
         {/* End endpoint */}
         <circle
           cx={element.end.x} cy={element.end.y}
-          r={HANDLE_RADIUS}
-          fill="#0d99ff" stroke="white" strokeWidth="0.03"
+          r={r}
+          fill="#0d99ff" stroke="white" strokeWidth={sw}
           cursor="move"
           onPointerDown={handleDrag((x, y) => {
             dispatch({
@@ -120,8 +124,8 @@ export default function ResizeHandles({ element, svgRef }: ResizeHandlesProps) {
           <circle
             key={i}
             cx={c.x} cy={c.y}
-            r={HANDLE_RADIUS}
-            fill="#0d99ff" stroke="white" strokeWidth="0.03"
+            r={r}
+            fill="#0d99ff" stroke="white" strokeWidth={sw}
             cursor={c.cursor}
             onPointerDown={handleDrag((x, y) => {
               // Compute new position (center) and size based on which corner is dragged
@@ -153,8 +157,8 @@ export default function ResizeHandles({ element, svgRef }: ResizeHandlesProps) {
           <circle
             key={i}
             cx={v.x} cy={v.y}
-            r={HANDLE_RADIUS}
-            fill="#0d99ff" stroke="white" strokeWidth="0.03"
+            r={r}
+            fill="#0d99ff" stroke="white" strokeWidth={sw}
             cursor="move"
             onPointerDown={handleDrag((x, y) => {
               const newVertices = [...element.vertices];

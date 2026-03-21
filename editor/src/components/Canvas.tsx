@@ -304,7 +304,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
         })}
 
         {/* Selection overlay */}
-        <SelectionOverlay document={state.document} selectedIds={selectedIds} />
+        <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />
 
         {/* Resize handles */}
         {state.document && (() => {
@@ -315,7 +315,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
             // Always show handles for point geometry to indicate selection
             // For lines/polygons, only show handles if it's the ONLY item selected
             if (el.geometry === 'point' || selectedIds.size === 1) {
-              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} />);
+              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} scale={transform.scale} />);
             }
           }
           return handles;
@@ -323,7 +323,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
 
         {/* Drawing preview overlay */}
         {state.drawingState && (
-          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} />
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={transform.scale} />
         )}
       </svg>
 
