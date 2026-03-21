@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { Shape, ExtrudeGeometry, BufferGeometry, Color } from 'three';
+import { Shape, ExtrudeGeometry, BufferGeometry } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
@@ -12,8 +12,6 @@ interface PolygonExtrusionsProps {
   levelElevation: number;
   levelElevations: Map<string, number>;
 }
-
-const HIGHLIGHT_COLOR = new Color('#0d99ff');
 
 function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
   if (params.vertices.length < 3) return null;
@@ -91,7 +89,7 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
             {isHighlighted && (
               <meshStandardMaterial
                 attach="material"
-                color={HIGHLIGHT_COLOR}
+                color="#0d99ff"
                 transparent={material.transparent}
                 opacity={Math.max(material.opacity, 0.4)}
               />

@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import { OrbitControls, Bounds, useBounds } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
