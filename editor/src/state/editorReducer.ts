@@ -38,6 +38,15 @@ export const initialState: EditorState = {
   lastMutation: null,
 };
 
+/** Collect discipline/tableName keys from element maps for lastMutation tracking */
+function collectMutationKeys(...maps: Map<string, CanonicalElement | null>[]): string[] {
+  const keys = new Set<string>();
+  for (const map of maps) {
+    for (const el of map.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
+  }
+  return Array.from(keys);
+}
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
     case 'SET_VIEW_MODE':
@@ -231,21 +240,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
-      const keys = new Set<string>();
       for (const id of ids) {
         const pre = state.document.elements.get(id);
         const post = next.get(id);
         before.set(id, pre ?? null);
         after.set(id, post ?? null);
-        if (pre) keys.add(`${pre.discipline}/${pre.tableName}`);
-        if (post) keys.add(`${post.discipline}/${post.tableName}`);
       }
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Move elements', before, after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) }
       };
     }
 
@@ -282,15 +288,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const nextSelected = new Set(state.selectedIds);
       for (const id of action.ids) nextSelected.delete(id);
       
-      const keys = new Set<string>();
-      for (const el of before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
-      
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Delete elements', before, after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) },
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before) },
         selectedIds: nextSelected,
         editMode: false,
       };
@@ -337,24 +340,17 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'COMMIT_PREVIEW': {
       if (!state.document) return state;
-      const keys = new Set<string>();
-      for (const el of action.before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
-      for (const el of action.after.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
       return {
         ...state,
         history: pushCommand(state.history, createCommand(action.description, action.before, action.after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(action.before, action.after) }
       };
     }
 
     case 'UNDO': {
       if (!state.document || state.history.undoStack.length === 0) return state;
       const cmd = state.history.undoStack[state.history.undoStack.length - 1];
-      const keys = new Set<string>();
-      for (const el of cmd.before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
-      for (const el of cmd.after.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
-      
       const result = applyUndo(state.history, state.document.elements);
       if (!result) return state;
       return {
@@ -362,17 +358,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: result.elements },
         history: result.history,
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(cmd.before, cmd.after) }
       };
     }
 
     case 'REDO': {
       if (!state.document || state.history.redoStack.length === 0) return state;
       const cmd = state.history.redoStack[state.history.redoStack.length - 1];
-      const keys = new Set<string>();
-      for (const el of cmd.before.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
-      for (const el of cmd.after.values()) if (el) keys.add(`${el.discipline}/${el.tableName}`);
-      
       const result = applyRedo(state.history, state.document.elements);
       if (!result) return state;
       return {
@@ -380,7 +372,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: result.elements },
         history: result.history,
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: Array.from(keys) }
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(cmd.before, cmd.after) }
       };
     }
 
