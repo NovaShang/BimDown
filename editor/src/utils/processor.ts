@@ -1,4 +1,5 @@
 import type { CsvRow } from '../types.ts';
+import { computeCornerAdjustments, type WallSegment } from './wallMiter.ts';
 
 const parser = new DOMParser();
 const serializer = new XMLSerializer();
@@ -20,7 +21,14 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
   if (!g) return svgString;
 
   const lines = Array.from(g.querySelectorAll('line'));
-  const newElements: Element[] = [];
+
+  // Pass 1: collect wall data
+  interface WallData {
+    id: string; x1: number; y1: number; x2: number; y2: number;
+    halfW: number; nx: number; ny: number; fillColor: string; lineEl: Element;
+  }
+  const wallData: WallData[] = [];
+  const miterSegments: WallSegment[] = [];
 
   for (const line of lines) {
     const id = line.getAttribute('id') || '';
@@ -52,11 +60,37 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
       fillColor = '#e8e8e8';
     }
 
+    miterSegments.push({ id, x1, y1, x2, y2, halfWidth: halfW, fill: fillColor });
+    wallData.push({ id, x1, y1, x2, y2, halfW, nx, ny, fillColor, lineEl: line });
+  }
+
+  // Compute miter corner adjustments
+  const adj = computeCornerAdjustments(miterSegments);
+
+  // Pass 2: build adjusted SVG elements
+  const newElements: Element[] = [];
+  for (const w of wallData) {
+    const { id, x1, y1, x2, y2, halfW, nx, ny, fillColor, lineEl } = w;
+
+    // Default perpendicular corners
+    let p1x = x1 + nx * halfW, p1y = y1 + ny * halfW; // start +normal
+    let p2x = x2 + nx * halfW, p2y = y2 + ny * halfW; // end +normal
+    let p3x = x2 - nx * halfW, p3y = y2 - ny * halfW; // end -normal
+    let p4x = x1 - nx * halfW, p4y = y1 - ny * halfW; // start -normal
+
+    // Apply miter adjustments
+    const startAdj = adj.get(`${id}:start`);
+    if (startAdj) {
+      p1x = startAdj.left.x;  p1y = startAdj.left.y;   // +normal side
+      p4x = startAdj.right.x; p4y = startAdj.right.y;   // -normal side
+    }
+    const endAdj = adj.get(`${id}:end`);
+    if (endAdj) {
+      p2x = endAdj.right.x; p2y = endAdj.right.y;  // +normal of wall = right in end-away coords
+      p3x = endAdj.left.x;  p3y = endAdj.left.y;   // -normal of wall = left in end-away coords
+    }
+
     const poly = doc.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    const p1x = x1 + nx * halfW, p1y = y1 + ny * halfW;
-    const p2x = x2 + nx * halfW, p2y = y2 + ny * halfW;
-    const p3x = x2 - nx * halfW, p3y = y2 - ny * halfW;
-    const p4x = x1 - nx * halfW, p4y = y1 - ny * halfW;
     poly.setAttribute('points',
       `${p1x},${p1y} ${p2x},${p2y} ${p3x},${p3y} ${p4x},${p4y}`);
     poly.setAttribute('fill', fillColor);
@@ -82,7 +116,7 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
     line2.setAttribute('data-id', id);
 
     newElements.push(poly, line1, line2);
-    line.remove();
+    lineEl.remove();
   }
 
   for (const el of newElements) {
@@ -268,7 +302,14 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
 
   const color = type === 'duct' ? '#00b4d8' : '#06d6a0';
   const lines = Array.from(g.querySelectorAll('line'));
-  const newElements: Element[] = [];
+
+  // Pass 1: collect MEP line data
+  interface MepData {
+    id: string; x1: number; y1: number; x2: number; y2: number;
+    halfW: number; nx: number; ny: number; lineEl: Element;
+  }
+  const mepData: MepData[] = [];
+  const miterSegments: WallSegment[] = [];
 
   for (const line of lines) {
     const id = line.getAttribute('id') || '';
@@ -287,11 +328,34 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
     const ny = dx / len;
     const halfW = strokeWidth / 2;
 
+    miterSegments.push({ id, x1, y1, x2, y2, halfWidth: halfW, fill: color + '15' });
+    mepData.push({ id, x1, y1, x2, y2, halfW, nx, ny, lineEl: line });
+  }
+
+  const adj = computeCornerAdjustments(miterSegments);
+
+  // Pass 2: build adjusted SVG elements
+  const newElements: Element[] = [];
+  for (const m of mepData) {
+    const { id, x1, y1, x2, y2, halfW, nx, ny, lineEl } = m;
+
+    let p1x = x1 + nx * halfW, p1y = y1 + ny * halfW;
+    let p2x = x2 + nx * halfW, p2y = y2 + ny * halfW;
+    let p3x = x2 - nx * halfW, p3y = y2 - ny * halfW;
+    let p4x = x1 - nx * halfW, p4y = y1 - ny * halfW;
+
+    const startAdj = adj.get(`${id}:start`);
+    if (startAdj) {
+      p1x = startAdj.left.x;  p1y = startAdj.left.y;
+      p4x = startAdj.right.x; p4y = startAdj.right.y;
+    }
+    const endAdj = adj.get(`${id}:end`);
+    if (endAdj) {
+      p2x = endAdj.right.x; p2y = endAdj.right.y;
+      p3x = endAdj.left.x;  p3y = endAdj.left.y;
+    }
+
     const poly = doc.createElementNS('http://www.w3.org/2000/svg', 'polygon');
-    const p1x = x1 + nx * halfW, p1y = y1 + ny * halfW;
-    const p2x = x2 + nx * halfW, p2y = y2 + ny * halfW;
-    const p3x = x2 - nx * halfW, p3y = y2 - ny * halfW;
-    const p4x = x1 - nx * halfW, p4y = y1 - ny * halfW;
     poly.setAttribute('points',
       `${p1x},${p1y} ${p2x},${p2y} ${p3x},${p3y} ${p4x},${p4y}`);
     poly.setAttribute('fill', color + '15');
@@ -317,7 +381,7 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
     line2.setAttribute('data-id', id);
 
     newElements.push(poly, line1, line2);
-    line.remove();
+    lineEl.remove();
   }
 
   for (const el of newElements) {

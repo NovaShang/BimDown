@@ -14,6 +14,7 @@ import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { ElementNode } from './ElementNode.tsx';
+import { WallJoins } from './WallJoins.tsx';
 
 interface CanvasProps {
   layers: ProcessedLayer[];
@@ -421,6 +422,9 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
             />
           );
         })}
+
+        {/* Wall miter joins */}
+        {state.document && <WallJoins document={state.document} />}
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />
