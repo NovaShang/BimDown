@@ -274,6 +274,7 @@ html, body, #root {
 .canvas.cursor-grab { cursor: grab; }
 .canvas.cursor-grab:active { cursor: grabbing; }
 .canvas.cursor-zoom { cursor: zoom-in; }
+.canvas.cursor-crosshair { cursor: crosshair; }
 
 .canvas-svg {
   width: 100%;
@@ -650,6 +651,35 @@ html, body, #root {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
+}
+
+.fp-input {
+  font-size: 11px;
+  color: var(--text-primary);
+  background: var(--bg-tertiary);
+  border: 1px solid transparent;
+  border-radius: 3px;
+  padding: 2px 4px;
+  text-align: right;
+  flex: 1;
+  min-width: 0;
+  font-family: inherit;
+  font-variant-numeric: tabular-nums;
+}
+
+.fp-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  background: var(--bg-primary);
+}
+
+.fp-select {
+  appearance: none;
+  cursor: pointer;
+  padding-right: 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23888'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 4px center;
 }
 
 /* ─── Scrollbar ───────────────────────────────── */

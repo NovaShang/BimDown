@@ -1,6 +1,9 @@
 import type { ProjectData, GridData, FloorData, LayerData } from '../types.ts';
+import type { DocumentState } from '../model/document.ts';
+import type { CanonicalElement } from '../model/elements.ts';
+import type { HistoryState } from '../model/history.ts';
 
-export type Tool = 'select' | 'pan' | 'zoom';
+export type Tool = 'select' | 'pan' | 'zoom' | 'draw_line' | 'draw_point' | 'draw_polygon';
 
 export interface ViewTransform {
   x: number;
@@ -33,6 +36,19 @@ export interface EditorState {
   marquee: { x1: number; y1: number; x2: number; y2: number } | null;
 
   expandedDisciplines: Set<string>;
+
+  // Document model (editing)
+  document: DocumentState | null;
+  history: HistoryState;
+  editMode: boolean;
+  drawingTarget: { tableName: string; discipline: string } | null;
+  drawingState: DrawingState | null;
+  documentVersion: number;  // bumped on every mutation, triggers auto-persist
+}
+
+export interface DrawingState {
+  points: { x: number; y: number }[];  // placed points so far
+  cursor: { x: number; y: number } | null;  // current mouse position in SVG coords
 }
 
 export type EditorAction =
@@ -55,7 +71,21 @@ export type EditorAction =
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SET_HOVER'; id: string | null }
   | { type: 'SET_MARQUEE'; marquee: { x1: number; y1: number; x2: number; y2: number } | null }
-  | { type: 'TOGGLE_DISCIPLINE_EXPAND'; discipline: string };
+  | { type: 'TOGGLE_DISCIPLINE_EXPAND'; discipline: string }
+  // Document editing actions
+  | { type: 'INIT_DOCUMENT'; document: DocumentState }
+  | { type: 'MOVE_ELEMENTS'; ids: string[]; dx: number; dy: number; preview?: boolean }
+  | { type: 'CREATE_ELEMENT'; element: CanonicalElement }
+  | { type: 'DELETE_ELEMENTS'; ids: string[] }
+  | { type: 'UPDATE_ATTRS'; id: string; attrs: Record<string, string> }
+  | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean }
+  | { type: 'COMMIT_PREVIEW'; description: string; before: Map<string, CanonicalElement | null>; after: Map<string, CanonicalElement | null> }
+  | { type: 'SET_EDIT_MODE'; active: boolean }
+  | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }
+  | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string } | null }
+  | { type: 'RELOAD_ELEMENTS'; elements: CanonicalElement[] }
+  | { type: 'UNDO' }
+  | { type: 'REDO' };
 
 export interface ProcessedLayer {
   key: string;

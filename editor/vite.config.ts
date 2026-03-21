@@ -10,8 +10,70 @@ export default defineConfig({
     {
       name: 'serve-sample-data',
       configureServer(server) {
+        // Track SSE clients for file watch notifications
+        const watchClients = new Set<import('http').ServerResponse>()
+
+        // Watch sample_data for external changes
+        let selfWritePaths = new Set<string>()
+        fs.watch(sampleDataDir, { recursive: true }, (_event, filename) => {
+          if (!filename) return
+          const normalized = filename.replace(/\\/g, '/')
+          // Skip changes we made ourselves (via /api/save)
+          if (selfWritePaths.has(normalized)) {
+            selfWritePaths.delete(normalized)
+            return
+          }
+          const data = JSON.stringify({ type: 'change', path: normalized })
+          for (const client of watchClients) {
+            client.write(`data: ${data}\n\n`)
+          }
+        })
+
         server.middlewares.use((req, res, next) => {
           const url = req.url || ''
+
+          // POST /api/save — write files to sample_data
+          if (url === '/api/save' && req.method === 'POST') {
+            let body = ''
+            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            req.on('end', () => {
+              try {
+                const { files } = JSON.parse(body) as { files: { path: string; content: string }[] }
+                for (const file of files) {
+                  const filePath = path.join(sampleDataDir, file.path)
+                  // Ensure no path traversal
+                  if (!filePath.startsWith(sampleDataDir)) continue
+                  // Track as self-write to suppress watch events
+                  selfWritePaths.add(file.path.replace(/\\/g, '/'))
+                  // Ensure directory exists
+                  const dir = path.dirname(filePath)
+                  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
+                  fs.writeFileSync(filePath, file.content, 'utf-8')
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ ok: true, written: files.length }))
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ error: String(err) }))
+              }
+            })
+            return
+          }
+
+          // GET /api/watch — SSE stream for file change notifications
+          if (url === '/api/watch' && req.method === 'GET') {
+            res.writeHead(200, {
+              'Content-Type': 'text/event-stream',
+              'Cache-Control': 'no-cache',
+              'Connection': 'keep-alive',
+            })
+            res.write('data: {"type":"connected"}\n\n')
+            watchClients.add(res)
+            req.on('close', () => { watchClients.delete(res) })
+            return
+          }
+
+          // Serve sample_data files
           if (!url.startsWith('/sample_data/')) return next()
 
           const relPath = url.slice('/sample_data/'.length)

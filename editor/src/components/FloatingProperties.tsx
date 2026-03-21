@@ -15,16 +15,32 @@ const PROPERTY_GROUPS: { label: string; keys: string[] }[] = [
   { label: 'System', keys: ['system_type', 'equipment_type', 'terminal_type', 'operation'] },
 ];
 
+// Fields that cannot be edited
+const READ_ONLY_KEYS = new Set(['id', 'length', 'area', 'location_param']);
+
+// Fields with dropdown options
+const ENUM_OPTIONS: Record<string, string[]> = {
+  operation: ['single_swing', 'double_swing', 'sliding', 'folding'],
+  function: ['floor', 'roof', 'finish'],
+  system_type: ['hvac', 'plumbing', 'electrical'],
+  shape: ['rectangular', 'round'],
+};
+
 export default function FloatingProperties({ selectedData }: FloatingPropertiesProps) {
   const dispatch = useEditorDispatch();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   if (selectedData.size === 0) return null;
 
-  // Show first selected element's data
   const [firstId, firstData] = selectedData.entries().next().value!;
   const style = LAYER_STYLES[firstData.tableName];
   const csv = firstData.csv;
+  const isSingleSelection = selectedData.size === 1;
+
+  const handleChange = (key: string, value: string) => {
+    if (!isSingleSelection) return;
+    dispatch({ type: 'UPDATE_ATTRS', id: firstId, attrs: { [key]: value } });
+  };
 
   // Group properties
   const grouped: { label: string; props: [string, string][] }[] = [];
@@ -65,7 +81,6 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
 
   return (
     <div className="floating-properties">
-      {/* Header */}
       <div className="fp-header">
         <div className="fp-title">
           <span className="fp-type-icon" style={{ color: style?.color }}>{style?.icon || '◻'}</span>
@@ -78,7 +93,6 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
         )}
       </div>
 
-      {/* Property groups */}
       <div className="fp-body">
         {grouped.map(group => {
           const isCollapsed = collapsed.has(group.label);
@@ -93,7 +107,27 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
                   {group.props.map(([key, value]) => (
                     <div key={key} className="fp-row">
                       <span className="fp-key">{formatKey(key)}</span>
-                      <span className="fp-value">{value}</span>
+                      {READ_ONLY_KEYS.has(key) || !isSingleSelection ? (
+                        <span className="fp-value">{value}</span>
+                      ) : ENUM_OPTIONS[key] ? (
+                        <select
+                          className="fp-input fp-select"
+                          value={value}
+                          onChange={e => handleChange(key, e.target.value)}
+                        >
+                          {!ENUM_OPTIONS[key].includes(value) && <option value={value}>{value}</option>}
+                          {ENUM_OPTIONS[key].map(opt => (
+                            <option key={opt} value={opt}>{opt}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="fp-input"
+                          type="text"
+                          value={value}
+                          onChange={e => handleChange(key, e.target.value)}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>

@@ -1,6 +1,7 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
 import type { LayerData, CsvRow } from '../types.ts';
 import { processSvg, extractInnerSvg, extractViewBox } from '../utils/processor.ts';
+import { groupByLayer, serializeToSvg, elementsToCsvRows } from '../model/serialize.ts';
 
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
@@ -56,6 +57,17 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
   const result = new Map<string, { tableName: string; discipline: string; csv: CsvRow }>();
   if (state.selectedIds.size === 0) return result;
 
+  // When document model exists, read from it (reflects edits)
+  if (state.document) {
+    for (const id of state.selectedIds) {
+      const el = state.document.elements.get(id);
+      if (el) {
+        result.set(id, { tableName: el.tableName, discipline: el.discipline, csv: el.attrs });
+      }
+    }
+    return result;
+  }
+
   const floor = getVisibleFloor(state);
   if (!floor) return result;
 
@@ -67,6 +79,37 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
       }
     }
   }
+  return result;
+}
+
+/**
+ * Get processed layers from the document model (for editing mode).
+ * Serializes canonical elements → SVG → processor pipeline.
+ */
+export function getProcessedLayersFromDocument(state: EditorState): ProcessedLayer[] {
+  if (!state.document) return getProcessedLayers(state);
+
+  const viewBox = getComputedViewBox(state);
+  const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
+
+  const elements = Array.from(state.document.elements.values());
+  const groups = groupByLayer(elements);
+  const result: ProcessedLayer[] = [];
+
+  for (const [key, groupElements] of groups) {
+    if (!state.visibleLayers.has(key)) continue;
+    const [discipline, tableName] = key.split('/');
+    const svgString = serializeToSvg(groupElements, vbStr);
+    const csvRows = elementsToCsvRows(groupElements);
+    const processed = processSvg(tableName, svgString, csvRows);
+    result.push({
+      key,
+      tableName,
+      discipline,
+      html: extractInnerSvg(processed),
+    });
+  }
+
   return result;
 }
 

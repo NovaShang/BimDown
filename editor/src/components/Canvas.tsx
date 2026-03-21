@@ -1,9 +1,13 @@
-import { useRef, useCallback, useEffect } from 'react';
+import { useRef, useCallback, useEffect, useMemo } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { ProcessedLayer } from '../state/editorTypes.ts';
 import { LAYER_STYLES } from '../types.ts';
+import { getToolHandler } from '../tools/registry.ts';
+import type { ToolContext, ToolStateSnapshot } from '../tools/types.ts';
 import SelectionOverlay from './SelectionOverlay.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
+import DrawingOverlay from './DrawingOverlay.tsx';
+import ResizeHandles from './ResizeHandles.tsx';
 import Minimap from './Minimap.tsx';
 
 interface CanvasProps {
@@ -18,21 +22,63 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
   const dispatch = useEditorDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
-  const isPanning = useRef(false);
-  const isMarquee = useRef(false);
-  const lastPos = useRef({ x: 0, y: 0 });
-  const marqueeStart = useRef({ x: 0, y: 0 });
+
+  // Middle-mouse panning (works across all tools)
+  const middlePanning = useRef(false);
+  const middleLastPos = useRef({ x: 0, y: 0 });
 
   const { transform, activeTool, hoveredId, selectedIds } = state;
+
+  // Stable ref for current state (tools read via getState())
+  const stateRef = useRef(state);
+  stateRef.current = state;
+
+  const findElementId = useCallback((target: EventTarget | null): string | null => {
+    let el = target as Element | null;
+    while (el && el !== svgRef.current) {
+      const id = el.getAttribute('data-id') || el.getAttribute('id');
+      if (id && /^[a-z]+-\d+$/i.test(id)) return id;
+      el = el.parentElement;
+    }
+    return null;
+  }, []);
+
+  const screenToSvg = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
+    const svg = svgRef.current;
+    if (!svg) return null;
+    const pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    const ctm = svg.getScreenCTM();
+    if (!ctm) return null;
+    const svgPt = pt.matrixTransform(ctm.inverse());
+    return { x: svgPt.x, y: -svgPt.y };
+  }, []);
+
+  const toolCtx = useMemo<ToolContext>(() => ({
+    dispatch,
+    svgRef,
+    containerRef,
+    getState: (): ToolStateSnapshot => {
+      const s = stateRef.current;
+      return {
+        transform: s.transform,
+        selectedIds: s.selectedIds,
+        hoveredId: s.hoveredId,
+        drawingTarget: s.drawingTarget,
+        drawingState: s.drawingState,
+        document: s.document,
+      };
+    },
+    screenToSvg,
+    findElementId,
+  }), [dispatch, screenToSvg, findElementId]);
 
   // Hover highlight — add/remove CSS class on hovered elements
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-
-    // Clear previous highlights
     svg.querySelectorAll('.hover-highlight').forEach(el => el.classList.remove('hover-highlight'));
-
     if (hoveredId) {
       svg.querySelectorAll(`[data-id="${hoveredId}"]`).forEach(el => el.classList.add('hover-highlight'));
     }
@@ -41,7 +87,6 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept when typing in inputs
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
 
       switch (e.key) {
@@ -52,14 +97,44 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
           if (!e.ctrlKey && !e.metaKey) dispatch({ type: 'SET_TOOL', tool: 'pan' });
           break;
         case 'z': case 'Z':
-          if (!e.ctrlKey && !e.metaKey) dispatch({ type: 'SET_TOOL', tool: 'zoom' });
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            if (e.shiftKey) {
+              dispatch({ type: 'REDO' });
+            } else {
+              dispatch({ type: 'UNDO' });
+            }
+          } else {
+            dispatch({ type: 'SET_TOOL', tool: 'zoom' });
+          }
+          break;
+        case 'y': case 'Y':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            dispatch({ type: 'REDO' });
+          }
+          break;
+        case 'Delete': case 'Backspace':
+          if (stateRef.current.selectedIds.size > 0) {
+            dispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stateRef.current.selectedIds) });
+          }
           break;
         case ' ':
           e.preventDefault();
           dispatch({ type: 'SET_SPACE_HELD', held: true });
           break;
         case 'Escape':
-          dispatch({ type: 'CLEAR_SELECTION' });
+          if (stateRef.current.drawingState?.points.length) {
+            // Cancel drawing in progress
+            dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+          } else if (stateRef.current.activeTool.startsWith('draw_')) {
+            // Exit drawing tool back to select
+            dispatch({ type: 'SET_TOOL', tool: 'select' });
+            dispatch({ type: 'SET_DRAWING_STATE', state: null });
+            dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          } else {
+            dispatch({ type: 'CLEAR_SELECTION' });
+          }
           break;
         case '=': case '+':
           dispatch({ type: 'ZOOM_BY', delta: 1.2 });
@@ -82,12 +157,12 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
         case 'a': case 'A':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            // Select all visible elements
             const allIds: string[] = [];
-            const floor = state.project?.floors.get(state.currentLevel);
+            const s = stateRef.current;
+            const floor = s.project?.floors.get(s.currentLevel);
             if (floor) {
               for (const layer of floor.layers) {
-                if (state.visibleLayers.has(`${layer.discipline}/${layer.tableName}`)) {
+                if (s.visibleLayers.has(`${layer.discipline}/${layer.tableName}`)) {
                   for (const id of layer.csvRows.keys()) {
                     allIds.push(id);
                   }
@@ -112,7 +187,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [dispatch, state.project, state.currentLevel, state.visibleLayers]);
+  }, [dispatch]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -127,179 +202,48 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
     });
   }, [dispatch]);
 
-  const findElementId = useCallback((target: EventTarget | null): string | null => {
-    let el = target as Element | null;
-    while (el && el !== svgRef.current) {
-      const id = el.getAttribute('data-id') || el.getAttribute('id');
-      if (id && /^[a-z]+-\d+$/i.test(id)) return id;
-      el = el.parentElement;
-    }
-    return null;
-  }, []);
-
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-
-    // Middle mouse always pans
+    // Middle mouse always pans regardless of tool
     if (e.button === 1) {
-      isPanning.current = true;
-      lastPos.current = { x: e.clientX, y: e.clientY };
+      middlePanning.current = true;
+      middleLastPos.current = { x: e.clientX, y: e.clientY };
       (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
       return;
     }
 
-    if (e.button !== 0) return;
-
-    const currentTool = activeTool;
-
-    if (currentTool === 'pan') {
-      isPanning.current = true;
-      lastPos.current = { x: e.clientX, y: e.clientY };
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-      return;
-    }
-
-    if (currentTool === 'zoom') {
-      const delta = e.altKey ? 0.7 : 1.4;
-      dispatch({
-        type: 'ZOOM_BY',
-        delta,
-        centerX: e.clientX - rect.left,
-        centerY: e.clientY - rect.top,
-      });
-      return;
-    }
-
-    // Select tool
-    const elementId = findElementId(e.target);
-    if (elementId) {
-      dispatch({ type: 'SELECT', ids: [elementId], additive: e.shiftKey });
-    } else {
-      // Start marquee or clear selection
-      if (!e.shiftKey) {
-        dispatch({ type: 'CLEAR_SELECTION' });
-      }
-      isMarquee.current = true;
-      const sx = e.clientX - rect.left;
-      const sy = e.clientY - rect.top;
-      marqueeStart.current = { x: sx, y: sy };
-      dispatch({ type: 'SET_MARQUEE', marquee: { x1: sx, y1: sy, x2: sx, y2: sy } });
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    }
-  }, [activeTool, dispatch, findElementId]);
+    const handler = getToolHandler(stateRef.current.activeTool);
+    handler.onPointerDown?.(toolCtx, e);
+  }, [toolCtx]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
-    if (isPanning.current) {
-      const dx = e.clientX - lastPos.current.x;
-      const dy = e.clientY - lastPos.current.y;
-      lastPos.current = { x: e.clientX, y: e.clientY };
+    if (middlePanning.current) {
+      const dx = e.clientX - middleLastPos.current.x;
+      const dy = e.clientY - middleLastPos.current.y;
+      middleLastPos.current = { x: e.clientX, y: e.clientY };
+      const t = stateRef.current.transform;
       dispatch({
         type: 'SET_TRANSFORM',
-        transform: {
-          ...transform,
-          x: transform.x + dx,
-          y: transform.y + dy,
-        },
+        transform: { ...t, x: t.x + dx, y: t.y + dy },
       });
       return;
     }
 
-    if (isMarquee.current) {
-      const rect = containerRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      dispatch({
-        type: 'SET_MARQUEE',
-        marquee: {
-          x1: marqueeStart.current.x,
-          y1: marqueeStart.current.y,
-          x2: e.clientX - rect.left,
-          y2: e.clientY - rect.top,
-        },
-      });
+    const handler = getToolHandler(stateRef.current.activeTool);
+    handler.onPointerMove?.(toolCtx, e);
+  }, [toolCtx, dispatch]);
+
+  const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    if (middlePanning.current) {
+      middlePanning.current = false;
       return;
     }
 
-    // Hover detection
-    const elementId = findElementId(e.target);
-    if (elementId !== hoveredId) {
-      dispatch({ type: 'SET_HOVER', id: elementId });
-    }
-  }, [transform, hoveredId, dispatch, findElementId]);
+    const handler = getToolHandler(stateRef.current.activeTool);
+    handler.onPointerUp?.(toolCtx, e);
+  }, [toolCtx]);
 
-  const handlePointerUp = useCallback(() => {
-    if (isMarquee.current && state.marquee) {
-      // Find elements within marquee
-      isMarquee.current = false;
-      const marqueeRect = {
-        x: Math.min(state.marquee.x1, state.marquee.x2),
-        y: Math.min(state.marquee.y1, state.marquee.y2),
-        w: Math.abs(state.marquee.x2 - state.marquee.x1),
-        h: Math.abs(state.marquee.y2 - state.marquee.y1),
-      };
-
-      // Only select if marquee is big enough
-      if (marqueeRect.w > 5 || marqueeRect.h > 5) {
-        const svg = svgRef.current;
-        if (svg) {
-          const ids = new Set<string>();
-          const elements = svg.querySelectorAll('[data-id]');
-          const containerRect = containerRef.current?.getBoundingClientRect();
-          if (containerRect) {
-            for (const el of elements) {
-              try {
-                const bbox = (el as SVGGraphicsElement).getBBox();
-                const ctm = (el as SVGGraphicsElement).getCTM();
-                if (!ctm) continue;
-
-                // Transform bbox to screen space
-                const svgEl = svg;
-                const pt1 = svgEl.createSVGPoint();
-                pt1.x = bbox.x;
-                pt1.y = bbox.y;
-                const screenPt1 = pt1.matrixTransform(ctm);
-
-                const pt2 = svgEl.createSVGPoint();
-                pt2.x = bbox.x + bbox.width;
-                pt2.y = bbox.y + bbox.height;
-                const screenPt2 = pt2.matrixTransform(ctm);
-
-                const elRect = {
-                  x: Math.min(screenPt1.x, screenPt2.x) - containerRect.left,
-                  y: Math.min(screenPt1.y, screenPt2.y) - containerRect.top,
-                  w: Math.abs(screenPt2.x - screenPt1.x),
-                  h: Math.abs(screenPt2.y - screenPt1.y),
-                };
-
-                // Check intersection
-                if (
-                  elRect.x < marqueeRect.x + marqueeRect.w &&
-                  elRect.x + elRect.w > marqueeRect.x &&
-                  elRect.y < marqueeRect.y + marqueeRect.h &&
-                  elRect.y + elRect.h > marqueeRect.y
-                ) {
-                  const id = el.getAttribute('data-id');
-                  if (id) ids.add(id);
-                }
-              } catch {
-                // getBBox can throw for hidden elements
-              }
-            }
-          }
-          if (ids.size > 0) {
-            dispatch({ type: 'SELECT', ids: Array.from(ids) });
-          }
-        }
-      }
-      dispatch({ type: 'SET_MARQUEE', marquee: null });
-      return;
-    }
-
-    isPanning.current = false;
-    isMarquee.current = false;
-  }, [state.marquee, dispatch]);
-
-  const cursorClass = activeTool === 'pan' ? 'cursor-grab' : activeTool === 'zoom' ? 'cursor-zoom' : 'cursor-default';
+  const handler = getToolHandler(activeTool);
+  const cursorClass = `cursor-${handler.cursor}`;
 
   if (!viewBox) {
     return (
@@ -323,6 +267,12 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onDoubleClick={(e) => {
+        const elementId = findElementId(e.target);
+        if (elementId && selectedIds.has(elementId)) {
+          dispatch({ type: 'SET_EDIT_MODE', active: !state.editMode });
+        }
+      }}
     >
       <svg
         ref={svgRef}
@@ -350,6 +300,18 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
 
         {/* Selection overlay */}
         <SelectionOverlay svgRef={svgRef} selectedIds={selectedIds} />
+
+        {/* Resize handles in edit mode */}
+        {state.editMode && selectedIds.size === 1 && state.document && (() => {
+          const id = selectedIds.values().next().value!;
+          const el = state.document.elements.get(id);
+          return el ? <ResizeHandles element={el} svgRef={svgRef} /> : null;
+        })()}
+
+        {/* Drawing preview overlay */}
+        {state.drawingState && (
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} />
+        )}
       </svg>
 
       {/* Marquee */}
@@ -369,7 +331,11 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
       {/* Status bar */}
       <div className="canvas-status">
         <span className="status-tool">
-          {activeTool === 'select' ? '⬚ Select' : activeTool === 'pan' ? '✋ Pan' : '🔍 Zoom'}
+          {activeTool === 'select' ? '⬚ Select'
+            : activeTool === 'pan' ? '✋ Pan'
+            : activeTool === 'zoom' ? '🔍 Zoom'
+            : activeTool.startsWith('draw_') ? '✏ Draw'
+            : activeTool}
         </span>
         {selectedIds.size > 0 && (
           <span className="status-selection">{selectedIds.size} selected</span>

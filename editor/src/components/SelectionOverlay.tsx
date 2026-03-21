@@ -65,7 +65,7 @@ export default function SelectionOverlay({ svgRef, selectedIds }: SelectionOverl
   if (rects.length === 0) return null;
 
   return (
-    <g className="selection-overlay">
+    <g className="selection-overlay" transform="scale(1,-1)">
       {rects.map(r => (
         <rect
           key={r.id}

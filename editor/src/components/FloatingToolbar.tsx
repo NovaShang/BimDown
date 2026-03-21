@@ -1,5 +1,6 @@
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { LAYER_STYLES, DISCIPLINE_TABLES, DISCIPLINE_COLORS } from '../types.ts';
+import { geometryTypeForTable } from '../model/elements.ts';
 import type { Tool } from '../state/editorTypes.ts';
 
 interface FloatingToolbarProps {
@@ -12,12 +13,41 @@ const TOOLS: { tool: Tool; label: string; icon: string; shortcut: string }[] = [
   { tool: 'zoom', label: 'Zoom', icon: '🔍', shortcut: 'Z' },
 ];
 
+function getDrawTool(tableName: string): Tool {
+  const geom = geometryTypeForTable(tableName);
+  switch (geom) {
+    case 'line': return 'draw_line';
+    case 'point': return 'draw_point';
+    case 'polygon': return 'draw_polygon';
+    default: return 'draw_line';
+  }
+}
+
 export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarProps) {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
 
   const disciplineTables = activeDiscipline ? (DISCIPLINE_TABLES[activeDiscipline] || []) : [];
   const disciplineColor = activeDiscipline ? (DISCIPLINE_COLORS[activeDiscipline] || '#888') : '#888';
+
+  const handleDrawToolClick = (tableName: string, discipline: string) => {
+    const currentTarget = state.drawingTarget;
+    // Toggle off if clicking the same tool
+    if (currentTarget?.tableName === tableName && currentTarget?.discipline === discipline) {
+      dispatch({ type: 'SET_TOOL', tool: 'select' });
+      dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+      dispatch({ type: 'SET_DRAWING_STATE', state: null });
+      return;
+    }
+
+    const drawTool = getDrawTool(tableName);
+    dispatch({ type: 'SET_TOOL', tool: drawTool });
+    dispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline } });
+    dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+  };
+
+  const canUndo = state.history.undoStack.length > 0;
+  const canRedo = state.history.redoStack.length > 0;
 
   return (
     <div className="floating-toolbar">
@@ -27,7 +57,11 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           <button
             key={t.tool}
             className={`toolbar-btn ${state.activeTool === t.tool ? 'active' : ''}`}
-            onClick={() => dispatch({ type: 'SET_TOOL', tool: t.tool })}
+            onClick={() => {
+              dispatch({ type: 'SET_TOOL', tool: t.tool });
+              dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+              dispatch({ type: 'SET_DRAWING_STATE', state: null });
+            }}
             title={`${t.label} (${t.shortcut})`}
           >
             <span className="toolbar-icon">{t.icon}</span>
@@ -38,19 +72,20 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
       {/* Separator */}
       {disciplineTables.length > 0 && <div className="toolbar-separator" />}
 
-      {/* Discipline tools */}
+      {/* Discipline drawing tools */}
       {disciplineTables.length > 0 && (
         <div className="toolbar-group">
           {disciplineTables.map(table => {
             const style = LAYER_STYLES[table];
             if (!style) return null;
-            const isActive = state.activeFilter === table;
+            const isActive = state.drawingTarget?.tableName === table &&
+              state.drawingTarget?.discipline === activeDiscipline;
             return (
               <button
                 key={table}
                 className={`toolbar-btn discipline-tool ${isActive ? 'active' : ''}`}
-                onClick={() => dispatch({ type: 'SET_FILTER', filter: table })}
-                title={style.displayName}
+                onClick={() => handleDrawToolClick(table, activeDiscipline!)}
+                title={`Draw ${style.displayName}`}
                 style={{
                   '--tool-color': isActive ? disciplineColor : undefined,
                 } as React.CSSProperties}
@@ -61,6 +96,29 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           })}
         </div>
       )}
+
+      {/* Separator */}
+      <div className="toolbar-separator" />
+
+      {/* Undo/Redo */}
+      <div className="toolbar-group">
+        <button
+          className={`toolbar-btn ${!canUndo ? 'disabled' : ''}`}
+          onClick={() => canUndo && dispatch({ type: 'UNDO' })}
+          title="Undo (Ctrl+Z)"
+          disabled={!canUndo}
+        >
+          <span className="toolbar-icon">↩</span>
+        </button>
+        <button
+          className={`toolbar-btn ${!canRedo ? 'disabled' : ''}`}
+          onClick={() => canRedo && dispatch({ type: 'REDO' })}
+          title="Redo (Ctrl+Y)"
+          disabled={!canRedo}
+        >
+          <span className="toolbar-icon">↪</span>
+        </button>
+      </div>
     </div>
   );
 }

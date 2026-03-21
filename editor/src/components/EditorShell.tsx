@@ -1,6 +1,9 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import { getProcessedLayers, getComputedViewBox, getLayerGroups, getLevelsWithData, getSelectedElementData, getActiveDiscipline } from '../state/selectors.ts';
+import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getLevelsWithData, getSelectedElementData, getActiveDiscipline } from '../state/selectors.ts';
+import { parseFloorLayers } from '../model/parse.ts';
+import { createDocument } from '../model/document.ts';
+import { persistDocument } from '../utils/persist.ts';
 import LeftPanel from './LeftPanel.tsx';
 import Canvas from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
@@ -10,11 +13,36 @@ export default function EditorShell() {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
 
-  const processedLayers = useMemo(() => getProcessedLayers(state), [state.project, state.currentLevel, state.visibleLayers]);
+  // Initialize document model when floor data loads or level changes
+  useEffect(() => {
+    const floor = state.project?.floors.get(state.currentLevel);
+    if (!floor) return;
+    const elements = parseFloorLayers(floor.layers);
+    dispatch({ type: 'INIT_DOCUMENT', document: createDocument(state.currentLevel, elements) });
+  }, [state.project, state.currentLevel, dispatch]);
+
+  // Auto-persist: write to disk on every document mutation
+  const persistTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  useEffect(() => {
+    if (!state.document || state.documentVersion === 0) return;
+    clearTimeout(persistTimer.current);
+    persistTimer.current = setTimeout(() => {
+      const viewBox = getComputedViewBox(state);
+      const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
+      persistDocument(state.document!, vbStr).catch(err => console.error('Auto-persist failed:', err));
+    }, 100);
+    return () => clearTimeout(persistTimer.current);
+  }, [state.documentVersion]);
+
+  // Use document model for rendering when available
+  const processedLayers = useMemo(
+    () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
+    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers],
+  );
   const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel]);
   const layerGroups = useMemo(() => getLayerGroups(state), [state.project, state.currentLevel]);
   const levelsWithData = useMemo(() => getLevelsWithData(state), [state.project]);
-  const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel]);
+  const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
   const activeDiscipline = useMemo(() => getActiveDiscipline(state), [state.activeDiscipline, state.selectedIds, state.visibleLayers, state.project, state.currentLevel]);
 
   // Set base viewBox when it changes
