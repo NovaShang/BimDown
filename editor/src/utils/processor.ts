@@ -1,4 +1,5 @@
 import type { CsvRow } from '../types.ts';
+import { computeWallJunctions, junctionPatchesToSvg, type WallSegment } from './wallJoins.ts';
 
 const parser = new DOMParser();
 const serializer = new XMLSerializer();
@@ -21,6 +22,7 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
 
   const lines = Array.from(g.querySelectorAll('line'));
   const newElements: Element[] = [];
+  const wallSegments: WallSegment[] = [];
 
   for (const line of lines) {
     const id = line.getAttribute('id') || '';
@@ -51,6 +53,8 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
     } else if (material.includes('metal') || material.includes('steel')) {
       fillColor = '#e8e8e8';
     }
+
+    wallSegments.push({ id, x1, y1, x2, y2, halfWidth: halfW, fill: fillColor });
 
     const poly = doc.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     const p1x = x1 + nx * halfW, p1y = y1 + ny * halfW;
@@ -83,6 +87,19 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
 
     newElements.push(poly, line1, line2);
     line.remove();
+  }
+
+  // Insert junction fill patches BEFORE wall bodies so outlines draw on top
+  const patches = computeWallJunctions(wallSegments);
+  if (patches.length > 0) {
+    const patchHtml = junctionPatchesToSvg(patches);
+    const patchDoc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg"><g>${patchHtml}</g></svg>`);
+    const patchG = patchDoc.querySelector('g');
+    if (patchG) {
+      for (const child of Array.from(patchG.children)) {
+        g.appendChild(doc.importNode(child, true));
+      }
+    }
   }
 
   for (const el of newElements) {
@@ -267,8 +284,10 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
   if (!g) return svgString;
 
   const color = type === 'duct' ? '#00b4d8' : '#06d6a0';
+  const fillColor = color + '15';
   const lines = Array.from(g.querySelectorAll('line'));
   const newElements: Element[] = [];
+  const mepSegments: WallSegment[] = [];
 
   for (const line of lines) {
     const id = line.getAttribute('id') || '';
@@ -286,6 +305,8 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
     const nx = -dy / len;
     const ny = dx / len;
     const halfW = strokeWidth / 2;
+
+    mepSegments.push({ id, x1, y1, x2, y2, halfWidth: halfW, fill: fillColor });
 
     const poly = doc.createElementNS('http://www.w3.org/2000/svg', 'polygon');
     const p1x = x1 + nx * halfW, p1y = y1 + ny * halfW;
@@ -318,6 +339,19 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
 
     newElements.push(poly, line1, line2);
     line.remove();
+  }
+
+  // Junction fills for MEP connections
+  const mepPatches = computeWallJunctions(mepSegments);
+  if (mepPatches.length > 0) {
+    const patchHtml = junctionPatchesToSvg(mepPatches);
+    const patchDoc = parseSvg(`<svg xmlns="http://www.w3.org/2000/svg"><g>${patchHtml}</g></svg>`);
+    const patchG = patchDoc.querySelector('g');
+    if (patchG) {
+      for (const child of Array.from(patchG.children)) {
+        g.appendChild(doc.importNode(child, true));
+      }
+    }
   }
 
   for (const el of newElements) {
