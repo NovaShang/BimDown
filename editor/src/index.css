@@ -319,7 +319,7 @@ html, body, #root {
 
 /* ─── Hover Highlight ─────────────────────────── */
 .hover-highlight {
-  filter: drop-shadow(0 0 0.08px #0d99ff) drop-shadow(0 0 0.15px #0d99ff);
+  filter: drop-shadow(0 0 calc(0.24px / var(--canvas-scale, 1)) #0d99ff) drop-shadow(0 0 calc(0.45px / var(--canvas-scale, 1)) #0d99ff);
   cursor: pointer;
 }
 

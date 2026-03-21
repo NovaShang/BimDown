@@ -263,6 +263,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
+      style={{ '--canvas-scale': transform.scale } as React.CSSProperties}
       onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
