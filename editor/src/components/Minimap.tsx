@@ -1,22 +1,19 @@
 import { useRef, useCallback } from 'react';
-import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import type { ProcessedLayer } from '../state/editorTypes.ts';
+import type { ProcessedLayer, ViewTransform } from '../state/editorTypes.ts';
 
 interface MinimapProps {
   layers: ProcessedLayer[];
   viewBox: { x: number; y: number; w: number; h: number };
   gridSvg?: string;
+  transform: ViewTransform;
+  setTransform: React.Dispatch<React.SetStateAction<ViewTransform>>;
 }
 
 const MINIMAP_W = 180;
 const MINIMAP_H = 120;
 
-export default function Minimap({ layers, viewBox, gridSvg }: MinimapProps) {
-  const state = useEditorState();
-  const dispatch = useEditorDispatch();
+export default function Minimap({ layers, viewBox, gridSvg, transform, setTransform }: MinimapProps) {
   const ref = useRef<HTMLDivElement>(null);
-
-  const { transform } = state;
 
   // Calculate viewport rect in SVG coordinates
   // The main canvas applies CSS transform: translate(tx, ty) scale(s)
@@ -58,11 +55,8 @@ export default function Minimap({ layers, viewBox, gridSvg }: MinimapProps) {
     const newX = (cw / 2) - ((targetSvgX - viewBox.x) / viewBox.w) * cw * transform.scale;
     const newY = (ch / 2) - ((targetSvgY - viewBox.y) / viewBox.h) * ch * transform.scale;
 
-    dispatch({
-      type: 'SET_TRANSFORM',
-      transform: { ...transform, x: newX, y: newY },
-    });
-  }, [viewBox, transform, cw, ch, dispatch]);
+    setTransform(prev => ({ ...prev, x: newX, y: newY }));
+  }, [viewBox, transform, cw, ch, setTransform]);
 
   const vb = `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`;
 

@@ -1,7 +1,7 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
 import type { LayerData, CsvRow } from '../types.ts';
 import { processSvg, extractInnerSvg, extractViewBox } from '../utils/processor.ts';
-import { groupByLayer, serializeToSvg, elementsToCsvRows } from '../model/serialize.ts';
+import { groupByLayer } from '../model/serialize.ts';
 
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
@@ -121,9 +121,6 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
 export function getProcessedLayersFromDocument(state: EditorState): ProcessedLayer[] {
   if (!state.document) return getProcessedLayers(state);
 
-  const viewBox = getComputedViewBox(state);
-  const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
-
   const elements = Array.from(state.document.elements.values());
   const groups = groupByLayer(elements);
   const result: ProcessedLayer[] = [];
@@ -139,14 +136,12 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
     if (discipline !== state.activeDiscipline && discipline !== 'architectural') continue;
-    const svgString = serializeToSvg(groupElements, vbStr);
-    const csvRows = elementsToCsvRows(groupElements);
-    const processed = processSvg(tableName, svgString, csvRows);
     result.push({
       key,
       tableName,
       discipline,
-      html: extractInnerSvg(processed),
+      html: '',  // not used when elements are present
+      elements: groupElements,
     });
   }
 

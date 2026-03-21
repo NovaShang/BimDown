@@ -18,7 +18,6 @@ export const initialState: EditorState = {
   activeDiscipline: null,
   spaceHeld: false,
 
-  transform: { x: 0, y: 0, scale: 1 },
   baseViewBox: null,
 
   selectedIds: new Set(),
@@ -108,7 +107,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         selectedIds: new Set(),
         hoveredId: null,
         activeFilter: null,
-        transform: { x: 0, y: 0, scale: 1 },
         baseViewBox: null,
       };
     }
@@ -160,40 +158,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_DISCIPLINE':
       return { ...state, activeDiscipline: action.discipline };
 
-    case 'SET_TRANSFORM':
-      return { ...state, transform: action.transform };
-
     case 'SET_BASE_VIEWBOX':
       return { ...state, baseViewBox: action.viewBox };
-
-    case 'ZOOM_BY': {
-      const { delta, centerX, centerY } = action;
-      const newScale = Math.min(Math.max(state.transform.scale * delta, 0.05), 100);
-      if (centerX !== undefined && centerY !== undefined) {
-        const ratio = newScale / state.transform.scale;
-        return {
-          ...state,
-          transform: {
-            scale: newScale,
-            x: centerX - (centerX - state.transform.x) * ratio,
-            y: centerY - (centerY - state.transform.y) * ratio,
-          },
-        };
-      }
-      return { ...state, transform: { ...state.transform, scale: newScale } };
-    }
-
-    case 'ZOOM_TO_FIT':
-      return {
-        ...state,
-        transform: { x: 0, y: 0, scale: 1 },
-      };
-
-    case 'ZOOM_TO_PERCENT':
-      return {
-        ...state,
-        transform: { ...state.transform, scale: action.percent / 100 },
-      };
 
     case 'SELECT': {
       if (action.additive) {

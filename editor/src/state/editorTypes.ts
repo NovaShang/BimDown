@@ -27,7 +27,6 @@ export interface EditorState {
   activeDiscipline: string | null;
   spaceHeld: boolean;
 
-  transform: ViewTransform;
   baseViewBox: { x: number; y: number; w: number; h: number } | null;
 
   selectedIds: Set<string>;
@@ -61,10 +60,6 @@ export type EditorAction =
   | { type: 'SET_SPACE_HELD'; held: boolean }
   | { type: 'SET_FILTER'; filter: string | null }
   | { type: 'SET_DISCIPLINE'; discipline: string | null }
-  | { type: 'SET_TRANSFORM'; transform: ViewTransform }
-  | { type: 'ZOOM_TO_FIT' }
-  | { type: 'ZOOM_TO_PERCENT'; percent: number }
-  | { type: 'ZOOM_BY'; delta: number; centerX?: number; centerY?: number }
   | { type: 'SET_BASE_VIEWBOX'; viewBox: { x: number; y: number; w: number; h: number } }
   | { type: 'SELECT'; ids: string[]; additive?: boolean }
   | { type: 'CLEAR_SELECTION' }
@@ -87,11 +82,13 @@ export type EditorAction =
   | { type: 'UPDATE_GRIDS'; grids: GridData[] }
   | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData };
 
+
 export interface ProcessedLayer {
   key: string;
   tableName: string;
   discipline: string;
   html: string;
+  elements?: CanonicalElement[];  // present in document mode for granular rendering
 }
 
 export interface LayerGroup {

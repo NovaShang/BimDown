@@ -1,6 +1,8 @@
-import { useRef, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import type { ProcessedLayer } from '../state/editorTypes.ts';
+import type { ProcessedLayer, EditorAction } from '../state/editorTypes.ts';
+import type { ViewTransform } from '../state/editorTypes.ts';
+import type { GridData } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { getToolHandler } from '../tools/registry.ts';
 import type { ToolContext, ToolStateSnapshot } from '../tools/types.ts';
@@ -9,26 +11,129 @@ import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
 import ResizeHandles from './ResizeHandles.tsx';
 import Minimap from './Minimap.tsx';
+import { ElementNode } from './ElementNode.tsx';
 
 interface CanvasProps {
   layers: ProcessedLayer[];
   viewBox: { x: number; y: number; w: number; h: number } | null;
-  gridSvg?: string;
+  grids: GridData[];
+  showGrid: boolean;
   activeFilter: string | null;
   activeDiscipline: string | null;
 }
 
-export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeDiscipline }: CanvasProps) {
+// Extended action type: includes both global EditorAction and Canvas-local transform actions
+type TransformAction =
+  | { type: 'SET_TRANSFORM'; transform: ViewTransform }
+  | { type: 'ZOOM_BY'; delta: number; centerX?: number; centerY?: number }
+  | { type: 'ZOOM_TO_FIT' }
+  | { type: 'ZOOM_TO_PERCENT'; percent: number };
+
+type CanvasAction = EditorAction | TransformAction;
+
+export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter, activeDiscipline }: CanvasProps) {
   const state = useEditorState();
-  const dispatch = useEditorDispatch();
+  const globalDispatch = useEditorDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
   const svgRef = useRef<SVGSVGElement>(null);
+
+  // ────── LOCAL TRANSFORM STATE ──────
+  // Transform (pan/zoom) lives here instead of global context to avoid
+  // full-tree re-renders on every 60fps mouse-move/wheel tick.
+  const [transform, setTransform] = useState<ViewTransform>({ x: 0, y: 0, scale: 1 });
+  const transformRef = useRef(transform);
+  transformRef.current = transform;
+
+  // Reset transform when level changes
+  useEffect(() => {
+    setTransform({ x: 0, y: 0, scale: 1 });
+  }, [state.currentLevel]);
+
+  // ────── GRID SVG (depends on local transform.scale) ──────
+  const gridSvg = useMemo(() => {
+    if (!showGrid || grids.length === 0) return undefined;
+
+    return grids.map(g => {
+      const dx = Math.abs(g.x2 - g.x1);
+      const dy = Math.abs(g.y2 - g.y1);
+      const isShort = Math.sqrt(dx * dx + dy * dy) < 1;
+      if (isShort) return '';
+
+      const ext = 200;
+      const ldx = g.x2 - g.x1;
+      const ldy = g.y2 - g.y1;
+      const len = Math.sqrt(ldx * ldx + ldy * ldy);
+      const ux = ldx / len, uy = ldy / len;
+
+      const x1 = g.x1 - ux * ext;
+      const y1 = -(g.y1 - uy * ext);
+      const x2 = g.x2 + ux * ext;
+      const y2 = -(g.y2 + uy * ext);
+
+      const lx = g.x1;
+      const ly = -g.y1;
+
+      return `
+        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
+              stroke="#ef476f" stroke-width="${0.06 / transform.scale}" stroke-dasharray="${0.45 / transform.scale},${0.3 / transform.scale}" opacity="0.4" />
+        <circle cx="${lx}" cy="${ly}" r="${1.05 / transform.scale}" fill="none" stroke="#ef476f" stroke-width="${0.06 / transform.scale}" opacity="0.5" />
+        <text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central"
+              font-size="${0.84 / transform.scale}" font-family="Inter, sans-serif" font-weight="600" fill="#ef476f" opacity="0.6">
+          ${g.number}
+        </text>
+      `;
+    }).join('');
+  }, [showGrid, grids, transform.scale]);
+
+  // ────── TRANSFORM MATH (local, no context dispatch) ──────
+  const applyZoomBy = useCallback((delta: number, centerX?: number, centerY?: number) => {
+    setTransform(prev => {
+      const newScale = Math.min(Math.max(prev.scale * delta, 0.05), 100);
+      if (centerX !== undefined && centerY !== undefined) {
+        const ratio = newScale / prev.scale;
+        return {
+          scale: newScale,
+          x: centerX - (centerX - prev.x) * ratio,
+          y: centerY - (centerY - prev.y) * ratio,
+        };
+      }
+      return { ...prev, scale: newScale };
+    });
+  }, []);
+
+  const applyZoomToFit = useCallback(() => {
+    setTransform({ x: 0, y: 0, scale: 1 });
+  }, []);
+
+  const applyZoomToPercent = useCallback((percent: number) => {
+    setTransform(prev => ({ ...prev, scale: percent / 100 }));
+  }, []);
+
+  // Wrap globalDispatch: intercept transform actions locally
+  const dispatch = useCallback((action: CanvasAction) => {
+    switch (action.type) {
+      case 'SET_TRANSFORM':
+        setTransform(action.transform);
+        return;
+      case 'ZOOM_BY':
+        applyZoomBy(action.delta, action.centerX, action.centerY);
+        return;
+      case 'ZOOM_TO_FIT':
+        applyZoomToFit();
+        return;
+      case 'ZOOM_TO_PERCENT':
+        applyZoomToPercent(action.percent);
+        return;
+      default:
+        globalDispatch(action);
+    }
+  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent]);
 
   // Middle-mouse panning (works across all tools)
   const middlePanning = useRef(false);
   const middleLastPos = useRef({ x: 0, y: 0 });
 
-  const { transform, activeTool, hoveredId, selectedIds } = state;
+  const { activeTool, hoveredId, selectedIds } = state;
 
   // Stable ref for current state (tools read via getState())
   const stateRef = useRef(state);
@@ -63,7 +168,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
     getState: (): ToolStateSnapshot => {
       const s = stateRef.current;
       return {
-        transform: s.transform,
+        transform: transformRef.current,
         selectedIds: s.selectedIds,
         hoveredId: s.hoveredId,
         drawingTarget: s.drawingTarget,
@@ -92,67 +197,67 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
 
       switch (e.key) {
         case 'v': case 'V':
-          if (!e.ctrlKey && !e.metaKey) dispatch({ type: 'SET_TOOL', tool: 'select' });
+          if (!e.ctrlKey && !e.metaKey) globalDispatch({ type: 'SET_TOOL', tool: 'select' });
           break;
         case 'h': case 'H':
-          if (!e.ctrlKey && !e.metaKey) dispatch({ type: 'SET_TOOL', tool: 'pan' });
+          if (!e.ctrlKey && !e.metaKey) globalDispatch({ type: 'SET_TOOL', tool: 'pan' });
           break;
         case 'z': case 'Z':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             if (e.shiftKey) {
-              dispatch({ type: 'REDO' });
+              globalDispatch({ type: 'REDO' });
             } else {
-              dispatch({ type: 'UNDO' });
+              globalDispatch({ type: 'UNDO' });
             }
           } else {
-            dispatch({ type: 'SET_TOOL', tool: 'zoom' });
+            globalDispatch({ type: 'SET_TOOL', tool: 'zoom' });
           }
           break;
         case 'y': case 'Y':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            dispatch({ type: 'REDO' });
+            globalDispatch({ type: 'REDO' });
           }
           break;
         case 'Delete': case 'Backspace':
           if (stateRef.current.selectedIds.size > 0) {
-            dispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stateRef.current.selectedIds) });
+            globalDispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stateRef.current.selectedIds) });
           }
           break;
         case ' ':
           e.preventDefault();
-          dispatch({ type: 'SET_SPACE_HELD', held: true });
+          globalDispatch({ type: 'SET_SPACE_HELD', held: true });
           break;
         case 'Escape':
           if (stateRef.current.drawingState?.points.length) {
             // Cancel drawing in progress
-            dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
           } else if (stateRef.current.activeTool.startsWith('draw_')) {
             // Exit drawing tool back to select
-            dispatch({ type: 'SET_TOOL', tool: 'select' });
-            dispatch({ type: 'SET_DRAWING_STATE', state: null });
-            dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+            globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
           } else {
-            dispatch({ type: 'CLEAR_SELECTION' });
+            globalDispatch({ type: 'CLEAR_SELECTION' });
           }
           break;
         case '=': case '+':
-          dispatch({ type: 'ZOOM_BY', delta: 1.2 });
+          applyZoomBy(1.2);
           break;
         case '-': case '_':
-          dispatch({ type: 'ZOOM_BY', delta: 1 / 1.2 });
+          applyZoomBy(1 / 1.2);
           break;
         case '0':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            dispatch({ type: 'ZOOM_TO_FIT' });
+            applyZoomToFit();
           }
           break;
         case '1':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            dispatch({ type: 'ZOOM_TO_PERCENT', percent: 100 });
+            applyZoomToPercent(100);
           }
           break;
         case 'a': case 'A':
@@ -170,7 +275,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
                 }
               }
             }
-            dispatch({ type: 'SELECT', ids: allIds });
+            globalDispatch({ type: 'SELECT', ids: allIds });
           }
           break;
       }
@@ -178,7 +283,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
 
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') {
-        dispatch({ type: 'SET_SPACE_HELD', held: false });
+        globalDispatch({ type: 'SET_SPACE_HELD', held: false });
       }
     };
 
@@ -188,20 +293,15 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [dispatch]);
+  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
     const rect = containerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    dispatch({
-      type: 'ZOOM_BY',
-      delta,
-      centerX: e.clientX - rect.left,
-      centerY: e.clientY - rect.top,
-    });
-  }, [dispatch]);
+    applyZoomBy(delta, e.clientX - rect.left, e.clientY - rect.top);
+  }, [applyZoomBy]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     // Middle mouse always pans regardless of tool
@@ -221,17 +321,13 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
       const dx = e.clientX - middleLastPos.current.x;
       const dy = e.clientY - middleLastPos.current.y;
       middleLastPos.current = { x: e.clientX, y: e.clientY };
-      const t = stateRef.current.transform;
-      dispatch({
-        type: 'SET_TRANSFORM',
-        transform: { ...t, x: t.x + dx, y: t.y + dy },
-      });
+      setTransform(prev => ({ ...prev, x: prev.x + dx, y: prev.y + dy }));
       return;
     }
 
     const handler = getToolHandler(stateRef.current.activeTool);
     handler.onPointerMove?.(toolCtx, e);
-  }, [toolCtx, dispatch]);
+  }, [toolCtx]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
     if (middlePanning.current) {
@@ -272,7 +368,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
       onDoubleClick={(e) => {
         const elementId = findElementId(e.target);
         if (elementId && selectedIds.has(elementId)) {
-          dispatch({ type: 'SET_EDIT_MODE', active: !state.editMode });
+          globalDispatch({ type: 'SET_EDIT_MODE', active: !state.editMode });
         }
       }}
     >
@@ -293,12 +389,27 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
         {/* Data layers */}
         {layers.map(layer => {
           const isBackground = layer.discipline === 'architectural' && activeDiscipline !== 'architectural';
+          const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
+          const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;
+
+          // Document mode: render each element as a React.memo component for O(1) updates
+          if (layer.elements) {
+            return (
+              <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
+                {layer.elements.map(el => (
+                  <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+                ))}
+              </g>
+            );
+          }
+
+          // Read-only mode: use pre-rendered HTML string
           return (
             <g
               key={layer.key}
-              className={`data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`}
+              className={className}
               data-layer={layer.key}
-              style={isBackground ? { pointerEvents: 'none', opacity: 0.35 } : undefined}
+              style={layerStyle}
               dangerouslySetInnerHTML={{ __html: layer.html }}
             />
           );
@@ -332,7 +443,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter, activeD
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
 
       {/* Minimap */}
-      <Minimap layers={layers} viewBox={viewBox} gridSvg={gridSvg} />
+      <Minimap layers={layers} viewBox={viewBox} gridSvg={gridSvg} transform={transform} setTransform={setTransform} />
 
       {/* Hover tooltip */}
       {hoveredId && (

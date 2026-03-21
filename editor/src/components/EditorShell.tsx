@@ -75,41 +75,7 @@ export default function EditorShell() {
     }
   }, [viewBox, state.baseViewBox, dispatch]);
 
-  // Build grid SVG
-  const gridSvg = useMemo(() => {
-    if (!state.showGrid || state.grids.length === 0) return undefined;
 
-    return state.grids.map(g => {
-      const dx = Math.abs(g.x2 - g.x1);
-      const dy = Math.abs(g.y2 - g.y1);
-      const isShort = Math.sqrt(dx * dx + dy * dy) < 1;
-      if (isShort) return '';
-
-      const ext = 200;
-      const ldx = g.x2 - g.x1;
-      const ldy = g.y2 - g.y1;
-      const len = Math.sqrt(ldx * ldx + ldy * ldy);
-      const ux = ldx / len, uy = ldy / len;
-
-      const x1 = g.x1 - ux * ext;
-      const y1 = -(g.y1 - uy * ext);
-      const x2 = g.x2 + ux * ext;
-      const y2 = -(g.y2 + uy * ext);
-
-      const lx = g.x1;
-      const ly = -g.y1;
-
-      return `
-        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-              stroke="#ef476f" stroke-width="${0.06 / state.transform.scale}" stroke-dasharray="${0.45 / state.transform.scale},${0.3 / state.transform.scale}" opacity="0.4" />
-        <circle cx="${lx}" cy="${ly}" r="${1.05 / state.transform.scale}" fill="none" stroke="#ef476f" stroke-width="${0.06 / state.transform.scale}" opacity="0.5" />
-        <text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central"
-              font-size="${0.84 / state.transform.scale}" font-family="Inter, sans-serif" font-weight="600" fill="#ef476f" opacity="0.6">
-          ${g.number}
-        </text>
-      `;
-    }).join('');
-  }, [state.showGrid, state.grids, state.transform.scale]);
 
   return (
     <div className="editor-shell">
@@ -124,7 +90,8 @@ export default function EditorShell() {
         <Canvas
           layers={processedLayers}
           viewBox={viewBox}
-          gridSvg={gridSvg}
+          grids={state.grids}
+          showGrid={state.showGrid}
           activeFilter={state.activeFilter}
           activeDiscipline={activeDiscipline}
         />

@@ -1,8 +1,17 @@
-import type { EditorAction } from '../state/editorTypes.ts';
+import type { EditorAction, ViewTransform } from '../state/editorTypes.ts';
 import type { DocumentState } from '../model/document.ts';
 
+// Transform actions are Canvas-local (not in EditorAction), but tools still dispatch them
+type TransformAction =
+  | { type: 'SET_TRANSFORM'; transform: ViewTransform }
+  | { type: 'ZOOM_BY'; delta: number; centerX?: number; centerY?: number }
+  | { type: 'ZOOM_TO_FIT' }
+  | { type: 'ZOOM_TO_PERCENT'; percent: number };
+
+type ToolDispatchAction = EditorAction | TransformAction;
+
 export interface ToolContext {
-  dispatch: React.Dispatch<EditorAction>;
+  dispatch: React.Dispatch<ToolDispatchAction>;
   svgRef: React.RefObject<SVGSVGElement | null>;
   containerRef: React.RefObject<HTMLDivElement | null>;
   /** Current editor state snapshot */
