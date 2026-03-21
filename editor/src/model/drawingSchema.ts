@@ -1,3 +1,5 @@
+import { defaultAttrs } from './defaults.ts';
+
 /**
  * Schema for the creation properties bar.
  * Defines which fields appear when drawing each element type,
@@ -111,53 +113,14 @@ export function getDrawingFields(tableName: string): DrawingField[] {
 
 /**
  * Build the initial drawingAttrs for a table type.
- * Includes a special `_strokeWidth` key for line elements.
+ * Seeds from defaultAttrs (the canonical defaults) filtered to drawing-relevant fields.
  */
 export function getDefaultDrawingAttrs(tableName: string): Record<string, string> {
   const attrs: Record<string, string> = {};
   const fields = getDrawingFields(tableName);
-
-  // Seed from the same defaults the tools used before
-  const defaults = getBuiltinDefaults(tableName);
+  const defaults = defaultAttrs(tableName, '');
   for (const f of fields) {
     attrs[f.key] = defaults[f.key] ?? '';
   }
-
   return attrs;
-}
-
-function getBuiltinDefaults(tableName: string): Record<string, string> {
-  switch (tableName) {
-    case 'wall':
-      return { thickness: '0.2', material: 'Default Wall' };
-    case 'structure_wall':
-      return { thickness: '0.2', material: 'Concrete, Cast-in-Place' };
-    case 'column':
-      return { size_x: '0.3', size_y: '0.3', shape: 'rectangular', material: 'Concrete' };
-    case 'structure_column':
-      return { size_x: '0.3', size_y: '0.3', shape: 'rectangular', material: 'Steel' };
-    case 'door':
-      return { width: '0.9', height: '2.1', operation: 'single_swing' };
-    case 'window':
-      return { width: '1.2', height: '1.5' };
-    case 'space':
-      return { name: '' };
-    case 'slab':
-    case 'structure_slab':
-      return { thickness: '0.2', material: 'Concrete', function: 'floor' };
-    case 'duct':
-      return { size_x: '0.2', size_y: '0.2', shape: 'round', system_type: 'hvac' };
-    case 'pipe':
-      return { size_x: '0.05', size_y: '0.05', shape: 'round', system_type: 'plumbing' };
-    case 'conduit':
-      return { size_x: '0.025', size_y: '0.025', shape: 'round', system_type: 'electrical' };
-    case 'cable_tray':
-      return { size_x: '0.1', size_y: '0.1' };
-    case 'equipment':
-      return { equipment_type: '', system_type: 'hvac' };
-    case 'terminal':
-      return { system_type: 'hvac' };
-    default:
-      return {};
-  }
 }

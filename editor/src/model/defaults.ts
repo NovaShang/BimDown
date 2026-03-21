@@ -4,7 +4,7 @@ export function defaultAttrs(tableName: string, levelId: string): Record<string,
   switch (tableName) {
     case 'wall':
     case 'structure_wall':
-      return { ...base, top_level_id: levelId, top_offset: '0', material: tableName === 'wall' ? 'Default Wall' : 'Concrete, Cast-in-Place' };
+      return { ...base, thickness: '0.2', top_level_id: levelId, top_offset: '0', material: tableName === 'wall' ? 'Default Wall' : 'Concrete, Cast-in-Place' };
     case 'column':
     case 'structure_column':
       return { ...base, top_level_id: levelId, top_offset: '0', material: tableName === 'column' ? 'Concrete' : 'Steel', shape: 'rectangular', size_x: '0.3', size_y: '0.3' };
@@ -23,6 +23,8 @@ export function defaultAttrs(tableName: string, levelId: string): Record<string,
       return { ...base, start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: 'plumbing' };
     case 'conduit':
       return { ...base, start_z: '3', end_z: '3', shape: 'round', size_x: '0.025', size_y: '0.025', system_type: 'electrical' };
+    case 'cable_tray':
+      return { ...base, start_z: '3', end_z: '3', size_x: '0.1', size_y: '0.1', system_type: 'electrical' };
     case 'equipment':
       return { ...base, system_type: 'hvac', equipment_type: '' };
     case 'terminal':
