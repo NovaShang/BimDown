@@ -118,7 +118,7 @@ function csvToAttrs(csv: CsvRow | undefined, id: string): Record<string, string>
   return attrs;
 }
 
-function parsePoints(pointsStr: string): Point[] {
+export function parsePoints(pointsStr: string): Point[] {
   return pointsStr
     .trim()
     .split(/\s+/)

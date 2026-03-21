@@ -1,5 +1,6 @@
 import type { CsvRow } from '../types.ts';
 import { computeCornerAdjustments, type WallSegment } from './wallMiter.ts';
+import { parsePoints } from '../model/parse.ts';
 
 const parser = new DOMParser();
 const serializer = new XMLSerializer();
@@ -454,16 +455,6 @@ export function extractInnerSvg(svgString: string): string {
   return '';
 }
 
-function parsePoints(pointsStr: string): { x: number; y: number }[] {
-  return pointsStr
-    .trim()
-    .split(/\s+/)
-    .map(p => {
-      const [x, y] = p.split(',').map(Number);
-      return { x, y };
-    })
-    .filter(p => !isNaN(p.x) && !isNaN(p.y));
-}
 
 function calculateCentroid(points: { x: number; y: number }[]): { x: number; y: number } {
   let area = 0;
