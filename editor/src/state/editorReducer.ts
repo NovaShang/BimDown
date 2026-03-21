@@ -60,6 +60,33 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_LOADING':
       return { ...state, loading: action.loading };
 
+    case 'UPDATE_GRIDS':
+      return { ...state, grids: action.grids };
+
+    case 'UPDATE_LAYER': {
+      if (!state.project) return state;
+      const { levelId, layer } = action;
+      const floors = new Map(state.project.floors);
+      
+      let floor = floors.get(levelId);
+      if (!floor) {
+        const levelName = state.project.levels.find(l => l.id === levelId)?.name || levelId;
+        floor = { levelId, levelName, layers: [] };
+      }
+      
+      const newLayers = floor.layers.filter(
+        l => !(l.discipline === layer.discipline && l.tableName === layer.tableName)
+      );
+      newLayers.push(layer);
+
+      floors.set(levelId, { ...floor, layers: newLayers });
+
+      return {
+        ...state,
+        project: { ...state.project, floors },
+      };
+    }
+
     case 'SET_LEVEL': {
       const floor = state.project?.floors.get(action.levelId);
       const visibleLayers = floor

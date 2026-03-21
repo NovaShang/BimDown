@@ -1,4 +1,4 @@
-import type { CsvRow, Level, FloorData, ProjectData, GridData } from '../types.ts';
+import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData } from '../types.ts';
 
 const SAMPLE_DATA_BASE = '/sample_data';
 const DISCIPLINES = ['architectural', 'structural', 'hvac', 'plumbing', 'electrical'];
@@ -158,4 +158,29 @@ export async function loadGrids(): Promise<GridData[]> {
     }
   }
   return [];
+}
+
+export async function loadLayer(discipline: string, levelId: string, tableName: string): Promise<LayerData | null> {
+  const levelDir = `${SAMPLE_DATA_BASE}/${discipline}/${levelId}`;
+  const svgPath = `${levelDir}/${tableName}s.svg`;
+  const csvPath = `${levelDir}/${tableName}.csv`;
+
+  const svgContent = await fetchText(svgPath);
+  if (!svgContent) return null;
+
+  const csvContent = await fetchText(csvPath);
+  const csvMap = new Map<string, CsvRow>();
+  if (csvContent) {
+    const rows = parseCsv(csvContent);
+    for (const row of rows) {
+      if (row.id) csvMap.set(row.id, row);
+    }
+  }
+
+  return {
+    tableName,
+    discipline,
+    svgContent,
+    csvRows: csvMap,
+  };
 }

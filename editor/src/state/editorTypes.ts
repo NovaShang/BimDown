@@ -85,7 +85,9 @@ export type EditorAction =
   | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string } | null }
   | { type: 'RELOAD_ELEMENTS'; elements: CanonicalElement[] }
   | { type: 'UNDO' }
-  | { type: 'REDO' };
+  | { type: 'REDO' }
+  | { type: 'UPDATE_GRIDS'; grids: GridData[] }
+  | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData };
 
 export interface ProcessedLayer {
   key: string;
