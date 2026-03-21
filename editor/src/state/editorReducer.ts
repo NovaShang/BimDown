@@ -1,5 +1,5 @@
 import type { EditorState, EditorAction } from './editorTypes.ts';
-import type { CanonicalElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 
@@ -321,7 +321,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.document) return state;
       const el = state.document.elements.get(action.id);
       if (!el) return state;
-      const resized = { ...el, ...action.changes, id: el.id, tableName: el.tableName, discipline: el.discipline, attrs: el.attrs } as CanonicalElement;
+      const resized = applyResize(el, action.changes);
       const next = new Map(state.document.elements);
       next.set(action.id, resized);
       if (action.preview) {
@@ -426,6 +426,30 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
       return {
         ...el,
         vertices: el.vertices.map(v => ({ x: v.x + dx, y: v.y + dy })),
+      };
+  }
+}
+
+function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): CanonicalElement {
+  switch (el.geometry) {
+    case 'line':
+      return {
+        ...el,
+        start: 'start' in changes ? (changes as Partial<LineElement>).start! : el.start,
+        end: 'end' in changes ? (changes as Partial<LineElement>).end! : el.end,
+        strokeWidth: 'strokeWidth' in changes ? (changes as Partial<LineElement>).strokeWidth! : el.strokeWidth,
+      };
+    case 'point':
+      return {
+        ...el,
+        position: 'position' in changes ? (changes as Partial<PointElement>).position! : el.position,
+        width: 'width' in changes ? (changes as Partial<PointElement>).width! : el.width,
+        height: 'height' in changes ? (changes as Partial<PointElement>).height! : el.height,
+      };
+    case 'polygon':
+      return {
+        ...el,
+        vertices: 'vertices' in changes ? (changes as Partial<PolygonElement>).vertices! : el.vertices,
       };
   }
 }
