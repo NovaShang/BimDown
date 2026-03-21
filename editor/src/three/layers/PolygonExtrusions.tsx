@@ -4,13 +4,14 @@ import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
 import { elementTo3DParams, type ExtrudeParams } from '../utils/elementTo3D.ts';
-import { useMaterial } from '../hooks/useMaterials.ts';
+import { useMaterial, useGhostMaterial } from '../hooks/useMaterials.ts';
 
 interface PolygonExtrusionsProps {
   elements: CanonicalElement[];
   tableName: string;
   levelElevation: number;
   levelElevations: Map<string, number>;
+  ghost?: boolean;
 }
 
 function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
@@ -39,8 +40,10 @@ interface PolygonMeshData {
   geometry: BufferGeometry;
 }
 
-export default function PolygonExtrusions({ elements, tableName, levelElevation, levelElevations }: PolygonExtrusionsProps) {
-  const material = useMaterial(tableName);
+export default function PolygonExtrusions({ elements, tableName, levelElevation, levelElevations, ghost }: PolygonExtrusionsProps) {
+  const normalMaterial = useMaterial(tableName);
+  const ghostMaterial = useGhostMaterial(tableName);
+  const material = ghost ? ghostMaterial : normalMaterial;
   const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
@@ -75,15 +78,21 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
   return (
     <group>
       {meshes.map(({ id, geometry }) => {
-        const isHighlighted = selectedIds.has(id) || hoveredId === id;
+        const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
         return (
           <mesh
             key={id}
             geometry={geometry}
             material={material}
-            onClick={(e) => handleClick(id, e)}
-            onPointerOver={(e) => handlePointerOver(id, e)}
-            onPointerOut={handlePointerOut}
+            renderOrder={ghost ? -1 : 0}
+            {...(ghost
+              ? { raycast: () => {} }
+              : {
+                  onClick: (e: ThreeEvent<MouseEvent>) => handleClick(id, e),
+                  onPointerOver: (e: ThreeEvent<PointerEvent>) => handlePointerOver(id, e),
+                  onPointerOut: handlePointerOut,
+                }
+            )}
           >
             {isHighlighted && (
               <meshStandardMaterial

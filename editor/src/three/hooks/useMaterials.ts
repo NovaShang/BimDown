@@ -49,3 +49,19 @@ export function useMaterial(tableName: string): MeshPhysicalMaterial {
     });
   }, [tableName]);
 }
+
+/** Semi-transparent, non-interactive ghost material for architectural background. */
+export function useGhostMaterial(tableName: string): MeshPhysicalMaterial {
+  return useMemo(() => {
+    const color = BIM_COLORS[tableName] ?? '#b8b8b8';
+    return new MeshPhysicalMaterial({
+      color,
+      roughness: 0.85,
+      metalness: 0.0,
+      transparent: true,
+      opacity: 0.15,
+      side: DoubleSide,
+      depthWrite: false,
+    });
+  }, [tableName]);
+}

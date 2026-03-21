@@ -4,22 +4,25 @@ import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
 import { elementTo3DParams, type BoxParams } from '../utils/elementTo3D.ts';
-import { useMaterial } from '../hooks/useMaterials.ts';
+import { useMaterial, useGhostMaterial } from '../hooks/useMaterials.ts';
 
 interface BoxInstancesProps {
   elements: CanonicalElement[];
   tableName: string;
   levelElevation: number;
   levelElevations: Map<string, number>;
+  ghost?: boolean;
 }
 
 const unitBox = new BoxGeometry(1, 1, 1);
 const tempObject = new Object3D();
 const HIGHLIGHT_COLOR = new Color('#0d99ff');
 
-export default function BoxInstances({ elements, tableName, levelElevation, levelElevations }: BoxInstancesProps) {
+export default function BoxInstances({ elements, tableName, levelElevation, levelElevations, ghost }: BoxInstancesProps) {
   const meshRef = useRef<InstancedMesh>(null);
-  const material = useMaterial(tableName);
+  const normalMaterial = useMaterial(tableName);
+  const ghostMaterial = useGhostMaterial(tableName);
+  const material = ghost ? ghostMaterial : normalMaterial;
   const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
@@ -53,8 +56,9 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
     mesh.computeBoundingSphere();
   }, [boxes]);
 
-  // Update instance colors for selection/hover highlighting
+  // Update instance colors for selection/hover highlighting (skip for ghost)
   useEffect(() => {
+    if (ghost) return;
     const mesh = meshRef.current;
     if (!mesh) return;
 
@@ -68,7 +72,7 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
       }
     }
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-  }, [selectedIds, hoveredId, indexToId, material.color]);
+  }, [ghost, selectedIds, hoveredId, indexToId, material.color]);
 
   const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -98,9 +102,8 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
       ref={meshRef}
       args={[unitBox, material, boxes.length]}
       frustumCulled
-      onClick={handleClick}
-      onPointerOver={handlePointerOver}
-      onPointerOut={handlePointerOut}
+      renderOrder={ghost ? -1 : 0}
+      {...(ghost ? { raycast: () => {} } : { onClick: handleClick, onPointerOver: handlePointerOver, onPointerOut: handlePointerOut })}
     />
   );
 }

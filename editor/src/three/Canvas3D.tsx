@@ -15,6 +15,7 @@ export default function Canvas3D() {
       <Canvas
         camera={{ position: [30, 40, 30], fov: 50, near: 0.1, far: 2000 }}
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
+        raycaster={{ params: { Line: { threshold: 0.5 } } }}
         onPointerMissed={handlePointerMissed}
       >
         <color attach="background" args={['#e8ecf1']} />

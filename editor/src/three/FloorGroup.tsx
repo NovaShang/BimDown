@@ -4,6 +4,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import BoxInstances from './layers/BoxInstances.tsx';
 import PolygonExtrusions from './layers/PolygonExtrusions.tsx';
+import SpaceWireframes from './layers/SpaceWireframes.tsx';
 import { useFloorElements } from './hooks/useFloorElements.ts';
 
 const BOX_TABLES = new Set([
@@ -11,7 +12,7 @@ const BOX_TABLES = new Set([
   'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',
   'column', 'structure_column', 'equipment', 'terminal',
 ]);
-const POLYGON_TABLES = new Set(['space', 'slab', 'structure_slab', 'stair']);
+const POLYGON_TABLES = new Set(['slab', 'structure_slab', 'stair']);
 
 interface FloorRenderData {
   levelId: string;
@@ -25,6 +26,7 @@ export default function FloorGroup() {
   const levels = state.project?.levels ?? [];
   const currentLevel = state.currentLevel;
   const isAllFloors = currentLevel === '__all__';
+  const activeDiscipline = state.activeDiscipline;
 
   const levelElevations = useMemo(() => {
     const map = new Map<string, number>();
@@ -42,17 +44,14 @@ export default function FloorGroup() {
       const elevation = levelElevations.get(levelId) ?? 0;
       const parsed = parseFloorLayers(floor.layers);
       const filtered = parsed.filter(el => {
-        // Non-architectural discipline: only show that discipline, no arch background
         if (activeDiscipline !== 'architectural') {
           if (el.discipline !== activeDiscipline) return false;
         } else {
-          // Architectural: show only architectural
           if (el.discipline !== 'architectural') return false;
         }
         return visibleLayers.has(`${el.discipline}/${el.tableName}`);
       });
       if (filtered.length > 0) {
-        // Prefix IDs with levelId to avoid collisions across floors
         const prefixed = filtered.map(el => ({ ...el, id: `${levelId}:${el.id}` }));
         result.push({ levelId, elevation, elements: prefixed });
       }
@@ -60,12 +59,28 @@ export default function FloorGroup() {
     return result;
   }, [isAllFloors, state.project, state.activeDiscipline, state.visibleLayers, levelElevations]);
 
-  // Single floor mode
+  // Single floor mode: split into active elements and ghost (architectural background)
+  const isNonArchDiscipline = !isAllFloors && activeDiscipline !== 'architectural';
+
+  const { activeElements, ghostElements } = useMemo(() => {
+    if (!isNonArchDiscipline) return { activeElements: singleFloorElements, ghostElements: [] };
+    const active: CanonicalElement[] = [];
+    const ghost: CanonicalElement[] = [];
+    for (const el of singleFloorElements) {
+      if (el.discipline === 'architectural') ghost.push(el);
+      else active.push(el);
+    }
+    return { activeElements: active, ghostElements: ghost };
+  }, [singleFloorElements, isNonArchDiscipline]);
+
   if (!isAllFloors) {
     const currentElevation = levelElevations.get(currentLevel) ?? 0;
     return (
       <group>
-        <RenderElements elements={singleFloorElements} levelElevation={currentElevation} levelElevations={levelElevations} />
+        {ghostElements.length > 0 && (
+          <RenderElements elements={ghostElements} levelElevation={currentElevation} levelElevations={levelElevations} ghost />
+        )}
+        <RenderElements elements={activeElements} levelElevation={currentElevation} levelElevations={levelElevations} />
       </group>
     );
   }
@@ -81,10 +96,11 @@ export default function FloorGroup() {
   );
 }
 
-function RenderElements({ elements, levelElevation, levelElevations }: {
+function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
   elements: CanonicalElement[];
   levelElevation: number;
   levelElevations: Map<string, number>;
+  ghost?: boolean;
 }) {
   const grouped = useMemo(() => {
     const map = new Map<string, CanonicalElement[]>();
@@ -99,6 +115,17 @@ function RenderElements({ elements, levelElevation, levelElevations }: {
   return (
     <>
       {[...grouped.entries()].map(([tableName, els]) => {
+        if (tableName === 'space') {
+          return (
+            <SpaceWireframes
+              key={tableName}
+              elements={els}
+              levelElevation={levelElevation}
+              levelElevations={levelElevations}
+              ghost={ghost}
+            />
+          );
+        }
         if (BOX_TABLES.has(tableName)) {
           return (
             <BoxInstances
@@ -107,6 +134,7 @@ function RenderElements({ elements, levelElevation, levelElevations }: {
               tableName={tableName}
               levelElevation={levelElevation}
               levelElevations={levelElevations}
+              ghost={ghost}
             />
           );
         }
@@ -118,6 +146,7 @@ function RenderElements({ elements, levelElevation, levelElevations }: {
               tableName={tableName}
               levelElevation={levelElevation}
               levelElevations={levelElevations}
+              ghost={ghost}
             />
           );
         }
