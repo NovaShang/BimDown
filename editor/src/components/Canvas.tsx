@@ -13,7 +13,7 @@ import DrawingOverlay from './DrawingOverlay.tsx';
 import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
-import { ElementNode } from './ElementNode.tsx';
+import { ElementNode, pruneCache } from './ElementNode.tsx';
 import { WallJoins } from './WallJoins.tsx';
 import { Icon } from './Icons.tsx';
 
@@ -62,6 +62,12 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
   useEffect(() => {
     setTransform({ x: 0, y: 0, scale: 1 });
   }, [state.currentLevel]);
+
+  // Prune SVG cache when elements change to prevent memory leaks
+  const elements = state.document?.elements;
+  useEffect(() => {
+    if (elements) pruneCache(new Set(elements.keys()));
+  }, [elements]);
 
   // ────── GRID SVG (depends on local transform.scale) ──────
   const gridSvg = useMemo(() => {
