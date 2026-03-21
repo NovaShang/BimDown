@@ -12,11 +12,43 @@ export function getLevelsWithData(state: EditorState) {
   return state.project.levels.filter(l => state.project!.floors.has(l.id));
 }
 
+const RENDER_Z_INDEX: Record<string, number> = {
+  space: 10,
+  slab: 20,
+  structure_slab: 21,
+  raft_foundation: 22,
+  strip_foundation: 23,
+  isolated_foundation: 24,
+  stair: 30,
+  wall: 40,
+  structure_wall: 41,
+  column: 50,
+  structure_column: 51,
+  window: 60,
+  door: 61,
+  beam: 70,
+  brace: 71,
+  duct: 80,
+  pipe: 81,
+  cable_tray: 82,
+  conduit: 83,
+  equipment: 90,
+  terminal: 91,
+};
+
+function getRenderZIndex(tableName: string): number {
+  return RENDER_Z_INDEX[tableName] ?? 100;
+}
+
 export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   const floor = getVisibleFloor(state);
   if (!floor) return [];
 
-  return floor.layers
+  const orderedLayers = [...floor.layers].sort(
+    (a, b) => getRenderZIndex(a.tableName) - getRenderZIndex(b.tableName)
+  );
+
+  return orderedLayers
     .filter(l => state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
@@ -96,7 +128,14 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
   const groups = groupByLayer(elements);
   const result: ProcessedLayer[] = [];
 
-  for (const [key, groupElements] of groups) {
+  const sortedKeys = Array.from(groups.keys()).sort((keyA, keyB) => {
+    const tableA = keyA.split('/')[1];
+    const tableB = keyB.split('/')[1];
+    return getRenderZIndex(tableA) - getRenderZIndex(tableB);
+  });
+
+  for (const key of sortedKeys) {
+    const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
     const svgString = serializeToSvg(groupElements, vbStr);

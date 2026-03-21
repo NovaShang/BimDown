@@ -299,13 +299,21 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
         ))}
 
         {/* Selection overlay */}
-        <SelectionOverlay svgRef={svgRef} selectedIds={selectedIds} renderKey={state.document} />
+        <SelectionOverlay document={state.document} selectedIds={selectedIds} />
 
-        {/* Resize handles in edit mode */}
-        {state.editMode && selectedIds.size === 1 && state.document && (() => {
-          const id = selectedIds.values().next().value!;
-          const el = state.document.elements.get(id);
-          return el ? <ResizeHandles element={el} svgRef={svgRef} /> : null;
+        {/* Resize handles */}
+        {state.document && (() => {
+          const handles = [];
+          for (const id of selectedIds) {
+            const el = state.document.elements.get(id);
+            if (!el) continue;
+            // Always show handles for point geometry to indicate selection
+            // For lines/polygons, only show handles if it's the ONLY item selected
+            if (el.geometry === 'point' || selectedIds.size === 1) {
+              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} />);
+            }
+          }
+          return handles;
         })()}
 
         {/* Drawing preview overlay */}

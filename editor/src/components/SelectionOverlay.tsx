@@ -1,87 +1,59 @@
-import { useEffect, useState, type RefObject } from 'react';
+import type { DocumentState } from '../model/document.ts';
+import type { CanonicalElement } from '../model/elements.ts';
 
 interface SelectionOverlayProps {
-  svgRef: RefObject<SVGSVGElement | null>;
+  document: DocumentState | null;
   selectedIds: Set<string>;
-  /** Changes when element positions update, to trigger re-measure */
-  renderKey?: unknown;
 }
 
-interface SelectionRect {
-  id: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-}
+export default function SelectionOverlay({ document, selectedIds }: SelectionOverlayProps) {
+  if (!document || selectedIds.size === 0) return null;
 
-export default function SelectionOverlay({ svgRef, selectedIds, renderKey }: SelectionOverlayProps) {
-  const [rects, setRects] = useState<SelectionRect[]>([]);
+  const selectedElements: CanonicalElement[] = [];
+  for (const id of selectedIds) {
+    const el = document.elements.get(id);
+    if (el) selectedElements.push(el);
+  }
 
-  useEffect(() => {
-    if (selectedIds.size === 0 || !svgRef.current) {
-      setRects([]);
-      return;
-    }
-
-    const svg = svgRef.current;
-    const result: SelectionRect[] = [];
-    const processed = new Set<string>();
-
-    for (const id of selectedIds) {
-      if (processed.has(id)) continue;
-      processed.add(id);
-
-      const elements = svg.querySelectorAll(`[data-id="${id}"]`);
-      if (elements.length === 0) continue;
-
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-      for (const el of elements) {
-        try {
-          const bbox = (el as SVGGraphicsElement).getBBox();
-          minX = Math.min(minX, bbox.x);
-          minY = Math.min(minY, bbox.y);
-          maxX = Math.max(maxX, bbox.x + bbox.width);
-          maxY = Math.max(maxY, bbox.y + bbox.height);
-        } catch {
-          // getBBox can throw
-        }
-      }
-
-      if (minX < Infinity) {
-        const pad = 0.05;
-        result.push({
-          id,
-          x: minX - pad,
-          y: minY - pad,
-          w: maxX - minX + pad * 2,
-          h: maxY - minY + pad * 2,
-        });
-      }
-    }
-
-    setRects(result);
-  }, [selectedIds, svgRef, renderKey]);
-
-  if (rects.length === 0) return null;
+  if (selectedElements.length === 0) return null;
 
   return (
     <g className="selection-overlay" transform="scale(1,-1)">
-      {rects.map(r => (
-        <rect
-          key={r.id}
-          x={r.x}
-          y={r.y}
-          width={r.w}
-          height={r.h}
-          fill="rgba(13, 153, 255, 0.06)"
-          stroke="#0d99ff"
-          strokeWidth="0.03"
-          rx="0.02"
-          pointerEvents="none"
-        />
-      ))}
+      {selectedElements.map((el) => {
+        if (el.geometry === 'line') {
+          return (
+            <line
+              key={el.id}
+              x1={el.start.x}
+              y1={el.start.y}
+              x2={el.end.x}
+              y2={el.end.y}
+              stroke="#0d99ff"
+              strokeWidth="0.08"
+              opacity="0.6"
+              strokeLinecap="round"
+              pointerEvents="none"
+            />
+          );
+        }
+        
+        if (el.geometry === 'polygon') {
+          const pointsStr = el.vertices.map(v => `${v.x},${v.y}`).join(' ');
+          return (
+            <polygon
+              key={el.id}
+              points={pointsStr}
+              fill="rgba(13, 153, 255, 0.1)"
+              stroke="#0d99ff"
+              strokeWidth="0.05"
+              strokeLinejoin="round"
+              pointerEvents="none"
+            />
+          );
+        }
+        
+        return null;
+      })}
     </g>
   );
 }
