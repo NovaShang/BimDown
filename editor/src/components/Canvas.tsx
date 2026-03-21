@@ -12,7 +12,6 @@ import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
 import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
-import { WallJoins } from './WallJoins.tsx';
 import Minimap from './Minimap.tsx';
 import { ElementNode } from './ElementNode.tsx';
 
@@ -422,9 +421,6 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
             />
           );
         })}
-
-        {/* Wall junction fills (close corner gaps) */}
-        {state.document && <WallJoins document={state.document} />}
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />
