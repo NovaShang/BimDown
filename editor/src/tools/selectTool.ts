@@ -5,19 +5,28 @@ import { snapPoint } from '../utils/snap.ts';
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
 
-let isDragging = false;
-let isMoving = false;
-let isMarquee = false;
-let startScreen = { x: 0, y: 0 };
-let startSvg = { x: 0, y: 0 };
-let clickedId: string | null = null;
-/** Snapshots of selected elements at drag start, for single undo entry */
-let beforeSnapshot: Map<string, CanonicalElement | null> | null = null;
-/** Accumulated SVG offset during move (for snap calculation) */
-let accumulatedDx = 0;
-let accumulatedDy = 0;
-/** Reference point used for snapping during move (first selected element's anchor) */
-let moveAnchor: { x: number; y: number } | null = null;
+const gesture = {
+  isDragging: false,
+  isMoving: false,
+  isMarquee: false,
+  startScreen: { x: 0, y: 0 },
+  startSvg: { x: 0, y: 0 },
+  clickedId: null as string | null,
+  beforeSnapshot: null as Map<string, CanonicalElement | null> | null,
+  accumulatedDx: 0,
+  accumulatedDy: 0,
+  moveAnchor: null as { x: number; y: number } | null,
+  reset() {
+    this.isDragging = false;
+    this.isMoving = false;
+    this.isMarquee = false;
+    this.clickedId = null;
+    this.beforeSnapshot = null;
+    this.accumulatedDx = 0;
+    this.accumulatedDy = 0;
+    this.moveAnchor = null;
+  },
+};
 
 export const selectTool: ToolHandler = {
   cursor: 'default',
@@ -28,23 +37,19 @@ export const selectTool: ToolHandler = {
     const rect = ctx.containerRef.current?.getBoundingClientRect();
     if (!rect) return;
 
-    isDragging = true;
-    isMoving = false;
-    isMarquee = false;
-    startScreen = { x: e.clientX, y: e.clientY };
-    clickedId = ctx.findElementId(e.target);
-    accumulatedDx = 0;
-    accumulatedDy = 0;
-    moveAnchor = null;
+    gesture.reset();
+    gesture.isDragging = true;
+    gesture.startScreen = { x: e.clientX, y: e.clientY };
+    gesture.clickedId = ctx.findElementId(e.target);
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    startSvg = svgPt || { x: 0, y: 0 };
+    gesture.startSvg = svgPt || { x: 0, y: 0 };
 
-    if (clickedId) {
+    if (gesture.clickedId) {
       const state = ctx.getState();
       // If clicking an unselected element without shift, select it immediately
-      if (!e.shiftKey && !state.selectedIds.has(clickedId)) {
-        ctx.dispatch({ type: 'SELECT', ids: [clickedId] });
+      if (!e.shiftKey && !state.selectedIds.has(gesture.clickedId)) {
+        ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId] });
       }
     } else {
       // Clicking on empty space
@@ -52,10 +57,10 @@ export const selectTool: ToolHandler = {
         ctx.dispatch({ type: 'CLEAR_SELECTION' });
       }
       // Prepare for marquee
-      isMarquee = true;
+      gesture.isMarquee = true;
       const sx = e.clientX - rect.left;
       const sy = e.clientY - rect.top;
-      startScreen = { x: sx, y: sy };
+      gesture.startScreen = { x: sx, y: sy };
       ctx.dispatch({ type: 'SET_MARQUEE', marquee: { x1: sx, y1: sy, x2: sx, y2: sy } });
     }
 
@@ -63,7 +68,7 @@ export const selectTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
-    if (!isDragging) {
+    if (!gesture.isDragging) {
       // Hover detection
       const elementId = ctx.findElementId(e.target);
       const state = ctx.getState();
@@ -73,14 +78,14 @@ export const selectTool: ToolHandler = {
       return;
     }
 
-    if (isMarquee) {
+    if (gesture.isMarquee) {
       const rect = ctx.containerRef.current?.getBoundingClientRect();
       if (!rect) return;
       ctx.dispatch({
         type: 'SET_MARQUEE',
         marquee: {
-          x1: startScreen.x,
-          y1: startScreen.y,
+          x1: gesture.startScreen.x,
+          y1: gesture.startScreen.y,
           x2: e.clientX - rect.left,
           y2: e.clientY - rect.top,
         },
@@ -89,49 +94,49 @@ export const selectTool: ToolHandler = {
     }
 
     // Element drag → move
-    if (clickedId) {
-      const dx = e.clientX - startScreen.x;
-      const dy = e.clientY - startScreen.y;
+    if (gesture.clickedId) {
+      const dx = e.clientX - gesture.startScreen.x;
+      const dy = e.clientY - gesture.startScreen.y;
 
-      if (!isMoving && (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD)) {
-        isMoving = true;
+      if (!gesture.isMoving && (Math.abs(dx) > MOVE_THRESHOLD || Math.abs(dy) > MOVE_THRESHOLD)) {
+        gesture.isMoving = true;
         // If the clicked element wasn't selected, select it now
         const state = ctx.getState();
-        if (!state.selectedIds.has(clickedId)) {
-          ctx.dispatch({ type: 'SELECT', ids: [clickedId] });
+        if (!state.selectedIds.has(gesture.clickedId)) {
+          ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId] });
         }
         // Snapshot elements before move starts (for single undo entry)
         const freshState = ctx.getState();
-        beforeSnapshot = new Map();
+        gesture.beforeSnapshot = new Map();
         for (const id of freshState.selectedIds) {
           const el = freshState.document?.elements.get(id);
-          if (el) beforeSnapshot.set(id, el);
+          if (el) gesture.beforeSnapshot.set(id, el);
         }
         // Compute move anchor from the first selected element
-        moveAnchor = getElementAnchor(beforeSnapshot);
+        gesture.moveAnchor = getElementAnchor(gesture.beforeSnapshot);
       }
 
-      if (isMoving) {
+      if (gesture.isMoving) {
         const currentSvg = ctx.screenToSvg(e.clientX, e.clientY);
         if (currentSvg) {
-          const rawDx = currentSvg.x - startSvg.x;
-          const rawDy = currentSvg.y - startSvg.y;
+          const rawDx = currentSvg.x - gesture.startSvg.x;
+          const rawDy = currentSvg.y - gesture.startSvg.y;
 
-          if (moveAnchor) {
+          if (gesture.moveAnchor) {
             // Snap the anchor point's would-be position
-            const anchorTarget = { x: moveAnchor.x + rawDx, y: moveAnchor.y + rawDy };
+            const anchorTarget = { x: gesture.moveAnchor.x + rawDx, y: gesture.moveAnchor.y + rawDy };
             const state = ctx.getState();
             const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds);
             ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
 
-            const snappedDx = snap.point.x - moveAnchor.x;
-            const snappedDy = snap.point.y - moveAnchor.y;
+            const snappedDx = snap.point.x - gesture.moveAnchor.x;
+            const snappedDy = snap.point.y - gesture.moveAnchor.y;
 
             // Dispatch incremental move
-            const incrementDx = snappedDx - accumulatedDx;
-            const incrementDy = snappedDy - accumulatedDy;
-            accumulatedDx = snappedDx;
-            accumulatedDy = snappedDy;
+            const incrementDx = snappedDx - gesture.accumulatedDx;
+            const incrementDy = snappedDy - gesture.accumulatedDy;
+            gesture.accumulatedDx = snappedDx;
+            gesture.accumulatedDy = snappedDy;
 
             ctx.dispatch({
               type: 'MOVE_ELEMENTS',
@@ -141,9 +146,9 @@ export const selectTool: ToolHandler = {
               preview: true,
             });
           } else {
-            const svgDx = currentSvg.x - startSvg.x;
-            const svgDy = currentSvg.y - startSvg.y;
-            startSvg = currentSvg;
+            const svgDx = currentSvg.x - gesture.startSvg.x;
+            const svgDy = currentSvg.y - gesture.startSvg.y;
+            gesture.startSvg = currentSvg;
             const state = ctx.getState();
             ctx.dispatch({
               type: 'MOVE_ELEMENTS',
@@ -159,7 +164,7 @@ export const selectTool: ToolHandler = {
   },
 
   onPointerUp(ctx: ToolContext, e: React.PointerEvent) {
-    if (isMarquee) {
+    if (gesture.isMarquee) {
       // Finalize marquee selection
       const state = ctx.getState();
       const svg = ctx.svgRef.current;
@@ -168,31 +173,24 @@ export const selectTool: ToolHandler = {
         finishMarquee(ctx, e);
       }
       ctx.dispatch({ type: 'SET_MARQUEE', marquee: null });
-    } else if (clickedId && isMoving && beforeSnapshot) {
+    } else if (gesture.clickedId && gesture.isMoving && gesture.beforeSnapshot) {
       // Commit move: build after snapshot from current state
       const afterState = ctx.getState();
       const after = new Map<string, CanonicalElement | null>();
-      for (const [id] of beforeSnapshot) {
+      for (const [id] of gesture.beforeSnapshot) {
         const el = afterState.document?.elements.get(id);
         after.set(id, el ?? null);
       }
-      ctx.dispatch({ type: 'COMMIT_PREVIEW', description: 'Move elements', before: beforeSnapshot, after });
-    } else if (clickedId && !isMoving) {
+      ctx.dispatch({ type: 'COMMIT_PREVIEW', description: 'Move elements', before: gesture.beforeSnapshot, after });
+    } else if (gesture.clickedId && !gesture.isMoving) {
       // Simple click (no drag) — handle shift-toggle
       if (e.shiftKey) {
-        ctx.dispatch({ type: 'SELECT', ids: [clickedId], additive: true });
+        ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId], additive: true });
       }
       // Non-shift already handled in onPointerDown
     }
 
-    isDragging = false;
-    isMoving = false;
-    isMarquee = false;
-    clickedId = null;
-    beforeSnapshot = null;
-    accumulatedDx = 0;
-    accumulatedDy = 0;
-    moveAnchor = null;
+    gesture.reset();
     ctx.setSnap(null);
   },
 };
@@ -216,10 +214,10 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
 
   const containerRect = container.getBoundingClientRect();
   const marqueeRect = {
-    x: Math.min(startScreen.x, _e.clientX - containerRect.left),
-    y: Math.min(startScreen.y, _e.clientY - containerRect.top),
-    w: Math.abs((_e.clientX - containerRect.left) - startScreen.x),
-    h: Math.abs((_e.clientY - containerRect.top) - startScreen.y),
+    x: Math.min(gesture.startScreen.x, _e.clientX - containerRect.left),
+    y: Math.min(gesture.startScreen.y, _e.clientY - containerRect.top),
+    w: Math.abs((_e.clientX - containerRect.left) - gesture.startScreen.x),
+    h: Math.abs((_e.clientY - containerRect.top) - gesture.startScreen.y),
   };
 
   if (marqueeRect.w < 5 && marqueeRect.h < 5) return;

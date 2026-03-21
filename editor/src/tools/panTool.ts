@@ -1,23 +1,24 @@
 import type { ToolHandler, ToolContext } from './types.ts';
 
-let isPanning = false;
-let lastPos = { x: 0, y: 0 };
+const gesture = { active: false, lastX: 0, lastY: 0 };
 
 export const panTool: ToolHandler = {
   cursor: 'grab',
 
   onPointerDown(_ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0 && e.button !== 1) return;
-    isPanning = true;
-    lastPos = { x: e.clientX, y: e.clientY };
+    gesture.active = true;
+    gesture.lastX = e.clientX;
+    gesture.lastY = e.clientY;
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
-    if (!isPanning) return;
-    const dx = e.clientX - lastPos.x;
-    const dy = e.clientY - lastPos.y;
-    lastPos = { x: e.clientX, y: e.clientY };
+    if (!gesture.active) return;
+    const dx = e.clientX - gesture.lastX;
+    const dy = e.clientY - gesture.lastY;
+    gesture.lastX = e.clientX;
+    gesture.lastY = e.clientY;
     const { transform } = ctx.getState();
     ctx.dispatch({
       type: 'SET_TRANSFORM',
@@ -30,6 +31,6 @@ export const panTool: ToolHandler = {
   },
 
   onPointerUp() {
-    isPanning = false;
+    gesture.active = false;
   },
 };
