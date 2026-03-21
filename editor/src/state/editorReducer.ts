@@ -261,7 +261,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         history: pushCommand(state.history, createCommand('Create element', before, after)),
         documentVersion: state.documentVersion + 1,
         lastMutation: { version: state.documentVersion + 1, keys: [`${action.element.discipline}/${action.element.tableName}`] },
-        selectedIds: new Set([action.element.id]),
+        selectedIds: state.drawingTarget ? state.selectedIds : new Set([action.element.id]),
       };
     }
 

@@ -64,6 +64,18 @@ export default function DrawingPropertiesBar() {
           )}
         </div>
       ))}
+      <div className="dp-separator" />
+      <button
+        className="dp-cancel-btn"
+        onClick={() => {
+          dispatch({ type: 'SET_TOOL', tool: 'select' });
+          dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          dispatch({ type: 'SET_DRAWING_STATE', state: null });
+        }}
+        title="Cancel (Esc)"
+      >
+        &#x2715;
+      </button>
     </div>
   );
 }

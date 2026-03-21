@@ -66,7 +66,8 @@ function createPolygon(ctx: ToolContext, vertices: { x: number; y: number }[]) {
   const target = state.drawingTarget;
   if (!target) return;
 
-  const id = generateId(target.tableName, new Set());
+  const existingIds = new Set(state.document?.elements.keys() ?? []);
+  const id = generateId(target.tableName, existingIds);
   const baseAttrs = defaultAttrs(target.tableName, '');
   const mergedAttrs = { ...baseAttrs, ...state.drawingAttrs, id };
 

@@ -34,7 +34,8 @@ export const drawLineTool: ToolHandler = {
       const start = points[0];
       const end = pt;
 
-      const id = generateId(target.tableName, new Set());
+      const existingIds = new Set(state.document?.elements.keys() ?? []);
+      const id = generateId(target.tableName, existingIds);
       const da = state.drawingAttrs;
 
       // Resolve strokeWidth: walls use 'thickness', ducts/pipes use 'size_x'

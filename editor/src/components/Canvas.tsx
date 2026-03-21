@@ -423,6 +423,18 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
+      onContextMenu={(e) => {
+        if (stateRef.current.activeTool.startsWith('draw_')) {
+          e.preventDefault();
+          if (stateRef.current.drawingState?.points.length) {
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+          } else {
+            globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          }
+        }
+      }}
       onDoubleClick={(e) => {
         const elementId = findElementId(e.target);
         if (elementId && selectedIds.has(elementId)) {

@@ -27,7 +27,8 @@ export const drawPointTool: ToolHandler = {
     const w = parseFloat(mergedAttrs.size_x || '0.3');
     const h = parseFloat(mergedAttrs.size_y || '0.3');
 
-    const id = generateId(target.tableName, new Set());
+    const existingIds = new Set(state.document?.elements.keys() ?? []);
+    const id = generateId(target.tableName, existingIds);
 
     const element: PointElement = {
       id,
