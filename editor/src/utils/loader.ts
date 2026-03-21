@@ -1,4 +1,5 @@
 import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData } from '../types.ts';
+import { DISCIPLINE_TABLES } from '../types.ts';
 
 const SAMPLE_DATA_BASE = '/sample_data';
 const DISCIPLINES = ['architectural', 'structural', 'hvac', 'plumbing', 'electrical'];
@@ -87,7 +88,7 @@ export async function loadProject(): Promise<ProjectData> {
   const fetchTasks: { disc: string; level: Level; tableName: string }[] = [];
   for (const disc of DISCIPLINES) {
     for (const level of levels) {
-      for (const tableName of getTableNamesForDiscipline(disc)) {
+      for (const tableName of (DISCIPLINE_TABLES[disc] ?? [])) {
         fetchTasks.push({ disc, level, tableName });
       }
     }
@@ -133,22 +134,6 @@ export async function loadProject(): Promise<ProjectData> {
   return { levels, floors };
 }
 
-function getTableNamesForDiscipline(disc: string): string[] {
-  switch (disc) {
-    case 'architectural':
-      return ['wall', 'column', 'door', 'space', 'slab', 'stair', 'terminal'];
-    case 'structural':
-      return ['structure_wall', 'structure_column', 'structure_slab', 'slab'];
-    case 'hvac':
-      return ['duct', 'equipment', 'terminal'];
-    case 'plumbing':
-      return ['pipe', 'equipment', 'terminal'];
-    case 'electrical':
-      return ['equipment', 'terminal'];
-    default:
-      return [];
-  }
-}
 
 export async function loadGrids(): Promise<GridData[]> {
   for (const disc of DISCIPLINES) {

@@ -75,9 +75,9 @@ export const DISCIPLINE_COLORS: Record<string, string> = {
 };
 
 export const DISCIPLINE_TABLES: Record<string, string[]> = {
-  architectural: ['wall', 'column', 'door', 'window', 'space', 'slab', 'stair'],
-  structural:    ['structure_wall', 'structure_column', 'structure_slab', 'beam', 'brace'],
+  architectural: ['wall', 'column', 'door', 'window', 'space', 'slab', 'stair', 'terminal'],
+  structural:    ['structure_wall', 'structure_column', 'structure_slab', 'slab', 'beam', 'brace'],
   hvac:          ['duct', 'equipment', 'terminal'],
   plumbing:      ['pipe', 'equipment', 'terminal'],
-  electrical:    ['conduit', 'equipment', 'terminal'],
+  electrical:    ['conduit', 'cable_tray', 'equipment', 'terminal'],
 };
