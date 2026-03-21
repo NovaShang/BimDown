@@ -83,43 +83,51 @@ export async function loadProject(): Promise<ProjectData> {
 
   const floors = new Map<string, FloorData>();
 
+  // Build all fetch tasks upfront, then execute in parallel
+  const fetchTasks: { disc: string; level: Level; tableName: string }[] = [];
   for (const disc of DISCIPLINES) {
     for (const level of levels) {
-      const levelDir = `${SAMPLE_DATA_BASE}/${disc}/${level.id}`;
-      const tableNames = getTableNamesForDiscipline(disc);
-
-      for (const tableName of tableNames) {
-        const svgPath = `${levelDir}/${tableName}s.svg`;
-        const csvPath = `${levelDir}/${tableName}.csv`;
-
-        const svgContent = await fetchText(svgPath);
-        if (!svgContent) continue;
-
-        const csvContent = await fetchText(csvPath);
-        const csvMap = new Map<string, CsvRow>();
-        if (csvContent) {
-          const rows = parseCsv(csvContent);
-          for (const row of rows) {
-            if (row.id) csvMap.set(row.id, row);
-          }
-        }
-
-        if (!floors.has(level.id)) {
-          floors.set(level.id, {
-            levelId: level.id,
-            levelName: level.name || level.id,
-            layers: [],
-          });
-        }
-
-        floors.get(level.id)!.layers.push({
-          tableName,
-          discipline: disc,
-          svgContent,
-          csvRows: csvMap,
-        });
+      for (const tableName of getTableNamesForDiscipline(disc)) {
+        fetchTasks.push({ disc, level, tableName });
       }
     }
+  }
+
+  const results = await Promise.all(
+    fetchTasks.map(async ({ disc, level, tableName }) => {
+      const levelDir = `${SAMPLE_DATA_BASE}/${disc}/${level.id}`;
+      const [svgContent, csvContent] = await Promise.all([
+        fetchText(`${levelDir}/${tableName}s.svg`),
+        fetchText(`${levelDir}/${tableName}.csv`),
+      ]);
+      return { disc, level, tableName, svgContent, csvContent };
+    })
+  );
+
+  for (const { disc, level, tableName, svgContent, csvContent } of results) {
+    if (!svgContent) continue;
+
+    const csvMap = new Map<string, CsvRow>();
+    if (csvContent) {
+      for (const row of parseCsv(csvContent)) {
+        if (row.id) csvMap.set(row.id, row);
+      }
+    }
+
+    if (!floors.has(level.id)) {
+      floors.set(level.id, {
+        levelId: level.id,
+        levelName: level.name || level.id,
+        layers: [],
+      });
+    }
+
+    floors.get(level.id)!.layers.push({
+      tableName,
+      discipline: disc,
+      svgContent,
+      csvRows: csvMap,
+    });
   }
 
   return { levels, floors };
