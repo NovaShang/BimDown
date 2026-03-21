@@ -70,6 +70,29 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
+  if (state.currentLevel === '__all__' && state.project) {
+    // Aggregate layers across all floors, deduplicating by discipline/tableName
+    const byDiscipline = new Map<string, Map<string, LayerData>>();
+    for (const floor of state.project.floors.values()) {
+      for (const layer of floor.layers) {
+        if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, new Map());
+        const existing = byDiscipline.get(layer.discipline)!.get(layer.tableName);
+        if (existing) {
+          // Merge csvRows counts
+          const merged = new Map(existing.csvRows);
+          for (const [k, v] of layer.csvRows) merged.set(k, v);
+          byDiscipline.get(layer.discipline)!.set(layer.tableName, { ...existing, csvRows: merged });
+        } else {
+          byDiscipline.get(layer.discipline)!.set(layer.tableName, layer);
+        }
+      }
+    }
+    return Array.from(byDiscipline.entries()).map(([discipline, layerMap]) => ({
+      discipline,
+      layers: Array.from(layerMap.values()),
+    }));
+  }
+
   const floor = getVisibleFloor(state);
   if (!floor) return [];
 
@@ -88,6 +111,26 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
 export function getSelectedElementData(state: EditorState): Map<string, { tableName: string; discipline: string; csv: CsvRow }> {
   const result = new Map<string, { tableName: string; discipline: string; csv: CsvRow }>();
   if (state.selectedIds.size === 0) return result;
+
+  // All Floors mode: IDs are prefixed as "levelId:elementId"
+  if (state.currentLevel === '__all__' && state.project) {
+    for (const prefixedId of state.selectedIds) {
+      const colonIdx = prefixedId.indexOf(':');
+      if (colonIdx === -1) continue;
+      const levelId = prefixedId.slice(0, colonIdx);
+      const rawId = prefixedId.slice(colonIdx + 1);
+      const floor = state.project.floors.get(levelId);
+      if (!floor) continue;
+      for (const layer of floor.layers) {
+        const csv = layer.csvRows.get(rawId);
+        if (csv) {
+          result.set(prefixedId, { tableName: layer.tableName, discipline: layer.discipline, csv });
+          break;
+        }
+      }
+    }
+    return result;
+  }
 
   // When document model exists, read from it (reflects edits)
   if (state.document) {

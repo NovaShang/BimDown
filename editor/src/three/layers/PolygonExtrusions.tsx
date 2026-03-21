@@ -28,7 +28,6 @@ function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
     bevelEnabled: false,
   });
 
-  // Rotate so extrusion goes along Y-up instead of Z
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, params.baseY + params.height, 0);
 

@@ -17,7 +17,9 @@ export default function EditorShell() {
   const dispatch = useEditorDispatch();
 
   // Initialize document model when floor data loads or level changes
+  // Skip for __all__ — 3D all-floors mode parses directly, no document model
   useEffect(() => {
+    if (state.currentLevel === '__all__') return;
     const floor = state.project?.floors.get(state.currentLevel);
     if (!floor) return;
     const elements = parseFloorLayers(floor.layers);

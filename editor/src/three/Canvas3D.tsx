@@ -11,12 +11,14 @@ export default function Canvas3D() {
   }, [dispatch]);
 
   return (
-    <div style={{ width: '100%', height: '100%', background: '#1a1a1a' }}>
+    <div style={{ width: '100%', height: '100%' }}>
       <Canvas
         camera={{ position: [30, 40, 30], fov: 50, near: 0.1, far: 2000 }}
-        gl={{ antialias: true }}
+        gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
         onPointerMissed={handlePointerMissed}
       >
+        <color attach="background" args={['#e8ecf1']} />
+        <fog attach="fog" args={['#e8ecf1', 200, 600]} />
         <SceneContent />
       </Canvas>
     </div>

@@ -1,5 +1,5 @@
 import { useRef, useEffect } from 'react';
-import { OrbitControls, Bounds, useBounds } from '@react-three/drei';
+import { OrbitControls, Bounds, useBounds, ContactShadows } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
 import { useEditorState } from '../state/EditorContext.tsx';
@@ -14,24 +14,18 @@ function TrackpadOrbitControls() {
     const controls = controlsRef.current;
     if (!controls) return;
 
-    // Configure touch: one finger orbit, two fingers pan
     controls.touches = { ONE: TOUCH.ROTATE, TWO: TOUCH.DOLLY_PAN };
 
-    // Trackpad: remap two-finger scroll (wheel events) to pan instead of zoom.
-    // Pinch-to-zoom still works because it fires wheel events with ctrlKey=true.
     const canvas = gl.domElement;
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey || e.metaKey) return; // pinch-to-zoom, let OrbitControls handle
+      if (e.ctrlKey || e.metaKey) return;
       e.preventDefault();
       e.stopPropagation();
 
-      // Manual pan: shift camera target + position
       const camera = controls.object;
       const offset = camera.position.clone().sub(controls.target);
       const distance = offset.length();
-
-      // Scale pan speed by distance for consistent feel
       const panSpeed = distance * 0.001;
       const right = camera.up.clone().crossVectors(camera.up, offset).normalize();
       const up = offset.clone().cross(right).normalize();
@@ -68,7 +62,6 @@ function FitOnLevelChange() {
   useEffect(() => {
     if (currentLevel !== prevLevel.current) {
       prevLevel.current = currentLevel;
-      // Delay to let geometry update first
       requestAnimationFrame(() => bounds.refresh().clip().fit());
     }
   }, [currentLevel, bounds]);
@@ -79,14 +72,32 @@ function FitOnLevelChange() {
 export default function SceneContent() {
   return (
     <>
-      <ambientLight intensity={0.6} />
-      <directionalLight position={[50, 80, 50]} intensity={0.8} />
+      {/* APS-style lighting: strong ambient + multi-directional fills */}
+      <ambientLight intensity={0.9} />
+      <directionalLight position={[60, 100, 60]} intensity={1.2} color="#ffffff" />
+      <directionalLight position={[-40, 60, -30]} intensity={0.4} color="#c4d4e8" />
+      <directionalLight position={[0, -20, 40]} intensity={0.2} color="#e8e0d4" />
+      <hemisphereLight args={['#dce8f5', '#a8b0b8', 0.5]} />
+
       <TrackpadOrbitControls />
+
       <Bounds fit clip margin={1.5}>
         <FitOnLevelChange />
         <FloorGroup />
       </Bounds>
-      <gridHelper args={[200, 200, '#333333', '#2a2a2a']} />
+
+      {/* Ground plane with contact shadows */}
+      <ContactShadows
+        position={[0, -0.01, 0]}
+        opacity={0.35}
+        scale={200}
+        blur={2}
+        far={50}
+        color="#4a5568"
+      />
+
+      {/* Subtle ground grid */}
+      <gridHelper args={[200, 100, '#c8cdd3', '#d8dce2']} />
     </>
   );
 }

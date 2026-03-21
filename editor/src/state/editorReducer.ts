@@ -95,17 +95,37 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'SET_LEVEL': {
+      if (action.levelId === '__all__') {
+        // All Floors mode: collect visible layers from all floors
+        const allLayers = new Set<string>();
+        if (state.project) {
+          for (const floor of state.project.floors.values()) {
+            for (const l of floor.layers) allLayers.add(`${l.discipline}/${l.tableName}`);
+          }
+        }
+        return {
+          ...state,
+          currentLevel: '__all__',
+          visibleLayers: allLayers,
+          activeDiscipline: state.activeDiscipline ?? 'architectural',
+          selectedIds: new Set(),
+          hoveredId: null,
+          activeFilter: null,
+          baseViewBox: null,
+        };
+      }
+
       const floor = state.project?.floors.get(action.levelId);
       const visibleLayers = floor
         ? new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`))
         : new Set<string>();
-        
+
       let activeDiscipline = state.activeDiscipline;
       if (floor && floor.layers.length > 0) {
         const hasDiscipline = floor.layers.some(l => l.discipline === state.activeDiscipline);
         if (!hasDiscipline) activeDiscipline = floor.layers[0].discipline;
       }
-        
+
       return {
         ...state,
         currentLevel: action.levelId,

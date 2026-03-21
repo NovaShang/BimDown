@@ -23,7 +23,6 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
   const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
-  // Build instance data + index↔elementId mapping
   const { boxes, indexToId } = useMemo(() => {
     const boxes: BoxParams[] = [];
     const indexToId: string[] = [];
@@ -37,7 +36,7 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
     return { boxes, indexToId };
   }, [elements, levelElevation, levelElevations]);
 
-  // Set instance matrices
+  // Set instance matrices for both fill and edge meshes
   useEffect(() => {
     const mesh = meshRef.current;
     if (!mesh) return;
