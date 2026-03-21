@@ -14,14 +14,19 @@ export default defineConfig({
         const watchClients = new Set<import('http').ServerResponse>()
 
         // Watch sample_data for external changes
-        let selfWritePaths = new Set<string>()
+        let selfWritePaths = new Map<string, number>()
         fs.watch(sampleDataDir, { recursive: true }, (_event, filename) => {
           if (!filename) return
           const normalized = filename.replace(/\\/g, '/')
-          // Skip changes we made ourselves (via /api/save)
+          // TODO(Collaborative): This time-based debounce (2s) prevents fs.watch double-fires on Windows
+          // from causing infinite reloads and destroying the local Undo history. 
+          // However, if an AI or external agent modifies the file within 2s of the user's manual save, 
+          // their changes will be incorrectly ignored, leading to data divergence.
+          // Future SaaS architectures must move to CRDTs (like Yjs) or Content Hashing instead of fs.watch.
+          // Skip changes we made ourselves (via /api/save) within the last 2 seconds
           if (selfWritePaths.has(normalized)) {
-            selfWritePaths.delete(normalized)
-            return
+            const time = selfWritePaths.get(normalized)!
+            if (Date.now() - time < 2000) return
           }
           const data = JSON.stringify({ type: 'change', path: normalized })
           for (const client of watchClients) {
@@ -44,7 +49,7 @@ export default defineConfig({
                   // Ensure no path traversal
                   if (!filePath.startsWith(sampleDataDir)) continue
                   // Track as self-write to suppress watch events
-                  selfWritePaths.add(file.path.replace(/\\/g, '/'))
+                  selfWritePaths.set(file.path.replace(/\\/g, '/'), Date.now())
                   // Ensure directory exists
                   const dir = path.dirname(filePath)
                   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })
