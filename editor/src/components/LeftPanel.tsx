@@ -29,8 +29,22 @@ export default function LeftPanel({
     return oa - ob;
   }) : [];
 
+  const viewMode = useEditorState().viewMode ?? '2d';
+
   return (
     <div className="left-panel">
+      {/* 2D / 3D Toggle */}
+      <div className="view-mode-toggle">
+        <button
+          className={`view-mode-btn ${viewMode === '2d' ? 'active' : ''}`}
+          onClick={() => dispatch({ type: 'SET_VIEW_MODE', mode: '2d' })}
+        >2D</button>
+        <button
+          className={`view-mode-btn ${viewMode === '3d' ? 'active' : ''}`}
+          onClick={() => dispatch({ type: 'SET_VIEW_MODE', mode: '3d' })}
+        >3D</button>
+      </div>
+
       {/* Floor Switcher */}
       <div className="panel-section floor-section">
         <div className="section-header">Floors</div>

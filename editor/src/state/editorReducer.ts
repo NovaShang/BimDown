@@ -1,7 +1,6 @@
 import type { EditorState, EditorAction } from './editorTypes.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
-
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 
 export const initialState: EditorState = {
@@ -10,6 +9,8 @@ export const initialState: EditorState = {
   loading: true,
 
   currentLevel: '',
+
+  viewMode: '2d',
 
   visibleLayers: new Set(),
   showGrid: true,
@@ -39,6 +40,9 @@ export const initialState: EditorState = {
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
+    case 'SET_VIEW_MODE':
+      return { ...state, viewMode: action.mode };
+
     case 'SET_PROJECT': {
       const { project, grids } = action;
       let currentLevel = '';

@@ -11,12 +11,16 @@ export interface ViewTransform {
   scale: number;
 }
 
+export type ViewMode = '2d' | '3d';
+
 export interface EditorState {
   project: ProjectData | null;
   grids: GridData[];
   loading: boolean;
 
   currentLevel: string;
+
+  viewMode: ViewMode;
 
   visibleLayers: Set<string>;
   showGrid: boolean;
@@ -51,6 +55,7 @@ export interface DrawingState {
 }
 
 export type EditorAction =
+  | { type: 'SET_VIEW_MODE'; mode: ViewMode }
   | { type: 'SET_PROJECT'; project: ProjectData; grids: GridData[] }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_LEVEL'; levelId: string }

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getLevelsWithData, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
@@ -9,6 +9,8 @@ import Canvas from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
 import FloatingProperties from './FloatingProperties.tsx';
+
+const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
 
 export default function EditorShell() {
   const state = useEditorState();
@@ -88,16 +90,24 @@ export default function EditorShell() {
         showGrid={state.showGrid}
       />
       <div className="canvas-area">
-        <Canvas
-          layers={processedLayers}
-          viewBox={viewBox}
-          grids={state.grids}
-          showGrid={state.showGrid}
-          activeFilter={state.activeFilter}
-          activeDiscipline={activeDiscipline}
-        />
-        <DrawingPropertiesBar />
-        <FloatingToolbar activeDiscipline={activeDiscipline} />
+        {state.viewMode === '3d' ? (
+          <Suspense fallback={<div className="loading-screen"><div className="loader"><div className="loader-spinner" /><p>Loading 3D viewer...</p></div></div>}>
+            <Canvas3D />
+          </Suspense>
+        ) : (
+          <>
+            <Canvas
+              layers={processedLayers}
+              viewBox={viewBox}
+              grids={state.grids}
+              showGrid={state.showGrid}
+              activeFilter={state.activeFilter}
+              activeDiscipline={activeDiscipline}
+            />
+            <DrawingPropertiesBar />
+            <FloatingToolbar activeDiscipline={activeDiscipline} />
+          </>
+        )}
         {selectedData.size > 0 && (
           <FloatingProperties selectedData={selectedData} />
         )}
