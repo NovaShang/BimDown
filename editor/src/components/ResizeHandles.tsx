@@ -1,19 +1,21 @@
 import { useCallback, useRef } from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
+import { snapPoint, type SnapResult } from '../utils/snap.ts';
 
 interface ResizeHandlesProps {
   element: CanonicalElement;
   svgRef: React.RefObject<SVGSVGElement | null>;
   scale: number;
+  onSnap?: (snap: SnapResult | null) => void;
 }
 
 const HANDLE_RADIUS = 0.36;
 
-export default function ResizeHandles({ element, svgRef, scale }: ResizeHandlesProps) {
+export default function ResizeHandles({ element, svgRef, scale, onSnap }: ResizeHandlesProps) {
   const r = HANDLE_RADIUS / scale;
   const sw = 0.09 / scale;
-  
+
   const dispatch = useEditorDispatch();
   const state = useEditorState();
   const stateRef = useRef(state);
@@ -32,6 +34,16 @@ export default function ResizeHandles({ element, svgRef, scale }: ResizeHandlesP
     return { x: svgPt.x, y: -svgPt.y };
   }, [svgRef]);
 
+  const snapSvgPoint = useCallback((clientX: number, clientY: number) => {
+    const raw = screenToSvg(clientX, clientY);
+    if (!raw) return null;
+    const elements = stateRef.current.document?.elements ?? null;
+    const exclude = new Set([element.id]);
+    const snap = snapPoint(raw, screenToSvg, elements, exclude);
+    onSnap?.(snap.snapX || snap.snapY ? snap : null);
+    return snap.point;
+  }, [screenToSvg, element.id, onSnap]);
+
   const handleDrag = useCallback((
     onMove: (svgX: number, svgY: number) => void,
   ) => {
@@ -45,7 +57,7 @@ export default function ResizeHandles({ element, svgRef, scale }: ResizeHandlesP
       beforeRef.current = stateRef.current.document?.elements.get(element.id) ?? null;
 
       const moveHandler = (me: PointerEvent) => {
-        const pt = screenToSvg(me.clientX, me.clientY);
+        const pt = snapSvgPoint(me.clientX, me.clientY);
         if (pt) onMove(pt.x, pt.y);
       };
 
@@ -63,12 +75,13 @@ export default function ResizeHandles({ element, svgRef, scale }: ResizeHandlesP
           });
         }
         beforeRef.current = null;
+        onSnap?.(null);
       };
 
       target.addEventListener('pointermove', moveHandler);
       target.addEventListener('pointerup', upHandler);
     };
-  }, [screenToSvg, element.id, dispatch]);
+  }, [snapSvgPoint, element.id, dispatch, onSnap]);
 
   if (element.geometry === 'line') {
     return (

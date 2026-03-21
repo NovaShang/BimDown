@@ -2,6 +2,7 @@ import type { ToolHandler, ToolContext } from './types.ts';
 import type { PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
+import { snapPoint } from '../utils/snap.ts';
 
 export const drawPointTool: ToolHandler = {
   cursor: 'crosshair',
@@ -13,6 +14,9 @@ export const drawPointTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const pt = snap.point;
+
     const target = state.drawingTarget;
     if (!target) return;
 
@@ -27,22 +31,28 @@ export const drawPointTool: ToolHandler = {
       tableName: target.tableName,
       discipline: target.discipline,
       geometry: 'point',
-      position: { x: svgPt.x - w / 2, y: svgPt.y - h / 2 },
+      position: { x: pt.x - w / 2, y: pt.y - h / 2 },
       width: w,
       height: h,
       attrs: { id, ...defaults },
     };
 
     ctx.dispatch({ type: 'CREATE_ELEMENT', element });
+    ctx.setSnap(null);
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
 
+    const state = ctx.getState();
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const pt = snap.point;
+
     ctx.dispatch({
       type: 'SET_DRAWING_STATE',
-      state: { points: [], cursor: svgPt },
+      state: { points: [], cursor: pt },
     });
+    ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
   },
 };

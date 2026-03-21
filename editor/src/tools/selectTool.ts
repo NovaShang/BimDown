@@ -1,5 +1,6 @@
 import type { CanonicalElement } from '../model/elements.ts';
 import type { ToolHandler, ToolContext } from './types.ts';
+import { snapPoint } from '../utils/snap.ts';
 
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
@@ -12,6 +13,11 @@ let startSvg = { x: 0, y: 0 };
 let clickedId: string | null = null;
 /** Snapshots of selected elements at drag start, for single undo entry */
 let beforeSnapshot: Map<string, CanonicalElement | null> | null = null;
+/** Accumulated SVG offset during move (for snap calculation) */
+let accumulatedDx = 0;
+let accumulatedDy = 0;
+/** Reference point used for snapping during move (first selected element's anchor) */
+let moveAnchor: { x: number; y: number } | null = null;
 
 export const selectTool: ToolHandler = {
   cursor: 'default',
@@ -27,6 +33,9 @@ export const selectTool: ToolHandler = {
     isMarquee = false;
     startScreen = { x: e.clientX, y: e.clientY };
     clickedId = ctx.findElementId(e.target);
+    accumulatedDx = 0;
+    accumulatedDy = 0;
+    moveAnchor = null;
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     startSvg = svgPt || { x: 0, y: 0 };
@@ -98,22 +107,52 @@ export const selectTool: ToolHandler = {
           const el = freshState.document?.elements.get(id);
           if (el) beforeSnapshot.set(id, el);
         }
+        // Compute move anchor from the first selected element
+        moveAnchor = getElementAnchor(beforeSnapshot);
       }
 
       if (isMoving) {
         const currentSvg = ctx.screenToSvg(e.clientX, e.clientY);
         if (currentSvg) {
-          const svgDx = currentSvg.x - startSvg.x;
-          const svgDy = currentSvg.y - startSvg.y;
-          startSvg = currentSvg;
-          const state = ctx.getState();
-          ctx.dispatch({
-            type: 'MOVE_ELEMENTS',
-            ids: Array.from(state.selectedIds),
-            dx: svgDx,
-            dy: svgDy,
-            preview: true,
-          });
+          const rawDx = currentSvg.x - startSvg.x;
+          const rawDy = currentSvg.y - startSvg.y;
+
+          if (moveAnchor) {
+            // Snap the anchor point's would-be position
+            const anchorTarget = { x: moveAnchor.x + rawDx, y: moveAnchor.y + rawDy };
+            const state = ctx.getState();
+            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds);
+            ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
+
+            const snappedDx = snap.point.x - moveAnchor.x;
+            const snappedDy = snap.point.y - moveAnchor.y;
+
+            // Dispatch incremental move
+            const incrementDx = snappedDx - accumulatedDx;
+            const incrementDy = snappedDy - accumulatedDy;
+            accumulatedDx = snappedDx;
+            accumulatedDy = snappedDy;
+
+            ctx.dispatch({
+              type: 'MOVE_ELEMENTS',
+              ids: Array.from(state.selectedIds),
+              dx: incrementDx,
+              dy: incrementDy,
+              preview: true,
+            });
+          } else {
+            const svgDx = currentSvg.x - startSvg.x;
+            const svgDy = currentSvg.y - startSvg.y;
+            startSvg = currentSvg;
+            const state = ctx.getState();
+            ctx.dispatch({
+              type: 'MOVE_ELEMENTS',
+              ids: Array.from(state.selectedIds),
+              dx: svgDx,
+              dy: svgDy,
+              preview: true,
+            });
+          }
         }
       }
     }
@@ -126,7 +165,6 @@ export const selectTool: ToolHandler = {
       const svg = ctx.svgRef.current;
       const container = ctx.containerRef.current;
       if (svg && container && state.drawingState === null) {
-        // Read marquee from a fresh getState call — the marquee may have been updated
         finishMarquee(ctx, e);
       }
       ctx.dispatch({ type: 'SET_MARQUEE', marquee: null });
@@ -152,8 +190,24 @@ export const selectTool: ToolHandler = {
     isMarquee = false;
     clickedId = null;
     beforeSnapshot = null;
+    accumulatedDx = 0;
+    accumulatedDy = 0;
+    moveAnchor = null;
+    ctx.setSnap(null);
   },
 };
+
+/** Get an anchor point from snapshot elements (use first element's primary point) */
+function getElementAnchor(snapshot: Map<string, CanonicalElement | null> | null): { x: number; y: number } | null {
+  if (!snapshot) return null;
+  for (const el of snapshot.values()) {
+    if (!el) continue;
+    if (el.geometry === 'line') return { x: el.start.x, y: el.start.y };
+    if (el.geometry === 'point') return { x: el.position.x, y: el.position.y };
+    if (el.geometry === 'polygon' && el.vertices.length > 0) return { x: el.vertices[0].x, y: el.vertices[0].y };
+  }
+  return null;
+}
 
 function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   const svg = ctx.svgRef.current;
@@ -161,9 +215,6 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   if (!svg || !container) return;
 
   const containerRect = container.getBoundingClientRect();
-  // Re-read marquee coordinates from the DOM state
-  // We stored them in startScreen but need the current mouse position too
-  // The marquee state is in the reducer, but we can compute from screen coords
   const marqueeRect = {
     x: Math.min(startScreen.x, _e.clientX - containerRect.left),
     y: Math.min(startScreen.y, _e.clientY - containerRect.top),

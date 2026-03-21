@@ -1,5 +1,6 @@
 import type { EditorAction, ViewTransform } from '../state/editorTypes.ts';
 import type { DocumentState } from '../model/document.ts';
+import type { SnapResult } from '../utils/snap.ts';
 
 // Transform actions are Canvas-local (not in EditorAction), but tools still dispatch them
 type TransformAction =
@@ -20,6 +21,8 @@ export interface ToolContext {
   screenToSvg: (clientX: number, clientY: number) => { x: number; y: number } | null;
   /** Find element ID from a DOM event target */
   findElementId: (target: EventTarget | null) => string | null;
+  /** Set active snap result for visual feedback */
+  setSnap: (snap: SnapResult | null) => void;
 }
 
 export interface ToolStateSnapshot {

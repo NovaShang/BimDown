@@ -6,10 +6,12 @@ import type { GridData } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { getToolHandler } from '../tools/registry.ts';
 import type { ToolContext, ToolStateSnapshot } from '../tools/types.ts';
+import type { SnapResult } from '../utils/snap.ts';
 import SelectionOverlay from './SelectionOverlay.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
 import ResizeHandles from './ResizeHandles.tsx';
+import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { ElementNode } from './ElementNode.tsx';
 
@@ -43,6 +45,9 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
   const [transform, setTransform] = useState<ViewTransform>({ x: 0, y: 0, scale: 1 });
   const transformRef = useRef(transform);
   transformRef.current = transform;
+
+  // ────── LOCAL SNAP STATE ──────
+  const [activeSnap, setActiveSnap] = useState<SnapResult | null>(null);
 
   // Reset transform when level changes
   useEffect(() => {
@@ -178,6 +183,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
     },
     screenToSvg,
     findElementId,
+    setSnap: setActiveSnap,
   }), [dispatch, screenToSvg, findElementId]);
 
   // Hover highlight — add/remove CSS class on hovered elements
@@ -427,11 +433,14 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
             // Always show handles for point geometry to indicate selection
             // For lines/polygons, only show handles if it's the ONLY item selected
             if (el.geometry === 'point' || selectedIds.size === 1) {
-              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} scale={transform.scale} />);
+              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} scale={transform.scale} onSnap={setActiveSnap} />);
             }
           }
           return handles;
         })()}
+
+        {/* Snap guides */}
+        <SnapOverlay snap={activeSnap} scale={transform.scale} />
 
         {/* Drawing preview overlay */}
         {state.drawingState && (

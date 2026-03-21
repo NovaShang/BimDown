@@ -2,6 +2,7 @@ import type { ToolHandler, ToolContext } from './types.ts';
 import type { LineElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
+import { snapPoint } from '../utils/snap.ts';
 
 export const drawLineTool: ToolHandler = {
   cursor: 'crosshair',
@@ -13,13 +14,17 @@ export const drawLineTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const pt = snap.point;
+    ctx.setSnap(snap);
+
     const points = state.drawingState?.points || [];
 
     if (points.length === 0) {
       // First click — set start point
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { points: [svgPt], cursor: svgPt },
+        state: { points: [pt], cursor: pt },
       });
     } else {
       // Second click — create element
@@ -27,13 +32,11 @@ export const drawLineTool: ToolHandler = {
       if (!target) return;
 
       const start = points[0];
-      const end = svgPt;
+      const end = pt;
 
-      // Generate unique ID
       const existingIds = new Set(
         Array.from((ctx as any).getState?.() || {}).length ? [] : []
       );
-      // Use a simple approach: dispatch will handle ID conflicts
       const id = generateId(target.tableName, existingIds);
 
       const element: LineElement = {
@@ -48,8 +51,8 @@ export const drawLineTool: ToolHandler = {
       };
 
       ctx.dispatch({ type: 'CREATE_ELEMENT', element });
-      // Reset drawing state for next element
       ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+      ctx.setSnap(null);
     }
   },
 
@@ -58,11 +61,17 @@ export const drawLineTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const pt = snap.point;
+
     if (state.drawingState && state.drawingState.points.length > 0) {
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { ...state.drawingState, cursor: svgPt },
+        state: { ...state.drawingState, cursor: pt },
       });
+      ctx.setSnap(snap);
+    } else {
+      ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
     }
   },
 };

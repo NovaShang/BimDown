@@ -2,6 +2,7 @@ import type { ToolHandler, ToolContext } from './types.ts';
 import type { PolygonElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
+import { snapPoint } from '../utils/snap.ts';
 
 /** Minimum 3 vertices to form a polygon */
 const MIN_VERTICES = 3;
@@ -18,15 +19,20 @@ export const drawPolygonTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const pt = snap.point;
+    ctx.setSnap(snap);
+
     const points = state.drawingState?.points || [];
 
     // Check if closing the polygon (click near first point)
     if (points.length >= MIN_VERTICES) {
       const first = points[0];
-      const dx = svgPt.x - first.x;
-      const dy = svgPt.y - first.y;
+      const dx = pt.x - first.x;
+      const dy = pt.y - first.y;
       if (Math.sqrt(dx * dx + dy * dy) < CLOSE_DISTANCE) {
         createPolygon(ctx, points);
+        ctx.setSnap(null);
         return;
       }
     }
@@ -34,7 +40,7 @@ export const drawPolygonTool: ToolHandler = {
     // Add vertex
     ctx.dispatch({
       type: 'SET_DRAWING_STATE',
-      state: { points: [...points, svgPt], cursor: svgPt },
+      state: { points: [...points, pt], cursor: pt },
     });
   },
 
@@ -43,11 +49,15 @@ export const drawPolygonTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const pt = snap.point;
+
     const points = state.drawingState?.points || [];
     ctx.dispatch({
       type: 'SET_DRAWING_STATE',
-      state: { points, cursor: svgPt },
+      state: { points, cursor: pt },
     });
+    ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
   },
 };
 
