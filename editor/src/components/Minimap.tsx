@@ -1,5 +1,6 @@
 import { useRef, useCallback } from 'react';
 import type { ProcessedLayer, ViewTransform } from '../state/editorTypes.ts';
+import { ElementNode } from './ElementNode.tsx';
 
 interface MinimapProps {
   layers: ProcessedLayer[];
@@ -74,11 +75,14 @@ export default function Minimap({ layers, viewBox, gridSvg, transform, setTransf
         )}
         {/* Layers */}
         {layers.map(layer => (
-          <g
-            key={layer.key}
-            opacity="0.6"
-            dangerouslySetInnerHTML={{ __html: layer.html }}
-          />
+          <g key={layer.key} opacity="0.6">
+            {layer.elements
+              ? layer.elements.map(el => (
+                  <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+                ))
+              : <g dangerouslySetInnerHTML={{ __html: layer.html }} />
+            }
+          </g>
         ))}
       </svg>
       {/* Viewport indicator */}
