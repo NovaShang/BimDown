@@ -5,7 +5,7 @@ import type { ViewTransform } from '../state/editorTypes.ts';
 import type { GridData } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { getToolHandler } from '../tools/registry.ts';
-import type { ToolContext, ToolStateSnapshot } from '../tools/types.ts';
+import type { ToolContext, ToolStateSnapshot, TransformAction } from '../tools/types.ts';
 import type { SnapResult } from '../utils/snap.ts';
 import SelectionOverlay from './SelectionOverlay.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
@@ -32,13 +32,6 @@ interface CanvasProps {
   activeFilter: string | null;
   activeDiscipline: string | null;
 }
-
-// Extended action type: includes both global EditorAction and Canvas-local transform actions
-type TransformAction =
-  | { type: 'SET_TRANSFORM'; transform: ViewTransform }
-  | { type: 'ZOOM_BY'; delta: number; centerX?: number; centerY?: number }
-  | { type: 'ZOOM_TO_FIT' }
-  | { type: 'ZOOM_TO_PERCENT'; percent: number };
 
 type CanvasAction = EditorAction | TransformAction;
 

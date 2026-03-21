@@ -3,7 +3,7 @@ import type { DocumentState } from '../model/document.ts';
 import type { SnapResult } from '../utils/snap.ts';
 
 // Transform actions are Canvas-local (not in EditorAction), but tools still dispatch them
-type TransformAction =
+export type TransformAction =
   | { type: 'SET_TRANSFORM'; transform: ViewTransform }
   | { type: 'ZOOM_BY'; delta: number; centerX?: number; centerY?: number }
   | { type: 'ZOOM_TO_FIT' }
