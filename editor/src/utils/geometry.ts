@@ -43,6 +43,22 @@ export function bboxIntersects(
   );
 }
 
+/**
+ * Resolve visual stroke width for a line element based on table type and drawing attrs.
+ * Walls use 'thickness', ducts/pipes use 'size_x'. Returns null if no mapping found.
+ */
+export function resolveLineStrokeWidth(tableName: string, attrs: Record<string, string>): number | null {
+  if (tableName === 'wall' || tableName === 'structure_wall') {
+    const v = parseFloat(attrs.thickness);
+    return v > 0 ? v : null;
+  }
+  if (attrs.size_x) {
+    const v = parseFloat(attrs.size_x);
+    if (v > 0) return v;
+  }
+  return null;
+}
+
 /** Normalize a marquee rect (ensure positive w/h) */
 export function normalizeRect(x1: number, y1: number, x2: number, y2: number) {
   return {

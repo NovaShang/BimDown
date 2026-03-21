@@ -1,4 +1,5 @@
 import type { DrawingState, Tool } from '../state/editorTypes.ts';
+import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 
 interface DrawingOverlayProps {
   drawingState: DrawingState;
@@ -14,7 +15,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   if (activeTool === 'draw_line') {
     if (points.length === 1 && cursor) {
       // Show real thickness for walls/ducts/pipes
-      const thickness = resolveLineThickness(tableName, drawingAttrs);
+      const thickness = tableName ? (resolveLineStrokeWidth(tableName, drawingAttrs) ?? 0) : 0;
       const showThick = thickness > 0;
       return (
         <g className="drawing-overlay" transform="scale(1,-1)">
@@ -112,17 +113,4 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   }
 
   return null;
-}
-
-function resolveLineThickness(tableName: string | null, da: Record<string, string>): number {
-  if (!tableName) return 0;
-  if (tableName === 'wall' || tableName === 'structure_wall') {
-    const v = parseFloat(da.thickness);
-    return v > 0 ? v : 0;
-  }
-  if (da.size_x) {
-    const v = parseFloat(da.size_x);
-    return v > 0 ? v : 0;
-  }
-  return 0;
 }

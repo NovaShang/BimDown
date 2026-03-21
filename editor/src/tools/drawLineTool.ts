@@ -3,6 +3,7 @@ import type { LineElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
+import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 
 export const drawLineTool: ToolHandler = {
   cursor: 'crosshair',
@@ -39,7 +40,7 @@ export const drawLineTool: ToolHandler = {
       const da = state.drawingAttrs;
 
       // Resolve strokeWidth: walls use 'thickness', ducts/pipes use 'size_x'
-      const strokeWidth = resolveStrokeWidth(target.tableName, da);
+      const strokeWidth = resolveLineStrokeWidth(target.tableName, da) ?? FALLBACK_STROKE[target.tableName] ?? 0.1;
 
       // Merge drawingAttrs into element attrs
       const baseAttrs = defaultAttrs(target.tableName, '');
@@ -82,25 +83,8 @@ export const drawLineTool: ToolHandler = {
   },
 };
 
-function resolveStrokeWidth(tableName: string, da: Record<string, string>): number {
-  // Wall thickness → strokeWidth
-  if (tableName === 'wall' || tableName === 'structure_wall') {
-    const v = parseFloat(da.thickness);
-    if (v > 0) return v;
-    return 0.2;
-  }
-  // Ducts/pipes/conduits — use size_x as visual width
-  if (da.size_x) {
-    const v = parseFloat(da.size_x);
-    if (v > 0) return v;
-  }
-  // Fallbacks
-  switch (tableName) {
-    case 'duct': return 0.2;
-    case 'pipe': return 0.05;
-    case 'conduit': return 0.025;
-    case 'cable_tray': return 0.1;
-    case 'door': case 'window': return 0.1;
-    default: return 0.1;
-  }
-}
+const FALLBACK_STROKE: Record<string, number> = {
+  wall: 0.2, structure_wall: 0.2,
+  duct: 0.2, pipe: 0.05, conduit: 0.025, cable_tray: 0.1,
+  door: 0.1, window: 0.1,
+};
