@@ -17,6 +17,13 @@ import { ElementNode } from './ElementNode.tsx';
 import { WallJoins } from './WallJoins.tsx';
 import { Icon } from './Icons.tsx';
 
+// Safari-only event for trackpad pinch gestures
+interface GestureEvent extends UIEvent {
+  scale: number;
+  clientX: number;
+  clientY: number;
+}
+
 interface CanvasProps {
   layers: ProcessedLayer[];
   viewBox: { x: number; y: number; w: number; h: number } | null;
@@ -135,6 +142,9 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
         globalDispatch(action);
     }
   }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent]);
+
+  // Track last gesture scale to compute incremental delta
+  const lastGestureScale = useRef(1);
 
   // Middle-mouse panning (works across all tools)
   const middlePanning = useRef(false);
@@ -304,13 +314,53 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
     };
   }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent]);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const rect = containerRef.current?.getBoundingClientRect();
-    if (!rect) return;
-    applyZoomBy(delta, e.clientX - rect.left, e.clientY - rect.top);
-  }, [applyZoomBy]);
+  // Native wheel + gesture listeners with { passive: false } so
+  // preventDefault() actually suppresses browser zoom on trackpad.
+  const hasViewBox = !!viewBox;
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      if (e.ctrlKey || e.metaKey) {
+        // Pinch-to-zoom on trackpad (or Ctrl+scroll with mouse wheel)
+        const delta = Math.pow(2, -e.deltaY * 0.01);
+        const rect = el.getBoundingClientRect();
+        applyZoomBy(delta, e.clientX - rect.left, e.clientY - rect.top);
+      } else {
+        // Two-finger scroll on trackpad (or plain mouse wheel) → pan
+        setTransform(prev => ({
+          ...prev,
+          x: prev.x - e.deltaX,
+          y: prev.y - e.deltaY,
+        }));
+      }
+    };
+
+    // Safari fires gesture events for trackpad pinch instead of wheel+ctrlKey
+    const onGestureStart = (e: Event) => {
+      e.preventDefault();
+      lastGestureScale.current = (e as GestureEvent).scale;
+    };
+    const onGestureChange = (e: Event) => {
+      e.preventDefault();
+      const ge = e as GestureEvent;
+      const delta = ge.scale / lastGestureScale.current;
+      lastGestureScale.current = ge.scale;
+      const rect = el.getBoundingClientRect();
+      applyZoomBy(delta, ge.clientX - rect.left, ge.clientY - rect.top);
+    };
+
+    el.addEventListener('wheel', onWheel, { passive: false });
+    el.addEventListener('gesturestart', onGestureStart, { passive: false });
+    el.addEventListener('gesturechange', onGestureChange, { passive: false });
+    return () => {
+      el.removeEventListener('wheel', onWheel);
+      el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('gesturechange', onGestureChange);
+    };
+  }, [applyZoomBy, hasViewBox]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     // Middle mouse always pans regardless of tool
@@ -369,7 +419,6 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
       ref={containerRef}
       className={`canvas ${cursorClass}`}
       style={{ '--canvas-scale': transform.scale } as React.CSSProperties}
-      onWheel={handleWheel}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
