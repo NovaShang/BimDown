@@ -14,6 +14,7 @@ import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { ElementNode, pruneCache } from './ElementNode.tsx';
+import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { WallJoins } from './WallJoins.tsx';
 import { Icon } from './Icons.tsx';
 
@@ -548,13 +549,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
 
 function getElementType(id: string): string {
   const prefix = id.replace(/-\d+$/, '');
-  const prefixMap: Record<string, string> = {
-    w: 'wall', sw: 'structure_wall', c: 'column', sc: 'structure_column',
-    d: 'door', wi: 'window', sp: 'space', sl: 'slab', ssl: 'structure_slab',
-    st: 'stair', du: 'duct', pi: 'pipe', eq: 'equipment', te: 'terminal',
-    co: 'conduit', ct: 'cable_tray', be: 'beam', br: 'brace',
-  };
-  const tableName = prefixMap[prefix];
+  const tableName = REVERSE_PREFIX_MAP[prefix];
   const style = tableName ? LAYER_STYLES[tableName] : undefined;
   return style?.displayName || prefix;
 }

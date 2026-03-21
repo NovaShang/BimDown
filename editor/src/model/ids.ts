@@ -7,6 +7,11 @@ const PREFIX_MAP: Record<string, string> = {
   conduit: 'co', cable_tray: 'ct', beam: 'be', brace: 'br',
 };
 
+/** Reverse lookup: prefix → tableName */
+export const REVERSE_PREFIX_MAP: Record<string, string> = Object.fromEntries(
+  Object.entries(PREFIX_MAP).map(([table, prefix]) => [prefix, table])
+);
+
 export function generateId(tableName: string, existingIds: Set<string>): string {
   const prefix = PREFIX_MAP[tableName] || 'x';
   let n = 1;
