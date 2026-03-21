@@ -3,6 +3,8 @@ import { useEffect, useState, type RefObject } from 'react';
 interface SelectionOverlayProps {
   svgRef: RefObject<SVGSVGElement | null>;
   selectedIds: Set<string>;
+  /** Changes when element positions update, to trigger re-measure */
+  renderKey?: unknown;
 }
 
 interface SelectionRect {
@@ -13,7 +15,7 @@ interface SelectionRect {
   h: number;
 }
 
-export default function SelectionOverlay({ svgRef, selectedIds }: SelectionOverlayProps) {
+export default function SelectionOverlay({ svgRef, selectedIds, renderKey }: SelectionOverlayProps) {
   const [rects, setRects] = useState<SelectionRect[]>([]);
 
   useEffect(() => {
@@ -60,7 +62,7 @@ export default function SelectionOverlay({ svgRef, selectedIds }: SelectionOverl
     }
 
     setRects(result);
-  }, [selectedIds, svgRef]);
+  }, [selectedIds, svgRef, renderKey]);
 
   if (rects.length === 0) return null;
 

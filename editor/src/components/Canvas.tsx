@@ -299,7 +299,7 @@ export default function Canvas({ layers, viewBox, gridSvg, activeFilter }: Canva
         ))}
 
         {/* Selection overlay */}
-        <SelectionOverlay svgRef={svgRef} selectedIds={selectedIds} />
+        <SelectionOverlay svgRef={svgRef} selectedIds={selectedIds} renderKey={state.document} />
 
         {/* Resize handles in edit mode */}
         {state.editMode && selectedIds.size === 1 && state.document && (() => {
