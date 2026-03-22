@@ -1,21 +1,33 @@
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
 
-/** Door: frame rect + swing arc. */
+/** Door: frame rectangle along the door line + swing arc. */
 export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'line') return null;
-  const { start, strokeWidth, id, attrs } = el as LineElement;
-  const hw = strokeWidth / 2;
-  const operation = attrs.operation || 'single_swing';
+  const { start, end, strokeWidth, id, attrs } = el as LineElement;
+  const dx = end.x - start.x, dy = end.y - start.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 0.001) return null;
 
-  const r = hw;
+  const nx = -dy / len, ny = dx / len; // perpendicular normal
+  const frameDepth = 0.05;
+
+  // Frame rectangle corners
+  const p1 = `${start.x + nx * frameDepth / 2},${start.y + ny * frameDepth / 2}`;
+  const p2 = `${end.x + nx * frameDepth / 2},${end.y + ny * frameDepth / 2}`;
+  const p3 = `${end.x - nx * frameDepth / 2},${end.y - ny * frameDepth / 2}`;
+  const p4 = `${start.x - nx * frameDepth / 2},${start.y - ny * frameDepth / 2}`;
+
+  // Swing arc from start point, radius = door width
+  const operation = attrs.operation || 'single_swing';
   const showArc = operation.includes('swing');
-  const arcD = `M ${start.x - r},${start.y} A ${r},${r} 0 0 1 ${start.x},${start.y + r}`;
 
   return (
     <g data-id={id}>
-      <rect x={start.x - hw} y={start.y - 0.025} width={strokeWidth} height={0.05} fill="#0077b6" />
+      <polygon points={`${p1} ${p2} ${p3} ${p4}`} fill="#0077b6" stroke="none" />
       {showArc && (
-        <path d={arcD} fill="none" stroke="#0077b6" strokeWidth={0.02} strokeDasharray="0.06,0.04" />
+        <path
+          d={`M ${end.x},${end.y} A ${len},${len} 0 0 1 ${start.x + nx * len},${start.y + ny * len}`}
+          fill="none" stroke="#0077b6" strokeWidth={0.02} strokeDasharray="0.06,0.04" />
       )}
     </g>
   );

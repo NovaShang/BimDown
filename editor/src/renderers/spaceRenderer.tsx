@@ -30,20 +30,22 @@ export function renderSpace(el: CanonicalElement): React.JSX.Element | null {
   const number = attrs.number || '';
   const name = attrs.name || '';
 
+  // Parent already applies scale(1,-1). Text needs scale(1,-1) at its
+  // position to flip back upright, since SVG text renders in screen Y-down.
   return (
     <g data-id={id}>
       <polygon points={pts} fill="rgba(58,134,255,0.06)" stroke="#3a86ff" strokeWidth={0.03} strokeDasharray="0.15,0.08" />
       {number && (
-        <text x={c.x} y={-c.y} textAnchor="middle" dominantBaseline="central"
+        <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
           fontSize={0.4} fontFamily="Inter, sans-serif" fontWeight={700} fill="#1e3a5f"
-          transform={`scale(1,-1) translate(0,${-2 * c.y})`}>
+          transform={`translate(${c.x},${c.y}) scale(1,-1) translate(${-c.x},${-c.y})`}>
           {number}
         </text>
       )}
       {name && (
-        <text x={c.x} y={-c.y + 0.45} textAnchor="middle" dominantBaseline="central"
+        <text x={c.x} y={c.y - 0.45} textAnchor="middle" dominantBaseline="central"
           fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={400} fill="#4a6fa5"
-          transform={`scale(1,-1) translate(0,${-2 * c.y + 0.9})`}>
+          transform={`translate(${c.x},${c.y - 0.45}) scale(1,-1) translate(${-c.x},${-(c.y - 0.45)})`}>
           {name}
         </text>
       )}
