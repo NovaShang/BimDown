@@ -30,7 +30,7 @@ function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
   });
 
   geo.rotateX(-Math.PI / 2);
-  geo.translate(0, params.baseY + params.height, 0);
+  geo.translate(0, params.baseY, 0);
 
   return geo;
 }

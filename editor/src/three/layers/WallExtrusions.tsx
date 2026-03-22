@@ -91,7 +91,7 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
 
       // Extrude goes along Z; rotate to go along Y
       geo.rotateX(-Math.PI / 2);
-      geo.translate(0, baseY + height, 0);
+      geo.translate(0, baseY, 0);
 
       result.push({ id: w.id, geometry: geo });
     }
