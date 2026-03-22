@@ -59,6 +59,28 @@ function addEndpoint(
   entry.walls.push({ seg, which, dx, dy, angle: Math.atan2(dy, dx), halfWidth: seg.halfWidth });
 }
 
+/** Distance from point P to line segment AB, and the projection parameter t (0..1). */
+function pointToSegDist(P: Pt, A: Pt, B: Pt): { dist: number; t: number } {
+  const abx = B.x - A.x, aby = B.y - A.y;
+  const len2 = abx * abx + aby * aby;
+  if (len2 < 1e-10) return { dist: Infinity, t: 0 };
+  let t = ((P.x - A.x) * abx + (P.y - A.y) * aby) / len2;
+  t = Math.max(0, Math.min(1, t));
+  const px = A.x + t * abx - P.x, py = A.y + t * aby - P.y;
+  return { dist: Math.sqrt(px * px + py * py), t };
+}
+
+export interface TJunction {
+  /** The wall whose endpoint hits the middle of another wall */
+  tWallId: string;
+  tWhich: 'start' | 'end';
+  /** The main wall being hit */
+  mainWallId: string;
+  /** The two points where the T-wall sides meet the main wall outline */
+  left: Pt;
+  right: Pt;
+}
+
 function buildJunctions(walls: WallSegment[]): JunctionMap {
   const map: JunctionMap = new Map();
   for (const seg of walls) {
@@ -66,6 +88,94 @@ function buildJunctions(walls: WallSegment[]): JunctionMap {
     addEndpoint(map, seg.x2, seg.y2, seg, 'end', seg.x1 - seg.x2, seg.y1 - seg.y2);
   }
   return map;
+}
+
+/**
+ * Detect T-junctions: a wall endpoint landing on another wall's centerline (not at its endpoints).
+ * Returns adjustments for the T-wall's endpoint so its sides extend to the main wall's outline.
+ */
+function detectTJunctions(walls: WallSegment[]): TJunction[] {
+  const result: TJunction[] = [];
+  // Build set of known junction keys (endpoints shared by 2+ walls)
+  const epCount = new Map<string, number>();
+  for (const seg of walls) {
+    for (const k of [ptKey(seg.x1, seg.y1), ptKey(seg.x2, seg.y2)]) {
+      epCount.set(k, (epCount.get(k) ?? 0) + 1);
+    }
+  }
+
+  for (const seg of walls) {
+    const endpoints: [Pt, 'start' | 'end'][] = [
+      [{ x: seg.x1, y: seg.y1 }, 'start'],
+      [{ x: seg.x2, y: seg.y2 }, 'end'],
+    ];
+    for (const [ep, which] of endpoints) {
+      const k = ptKey(ep.x, ep.y);
+      if ((epCount.get(k) ?? 0) >= 2) continue; // already a regular junction
+
+      for (const other of walls) {
+        if (other.id === seg.id) continue;
+        const A = { x: other.x1, y: other.y1 };
+        const B = { x: other.x2, y: other.y2 };
+        const { dist, t } = pointToSegDist(ep, A, B);
+        if (dist > other.halfWidth * 1.1 || t < 0.01 || t > 0.99) continue;
+
+        // T-junction found. Compute where the T-wall's two sides meet the main wall's outline.
+        const mainDx = B.x - A.x, mainDy = B.y - A.y;
+        const mainLen = Math.sqrt(mainDx * mainDx + mainDy * mainDy);
+        if (mainLen < 0.001) continue;
+        const mnx = -mainDy / mainLen, mny = mainDx / mainLen; // main wall normal
+        const mainHw = other.halfWidth;
+
+        // Main wall outline side 1: A + n*hw → B + n*hw
+        // Main wall outline side 2: A - n*hw → B - n*hw
+        const side1A = { x: A.x + mnx * mainHw, y: A.y + mny * mainHw };
+        const side1B = { x: B.x + mnx * mainHw, y: B.y + mny * mainHw };
+        const side2A = { x: A.x - mnx * mainHw, y: A.y - mny * mainHw };
+        const side2B = { x: B.x - mnx * mainHw, y: B.y - mny * mainHw };
+
+        // T-wall direction (away from junction = into the wall)
+        const awayDx = which === 'start' ? seg.x2 - seg.x1 : seg.x1 - seg.x2;
+        const awayDy = which === 'start' ? seg.y2 - seg.y1 : seg.y1 - seg.y2;
+        const awayLen = Math.sqrt(awayDx * awayDx + awayDy * awayDy);
+        if (awayLen < 0.001) continue;
+        const tux = awayDx / awayLen, tuy = awayDy / awayLen;
+        const tnx = -tuy, tny = tux; // T-wall normal
+        const tHw = seg.halfWidth;
+
+        // T-wall's two side origins at the endpoint
+        const tLeft = { x: ep.x - tnx * tHw, y: ep.y + tux * tHw }; // CCW side
+        const tRight = { x: ep.x + tuy * tHw, y: ep.y - tux * tHw }; // CW side
+
+        // Intersect each T-wall side ray (going opposite to away dir) with main wall outline sides
+        const backDir = { x: -tux, y: -tuy };
+        const mainDir = { x: mainDx / mainLen, y: mainDy / mainLen };
+
+        const intL1 = rayIntersect(tLeft, backDir, side1A, mainDir);
+        const intL2 = rayIntersect(tLeft, backDir, side2A, mainDir);
+        const intR1 = rayIntersect(tRight, backDir, side1A, mainDir);
+        const intR2 = rayIntersect(tRight, backDir, side2A, mainDir);
+
+        // Pick the intersection closest to the endpoint for each side
+        const pickClosest = (a: Pt | null, b: Pt | null): Pt | null => {
+          if (!a && !b) return null;
+          if (!a) return b;
+          if (!b) return a;
+          const da = (a.x - ep.x) ** 2 + (a.y - ep.y) ** 2;
+          const db = (b.x - ep.x) ** 2 + (b.y - ep.y) ** 2;
+          return da < db ? a : b;
+        };
+
+        const left = pickClosest(intL1, intL2);
+        const right = pickClosest(intR1, intR2);
+        if (!left || !right) continue;
+
+        result.push({ tWallId: seg.id, tWhich: which, mainWallId: other.id, left, right });
+        break;
+      }
+    }
+  }
+  return result;
 }
 
 /** CW side (−normal_away) of wall at junction point P */
@@ -157,6 +267,13 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
         fill,
       });
     }
+  }
+
+  // T-junction handling: extend T-wall sides to meet main wall outline
+  const tJunctions = detectTJunctions(walls);
+  for (const tj of tJunctions) {
+    const key = `${tj.tWallId}:${tj.tWhich}`;
+    result.adjustments.set(key, { left: tj.left, right: tj.right });
   }
 
   return result;
