@@ -1,8 +1,5 @@
 import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData } from '../types.ts';
-import { DISCIPLINE_TABLES } from '../types.ts';
-
-const SAMPLE_DATA_BASE = '/sample_data';
-const DISCIPLINES = ['architectural', 'structural', 'hvac', 'plumbing', 'electrical'];
+import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 
 function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
@@ -64,31 +61,30 @@ async function fetchText(path: string): Promise<string | null> {
   }
 }
 
-export async function loadProject(): Promise<ProjectData> {
+export async function loadProject(model: string): Promise<ProjectData> {
+  const base = `/sample_data/${model}`;
+
   let levels: Level[] = [];
-  for (const disc of DISCIPLINES) {
-    const text = await fetchText(`${SAMPLE_DATA_BASE}/${disc}/global/level.csv`);
-    if (text) {
-      const rows = parseCsv(text);
-      levels = rows.map(r => ({
-        id: r.id,
-        number: r.number || '',
-        name: r.name || '',
-        elevation: parseFloat(r.elevation) || 0,
-      }));
-      break;
-    }
+  const text = await fetchText(`${base}/global/level.csv`);
+  if (text) {
+    const rows = parseCsv(text);
+    levels = rows.map(r => ({
+      id: r.id,
+      number: r.number || '',
+      name: r.name || '',
+      elevation: parseFloat(r.elevation) || 0,
+    }));
   }
 
   levels.sort((a, b) => a.elevation - b.elevation);
 
   const floors = new Map<string, FloorData>();
 
-  // Build all fetch tasks upfront, then execute in parallel
+  // Build fetch tasks for all disciplines × tables × levels
   const fetchTasks: { disc: string; level: Level; tableName: string }[] = [];
-  for (const disc of DISCIPLINES) {
+  for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
     for (const level of levels) {
-      for (const tableName of (DISCIPLINE_TABLES[disc] ?? [])) {
+      for (const tableName of tables) {
         fetchTasks.push({ disc, level, tableName });
       }
     }
@@ -96,7 +92,7 @@ export async function loadProject(): Promise<ProjectData> {
 
   const results = await Promise.all(
     fetchTasks.map(async ({ disc, level, tableName }) => {
-      const levelDir = `${SAMPLE_DATA_BASE}/${disc}/${level.id}`;
+      const levelDir = `${base}/${level.id}`;
       const [svgContent, csvContent] = await Promise.all([
         fetchText(`${levelDir}/${tableName}s.svg`),
         fetchText(`${levelDir}/${tableName}.csv`),
@@ -135,26 +131,24 @@ export async function loadProject(): Promise<ProjectData> {
 }
 
 
-export async function loadGrids(): Promise<GridData[]> {
-  for (const disc of DISCIPLINES) {
-    const text = await fetchText(`${SAMPLE_DATA_BASE}/${disc}/global/grid.csv`);
-    if (text) {
-      const rows = parseCsv(text);
-      return rows.map(r => ({
-        id: r.id,
-        number: r.number || '',
-        x1: parseFloat(r.start_x) || 0,
-        y1: parseFloat(r.start_y) || 0,
-        x2: parseFloat(r.end_x) || 0,
-        y2: parseFloat(r.end_y) || 0,
-      }));
-    }
+export async function loadGrids(model: string): Promise<GridData[]> {
+  const text = await fetchText(`/sample_data/${model}/global/grid.csv`);
+  if (text) {
+    const rows = parseCsv(text);
+    return rows.map(r => ({
+      id: r.id,
+      number: r.number || '',
+      x1: parseFloat(r.start_x) || 0,
+      y1: parseFloat(r.start_y) || 0,
+      x2: parseFloat(r.end_x) || 0,
+      y2: parseFloat(r.end_y) || 0,
+    }));
   }
   return [];
 }
 
-export async function loadLayer(discipline: string, levelId: string, tableName: string): Promise<LayerData | null> {
-  const levelDir = `${SAMPLE_DATA_BASE}/${discipline}/${levelId}`;
+export async function loadLayer(model: string, levelId: string, tableName: string): Promise<LayerData | null> {
+  const levelDir = `/sample_data/${model}/${levelId}`;
   const svgPath = `${levelDir}/${tableName}s.svg`;
   const csvPath = `${levelDir}/${tableName}.csv`;
 
@@ -172,7 +166,7 @@ export async function loadLayer(discipline: string, levelId: string, tableName: 
 
   return {
     tableName,
-    discipline,
+    discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architechture',
     svgContent,
     csvRows: csvMap,
   };

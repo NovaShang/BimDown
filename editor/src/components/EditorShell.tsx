@@ -57,7 +57,7 @@ export default function EditorShell() {
       const changedKeys = new Set(pendingKeys.current);
       pendingKeys.current.clear();
       
-      persistDocument(doc, vbStr, changedKeys).catch(err => console.error('Auto-persist failed:', err));
+      persistDocument(doc, vbStr, currentState.modelName, changedKeys).catch(err => console.error('Auto-persist failed:', err));
     }, 100);
     return () => clearTimeout(persistTimer.current);
   }, [state.documentVersion, state.lastMutation]);

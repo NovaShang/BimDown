@@ -463,7 +463,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
 
         {/* Data layers */}
         {layers.map(layer => {
-          const isBackground = layer.discipline === 'architectural' && activeDiscipline !== 'architectural';
+          const isBackground = layer.discipline === 'architechture' && activeDiscipline !== 'architechture';
           const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
           const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;
 

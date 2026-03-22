@@ -4,6 +4,8 @@ import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
 import { connectFileWatcher } from './utils/fileWatcher.ts';
 import EditorShell from './components/EditorShell.tsx';
 
+const model = new URLSearchParams(window.location.search).get('model') || 'architectural';
+
 function AppInner() {
   const dispatch = useEditorDispatch();
 
@@ -11,44 +13,46 @@ function AppInner() {
     let active = true;
 
     const loadData = async () => {
-      const [project, grids] = await Promise.all([loadProject(), loadGrids()]);
+      const [project, grids] = await Promise.all([loadProject(model), loadGrids(model)]);
       if (active) {
-        dispatch({ type: 'SET_PROJECT', project, grids });
+        dispatch({ type: 'SET_PROJECT', model, project, grids });
       }
     };
 
     loadData();
 
     const disconnect = connectFileWatcher(async (path) => {
-      console.log('Sample data changed:', path);
       const parts = path.split('/');
+      // File watcher paths are relative to sample_data/: {model}/{levelId}/{fileName}
+      if (parts.length < 3 || parts[0] !== model) {
+        // Not our model — ignore
+        return;
+      }
 
-      if (parts.length >= 3) {
-        const discipline = parts[0];
-        const levelId = parts[1];
-        const fileName = parts[2];
+      const levelId = parts[1];
+      const fileName = parts[2];
+      console.log('Model data changed:', model, levelId, fileName);
 
-        if (levelId === 'global' && fileName === 'level.csv') {
-          loadData();
-          return;
+      if (levelId === 'global' && fileName === 'level.csv') {
+        loadData();
+        return;
+      }
+      if (levelId === 'global' && fileName === 'grid.csv') {
+        const grids = await loadGrids(model);
+        if (active) dispatch({ type: 'UPDATE_GRIDS', grids });
+        return;
+      }
+
+      let tableName = '';
+      if (fileName.endsWith('.csv')) tableName = fileName.slice(0, -4);
+      else if (fileName.endsWith('s.svg')) tableName = fileName.slice(0, -5);
+
+      if (tableName) {
+        const layer = await loadLayer(model, levelId, tableName);
+        if (layer && active) {
+          dispatch({ type: 'UPDATE_LAYER', levelId, layer });
         }
-        if (levelId === 'global' && fileName === 'grid.csv') {
-          const grids = await loadGrids();
-          if (active) dispatch({ type: 'UPDATE_GRIDS', grids });
-          return;
-        }
-
-        let tableName = '';
-        if (fileName.endsWith('.csv')) tableName = fileName.slice(0, -4);
-        else if (fileName.endsWith('s.svg')) tableName = fileName.slice(0, -5);
-
-        if (tableName) {
-          const layer = await loadLayer(discipline, levelId, tableName);
-          if (layer && active) {
-            dispatch({ type: 'UPDATE_LAYER', levelId, layer });
-          }
-          return;
-        }
+        return;
       }
 
       loadData();

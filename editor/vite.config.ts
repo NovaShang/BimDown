@@ -43,13 +43,15 @@ export default defineConfig({
             req.on('data', (chunk: Buffer) => { body += chunk.toString() })
             req.on('end', () => {
               try {
-                const { files } = JSON.parse(body) as { files: { path: string; content: string }[] }
+                const { model, files } = JSON.parse(body) as { model?: string; files: { path: string; content: string }[] }
+                const modelDir = model ? path.join(sampleDataDir, model) : sampleDataDir
                 for (const file of files) {
-                  const filePath = path.join(sampleDataDir, file.path)
+                  const filePath = path.join(modelDir, file.path)
                   // Ensure no path traversal
                   if (!filePath.startsWith(sampleDataDir)) continue
-                  // Track as self-write to suppress watch events
-                  selfWritePaths.set(file.path.replace(/\\/g, '/'), Date.now())
+                  // Track as self-write to suppress watch events (path relative to sampleDataDir)
+                  const relPath = model ? `${model}/${file.path}` : file.path
+                  selfWritePaths.set(relPath.replace(/\\/g, '/'), Date.now())
                   // Ensure directory exists
                   const dir = path.dirname(filePath)
                   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })

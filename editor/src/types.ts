@@ -67,17 +67,21 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
 };
 
 export const DISCIPLINE_COLORS: Record<string, string> = {
-  architectural: '#3a86ff',
-  structural:    '#e07a2f',
-  hvac:          '#00b4d8',
-  plumbing:      '#06d6a0',
-  electrical:    '#ffd166',
+  architechture: '#3a86ff',
+  structure:     '#e07a2f',
+  mep:           '#00b4d8',
 };
 
 export const DISCIPLINE_TABLES: Record<string, string[]> = {
-  architectural: ['wall', 'column', 'door', 'window', 'space', 'slab', 'stair', 'terminal'],
-  structural:    ['structure_wall', 'structure_column', 'structure_slab', 'slab', 'beam', 'brace'],
-  hvac:          ['duct', 'equipment', 'terminal'],
-  plumbing:      ['pipe', 'equipment', 'terminal'],
-  electrical:    ['conduit', 'cable_tray', 'equipment', 'terminal'],
+  architechture: ['wall', 'column', 'door', 'window', 'space', 'slab', 'stair'],
+  structure:     ['structure_wall', 'structure_column', 'structure_slab', 'beam', 'brace', 'isolated_foundation', 'raft_foundation', 'strip_foundation'],
+  mep:           ['duct', 'pipe', 'conduit', 'cable_tray', 'equipment', 'terminal', 'mep_node'],
 };
+
+export const TABLE_TO_DISCIPLINE: Record<string, string> = Object.fromEntries(
+  Object.entries(DISCIPLINE_TABLES).flatMap(([disc, tables]) =>
+    tables.map(t => [t, disc])
+  )
+);
+
+export const ALL_TABLE_NAMES: string[] = Object.values(DISCIPLINE_TABLES).flat();

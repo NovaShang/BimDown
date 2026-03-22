@@ -11,7 +11,7 @@ export function useFloorElements(): CanonicalElement[] {
     const result: CanonicalElement[] = [];
     for (const el of document.elements.values()) {
       // Match 2D behavior: only show active discipline + architectural as background
-      if (el.discipline !== activeDiscipline && el.discipline !== 'architectural') continue;
+      if (el.discipline !== activeDiscipline && el.discipline !== 'architechture') continue;
       const key = `${el.discipline}/${el.tableName}`;
       if (visibleLayers.has(key)) {
         result.push(el);

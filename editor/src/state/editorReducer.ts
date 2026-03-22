@@ -4,6 +4,7 @@ import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 
 export const initialState: EditorState = {
+  modelName: '',
   project: null,
   grids: [],
   loading: true,
@@ -53,7 +54,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, viewMode: action.mode };
 
     case 'SET_PROJECT': {
-      const { project, grids } = action;
+      const { model, project, grids } = action;
       let currentLevel = '';
       let visibleLayers = new Set<string>();
       let activeDiscipline: string | null = null;
@@ -70,7 +71,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
 
-      return { ...state, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
+      return { ...state, modelName: model, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
     }
 
     case 'SET_LOADING':
@@ -116,7 +117,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           ...state,
           currentLevel: '__all__',
           visibleLayers: allLayers,
-          activeDiscipline: state.activeDiscipline ?? 'architectural',
+          activeDiscipline: state.activeDiscipline ?? 'architechture',
           selectedIds: new Set(),
           hoveredId: null,
           activeFilter: null,

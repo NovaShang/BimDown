@@ -1,5 +1,6 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
 import type { LayerData, CsvRow } from '../types.ts';
+import { DISCIPLINE_TABLES } from '../types.ts';
 import { processSvg, extractInnerSvg, extractViewBox } from '../utils/processor.ts';
 import { groupByLayer } from '../model/serialize.ts';
 
@@ -49,7 +50,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   return orderedLayers
-    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architectural') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architechture') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
@@ -70,6 +71,8 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
+  const allDisciplines = Object.keys(DISCIPLINE_TABLES);
+
   if (state.currentLevel === '__all__' && state.project) {
     // Aggregate layers across all floors, deduplicating by discipline/tableName
     const byDiscipline = new Map<string, Map<string, LayerData>>();
@@ -78,7 +81,6 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
         if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, new Map());
         const existing = byDiscipline.get(layer.discipline)!.get(layer.tableName);
         if (existing) {
-          // Merge csvRows counts
           const merged = new Map(existing.csvRows);
           for (const [k, v] of layer.csvRows) merged.set(k, v);
           byDiscipline.get(layer.discipline)!.set(layer.tableName, { ...existing, csvRows: merged });
@@ -87,24 +89,24 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
         }
       }
     }
-    return Array.from(byDiscipline.entries()).map(([discipline, layerMap]) => ({
+    return allDisciplines.map(discipline => ({
       discipline,
-      layers: Array.from(layerMap.values()),
+      layers: Array.from(byDiscipline.get(discipline)?.values() ?? []),
     }));
   }
 
   const floor = getVisibleFloor(state);
-  if (!floor) return [];
-
   const byDiscipline = new Map<string, LayerData[]>();
-  for (const layer of floor.layers) {
-    if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, []);
-    byDiscipline.get(layer.discipline)!.push(layer);
+  if (floor) {
+    for (const layer of floor.layers) {
+      if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, []);
+      byDiscipline.get(layer.discipline)!.push(layer);
+    }
   }
 
-  return Array.from(byDiscipline.entries()).map(([discipline, layers]) => ({
+  return allDisciplines.map(discipline => ({
     discipline,
-    layers,
+    layers: byDiscipline.get(discipline) ?? [],
   }));
 }
 
@@ -178,7 +180,7 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
-    if (discipline !== state.activeDiscipline && discipline !== 'architectural') continue;
+    if (discipline !== state.activeDiscipline && discipline !== 'architechture') continue;
     result.push({
       key,
       tableName,

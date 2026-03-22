@@ -46,10 +46,10 @@ export default function FloorGroup() {
       const elevation = levelElevations.get(levelId) ?? 0;
       const parsed = parseFloorLayers(floor.layers);
       const filtered = parsed.filter(el => {
-        if (activeDiscipline !== 'architectural') {
+        if (activeDiscipline !== 'architechture') {
           if (el.discipline !== activeDiscipline) return false;
         } else {
-          if (el.discipline !== 'architectural') return false;
+          if (el.discipline !== 'architechture') return false;
         }
         return visibleLayers.has(`${el.discipline}/${el.tableName}`);
       });
@@ -62,14 +62,14 @@ export default function FloorGroup() {
   }, [isAllFloors, state.project, state.activeDiscipline, state.visibleLayers, levelElevations]);
 
   // Single floor mode: split into active elements and ghost (architectural background)
-  const isNonArchDiscipline = !isAllFloors && activeDiscipline !== 'architectural';
+  const isNonArchDiscipline = !isAllFloors && activeDiscipline !== 'architechture';
 
   const { activeElements, ghostElements } = useMemo(() => {
     if (!isNonArchDiscipline) return { activeElements: singleFloorElements, ghostElements: [] };
     const active: CanonicalElement[] = [];
     const ghost: CanonicalElement[] = [];
     for (const el of singleFloorElements) {
-      if (el.discipline === 'architectural') ghost.push(el);
+      if (el.discipline === 'architechture') ghost.push(el);
       else active.push(el);
     }
     return { activeElements: active, ghostElements: ghost };

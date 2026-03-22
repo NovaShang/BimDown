@@ -14,6 +14,7 @@ export interface ViewTransform {
 export type ViewMode = '2d' | '3d';
 
 export interface EditorState {
+  modelName: string;
   project: ProjectData | null;
   grids: GridData[];
   loading: boolean;
@@ -56,7 +57,7 @@ export interface DrawingState {
 
 export type EditorAction =
   | { type: 'SET_VIEW_MODE'; mode: ViewMode }
-  | { type: 'SET_PROJECT'; project: ProjectData; grids: GridData[] }
+  | { type: 'SET_PROJECT'; model: string; project: ProjectData; grids: GridData[] }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_LEVEL'; levelId: string }
   | { type: 'TOGGLE_LAYER'; key: string }
