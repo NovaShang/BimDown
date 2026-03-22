@@ -2,20 +2,10 @@ import { useMemo } from 'react';
 import { useEditorState } from '../state/EditorContext.tsx';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
-import BoxInstances from './layers/BoxInstances.tsx';
-import WallExtrusions from './layers/WallExtrusions.tsx';
-import PolygonExtrusions from './layers/PolygonExtrusions.tsx';
-import SpaceWireframes from './layers/SpaceWireframes.tsx';
 import { useFloorElements } from './hooks/useFloorElements.ts';
 import { resolveBimMaterial } from './utils/bimMaterials.ts';
-
-const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
-const BOX_TABLES = new Set([
-  'door', 'window',
-  'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',
-  'column', 'structure_column', 'equipment', 'terminal',
-]);
-const POLYGON_TABLES = new Set(['slab', 'structure_slab', 'stair']);
+import { getRenderer } from './renderers/index.ts';
+import './renderers/registerDefaults.ts';
 
 interface FloorRenderData {
   levelId: string;
@@ -37,7 +27,6 @@ export default function FloorGroup() {
     return map;
   }, [levels]);
 
-  // For all-floors mode: parse every floor and collect elements with discipline filtering
   const allFloorsData = useMemo(() => {
     if (!isAllFloors || !state.project) return null;
     const { activeDiscipline, visibleLayers } = state;
@@ -62,7 +51,6 @@ export default function FloorGroup() {
     return result;
   }, [isAllFloors, state.project, state.activeDiscipline, state.visibleLayers, levelElevations]);
 
-  // Single floor mode: split into active elements and ghost (architectural background)
   const isNonArchDiscipline = !isAllFloors && activeDiscipline !== 'architechture';
 
   const { activeElements, ghostElements } = useMemo(() => {
@@ -88,7 +76,6 @@ export default function FloorGroup() {
     );
   }
 
-  // All floors mode
   if (!allFloorsData) return null;
   return (
     <group>
@@ -118,31 +105,11 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
   return (
     <>
       {[...grouped.entries()].map(([tableName, els]) => {
-        if (WALL_TABLES.has(tableName)) {
-          return (
-            <WallExtrusions
-              key={tableName}
-              elements={els}
-              tableName={tableName}
-              levelElevation={levelElevation}
-              levelElevations={levelElevations}
-              ghost={ghost}
-            />
-          );
-        }
-        if (tableName === 'space') {
-          return (
-            <SpaceWireframes
-              key={tableName}
-              elements={els}
-              levelElevation={levelElevation}
-              levelElevations={levelElevations}
-              ghost={ghost}
-            />
-          );
-        }
-        if (BOX_TABLES.has(tableName)) {
-          // Sub-group by resolved material so each InstancedMesh shares one material
+        const config = getRenderer(tableName);
+        if (!config) return null;
+        const Component = config.component;
+
+        if (config.groupByMaterial) {
           const byMat = new Map<string, CanonicalElement[]>();
           for (const el of els) {
             const mat = resolveBimMaterial(el.attrs.material, tableName);
@@ -151,30 +118,15 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
             byMat.set(mat, list);
           }
           return [...byMat.entries()].map(([mat, matEls]) => (
-            <BoxInstances
-              key={`${tableName}:${mat}`}
-              elements={matEls}
-              tableName={tableName}
-              materialName={mat}
-              levelElevation={levelElevation}
-              levelElevations={levelElevations}
-              ghost={ghost}
-            />
+            <Component key={`${tableName}:${mat}`} elements={matEls}
+              tableName={tableName} materialName={mat}
+              levelElevation={levelElevation} levelElevations={levelElevations} ghost={ghost} />
           ));
         }
-        if (POLYGON_TABLES.has(tableName)) {
-          return (
-            <PolygonExtrusions
-              key={tableName}
-              elements={els}
-              tableName={tableName}
-              levelElevation={levelElevation}
-              levelElevations={levelElevations}
-              ghost={ghost}
-            />
-          );
-        }
-        return null;
+
+        return <Component key={tableName} elements={els}
+          tableName={tableName} levelElevation={levelElevation}
+          levelElevations={levelElevations} ghost={ghost} />;
       })}
     </>
   );
