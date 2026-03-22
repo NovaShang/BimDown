@@ -3,6 +3,7 @@ import type { PolygonElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
+import { resolveNextLevelId } from './levelUtil.ts';
 
 /** Minimum 3 vertices to form a polygon */
 const MIN_VERTICES = 3;
@@ -68,7 +69,7 @@ function createPolygon(ctx: ToolContext, vertices: { x: number; y: number }[]) {
 
   const existingIds = new Set(state.document?.elements.keys() ?? []);
   const id = generateId(target.tableName, existingIds);
-  const baseAttrs = defaultAttrs(target.tableName, '');
+  const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
   const mergedAttrs = { ...baseAttrs, ...state.drawingAttrs, id };
 
   const element: PolygonElement = {

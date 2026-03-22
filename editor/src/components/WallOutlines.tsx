@@ -15,11 +15,12 @@ interface WallOutlinesProps {
   activeDiscipline: string | null;
 }
 
-const WALL_TABLES = new Set(['wall', 'structure_wall']);
+const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
 const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
 
 const OUTLINE_STYLES: Record<string, { color: string; width: number }> = {
   wall: { color: '#1a1a2e', width: 0.03 },
+  curtain_wall: { color: '#7ec8e3', width: 0.02 },
   structure_wall: { color: '#1a1a2e', width: 0.03 },
   duct: { color: '#00b4d8', width: 0.025 },
   pipe: { color: '#06d6a0', width: 0.02 },

@@ -4,6 +4,7 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
+import { resolveNextLevelId } from './levelUtil.ts';
 
 export const drawLineTool: ToolHandler = {
   cursor: 'crosshair',
@@ -43,7 +44,7 @@ export const drawLineTool: ToolHandler = {
       const strokeWidth = resolveLineStrokeWidth(target.tableName, da) ?? FALLBACK_STROKE[target.tableName] ?? 0.1;
 
       // Merge drawingAttrs into element attrs
-      const baseAttrs = defaultAttrs(target.tableName, '');
+      const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
       const mergedAttrs = { ...baseAttrs, ...da, id };
 
       const element: LineElement = {
@@ -84,7 +85,7 @@ export const drawLineTool: ToolHandler = {
 };
 
 const FALLBACK_STROKE: Record<string, number> = {
-  wall: 0.2, structure_wall: 0.2,
+  wall: 0.2, curtain_wall: 0.05, structure_wall: 0.2,
   duct: 0.2, pipe: 0.05, conduit: 0.025, cable_tray: 0.1,
   door: 0.1, window: 0.1,
 };

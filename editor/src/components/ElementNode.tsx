@@ -37,11 +37,12 @@ export function pruneCache(currentIds: Set<string>): void {
 
 // Tables whose outlines are rendered by WallOutlines — only need fill here
 const FILL_ONLY_TABLES = new Set([
-  'wall', 'structure_wall', 'duct', 'pipe', 'conduit', 'cable_tray',
+  'wall', 'curtain_wall', 'structure_wall', 'duct', 'pipe', 'conduit', 'cable_tray',
 ]);
 
 const WALL_FILL: Record<string, (material: string) => string> = {
   wall: (m) => m.includes('concrete') ? '#d4d4d4' : m.includes('metal') || m.includes('steel') ? '#e8e8e8' : '#f0f0f0',
+  curtain_wall: () => '#d6eaf8',
   structure_wall: (m) => m.includes('concrete') ? '#d4d4d4' : '#e8e8e8',
   duct: () => '#00b4d815',
   pipe: () => '#06d6a015',

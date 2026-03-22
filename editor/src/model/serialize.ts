@@ -107,6 +107,8 @@ function getCsvHeaders(tableName: string): string[] {
     case 'wall':
     case 'structure_wall':
       return ['number', 'base_offset', 'top_level_id', 'top_offset', 'material'];
+    case 'curtain_wall':
+      return ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'u_grid_count', 'v_grid_count', 'u_spacing', 'v_spacing', 'panel_count', 'panel_material'];
     case 'column':
     case 'structure_column':
       return ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y'];

@@ -16,17 +16,6 @@ export default function EditorShell() {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
 
-  // Initialize document model when floor data loads or level changes
-  // Skip for __all__ — 3D all-floors mode parses directly, no document model
-  useEffect(() => {
-    if (state.currentLevel === '__all__') return;
-    const floor = state.project?.floors.get(state.currentLevel);
-    if (!floor) return;
-    const elements = parseFloorLayers(floor.layers);
-    const doc = createDocument(state.currentLevel, elements);
-    dispatch({ type: 'INIT_DOCUMENT', document: doc });
-  }, [state.project, state.currentLevel, dispatch]);
-
   const stateRef = useRef(state);
   stateRef.current = state;
 
@@ -34,6 +23,33 @@ export default function EditorShell() {
   const persistTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingKeys = useRef(new Set<string>());
   const lastProcessedVersion = useRef(0);
+
+  // Flush pending saves immediately (used before document rebuild to avoid data loss)
+  const flushPendingSave = useRef(() => {
+    clearTimeout(persistTimer.current);
+    const currentState = stateRef.current;
+    if (!currentState.document || pendingKeys.current.size === 0) return;
+    const viewBox = getComputedViewBox(currentState);
+    const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
+    const changedKeys = new Set(pendingKeys.current);
+    pendingKeys.current.clear();
+    lastProcessedVersion.current = 0;
+    persistDocument(currentState.document, vbStr, currentState.modelName, changedKeys)
+      .catch(err => console.error('Flush persist failed:', err));
+  });
+
+  // Initialize document model when floor data loads or level changes
+  // Skip for __all__ — 3D all-floors mode parses directly, no document model
+  useEffect(() => {
+    if (state.currentLevel === '__all__') return;
+    const floor = state.project?.floors.get(state.currentLevel);
+    if (!floor) return;
+    // Flush any pending saves before rebuilding the document to avoid data loss
+    flushPendingSave.current();
+    const elements = parseFloorLayers(floor.layers);
+    const doc = createDocument(state.currentLevel, elements);
+    dispatch({ type: 'INIT_DOCUMENT', document: doc });
+  }, [state.project, state.currentLevel, dispatch]);
 
   useEffect(() => {
     if (!state.document || state.documentVersion === 0) return;
@@ -49,14 +65,14 @@ export default function EditorShell() {
       const currentState = stateRef.current;
       const viewBox = getComputedViewBox(currentState);
       const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
-      
+
       const doc = currentState.document!;
-      
+
       if (pendingKeys.current.size === 0) return; // nothing to save
-      
+
       const changedKeys = new Set(pendingKeys.current);
       pendingKeys.current.clear();
-      
+
       persistDocument(doc, vbStr, currentState.modelName, changedKeys).catch(err => console.error('Auto-persist failed:', err));
     }, 100);
     return () => clearTimeout(persistTimer.current);

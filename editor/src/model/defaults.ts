@@ -5,6 +5,8 @@ export function defaultAttrs(tableName: string, levelId: string): Record<string,
     case 'wall':
     case 'structure_wall':
       return { ...base, thickness: '0.2', top_level_id: levelId, top_offset: '0', material: tableName === 'wall' ? 'Default Wall' : 'Concrete, Cast-in-Place' };
+    case 'curtain_wall':
+      return { ...base, top_level_id: levelId, top_offset: '0', material: 'Glass', u_grid_count: '3', v_grid_count: '3', u_spacing: '', v_spacing: '', panel_material: 'Glass' };
     case 'column':
     case 'structure_column':
       return { ...base, top_level_id: levelId, top_offset: '0', material: tableName === 'column' ? 'Concrete' : 'Steel', shape: 'rectangular', size_x: '0.3', size_y: '0.3' };

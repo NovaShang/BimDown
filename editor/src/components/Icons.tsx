@@ -3,7 +3,7 @@ import React from 'react';
 export type IconName = 
   | 'select' | 'pan' | 'zoom' | 'undo' | 'redo'
   | 'eye-visible' | 'eye-hidden'
-  | 'wall' | 'structure_wall' | 'column' | 'structure_column' | 'window'
+  | 'wall' | 'curtain_wall' | 'structure_wall' | 'column' | 'structure_column' | 'window'
   | 'door' | 'space' | 'slab' | 'structure_slab' | 'stair'
   | 'duct' | 'pipe' | 'equipment' | 'terminal' | 'conduit' | 'cable_tray'
   | 'beam' | 'brace' | 'grid';

@@ -3,6 +3,7 @@ import type { PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
+import { resolveNextLevelId } from './levelUtil.ts';
 
 export const drawPointTool: ToolHandler = {
   cursor: 'crosshair',
@@ -21,7 +22,7 @@ export const drawPointTool: ToolHandler = {
     if (!target) return;
 
     const da = state.drawingAttrs;
-    const baseDefaults = defaultAttrs(target.tableName, '');
+    const baseDefaults = defaultAttrs(target.tableName, resolveNextLevelId(state));
     const mergedAttrs = { ...baseDefaults, ...da };
 
     const w = parseFloat(mergedAttrs.size_x || '0.3');

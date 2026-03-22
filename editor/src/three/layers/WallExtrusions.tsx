@@ -50,7 +50,8 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
       const { height, baseOffset } = resolveHeight(w.attrs, levelElevation, levelElevations, DEFAULT_WALL_HEIGHT);
       const baseY = levelElevation + baseOffset;
 
-      const hw = w.strokeWidth / 2;
+      // Curtain walls are thin (0.05m) — use a minimum visual thickness in 3D
+      const hw = Math.max(w.strokeWidth, tableName === 'curtain_wall' ? 0.15 : 0) / 2;
       const dx = w.end.x - w.start.x;
       const dy = w.end.y - w.start.y;
       const len = Math.sqrt(dx * dx + dy * dy);
@@ -76,12 +77,13 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
         p3x = endAdj.left.x;  p3y = endAdj.left.y;
       }
 
-      // Build Shape in XZ plane (SVG Y → -Z in Three.js)
+      // Build Shape: after rotateX(-PI/2), shape (sx,sy) → 3D (sx, 0, -sy)
+      // We need z = -svgY, so -sy = -svgY → sy = svgY
       const shape = new Shape();
-      shape.moveTo(p1x, -p1y);
-      shape.lineTo(p2x, -p2y);
-      shape.lineTo(p3x, -p3y);
-      shape.lineTo(p4x, -p4y);
+      shape.moveTo(p1x, p1y);
+      shape.lineTo(p2x, p2y);
+      shape.lineTo(p3x, p3y);
+      shape.lineTo(p4x, p4y);
       shape.closePath();
 
       const geo = new ExtrudeGeometry(shape, {

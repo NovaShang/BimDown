@@ -55,6 +55,14 @@ export function getDrawingFields(tableName: string): DrawingField[] {
       return [
         { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
       ];
+    case 'curtain_wall':
+      return [
+        { key: 'u_grid_count', label: 'U Grids', type: 'number', min: 0, step: 1 },
+        { key: 'v_grid_count', label: 'V Grids', type: 'number', min: 0, step: 1 },
+        { key: 'u_spacing', label: 'U Spacing', type: 'number', unit: 'm', min: 0.1, step: 0.1 },
+        { key: 'v_spacing', label: 'V Spacing', type: 'number', unit: 'm', min: 0.1, step: 0.1 },
+        { key: 'panel_material', label: 'Panel Material', type: 'text' },
+      ];
     case 'column':
     case 'structure_column':
       return [

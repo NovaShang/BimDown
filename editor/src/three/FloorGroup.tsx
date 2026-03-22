@@ -8,7 +8,7 @@ import PolygonExtrusions from './layers/PolygonExtrusions.tsx';
 import SpaceWireframes from './layers/SpaceWireframes.tsx';
 import { useFloorElements } from './hooks/useFloorElements.ts';
 
-const WALL_TABLES = new Set(['wall', 'structure_wall']);
+const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
 const BOX_TABLES = new Set([
   'door', 'window',
   'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',

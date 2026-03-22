@@ -47,6 +47,7 @@ export interface LayerStyle {
 
 export const LAYER_STYLES: Record<string, LayerStyle> = {
   wall:             { displayName: 'Walls',            color: '#1a1a2e', icon: '▬', order: 1 },
+  curtain_wall:     { displayName: 'Curtain Walls',    color: '#7ec8e3', icon: '⊞', order: 1.5 },
   structure_wall:   { displayName: 'Str. Walls',       color: '#4a3728', icon: '▬', order: 2 },
   column:           { displayName: 'Columns',          color: '#2d2d2d', icon: '■', order: 3 },
   structure_column: { displayName: 'Str. Columns',     color: '#5c3d2e', icon: '■', order: 4 },
@@ -73,7 +74,7 @@ export const DISCIPLINE_COLORS: Record<string, string> = {
 };
 
 export const DISCIPLINE_TABLES: Record<string, string[]> = {
-  architechture: ['wall', 'column', 'door', 'window', 'space', 'slab', 'stair'],
+  architechture: ['wall', 'curtain_wall', 'column', 'door', 'window', 'space', 'slab', 'stair'],
   structure:     ['structure_wall', 'structure_column', 'structure_slab', 'beam', 'brace', 'isolated_foundation', 'raft_foundation', 'strip_foundation'],
   mep:           ['duct', 'pipe', 'conduit', 'cable_tray', 'equipment', 'terminal', 'mep_node'],
 };

@@ -1,7 +1,7 @@
 import type { CanonicalElement } from './elements.ts';
 
 const PREFIX_MAP: Record<string, string> = {
-  wall: 'w', structure_wall: 'sw', column: 'c', structure_column: 'sc',
+  wall: 'w', curtain_wall: 'cw', structure_wall: 'sw', column: 'c', structure_column: 'sc',
   door: 'd', window: 'wi', space: 'sp', slab: 'sl', structure_slab: 'ssl',
   stair: 'st', duct: 'du', pipe: 'pi', equipment: 'eq', terminal: 'te',
   conduit: 'co', cable_tray: 'ct', beam: 'be', brace: 'br',

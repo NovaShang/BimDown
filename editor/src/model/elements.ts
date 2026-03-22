@@ -30,7 +30,7 @@ export type CanonicalElement = LineElement | PointElement | PolygonElement;
 
 // Which geometry type each table uses
 const LINE_TABLES = new Set([
-  'wall', 'structure_wall', 'door', 'window',
+  'wall', 'curtain_wall', 'structure_wall', 'door', 'window',
   'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',
 ]);
 const POINT_TABLES = new Set([
