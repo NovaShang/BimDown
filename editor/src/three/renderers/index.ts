@@ -9,6 +9,8 @@ export interface Renderer3DProps {
   levelElevation: number;
   levelElevations: Map<string, number>;
   ghost?: boolean;
+  /** All elements on the current floor — for cross-type lookups (e.g., hosted elements). */
+  allElements?: Map<string, CanonicalElement>;
 }
 
 export interface RendererConfig {

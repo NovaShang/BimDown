@@ -1,5 +1,6 @@
 import { useMemo, useCallback } from 'react';
-import { Shape, ExtrudeGeometry, EdgesGeometry, BufferGeometry, LineBasicMaterial, type MeshPhysicalMaterial } from 'three';
+import { Shape, ExtrudeGeometry, BoxGeometry, BufferGeometry, Matrix4, type MeshPhysicalMaterial } from 'three';
+import { SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement, LineElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
@@ -13,25 +14,147 @@ interface WallExtrusionsProps {
   levelElevation: number;
   levelElevations: Map<string, number>;
   ghost?: boolean;
+  allElements?: Map<string, CanonicalElement>;
 }
 
 const DEFAULT_WALL_HEIGHT = 3.0;
-
-const edgeMaterial = new LineBasicMaterial({ color: '#606468', transparent: true, opacity: 0.3 });
+const csgEvaluator = new Evaluator();
 
 interface WallMeshData {
   id: string;
   geometry: BufferGeometry;
-  edgeGeometry: EdgesGeometry;
   material: MeshPhysicalMaterial;
 }
 
-export default function WallExtrusions({ elements, tableName, levelElevation, levelElevations, ghost }: WallExtrusionsProps) {
+/** Point-to-line-segment distance. */
+function pointToSegmentDist(px: number, py: number, x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1, dy = y2 - y1;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq < 1e-8) return Math.sqrt((px - x1) ** 2 + (py - y1) ** 2);
+  const t = Math.max(0, Math.min(1, ((px - x1) * dx + (py - y1) * dy) / lenSq));
+  const projX = x1 + t * dx, projY = y1 + t * dy;
+  return Math.sqrt((px - projX) ** 2 + (py - projY) ** 2);
+}
+
+/** Build a map of wallId → hosted elements (doors/windows).
+ *  Uses host_id when available, falls back to spatial proximity matching. */
+function buildHostedMap(
+  allElements: Map<string, CanonicalElement> | undefined,
+  walls: LineElement[],
+): Map<string, LineElement[]> {
+  const map = new Map<string, LineElement[]>();
+  if (!allElements) return map;
+
+  // Collect all door/window line elements
+  const openings: LineElement[] = [];
+  for (const el of allElements.values()) {
+    if (el.geometry !== 'line') continue;
+    if (el.tableName !== 'door' && el.tableName !== 'window') continue;
+    openings.push(el as LineElement);
+  }
+
+  for (const op of openings) {
+    const hostId = op.attrs.host_id;
+
+    // 1) Try explicit host_id
+    if (hostId && walls.some(w => w.id === hostId)) {
+      const list = map.get(hostId) ?? [];
+      list.push(op);
+      map.set(hostId, list);
+      continue;
+    }
+
+    // 2) Fall back to spatial matching: find the closest wall
+    const cx = (op.start.x + op.end.x) / 2;
+    const cy = (op.start.y + op.end.y) / 2;
+    let bestWall: LineElement | null = null;
+    let bestDist = Infinity;
+    for (const w of walls) {
+      const dist = pointToSegmentDist(cx, cy, w.start.x, w.start.y, w.end.x, w.end.y);
+      if (dist < bestDist) {
+        bestDist = dist;
+        bestWall = w;
+      }
+    }
+    // Only match if within wall thickness
+    if (bestWall && bestDist < bestWall.strokeWidth) {
+      const list = map.get(bestWall.id) ?? [];
+      list.push(op);
+      map.set(bestWall.id, list);
+    }
+  }
+
+  return map;
+}
+
+/** Subtract door/window openings from wall geometry using CSG. */
+function subtractOpenings(
+  wallGeo: BufferGeometry,
+  wall: LineElement,
+  hosted: LineElement[],
+  levelElevation: number,
+  wallHeight: number,
+  baseOffset: number,
+): BufferGeometry {
+  let wallBrush = new Brush(wallGeo);
+
+  const wallDx = wall.end.x - wall.start.x;
+  const wallDy = wall.end.y - wall.start.y;
+  const wallLen = Math.sqrt(wallDx * wallDx + wallDy * wallDy);
+  if (wallLen < 0.001) return wallGeo;
+
+  const ux = wallDx / wallLen;
+  const uy = wallDy / wallLen;
+
+  for (const h of hosted) {
+    const openingWidth = parseFloat(h.attrs.width) || 0.9;
+    const openingHeight = parseFloat(h.attrs.height) || 2.1;
+    const openingBaseOffset = parseFloat(h.attrs.base_offset) || 0;
+
+    // Center of the hosted element in world coords
+    const cx = (h.start.x + h.end.x) / 2;
+    const cy = (h.start.y + h.end.y) / 2;
+
+    // 3D position: x = worldX, y = baseY + openingBaseOffset + openingHeight/2, z = -worldY
+    const baseY = levelElevation + baseOffset;
+    const boxY = baseY + openingBaseOffset + openingHeight / 2;
+    const boxX = cx;
+    const boxZ = -cy;
+
+    // Wall thickness * 2 to ensure full cut-through
+    const thickness = wall.strokeWidth * 2;
+
+    // Box aligned to wall direction
+    const boxGeo = new BoxGeometry(openingWidth, openingHeight, thickness);
+    const angle = -Math.atan2(wallDy, wallDx);
+    const mat = new Matrix4()
+      .makeRotationY(angle)
+      .setPosition(boxX, boxY, boxZ);
+    boxGeo.applyMatrix4(mat);
+
+    const openingBrush = new Brush(boxGeo);
+
+    try {
+      const result = csgEvaluator.evaluate(wallBrush, openingBrush, SUBTRACTION);
+      wallBrush = result;
+    } catch {
+      // CSG can fail on degenerate geometry — skip this opening
+    }
+
+    boxGeo.dispose();
+  }
+
+  return wallBrush.geometry;
+}
+
+export default function WallExtrusions({ elements, tableName, levelElevation, levelElevations, ghost, allElements }: WallExtrusionsProps) {
   const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
+  const walls = useMemo(() => elements.filter((el): el is LineElement => el.geometry === 'line'), [elements]);
+  const hostedMap = useMemo(() => buildHostedMap(allElements, walls), [allElements, walls]);
+
   const meshes = useMemo(() => {
-    const walls = elements.filter((el): el is LineElement => el.geometry === 'line');
     if (walls.length === 0) return [];
 
     const segments: WallSegment[] = walls.map(w => ({
@@ -80,17 +203,25 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
       shape.lineTo(p4x, p4y);
       shape.closePath();
 
-      const geo = new ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
+      let geo: BufferGeometry = new ExtrudeGeometry(shape, { depth: height, bevelEnabled: false });
       geo.rotateX(-Math.PI / 2);
       geo.translate(0, baseY, 0);
+
+      // Subtract hosted door/window openings
+      const hosted = hostedMap.get(w.id);
+      if (hosted && hosted.length > 0 && !ghost) {
+        geo = subtractOpenings(geo, w, hosted, levelElevation, height, baseOffset);
+        // Merge coincident vertices to eliminate CSG floating-point noise,
+        // so EdgesGeometry doesn't detect spurious edges on coplanar faces.
+      }
 
       const bimMat = resolveBimMaterial(w.attrs.material, tableName);
       const mat = ghost ? getGhostMaterial(bimMat) : getBimMaterial(bimMat);
 
-      result.push({ id: w.id, geometry: geo, edgeGeometry: new EdgesGeometry(geo, 15), material: mat });
+      result.push({ id: w.id, geometry: geo, material: mat });
     }
     return result;
-  }, [elements, tableName, levelElevation, levelElevations, ghost]);
+  }, [elements, tableName, levelElevation, levelElevations, ghost, hostedMap]);
 
   const handleClick = useCallback((id: string, e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -110,7 +241,7 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
 
   return (
     <group>
-      {meshes.map(({ id, geometry, edgeGeometry, material }) => {
+      {meshes.map(({ id, geometry, material }) => {
         const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
         return (
           <group key={id}>
@@ -134,7 +265,6 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
                   transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
               )}
             </mesh>
-            {!ghost && <lineSegments geometry={edgeGeometry} material={edgeMaterial} />}
           </group>
         );
       })}

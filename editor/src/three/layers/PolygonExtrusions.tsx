@@ -1,5 +1,5 @@
 import { useMemo, useCallback } from 'react';
-import { Shape, ExtrudeGeometry, EdgesGeometry, BufferGeometry, LineBasicMaterial, type MeshPhysicalMaterial } from 'three';
+import { Shape, ExtrudeGeometry, BufferGeometry, type MeshPhysicalMaterial } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
@@ -31,12 +31,9 @@ function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
   return geo;
 }
 
-const edgeMaterial = new LineBasicMaterial({ color: '#606468', transparent: true, opacity: 0.3 });
-
 interface PolygonMeshData {
   id: string;
   geometry: BufferGeometry;
-  edgeGeometry: EdgesGeometry;
   material: MeshPhysicalMaterial;
 }
 
@@ -53,7 +50,7 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
         if (geo) {
           const bimMat = resolveBimMaterial(el.attrs.material, tableName);
           const mat = ghost ? getGhostMaterial(bimMat) : getBimMaterial(bimMat);
-          result.push({ id: el.id, geometry: geo, edgeGeometry: new EdgesGeometry(geo, 15), material: mat });
+          result.push({ id: el.id, geometry: geo, material: mat });
         }
       }
     }
@@ -78,7 +75,7 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
 
   return (
     <group>
-      {meshes.map(({ id, geometry, edgeGeometry, material }) => {
+      {meshes.map(({ id, geometry, material }) => {
         const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
         return (
           <group key={id}>
@@ -102,7 +99,6 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
                   transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
               )}
             </mesh>
-            {!ghost && <lineSegments geometry={edgeGeometry} material={edgeMaterial} />}
           </group>
         );
       })}

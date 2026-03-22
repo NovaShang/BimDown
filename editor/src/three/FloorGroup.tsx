@@ -92,6 +92,13 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
   levelElevations: Map<string, number>;
   ghost?: boolean;
 }) {
+  // Build allElements map for cross-type lookups (e.g., wall → hosted doors/windows)
+  const allElements = useMemo(() => {
+    const map = new Map<string, CanonicalElement>();
+    for (const el of elements) map.set(el.id, el);
+    return map;
+  }, [elements]);
+
   const grouped = useMemo(() => {
     const map = new Map<string, CanonicalElement[]>();
     for (const el of elements) {
@@ -120,13 +127,13 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
           return [...byMat.entries()].map(([mat, matEls]) => (
             <Component key={`${tableName}:${mat}`} elements={matEls}
               tableName={tableName} materialName={mat}
-              levelElevation={levelElevation} levelElevations={levelElevations} ghost={ghost} />
+              levelElevation={levelElevation} levelElevations={levelElevations} ghost={ghost} allElements={allElements} />
           ));
         }
 
         return <Component key={tableName} elements={els}
           tableName={tableName} levelElevation={levelElevation}
-          levelElevations={levelElevations} ghost={ghost} />;
+          levelElevations={levelElevations} ghost={ghost} allElements={allElements} />;
       })}
     </>
   );

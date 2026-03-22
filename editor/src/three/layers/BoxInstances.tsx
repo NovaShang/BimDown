@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect, useCallback } from 'react';
-import { InstancedMesh, BoxGeometry, Object3D, Color, EdgesGeometry, LineBasicMaterial } from 'three';
+import { InstancedMesh, BoxGeometry, Object3D, Color } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
@@ -16,8 +16,6 @@ interface BoxInstancesProps {
 }
 
 const unitBox = new BoxGeometry(1, 1, 1);
-const unitBoxEdges = new EdgesGeometry(unitBox, 15);
-const edgeMaterial = new LineBasicMaterial({ color: '#606468', transparent: true, opacity: 0.3 });
 const tempObject = new Object3D();
 const HIGHLIGHT_COLOR = new Color('#0d99ff');
 
@@ -25,7 +23,6 @@ const SHADOW_CAST_TABLES = new Set(['column', 'structure_column']);
 
 export default function BoxInstances({ elements, tableName, materialName, levelElevation, levelElevations, ghost }: BoxInstancesProps) {
   const meshRef = useRef<InstancedMesh>(null);
-  const edgeRef = useRef<InstancedMesh>(null);
   const normalMaterial = useMaterial(tableName, materialName);
   const ghostMaterial = useGhostMaterial(tableName, materialName);
   const material = ghost ? ghostMaterial : normalMaterial;
@@ -47,7 +44,6 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
 
   useEffect(() => {
     const mesh = meshRef.current;
-    const edges = edgeRef.current;
     if (!mesh) return;
 
     for (let i = 0; i < boxes.length; i++) {
@@ -57,13 +53,9 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
       tempObject.scale.set(b.sx, b.sy, b.sz);
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
-      edges?.setMatrixAt(i, tempObject.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
-    if (edges) {
-      edges.instanceMatrix.needsUpdate = true;
-    }
   }, [boxes]);
 
   useEffect(() => {
@@ -109,24 +101,14 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
   const shouldCastShadow = !ghost && SHADOW_CAST_TABLES.has(tableName);
 
   return (
-    <group>
-      <instancedMesh
-        ref={meshRef}
-        args={[unitBox, material, boxes.length]}
-        frustumCulled
-        castShadow={shouldCastShadow}
-        receiveShadow={!ghost}
-        renderOrder={ghost ? -1 : 0}
-        {...(ghost ? { raycast: () => {} } : { onClick: handleClick, onPointerOver: handlePointerOver, onPointerOut: handlePointerOut })}
-      />
-      {!ghost && (
-        <instancedMesh
-          ref={edgeRef}
-          args={[unitBoxEdges, edgeMaterial, boxes.length]}
-          frustumCulled
-          raycast={() => {}}
-        />
-      )}
-    </group>
+    <instancedMesh
+      ref={meshRef}
+      args={[unitBox, material, boxes.length]}
+      frustumCulled
+      castShadow={shouldCastShadow}
+      receiveShadow={!ghost}
+      renderOrder={ghost ? -1 : 0}
+      {...(ghost ? { raycast: () => {} } : { onClick: handleClick, onPointerOver: handlePointerOver, onPointerOut: handlePointerOut })}
+    />
   );
 }
