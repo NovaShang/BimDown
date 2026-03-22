@@ -4,7 +4,7 @@ import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
 import { useEditorState } from '../state/EditorContext.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { TOUCH } from 'three';
+import { TOUCH, MOUSE } from 'three';
 
 function TrackpadOrbitControls() {
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -19,7 +19,11 @@ function TrackpadOrbitControls() {
     const canvas = gl.domElement;
 
     const handleWheel = (e: WheelEvent) => {
+      // Pinch-to-zoom (ctrlKey) → let OrbitControls handle as zoom
       if (e.ctrlKey || e.metaKey) return;
+      // Mouse wheel (line/page mode) or pure vertical scroll → let OrbitControls zoom
+      if (e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) > 0)) return;
+      // Trackpad two-finger scroll (pixel mode with deltaX) → pan
       e.preventDefault();
       e.stopPropagation();
 
@@ -50,6 +54,7 @@ function TrackpadOrbitControls() {
       screenSpacePanning
       enableDamping
       dampingFactor={0.1}
+      mouseButtons={{ LEFT: MOUSE.ROTATE, MIDDLE: MOUSE.PAN, RIGHT: MOUSE.DOLLY }}
     />
   );
 }
