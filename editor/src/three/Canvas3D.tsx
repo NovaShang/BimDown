@@ -13,6 +13,7 @@ export default function Canvas3D() {
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <Canvas
+        shadows="soft"
         camera={{ position: [30, 40, 30], fov: 50, near: 0.1, far: 2000 }}
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
         raycaster={{ params: { Line: { threshold: 0.5 } } }}

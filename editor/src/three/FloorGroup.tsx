@@ -7,6 +7,7 @@ import WallExtrusions from './layers/WallExtrusions.tsx';
 import PolygonExtrusions from './layers/PolygonExtrusions.tsx';
 import SpaceWireframes from './layers/SpaceWireframes.tsx';
 import { useFloorElements } from './hooks/useFloorElements.ts';
+import { resolveBimMaterial } from './utils/bimMaterials.ts';
 
 const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
 const BOX_TABLES = new Set([
@@ -141,16 +142,25 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
           );
         }
         if (BOX_TABLES.has(tableName)) {
-          return (
+          // Sub-group by resolved material so each InstancedMesh shares one material
+          const byMat = new Map<string, CanonicalElement[]>();
+          for (const el of els) {
+            const mat = resolveBimMaterial(el.attrs.material, tableName);
+            const list = byMat.get(mat) ?? [];
+            list.push(el);
+            byMat.set(mat, list);
+          }
+          return [...byMat.entries()].map(([mat, matEls]) => (
             <BoxInstances
-              key={tableName}
-              elements={els}
+              key={`${tableName}:${mat}`}
+              elements={matEls}
               tableName={tableName}
+              materialName={mat}
               levelElevation={levelElevation}
               levelElevations={levelElevations}
               ghost={ghost}
             />
-          );
+          ));
         }
         if (POLYGON_TABLES.has(tableName)) {
           return (

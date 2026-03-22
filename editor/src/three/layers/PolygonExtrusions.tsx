@@ -1,10 +1,10 @@
 import { useMemo, useCallback } from 'react';
-import { Shape, ExtrudeGeometry, BufferGeometry } from 'three';
+import { Shape, ExtrudeGeometry, EdgesGeometry, BufferGeometry, LineBasicMaterial, type MeshPhysicalMaterial } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
 import { elementTo3DParams, type ExtrudeParams } from '../utils/elementTo3D.ts';
-import { useMaterial, useGhostMaterial } from '../hooks/useMaterials.ts';
+import { resolveBimMaterial, getBimMaterial, getGhostMaterial } from '../utils/bimMaterials.ts';
 
 interface PolygonExtrusionsProps {
   elements: CanonicalElement[];
@@ -24,26 +24,23 @@ function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
   }
   shape.closePath();
 
-  const geo = new ExtrudeGeometry(shape, {
-    depth: params.height,
-    bevelEnabled: false,
-  });
-
+  const geo = new ExtrudeGeometry(shape, { depth: params.height, bevelEnabled: false });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, params.baseY, 0);
 
   return geo;
 }
 
+const edgeMaterial = new LineBasicMaterial({ color: '#606468', transparent: true, opacity: 0.3 });
+
 interface PolygonMeshData {
   id: string;
   geometry: BufferGeometry;
+  edgeGeometry: EdgesGeometry;
+  material: MeshPhysicalMaterial;
 }
 
 export default function PolygonExtrusions({ elements, tableName, levelElevation, levelElevations, ghost }: PolygonExtrusionsProps) {
-  const normalMaterial = useMaterial(tableName);
-  const ghostMaterial = useGhostMaterial(tableName);
-  const material = ghost ? ghostMaterial : normalMaterial;
   const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
@@ -53,11 +50,15 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
       const params = elementTo3DParams(el, levelElevation, levelElevations);
       if (params?.kind === 'extrude') {
         const geo = createExtrudeGeometry(params);
-        if (geo) result.push({ id: el.id, geometry: geo });
+        if (geo) {
+          const bimMat = resolveBimMaterial(el.attrs.material, tableName);
+          const mat = ghost ? getGhostMaterial(bimMat) : getBimMaterial(bimMat);
+          result.push({ id: el.id, geometry: geo, edgeGeometry: new EdgesGeometry(geo, 15), material: mat });
+        }
       }
     }
     return result;
-  }, [elements, levelElevation, levelElevations]);
+  }, [elements, tableName, levelElevation, levelElevations, ghost]);
 
   const handleClick = useCallback((id: string, e: ThreeEvent<MouseEvent>) => {
     e.stopPropagation();
@@ -77,32 +78,32 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
 
   return (
     <group>
-      {meshes.map(({ id, geometry }) => {
+      {meshes.map(({ id, geometry, edgeGeometry, material }) => {
         const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
         return (
-          <mesh
-            key={id}
-            geometry={geometry}
-            material={material}
-            renderOrder={ghost ? -1 : 0}
-            {...(ghost
-              ? { raycast: () => {} }
-              : {
-                  onClick: (e: ThreeEvent<MouseEvent>) => handleClick(id, e),
-                  onPointerOver: (e: ThreeEvent<PointerEvent>) => handlePointerOver(id, e),
-                  onPointerOut: handlePointerOut,
-                }
-            )}
-          >
-            {isHighlighted && (
-              <meshStandardMaterial
-                attach="material"
-                color="#0d99ff"
-                transparent={material.transparent}
-                opacity={Math.max(material.opacity, 0.4)}
-              />
-            )}
-          </mesh>
+          <group key={id}>
+            <mesh
+              geometry={geometry}
+              material={material}
+              castShadow={!ghost}
+              receiveShadow
+              renderOrder={ghost ? -1 : 0}
+              {...(ghost
+                ? { raycast: () => {} }
+                : {
+                    onClick: (e: ThreeEvent<MouseEvent>) => handleClick(id, e),
+                    onPointerOver: (e: ThreeEvent<PointerEvent>) => handlePointerOver(id, e),
+                    onPointerOut: handlePointerOut,
+                  }
+              )}
+            >
+              {isHighlighted && (
+                <meshStandardMaterial attach="material" color="#0d99ff"
+                  transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
+              )}
+            </mesh>
+            {!ghost && <lineSegments geometry={edgeGeometry} material={edgeMaterial} />}
+          </group>
         );
       })}
     </group>

@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect, useCallback } from 'react';
-import { InstancedMesh, BoxGeometry, Object3D, Color } from 'three';
+import { InstancedMesh, BoxGeometry, Object3D, Color, EdgesGeometry, LineBasicMaterial } from 'three';
 import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
@@ -9,19 +9,25 @@ import { useMaterial, useGhostMaterial } from '../hooks/useMaterials.ts';
 interface BoxInstancesProps {
   elements: CanonicalElement[];
   tableName: string;
+  materialName?: string;
   levelElevation: number;
   levelElevations: Map<string, number>;
   ghost?: boolean;
 }
 
 const unitBox = new BoxGeometry(1, 1, 1);
+const unitBoxEdges = new EdgesGeometry(unitBox, 15);
+const edgeMaterial = new LineBasicMaterial({ color: '#606468', transparent: true, opacity: 0.3 });
 const tempObject = new Object3D();
 const HIGHLIGHT_COLOR = new Color('#0d99ff');
 
-export default function BoxInstances({ elements, tableName, levelElevation, levelElevations, ghost }: BoxInstancesProps) {
+const SHADOW_CAST_TABLES = new Set(['column', 'structure_column']);
+
+export default function BoxInstances({ elements, tableName, materialName, levelElevation, levelElevations, ghost }: BoxInstancesProps) {
   const meshRef = useRef<InstancedMesh>(null);
-  const normalMaterial = useMaterial(tableName);
-  const ghostMaterial = useGhostMaterial(tableName);
+  const edgeRef = useRef<InstancedMesh>(null);
+  const normalMaterial = useMaterial(tableName, materialName);
+  const ghostMaterial = useGhostMaterial(tableName, materialName);
   const material = ghost ? ghostMaterial : normalMaterial;
   const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
@@ -39,9 +45,9 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
     return { boxes, indexToId };
   }, [elements, levelElevation, levelElevations]);
 
-  // Set instance matrices for both fill and edge meshes
   useEffect(() => {
     const mesh = meshRef.current;
+    const edges = edgeRef.current;
     if (!mesh) return;
 
     for (let i = 0; i < boxes.length; i++) {
@@ -51,12 +57,15 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
       tempObject.scale.set(b.sx, b.sy, b.sz);
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
+      edges?.setMatrixAt(i, tempObject.matrix);
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
+    if (edges) {
+      edges.instanceMatrix.needsUpdate = true;
+    }
   }, [boxes]);
 
-  // Update instance colors for selection/hover highlighting (skip for ghost)
   useEffect(() => {
     if (ghost) return;
     const mesh = meshRef.current;
@@ -97,13 +106,27 @@ export default function BoxInstances({ elements, tableName, levelElevation, leve
 
   if (boxes.length === 0) return null;
 
+  const shouldCastShadow = !ghost && SHADOW_CAST_TABLES.has(tableName);
+
   return (
-    <instancedMesh
-      ref={meshRef}
-      args={[unitBox, material, boxes.length]}
-      frustumCulled
-      renderOrder={ghost ? -1 : 0}
-      {...(ghost ? { raycast: () => {} } : { onClick: handleClick, onPointerOver: handlePointerOver, onPointerOut: handlePointerOut })}
-    />
+    <group>
+      <instancedMesh
+        ref={meshRef}
+        args={[unitBox, material, boxes.length]}
+        frustumCulled
+        castShadow={shouldCastShadow}
+        receiveShadow={!ghost}
+        renderOrder={ghost ? -1 : 0}
+        {...(ghost ? { raycast: () => {} } : { onClick: handleClick, onPointerOver: handlePointerOver, onPointerOut: handlePointerOut })}
+      />
+      {!ghost && (
+        <instancedMesh
+          ref={edgeRef}
+          args={[unitBoxEdges, edgeMaterial, boxes.length]}
+          frustumCulled
+          raycast={() => {}}
+        />
+      )}
+    </group>
   );
 }

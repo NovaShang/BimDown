@@ -1,10 +1,10 @@
-import { useRef, useEffect } from 'react';
-import { OrbitControls, Bounds, useBounds, ContactShadows } from '@react-three/drei';
+import { useRef, useEffect, Suspense } from 'react';
+import { OrbitControls, Bounds, useBounds, Environment } from '@react-three/drei';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
 import { useEditorState } from '../state/EditorContext.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { TOUCH, MOUSE } from 'three';
+import { TOUCH, MOUSE, DirectionalLight, Vector3 } from 'three';
 
 function TrackpadOrbitControls() {
   const controlsRef = useRef<OrbitControlsImpl>(null);
@@ -19,11 +19,8 @@ function TrackpadOrbitControls() {
     const canvas = gl.domElement;
 
     const handleWheel = (e: WheelEvent) => {
-      // Pinch-to-zoom (ctrlKey) → let OrbitControls handle as zoom
       if (e.ctrlKey || e.metaKey) return;
-      // Mouse wheel (line/page mode) or pure vertical scroll → let OrbitControls zoom
       if (e.deltaMode !== 0 || (e.deltaX === 0 && Math.abs(e.deltaY) > 0)) return;
-      // Trackpad two-finger scroll (pixel mode with deltaX) → pan
       e.preventDefault();
       e.stopPropagation();
 
@@ -61,28 +58,80 @@ function TrackpadOrbitControls() {
 
 function FitOnLevelChange() {
   const bounds = useBounds();
-  const { currentLevel } = useEditorState();
-  const prevLevel = useRef(currentLevel);
+  const { currentLevel, documentVersion } = useEditorState();
+  const prevLevel = useRef('');
 
   useEffect(() => {
     if (currentLevel !== prevLevel.current) {
       prevLevel.current = currentLevel;
-      requestAnimationFrame(() => bounds.refresh().clip().fit());
+      const raf = requestAnimationFrame(() => {
+        try { bounds.refresh().clip().fit(); } catch {}
+      });
+      return () => cancelAnimationFrame(raf);
     }
-  }, [currentLevel, bounds]);
+  }, [currentLevel, documentVersion, bounds]);
 
   return null;
+}
+
+/** Makes the shadow-casting light follow the orbit target so shadows always cover the visible area. */
+function ShadowLight() {
+  const lightRef = useRef<DirectionalLight>(null);
+  const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
+
+  useEffect(() => {
+    if (!lightRef.current || !controls) return;
+    const light = lightRef.current;
+
+    const update = () => {
+      const target = (controls as any).target as Vector3;
+      // Position light relative to orbit target
+      light.position.set(target.x + 60, target.y + 100, target.z + 40);
+      light.target.position.copy(target);
+      light.target.updateMatrixWorld();
+    };
+
+    update();
+    controls.addEventListener('change', update);
+    return () => controls.removeEventListener('change', update);
+  }, [controls]);
+
+  return (
+    <directionalLight
+      ref={lightRef}
+      intensity={2.0}
+      castShadow
+      shadow-mapSize={[2048, 2048]}
+      shadow-bias={-0.0002}
+      shadow-radius={8}
+      shadow-camera-left={-60}
+      shadow-camera-right={60}
+      shadow-camera-top={60}
+      shadow-camera-bottom={-60}
+      shadow-camera-near={10}
+      shadow-camera-far={300}
+    />
+  );
 }
 
 export default function SceneContent() {
   return (
     <>
-      {/* APS-style lighting: strong ambient + multi-directional fills */}
-      <ambientLight intensity={0.9} />
-      <directionalLight position={[60, 100, 60]} intensity={1.2} color="#ffffff" />
+      {/* HDR environment map for PBR metal reflections (local file, CC0 license) */}
+      <Suspense fallback={null}>
+        <Environment files="/env.hdr" background={false} environmentIntensity={0.4} />
+      </Suspense>
+
+      {/* Low ambient for shadow contrast */}
+      <ambientLight intensity={0.25} />
+
+      {/* Key light: follows camera target, casts shadows */}
+      <ShadowLight />
+
+      {/* Fill lights for depth */}
       <directionalLight position={[-40, 60, -30]} intensity={0.4} color="#c4d4e8" />
-      <directionalLight position={[0, -20, 40]} intensity={0.2} color="#e8e0d4" />
-      <hemisphereLight args={['#dce8f5', '#a8b0b8', 0.5]} />
+      <directionalLight position={[0, -10, 50]} intensity={0.15} color="#e8e0d4" />
+      <hemisphereLight args={['#dce8f5', '#8090a0', 0.4]} />
 
       <TrackpadOrbitControls />
 
@@ -91,18 +140,13 @@ export default function SceneContent() {
         <FloorGroup />
       </Bounds>
 
-      {/* Ground plane with contact shadows */}
-      <ContactShadows
-        position={[0, -0.01, 0]}
-        opacity={0.35}
-        scale={200}
-        blur={2}
-        far={50}
-        color="#4a5568"
-      />
-
       {/* Subtle ground grid */}
       <gridHelper args={[200, 100, '#c8cdd3', '#d8dce2']} />
+      {/* Ground plane to receive shadows */}
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+        <planeGeometry args={[1000, 1000]} />
+        <shadowMaterial opacity={0.2} />
+      </mesh>
     </>
   );
 }

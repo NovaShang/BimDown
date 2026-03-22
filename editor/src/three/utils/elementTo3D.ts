@@ -154,7 +154,8 @@ function polygonToExtrude(
   return {
     kind: 'extrude',
     // SVG Y → 3D Z (negated)
-    vertices: el.vertices.map(v => ({ x: v.x, y: -v.y })),
+    // shape(sx, sy) → rotateX(-PI/2) → (sx, 0, -sy). Need z = -svgY, so sy = svgY.
+    vertices: el.vertices.map(v => ({ x: v.x, y: v.y })),
     baseY,
     height,
   };
