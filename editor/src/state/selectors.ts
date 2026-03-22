@@ -1,8 +1,9 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
-import type { LayerData, CsvRow } from '../types.ts';
+import type { LayerData } from '../types.ts';
 import { DISCIPLINE_TABLES } from '../types.ts';
-import { processSvg, extractInnerSvg, extractViewBox } from '../utils/processor.ts';
+import { extractViewBox } from '../utils/processor.ts';
 import { groupByLayer } from '../model/serialize.ts';
+import { parseLayer } from '../model/parse.ts';
 
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
@@ -55,7 +56,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
       discipline: l.discipline,
-      html: extractInnerSvg(processSvg(l.tableName, l.svgContent, l.csvRows)),
+      elements: parseLayer(l),
     }));
 }
 
@@ -223,7 +224,6 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
       key,
       tableName,
       discipline,
-      html: '',  // not used when elements are present
       elements: groupElements,
     });
   }

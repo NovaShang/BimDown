@@ -74,12 +74,9 @@ export default function Minimap({ layers, viewBox, gridSvg, transform, setTransf
         {/* Layers */}
         {layers.map(layer => (
           <g key={layer.key} opacity="0.6">
-            {layer.elements
-              ? layer.elements.map(el => (
-                  <ElementNode key={el.id} element={el} viewBoxStr={vb} />
-                ))
-              : <g dangerouslySetInnerHTML={{ __html: layer.html }} />
-            }
+            {layer.elements.map(el => (
+              <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+            ))}
           </g>
         ))}
       </svg>

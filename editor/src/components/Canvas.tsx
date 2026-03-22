@@ -479,31 +479,17 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
           const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
           const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;
 
-          // Document mode: render each element as a React.memo component for O(1) updates
-          if (layer.elements) {
-            return (
-              <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
-                {layer.elements.map(el => (
-                  <ElementNode key={el.id} element={el} viewBoxStr={vb} />
-                ))}
-              </g>
-            );
-          }
-
-          // Read-only mode: use pre-rendered HTML string
           return (
-            <g
-              key={layer.key}
-              className={className}
-              data-layer={layer.key}
-              style={layerStyle}
-              dangerouslySetInnerHTML={{ __html: layer.html }}
-            />
+            <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
+              {layer.elements.map(el => (
+                <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+              ))}
+            </g>
           );
         })}
 
         {/* Unified wall/MEP outlines (miter-joined, visibility-aware) */}
-        {state.document && <WallOutlines document={state.document} visibleLayers={state.visibleLayers} activeDiscipline={activeDiscipline} />}
+        <WallOutlines layers={layers} />
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />

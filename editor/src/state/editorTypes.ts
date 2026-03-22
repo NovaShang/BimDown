@@ -95,8 +95,7 @@ export interface ProcessedLayer {
   key: string;
   tableName: string;
   discipline: string;
-  html: string;
-  elements?: CanonicalElement[];  // present in document mode for granular rendering
+  elements: CanonicalElement[];
 }
 
 export interface LayerGroup {

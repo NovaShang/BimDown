@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import type { DocumentState } from '../model/document.ts';
+import type { ProcessedLayer } from '../state/editorTypes.ts';
 import type { LineElement } from '../model/elements.ts';
 import {
   computeCornerAdjustments,
@@ -10,9 +10,7 @@ import {
 } from '../utils/wallMiter.ts';
 
 interface WallOutlinesProps {
-  document: DocumentState;
-  visibleLayers: Set<string>;
-  activeDiscipline: string | null;
+  layers: ProcessedLayer[];
 }
 
 const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
@@ -34,44 +32,39 @@ const OUTLINE_STYLES: Record<string, { color: string; width: number }> = {
  * then clips edges against all other polygons to produce only the
  * outer boundary of the union — like architectural drawings.
  */
-export const WallOutlines = React.memo(function WallOutlines({
-  document: doc,
-  visibleLayers,
-  activeDiscipline,
-}: WallOutlinesProps) {
+export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOutlinesProps) {
   const data = useMemo(() => {
     const wallSegs: { seg: WallSegment; table: string }[] = [];
     const mepSegs: { seg: WallSegment; table: string }[] = [];
 
-    for (const el of doc.elements.values()) {
-      if (el.geometry !== 'line') continue;
-      const line = el as LineElement;
-      const isWall = WALL_TABLES.has(el.tableName);
-      const isMep = MEP_TABLES.has(el.tableName);
+    for (const layer of layers) {
+      const isWall = WALL_TABLES.has(layer.tableName);
+      const isMep = MEP_TABLES.has(layer.tableName);
       if (!isWall && !isMep) continue;
 
-      const layerKey = `${el.discipline}/${el.tableName}`;
-      if (!visibleLayers.has(layerKey)) continue;
-      if (el.discipline !== activeDiscipline && el.discipline !== 'architechture') continue;
+      for (const el of layer.elements) {
+        if (el.geometry !== 'line') continue;
+        const line = el as LineElement;
 
-      const material = (line.attrs.material ?? '').toLowerCase();
-      let fill = 'none';
-      if (isWall) {
-        if (material.includes('concrete')) fill = '#d4d4d4';
-        else if (material.includes('metal') || material.includes('steel')) fill = '#e8e8e8';
-        else fill = '#f0f0f0';
+        const material = (line.attrs.material ?? '').toLowerCase();
+        let fill = 'none';
+        if (isWall) {
+          if (material.includes('concrete')) fill = '#d4d4d4';
+          else if (material.includes('metal') || material.includes('steel')) fill = '#e8e8e8';
+          else fill = '#f0f0f0';
+        }
+
+        const seg: WallSegment = {
+          id: line.id,
+          x1: line.start.x, y1: line.start.y,
+          x2: line.end.x, y2: line.end.y,
+          halfWidth: line.strokeWidth / 2,
+          fill,
+        };
+
+        if (isWall) wallSegs.push({ seg, table: el.tableName });
+        else mepSegs.push({ seg, table: el.tableName });
       }
-
-      const seg: WallSegment = {
-        id: line.id,
-        x1: line.start.x, y1: line.start.y,
-        x2: line.end.x, y2: line.end.y,
-        halfWidth: line.strokeWidth / 2,
-        fill,
-      };
-
-      if (isWall) wallSegs.push({ seg, table: el.tableName });
-      else mepSegs.push({ seg, table: el.tableName });
     }
 
     const processGroup = (items: { seg: WallSegment; table: string }[]) => {
@@ -128,7 +121,7 @@ export const WallOutlines = React.memo(function WallOutlines({
     const walls = processGroup(wallSegs);
     const mep = processGroup(mepSegs);
     return { walls, mep };
-  }, [doc.elements, visibleLayers, activeDiscipline]);
+  }, [layers]);
 
   const { walls, mep } = data;
   if (walls.edges.length === 0 && mep.edges.length === 0) return null;
