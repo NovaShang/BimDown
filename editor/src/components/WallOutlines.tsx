@@ -1,7 +1,12 @@
 import React, { useMemo } from 'react';
 import type { DocumentState } from '../model/document.ts';
 import type { LineElement } from '../model/elements.ts';
-import { computeCornerAdjustments, type WallSegment, type MiterResult } from '../utils/wallMiter.ts';
+import {
+  computeCornerAdjustments,
+  computeOuterEdges,
+  type WallSegment,
+  type WallPolygon,
+} from '../utils/wallMiter.ts';
 
 interface WallOutlinesProps {
   document: DocumentState;
@@ -22,16 +27,17 @@ const OUTLINE_STYLES: Record<string, { color: string; width: number }> = {
 };
 
 /**
- * Unified wall/MEP outline layer. Replaces per-element outlines + WallJoins.
- * Computes miter-joined outlines for all visible wall-type elements as a batch,
- * so junctions are always correct and visibility changes are respected.
+ * Unified wall/MEP outline layer.
+ * Computes per-wall polygons (with miter + T-junction adjustments),
+ * then clips edges against all other polygons to produce only the
+ * outer boundary of the union — like architectural drawings.
  */
 export const WallOutlines = React.memo(function WallOutlines({
   document: doc,
   visibleLayers,
   activeDiscipline,
 }: WallOutlinesProps) {
-  const { lines, fills } = useMemo(() => {
+  const data = useMemo(() => {
     const wallSegs: { seg: WallSegment; table: string }[] = [];
     const mepSegs: { seg: WallSegment; table: string }[] = [];
 
@@ -66,31 +72,18 @@ export const WallOutlines = React.memo(function WallOutlines({
       else mepSegs.push({ seg, table: el.tableName });
     }
 
-    const wallMiter = computeCornerAdjustments(wallSegs.map(w => w.seg));
-    const mepMiter = computeCornerAdjustments(mepSegs.map(m => m.seg));
+    const processGroup = (items: { seg: WallSegment; table: string }[]) => {
+      if (items.length === 0) return { edges: [] as [{ x: number; y: number }, { x: number; y: number }][], fills: [] as { points: string; fill: string }[], color: '#888', width: 0.02 };
 
-    const outLines: { x1: number; y1: number; x2: number; y2: number; color: string; width: number }[] = [];
-    const outFills: { points: string; fill: string }[] = [];
-
-    const emitOutlines = (
-      items: { seg: WallSegment; table: string }[],
-      miter: MiterResult,
-    ) => {
+      const segs = items.map(i => i.seg);
+      const miter = computeCornerAdjustments(segs);
       const adj = miter.adjustments;
+      const style = OUTLINE_STYLES[items[0].table] ?? { color: '#888', width: 0.02 };
 
-      // End-cap detection: count endpoints
-      const endpointCount = new Map<string, number>();
-      const pk = (x: number, y: number) => `${(Math.round(x / 0.002) * 0.002).toFixed(4)},${(Math.round(y / 0.002) * 0.002).toFixed(4)}`;
+      // Build per-wall polygons
+      const polygons: WallPolygon[] = [];
       for (const { seg } of items) {
-        for (const k of [pk(seg.x1, seg.y1), pk(seg.x2, seg.y2)]) {
-          endpointCount.set(k, (endpointCount.get(k) ?? 0) + 1);
-        }
-      }
-
-      for (const { seg, table } of items) {
-        const style = OUTLINE_STYLES[table] ?? { color: '#888', width: 0.02 };
-        const dx = seg.x2 - seg.x1;
-        const dy = seg.y2 - seg.y1;
+        const dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len < 0.001) continue;
         const nx = -dy / len, ny = dx / len;
@@ -101,49 +94,49 @@ export const WallOutlines = React.memo(function WallOutlines({
         let p3 = { x: seg.x2 - nx * hw, y: seg.y2 - ny * hw };
         let p4 = { x: seg.x1 - nx * hw, y: seg.y1 - ny * hw };
 
-        const startAdj = adj.get(`${seg.id}:start`);
-        if (startAdj) { p1 = startAdj.left; p4 = startAdj.right; }
-        const endAdj = adj.get(`${seg.id}:end`);
-        if (endAdj) { p2 = endAdj.right; p3 = endAdj.left; }
+        const sa = adj.get(`${seg.id}:start`);
+        if (sa) { p1 = sa.left; p4 = sa.right; }
+        const ea = adj.get(`${seg.id}:end`);
+        if (ea) { p2 = ea.right; p3 = ea.left; }
 
-        // Two side lines
-        outLines.push({ x1: p1.x, y1: p1.y, x2: p2.x, y2: p2.y, color: style.color, width: style.width });
-        outLines.push({ x1: p4.x, y1: p4.y, x2: p3.x, y2: p3.y, color: style.color, width: style.width });
-
-        // End caps at free endpoints
-        if ((endpointCount.get(pk(seg.x1, seg.y1)) ?? 0) < 2) {
-          outLines.push({ x1: p1.x, y1: p1.y, x2: p4.x, y2: p4.y, color: style.color, width: style.width });
-        }
-        if ((endpointCount.get(pk(seg.x2, seg.y2)) ?? 0) < 2) {
-          outLines.push({ x1: p2.x, y1: p2.y, x2: p3.x, y2: p3.y, color: style.color, width: style.width });
-        }
+        polygons.push({ id: seg.id, corners: [p1, p2, p3, p4] });
       }
 
-      // Junction fills
-      for (const jf of miter.junctionFills) {
-        outFills.push({
-          points: jf.points.map(p => `${p.x},${p.y}`).join(' '),
-          fill: jf.fill,
-        });
-      }
+      // Clip edges to get outer boundary only
+      const outerEdges = computeOuterEdges(polygons);
+
+      // Junction fills (cover gaps between per-element fill polygons)
+      const fills = miter.junctionFills.map(jf => ({
+        points: jf.points.map(p => `${p.x},${p.y}`).join(' '),
+        fill: jf.fill,
+      }));
+
+      return { edges: outerEdges, fills, color: style.color, width: style.width };
     };
 
-    emitOutlines(wallSegs, wallMiter);
-    emitOutlines(mepSegs, mepMiter);
-
-    return { lines: outLines, fills: outFills };
+    const walls = processGroup(wallSegs);
+    const mep = processGroup(mepSegs);
+    return { walls, mep };
   }, [doc.elements, visibleLayers, activeDiscipline]);
 
-  if (lines.length === 0 && fills.length === 0) return null;
+  const { walls, mep } = data;
+  if (walls.edges.length === 0 && mep.edges.length === 0) return null;
 
   return (
     <g className="wall-outlines" transform="scale(1,-1)" style={{ pointerEvents: 'none' }}>
-      {fills.map((f, i) => (
-        <polygon key={`f${i}`} points={f.points} fill={f.fill} stroke="none" />
+      {walls.fills.map((f, i) => (
+        <polygon key={`wf${i}`} points={f.points} fill={f.fill} stroke="none" />
       ))}
-      {lines.map((s, i) => (
-        <line key={i} x1={s.x1} y1={s.y1} x2={s.x2} y2={s.y2}
-          stroke={s.color} strokeWidth={s.width} />
+      {mep.fills.map((f, i) => (
+        <polygon key={`mf${i}`} points={f.points} fill={f.fill} stroke="none" />
+      ))}
+      {walls.edges.map(([a, b], i) => (
+        <line key={`w${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+          stroke={walls.color} strokeWidth={walls.width} />
+      ))}
+      {mep.edges.map(([a, b], i) => (
+        <line key={`m${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+          stroke={mep.color} strokeWidth={mep.width} />
       ))}
     </g>
   );

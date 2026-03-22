@@ -279,3 +279,101 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
   return result;
 }
 
+// ─── Edge clipping: keep only outer edges of the wall polygon union ───
+
+/** Test if point P is strictly inside convex polygon (winding order doesn't matter). */
+function isInsideConvex(P: Pt, poly: Pt[]): boolean {
+  const n = poly.length;
+  if (n < 3) return false;
+  let pos = 0, neg = 0;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i + 1) % n];
+    const cross = (b.x - a.x) * (P.y - a.y) - (b.y - a.y) * (P.x - a.x);
+    if (cross > 1e-8) pos++;
+    else if (cross < -1e-8) neg++;
+    if (pos > 0 && neg > 0) return false;
+  }
+  return true;
+}
+
+/**
+ * Clip segment [A,B] against a convex polygon. Returns portions OUTSIDE the polygon.
+ * Uses Cyrus-Beck parametric clipping.
+ */
+function clipSegOutside(A: Pt, B: Pt, poly: Pt[]): [Pt, Pt][] {
+  const dx = B.x - A.x, dy = B.y - A.y;
+  let tEnter = 0, tLeave = 1;
+  const n = poly.length;
+
+  // Determine polygon winding
+  let area2 = 0;
+  for (let i = 0; i < n; i++) {
+    const a = poly[i], b = poly[(i + 1) % n];
+    area2 += (b.x - a.x) * (b.y + a.y);
+  }
+  const windSign = area2 > 0 ? 1 : -1;
+
+  for (let i = 0; i < n; i++) {
+    const e0 = poly[i], e1 = poly[(i + 1) % n];
+    // Inward normal (consistent with winding)
+    const nx = -(e1.y - e0.y) * windSign, ny = (e1.x - e0.x) * windSign;
+    const denom = nx * dx + ny * dy;
+    const num = nx * (A.x - e0.x) + ny * (A.y - e0.y);
+
+    if (Math.abs(denom) < 1e-12) {
+      if (num > 1e-8) return [[A, B]]; // parallel and outside
+      continue;
+    }
+
+    const t = -num / denom;
+    if (denom < 0) { if (t > tEnter) tEnter = t; }
+    else { if (t < tLeave) tLeave = t; }
+  }
+
+  if (tEnter >= tLeave - 1e-8) return [[A, B]]; // no real intersection
+
+  const result: [Pt, Pt][] = [];
+  const lerp = (t: number): Pt => ({ x: A.x + dx * t, y: A.y + dy * t });
+
+  if (tEnter > 1e-6) result.push([A, lerp(tEnter)]);
+  if (tLeave < 1 - 1e-6) result.push([lerp(tLeave), B]);
+  return result;
+}
+
+export interface WallPolygon {
+  id: string;
+  corners: [Pt, Pt, Pt, Pt]; // p1, p2, p3, p4
+}
+
+/**
+ * Given wall polygons, compute only the outer edge segments
+ * (edges not inside any other wall polygon).
+ */
+export function computeOuterEdges(polygons: WallPolygon[]): [Pt, Pt][] {
+  const result: [Pt, Pt][] = [];
+
+  for (let wi = 0; wi < polygons.length; wi++) {
+    const [p1, p2, p3, p4] = polygons[wi].corners;
+    const edges: [Pt, Pt][] = [[p1, p2], [p2, p3], [p3, p4], [p4, p1]];
+
+    for (const [eA, eB] of edges) {
+      let segments: [Pt, Pt][] = [[eA, eB]];
+
+      for (let wj = 0; wj < polygons.length; wj++) {
+        if (wj === wi) continue;
+        const otherPoly = polygons[wj].corners as unknown as Pt[];
+        const next: [Pt, Pt][] = [];
+        for (const seg of segments) {
+          next.push(...clipSegOutside(seg[0], seg[1], otherPoly));
+        }
+        segments = next;
+        if (segments.length === 0) break;
+      }
+
+      result.push(...segments);
+    }
+  }
+
+  return result;
+}
+
