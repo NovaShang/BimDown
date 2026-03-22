@@ -473,23 +473,35 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
           <g className="grid-layer" dangerouslySetInnerHTML={{ __html: gridSvg }} />
         )}
 
-        {/* Data layers */}
-        {layers.map(layer => {
-          const isBackground = layer.discipline === 'architechture' && activeDiscipline !== 'architechture';
-          const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
-          const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;
+        {/* Data layers + wall outlines inserted between wall fills and doors/windows */}
+        {(() => {
+          const BELOW_OUTLINE = new Set(['wall', 'structure_wall', 'curtain_wall', 'duct', 'pipe', 'conduit', 'cable_tray', 'space', 'slab', 'structure_slab', 'stair']);
+          const nodes: React.ReactNode[] = [];
+          let outlineInserted = false;
 
-          return (
-            <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
-              {layer.elements.map(el => (
-                <ElementNode key={el.id} element={el} viewBoxStr={vb} />
-              ))}
-            </g>
-          );
-        })}
+          for (const layer of layers) {
+            const isBackground = layer.discipline === 'architechture' && activeDiscipline !== 'architechture';
+            const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
+            const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;
+            const isBelowOutline = BELOW_OUTLINE.has(layer.tableName);
 
-        {/* Unified wall/MEP outlines (miter-joined, visibility-aware) */}
-        <WallOutlines layers={layers} />
+            if (!outlineInserted && !isBelowOutline) {
+              nodes.push(<WallOutlines key="__wall_outlines__" layers={layers} />);
+              outlineInserted = true;
+            }
+
+            nodes.push(
+              <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
+                {layer.elements.map(el => (
+                  <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+                ))}
+              </g>
+            );
+          }
+
+          if (!outlineInserted) nodes.push(<WallOutlines key="__wall_outlines__" layers={layers} />);
+          return nodes;
+        })()}
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />

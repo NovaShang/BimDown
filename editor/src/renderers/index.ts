@@ -13,6 +13,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import { renderWallFill } from './wallRenderer.tsx';
 import { renderColumn } from './columnRenderer.tsx';
 import { renderDoor } from './doorRenderer.tsx';
+import { renderWindow } from './windowRenderer.tsx';
 import { renderSpace } from './spaceRenderer.tsx';
 import { renderSlab } from './slabRenderer.tsx';
 import { renderEquipment } from './equipmentRenderer.tsx';
@@ -35,6 +36,7 @@ const RENDERERS: Record<string, ElementRenderFn> = {
   terminal: renderEquipment,
   // Line elements with special rendering
   door: renderDoor,
+  window: renderWindow,
   // Polygon elements
   space: renderSpace,
   slab: renderSlab,
