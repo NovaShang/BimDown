@@ -24,6 +24,9 @@ export interface ToolContext {
   findElementId: (target: EventTarget | null) => string | null;
   /** Set active snap result for visual feedback */
   setSnap: (snap: SnapResult | null) => void;
+  /** Optional: resolve marquee selection in 3D (projects elements to screen space).
+   *  If not provided, falls back to SVG DOM-based marquee. */
+  resolveMarquee?: (rect: { x: number; y: number; w: number; h: number }, containerRect: DOMRect) => string[];
 }
 
 export interface ToolStateSnapshot {

@@ -1,14 +1,18 @@
-import { useRef, useEffect, Suspense } from 'react';
+import { useRef, useEffect, useMemo, Suspense } from 'react';
 import { OrbitControls, Bounds, useBounds, Environment } from '@react-three/drei';
 import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
 import { useEditorState } from '../state/EditorContext.tsx';
+import { useToolContext3D } from './hooks/useToolContext3D.ts';
+import { useInteraction3D } from './hooks/useInteraction3D.ts';
+import DrawingOverlay3D from './overlays/DrawingOverlay3D.tsx';
+import SnapOverlay3D from './overlays/SnapOverlay3D.tsx';
+import ResizeHandles3D from './overlays/ResizeHandles3D.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TOUCH, MOUSE, DirectionalLight, Vector3 } from 'three';
 
-function TrackpadOrbitControls() {
-  const controlsRef = useRef<OrbitControlsImpl>(null);
+function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const gl = useThree(s => s.gl);
 
   useEffect(() => {
@@ -43,7 +47,7 @@ function TrackpadOrbitControls() {
 
     canvas.addEventListener('wheel', handleWheel, { passive: false });
     return () => canvas.removeEventListener('wheel', handleWheel);
-  }, [gl]);
+  }, [gl, controlsRef]);
 
   return (
     <OrbitControls
@@ -86,7 +90,6 @@ function ShadowLight() {
 
     const update = () => {
       const target = (controls as any).target as Vector3;
-      // Position light relative to orbit target
       light.position.set(target.x + 60, target.y + 100, target.z + 40);
       light.target.position.copy(target);
       light.target.updateMatrixWorld();
@@ -115,7 +118,51 @@ function ShadowLight() {
   );
 }
 
+/** Resolve current floor elevation from project levels. */
+function useFloorElevation(): number {
+  const { project, currentLevel } = useEditorState();
+  return useMemo(() => {
+    if (!project) return 0;
+    for (const l of project.levels) {
+      if (l.id === currentLevel) return l.elevation;
+    }
+    return 0;
+  }, [project, currentLevel]);
+}
+
+function InteractionLayer({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
+  const elevation = useFloorElevation();
+  const { toolCtx, hitElementIdRef, activeSnap, resizeDraggingRef } = useToolContext3D(elevation);
+
+  useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: elevation, controlsRef, resizeDraggingRef });
+
+  const state = useEditorState();
+  const selectedElement = useMemo(() => {
+    if (state.selectedIds.size !== 1 || !state.document) return null;
+    const id = state.selectedIds.values().next().value;
+    return state.document.elements.get(id!) ?? null;
+  }, [state.selectedIds, state.document, state.documentVersion]);
+
+  return (
+    <>
+      <DrawingOverlay3D elevation={elevation} />
+      <SnapOverlay3D snap={activeSnap} elevation={elevation} />
+      {selectedElement && (
+        <ResizeHandles3D
+          element={selectedElement}
+          elevation={elevation}
+          screenToSvg={toolCtx.screenToSvg}
+          resizeDraggingRef={resizeDraggingRef}
+          controlsRef={controlsRef}
+        />
+      )}
+    </>
+  );
+}
+
 export default function SceneContent() {
+  const controlsRef = useRef<OrbitControlsImpl>(null);
+
   return (
     <>
       {/* HDR environment map for PBR metal reflections (local file, CC0 license) */}
@@ -134,12 +181,15 @@ export default function SceneContent() {
       <directionalLight position={[0, -10, 50]} intensity={0.15} color="#e8e0d4" />
       <hemisphereLight args={['#dce8f5', '#8090a0', 0.4]} />
 
-      <TrackpadOrbitControls />
+      <TrackpadOrbitControls controlsRef={controlsRef} />
 
       <Bounds fit clip margin={1.5}>
         <FitOnLevelChange />
         <FloorGroup />
       </Bounds>
+
+      {/* 3D editing interaction + overlays */}
+      <InteractionLayer controlsRef={controlsRef} />
 
       {/* Screen-space ambient occlusion for depth/contact shadows */}
       <EffectComposer>

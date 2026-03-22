@@ -52,7 +52,7 @@ export default function EditorShell() {
   }, [state.project, state.currentLevel, dispatch]);
 
   useEffect(() => {
-    if (!state.document || state.documentVersion === 0) return;
+    if (!state.document || state.documentVersion === 0 || state.readonly) return;
 
     // Accumulate pending keys from O(1) mutations
     if (state.lastMutation && state.lastMutation.version > lastProcessedVersion.current) {
@@ -113,19 +113,17 @@ export default function EditorShell() {
             <Canvas3D />
           </Suspense>
         ) : (
-          <>
-            <Canvas
-              layers={processedLayers}
-              viewBox={viewBox}
-              grids={state.grids}
-              showGrid={state.showGrid}
-              activeFilter={state.activeFilter}
-              activeDiscipline={activeDiscipline}
-            />
-            <DrawingPropertiesBar />
-            <FloatingToolbar activeDiscipline={activeDiscipline} />
-          </>
+          <Canvas
+            layers={processedLayers}
+            viewBox={viewBox}
+            grids={state.grids}
+            showGrid={state.showGrid}
+            activeFilter={state.activeFilter}
+            activeDiscipline={activeDiscipline}
+          />
         )}
+        {!state.readonly && <DrawingPropertiesBar />}
+        {!state.readonly && <FloatingToolbar activeDiscipline={activeDiscipline} />}
         {selectedData.size > 0 && (
           <FloatingProperties selectedData={selectedData} />
         )}

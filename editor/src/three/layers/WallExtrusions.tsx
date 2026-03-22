@@ -1,9 +1,8 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo } from 'react';
 import { Shape, ExtrudeGeometry, BoxGeometry, BufferGeometry, Matrix4, type MeshPhysicalMaterial } from 'three';
 import { SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
-import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement, LineElement } from '../../model/elements.ts';
-import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
+import { useEditorState } from '../../state/EditorContext.tsx';
 import { computeCornerAdjustments, type WallSegment } from '../../utils/wallMiter.ts';
 import { resolveHeight } from '../utils/elementTo3D.ts';
 import { resolveBimMaterial, getBimMaterial, getGhostMaterial } from '../utils/bimMaterials.ts';
@@ -148,7 +147,6 @@ function subtractOpenings(
 }
 
 export default function WallExtrusions({ elements, tableName, levelElevation, levelElevations, ghost, allElements }: WallExtrusionsProps) {
-  const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
   const walls = useMemo(() => elements.filter((el): el is LineElement => el.geometry === 'line'), [elements]);
@@ -223,20 +221,6 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
     return result;
   }, [elements, tableName, levelElevation, levelElevations, ghost, hostedMap]);
 
-  const handleClick = useCallback((id: string, e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-    dispatch({ type: 'SELECT', ids: [id], additive: e.nativeEvent.shiftKey });
-  }, [dispatch]);
-
-  const handlePointerOver = useCallback((id: string, e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    dispatch({ type: 'SET_HOVER', id });
-  }, [dispatch]);
-
-  const handlePointerOut = useCallback(() => {
-    dispatch({ type: 'SET_HOVER', id: null });
-  }, [dispatch]);
-
   if (meshes.length === 0) return null;
 
   return (
@@ -251,14 +235,8 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
               castShadow={!ghost}
               receiveShadow
               renderOrder={ghost ? -1 : 0}
-              {...(ghost
-                ? { raycast: () => {} }
-                : {
-                    onClick: (e: ThreeEvent<MouseEvent>) => handleClick(id, e),
-                    onPointerOver: (e: ThreeEvent<PointerEvent>) => handlePointerOver(id, e),
-                    onPointerOut: handlePointerOut,
-                  }
-              )}
+              userData={{ elementId: id }}
+              {...(ghost ? { raycast: () => {} } : {})}
             >
               {isHighlighted && (
                 <meshStandardMaterial attach="material" color="#0d99ff"

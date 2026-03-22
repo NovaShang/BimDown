@@ -1,8 +1,7 @@
-import { useRef, useMemo, useEffect, useCallback } from 'react';
+import { useRef, useMemo, useEffect } from 'react';
 import { InstancedMesh, BoxGeometry, Object3D, Color } from 'three';
-import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
-import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
+import { useEditorState } from '../../state/EditorContext.tsx';
 import { elementTo3DParams, type BoxParams } from '../utils/elementTo3D.ts';
 import { useMaterial, useGhostMaterial } from '../hooks/useMaterials.ts';
 
@@ -26,7 +25,6 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
   const normalMaterial = useMaterial(tableName, materialName);
   const ghostMaterial = useGhostMaterial(tableName, materialName);
   const material = ghost ? ghostMaterial : normalMaterial;
-  const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
   const { boxes, indexToId } = useMemo(() => {
@@ -75,27 +73,6 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
     if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
   }, [ghost, selectedIds, hoveredId, indexToId, material.color]);
 
-  const handleClick = useCallback((e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-    const idx = e.instanceId;
-    if (idx === undefined) return;
-    const id = indexToId[idx];
-    if (!id) return;
-    dispatch({ type: 'SELECT', ids: [id], additive: e.nativeEvent.shiftKey });
-  }, [indexToId, dispatch]);
-
-  const handlePointerOver = useCallback((e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    const idx = e.instanceId;
-    if (idx === undefined) return;
-    const id = indexToId[idx];
-    if (id) dispatch({ type: 'SET_HOVER', id });
-  }, [indexToId, dispatch]);
-
-  const handlePointerOut = useCallback(() => {
-    dispatch({ type: 'SET_HOVER', id: null });
-  }, [dispatch]);
-
   if (boxes.length === 0) return null;
 
   const shouldCastShadow = !ghost && SHADOW_CAST_TABLES.has(tableName);
@@ -108,7 +85,8 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
       castShadow={shouldCastShadow}
       receiveShadow={!ghost}
       renderOrder={ghost ? -1 : 0}
-      {...(ghost ? { raycast: () => {} } : { onClick: handleClick, onPointerOver: handlePointerOver, onPointerOut: handlePointerOut })}
+      userData={{ indexToId }}
+      {...(ghost ? { raycast: () => {} } : {})}
     />
   );
 }

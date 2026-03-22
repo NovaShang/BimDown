@@ -167,9 +167,8 @@ export const selectTool: ToolHandler = {
     if (gesture.isMarquee) {
       // Finalize marquee selection
       const state = ctx.getState();
-      const svg = ctx.svgRef.current;
       const container = ctx.containerRef.current;
-      if (svg && container && state.drawingState === null) {
+      if (container && state.drawingState === null) {
         finishMarquee(ctx, e);
       }
       ctx.dispatch({ type: 'SET_MARQUEE', marquee: null });
@@ -208,9 +207,8 @@ function getElementAnchor(snapshot: Map<string, CanonicalElement | null> | null)
 }
 
 function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
-  const svg = ctx.svgRef.current;
   const container = ctx.containerRef.current;
-  if (!svg || !container) return;
+  if (!container) return;
 
   const containerRect = container.getBoundingClientRect();
   const marqueeRect = {
@@ -221,6 +219,19 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   };
 
   if (marqueeRect.w < 5 && marqueeRect.h < 5) return;
+
+  // 3D mode: use resolveMarquee callback
+  if (ctx.resolveMarquee) {
+    const ids = ctx.resolveMarquee(marqueeRect, containerRect);
+    if (ids.length > 0) {
+      ctx.dispatch({ type: 'SELECT', ids });
+    }
+    return;
+  }
+
+  // 2D mode: use SVG DOM
+  const svg = ctx.svgRef.current;
+  if (!svg) return;
 
   const ids = new Set<string>();
   const elements = svg.querySelectorAll('[data-id]');

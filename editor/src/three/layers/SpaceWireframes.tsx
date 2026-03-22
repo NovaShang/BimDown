@@ -1,8 +1,7 @@
-import { useMemo, useCallback } from 'react';
+import { useMemo } from 'react';
 import { Shape, ExtrudeGeometry, EdgesGeometry, BufferGeometry, LineBasicMaterial } from 'three';
-import type { ThreeEvent } from '@react-three/fiber';
 import type { CanonicalElement } from '../../model/elements.ts';
-import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
+import { useEditorState } from '../../state/EditorContext.tsx';
 import { elementTo3DParams, type ExtrudeParams } from '../utils/elementTo3D.ts';
 
 interface SpaceWireframesProps {
@@ -43,7 +42,6 @@ interface SpaceMeshData {
 }
 
 export default function SpaceWireframes({ elements, levelElevation, levelElevations, ghost }: SpaceWireframesProps) {
-  const dispatch = useEditorDispatch();
   const { selectedIds, hoveredId } = useEditorState();
 
   const meshes = useMemo(() => {
@@ -62,20 +60,6 @@ export default function SpaceWireframes({ elements, levelElevation, levelElevati
     return result;
   }, [elements, levelElevation, levelElevations]);
 
-  const handleClick = useCallback((id: string, e: ThreeEvent<MouseEvent>) => {
-    e.stopPropagation();
-    dispatch({ type: 'SELECT', ids: [id], additive: e.nativeEvent.shiftKey });
-  }, [dispatch]);
-
-  const handlePointerOver = useCallback((id: string, e: ThreeEvent<PointerEvent>) => {
-    e.stopPropagation();
-    dispatch({ type: 'SET_HOVER', id });
-  }, [dispatch]);
-
-  const handlePointerOut = useCallback(() => {
-    dispatch({ type: 'SET_HOVER', id: null });
-  }, [dispatch]);
-
   if (meshes.length === 0) return null;
 
   const baseMaterial = ghost ? WIRE_GHOST_MATERIAL : WIRE_MATERIAL;
@@ -89,14 +73,8 @@ export default function SpaceWireframes({ elements, levelElevation, levelElevati
             key={id}
             geometry={edgeGeometry}
             material={isHighlighted ? WIRE_HIGHLIGHT_MATERIAL : baseMaterial}
-            {...(ghost
-              ? { raycast: () => {} }
-              : {
-                  onClick: (e: ThreeEvent<MouseEvent>) => handleClick(id, e),
-                  onPointerOver: (e: ThreeEvent<PointerEvent>) => handlePointerOver(id, e),
-                  onPointerOut: handlePointerOut,
-                }
-            )}
+            userData={{ elementId: id }}
+            {...(ghost ? { raycast: () => {} } : {})}
           />
         );
       })}
