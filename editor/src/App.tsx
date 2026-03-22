@@ -4,7 +4,7 @@ import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
 import { connectFileWatcher } from './utils/fileWatcher.ts';
 import EditorShell from './components/EditorShell.tsx';
 
-const model = new URLSearchParams(window.location.search).get('model') || 'architectural';
+const model = new URLSearchParams(window.location.search).get('model') || 'Architecture';
 
 function AppInner() {
   const dispatch = useEditorDispatch();
