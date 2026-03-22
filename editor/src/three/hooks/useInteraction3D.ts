@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Raycaster, Vector2, type Object3D, type Intersection } from 'three';
+
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { getToolHandler } from '../../tools/registry.ts';
 import type { ToolContext } from '../../tools/types.ts';
@@ -49,6 +50,8 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation, con
   const state = useEditorState();
   const stateRef = useRef(state);
   stateRef.current = state;
+
+  const raycasterRef = useRef(new Raycaster());
 
   // Track whether our tool system owns the current gesture
   const toolOwnsGestureRef = useRef(false);
