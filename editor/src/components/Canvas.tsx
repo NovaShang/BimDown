@@ -63,7 +63,22 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
     if (elements) pruneCache(new Set(elements.keys()));
   }, [elements]);
 
-  // ────── GRID SVG (depends on local transform.scale) ──────
+  // UI scale correction: compute SVG-units-per-pixel at scale=1.
+  // Cached in ref, only recomputed when viewBox changes (not on every render).
+  const uiScaleRef = useRef(1);
+  if (viewBox && containerRef.current) {
+    const cw = containerRef.current.clientWidth;
+    const ch = containerRef.current.clientHeight;
+    if (cw > 0 && ch > 0) {
+      // SVG preserveAspectRatio="xMidYMid meet" → scale = min(cw/vb.w, ch/vb.h)
+      const svgToPixel = Math.min(cw / viewBox.w, ch / viewBox.h);
+      // Reference: 15 px/unit was the original calibration
+      uiScaleRef.current = svgToPixel / 15;
+    }
+  }
+  const uiScale = uiScaleRef.current;
+
+  // ────── GRID SVG ──────
   const gridSvg = useMemo(() => {
     if (!showGrid || grids.length === 0) return undefined;
 
@@ -89,10 +104,10 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
 
       return `
         <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-              stroke="#ef476f" stroke-width="${0.06 / transform.scale}" stroke-dasharray="${0.45 / transform.scale},${0.3 / transform.scale}" opacity="0.4" />
-        <circle cx="${lx}" cy="${ly}" r="${1.05 / transform.scale}" fill="none" stroke="#ef476f" stroke-width="${0.06 / transform.scale}" opacity="0.5" />
+              stroke="#ef476f" stroke-width="${0.06 / (transform.scale * uiScale)}" stroke-dasharray="${0.45 / (transform.scale * uiScale)},${0.3 / (transform.scale * uiScale)}" opacity="0.4" />
+        <circle cx="${lx}" cy="${ly}" r="${1.05 / (transform.scale * uiScale)}" fill="none" stroke="#ef476f" stroke-width="${0.06 / (transform.scale * uiScale)}" opacity="0.5" />
         <text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central"
-              font-size="${0.84 / transform.scale}" font-family="Inter, sans-serif" font-weight="600" fill="#ef476f" opacity="0.6">
+              font-size="${0.84 / (transform.scale * uiScale)}" font-family="Inter, sans-serif" font-weight="600" fill="#ef476f" opacity="0.6">
           ${g.number}
         </text>
       `;
@@ -434,7 +449,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
-      style={{ '--canvas-scale': transform.scale } as React.CSSProperties}
+      style={{ '--canvas-scale': transform.scale * uiScale } as React.CSSProperties}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -504,7 +519,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
         })()}
 
         {/* Selection overlay */}
-        <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />
+        <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale * uiScale} />
 
         {/* Resize handles */}
         {state.document && (() => {
@@ -515,18 +530,18 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
             // Always show handles for point geometry to indicate selection
             // For lines/polygons, only show handles if it's the ONLY item selected
             if (el.geometry === 'point' || selectedIds.size === 1) {
-              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} scale={transform.scale} onSnap={setActiveSnap} />);
+              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} scale={transform.scale * uiScale} onSnap={setActiveSnap} />);
             }
           }
           return handles;
         })()}
 
         {/* Snap guides */}
-        <SnapOverlay snap={activeSnap} scale={transform.scale} />
+        <SnapOverlay snap={activeSnap} scale={transform.scale * uiScale} />
 
         {/* Drawing preview overlay */}
         {state.drawingState && (
-          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={transform.scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} />
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={transform.scale * uiScale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} />
         )}
       </svg>
 

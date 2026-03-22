@@ -61,52 +61,17 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
 }
 
 export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  let found = false;
-
-  // Document mode: compute from elements (in scale(1,-1) coordinate space)
-  if (state.document && state.document.elements.size > 0) {
-    for (const el of state.document.elements.values()) {
-      found = true;
-      if (el.geometry === 'line') {
-        for (const p of [el.start, el.end]) {
-          minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-          maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-        }
-      } else if (el.geometry === 'point') {
-        minX = Math.min(minX, el.position.x - el.width / 2);
-        minY = Math.min(minY, el.position.y - el.height / 2);
-        maxX = Math.max(maxX, el.position.x + el.width / 2);
-        maxY = Math.max(maxY, el.position.y + el.height / 2);
-      } else if (el.geometry === 'polygon') {
-        for (const v of el.vertices) {
-          minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
-          maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
-        }
-      }
-    }
-  }
-
-  // Read-only mode fallback: use first SVG layer viewBox (already in SVG coords)
-  if (!found) {
-    const floor = getVisibleFloor(state);
-    if (floor) {
-      for (const layer of floor.layers) {
-        const vb = extractViewBox(layer.svgContent);
-        if (vb) return { x: vb.x - vb.w * 0.15, y: vb.y - vb.h * 0.15, w: vb.w * 1.3, h: vb.h * 1.3 };
-      }
+  // Use first SVG layer viewBox (stable, matches original data)
+  const floor = getVisibleFloor(state);
+  if (floor) {
+    for (const layer of floor.layers) {
+      const vb = extractViewBox(layer.svgContent);
+      if (vb) return vb;
     }
   }
 
   // Empty project fallback
-  if (!found) {
-    return state.currentLevel ? { x: -50, y: -50, w: 100, h: 100 } : null;
-  }
-
-  // Element coords use scale(1,-1), so SVG viewBox Y = -elementY
-  const w = maxX - minX, h = maxY - minY;
-  const pad = Math.max(w, h, 1) * 0.15;
-  return { x: minX - pad, y: -maxY - pad, w: w + pad * 2, h: h + pad * 2 };
+  return state.currentLevel ? { x: -50, y: -50, w: 100, h: 100 } : null;
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
