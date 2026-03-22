@@ -43,7 +43,7 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
       fill: '',
     }));
 
-    const adj = computeCornerAdjustments(segments);
+    const { adjustments: adj } = computeCornerAdjustments(segments);
 
     const result: WallMeshData[] = [];
     for (const w of walls) {

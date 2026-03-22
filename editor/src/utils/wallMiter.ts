@@ -107,10 +107,18 @@ function miterPoint(P: Pt, wi: JunctionWall, wj: JunctionWall): Pt | null {
  *   Start endpoint: p1 = adj.left,  p4 = adj.right
  *   End   endpoint: p2 = adj.right, p3 = adj.left
  */
-export function computeCornerAdjustments(walls: WallSegment[]): Map<string, CornerAdjustment> {
-  if (walls.length < 2) return new Map();
+/** Result of miter computation: per-wall corner adjustments + junction fill data */
+export interface MiterResult {
+  adjustments: Map<string, CornerAdjustment>;
+  /** Fill polygons at junctions (to cover gaps between wall fills) */
+  junctionFills: { points: Pt[]; fill: string }[];
+}
+
+export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
+  const empty: MiterResult = { adjustments: new Map(), junctionFills: [] };
+  if (walls.length < 2) return empty;
   const junctions = buildJunctions(walls);
-  const result = new Map<string, CornerAdjustment>();
+  const result: MiterResult = { adjustments: new Map(), junctionFills: [] };
 
   for (const junc of junctions.values()) {
     if (junc.walls.length < 2) continue;
@@ -129,9 +137,24 @@ export function computeCornerAdjustments(walls: WallSegment[]): Map<string, Corn
       const prevGap = (i - 1 + n) % n;
       const thisGap = i;
 
-      result.set(`${w.seg.id}:${w.which}`, {
+      result.adjustments.set(`${w.seg.id}:${w.which}`, {
         left: miters[prevGap] ?? ccwPt(P, w),
         right: miters[thisGap] ?? cwPt(P, w),
+      });
+    }
+
+    // Junction fill polygons — cover triangular gaps between wall fills
+    for (let i = 0; i < n; i++) {
+      const wA = sorted[i];
+      const wB = sorted[(i + 1) % n];
+      const RA = cwPt(P, wA);
+      const LB = ccwPt(P, wB);
+      const M = miters[i];
+      const fill = wA.seg.fill !== 'none' ? wA.seg.fill : wB.seg.fill;
+      if (fill === 'none') continue;
+      result.junctionFills.push({
+        points: M ? [P, RA, M, LB] : [P, RA, LB],
+        fill,
       });
     }
   }

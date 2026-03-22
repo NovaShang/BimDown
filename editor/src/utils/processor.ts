@@ -66,7 +66,7 @@ function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string
   }
 
   // Compute miter corner adjustments
-  const adj = computeCornerAdjustments(miterSegments);
+  const { adjustments: adj } = computeCornerAdjustments(miterSegments);
 
   // Pass 2: build adjusted SVG elements
   const newElements: Element[] = [];
@@ -333,7 +333,7 @@ function transformMepLines(svgString: string, _csvRows: Map<string, CsvRow>, typ
     mepData.push({ id, x1, y1, x2, y2, halfW, nx, ny, lineEl: line });
   }
 
-  const adj = computeCornerAdjustments(miterSegments);
+  const { adjustments: adj } = computeCornerAdjustments(miterSegments);
 
   // Pass 2: build adjusted SVG elements
   const newElements: Element[] = [];
