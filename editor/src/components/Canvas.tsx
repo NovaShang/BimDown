@@ -328,8 +328,13 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
         const delta = Math.pow(2, -e.deltaY * 0.01);
         const rect = el.getBoundingClientRect();
         applyZoomBy(delta, e.clientX - rect.left, e.clientY - rect.top);
+      } else if (e.deltaX === 0 && e.deltaMode === 0 && Math.abs(e.deltaY) >= 4) {
+        // Mouse wheel (no horizontal component, pixel mode, discrete steps) → zoom
+        const delta = e.deltaY > 0 ? 0.9 : 1.1;
+        const rect = el.getBoundingClientRect();
+        applyZoomBy(delta, e.clientX - rect.left, e.clientY - rect.top);
       } else {
-        // Two-finger scroll on trackpad (or plain mouse wheel) → pan
+        // Two-finger scroll on trackpad → pan
         setTransform(prev => ({
           ...prev,
           x: prev.x - e.deltaX,
