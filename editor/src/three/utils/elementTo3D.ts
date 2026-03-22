@@ -24,7 +24,7 @@ const DEFAULT_SLAB_THICKNESS = 0.2;
 const DEFAULT_MEP_SIZE = 0.3;
 
 /** Resolve element height from top_level_id / top_offset / base_offset */
-function resolveHeight(
+export function resolveHeight(
   attrs: Record<string, string>,
   levelElevation: number,
   levelElevations: Map<string, number>,

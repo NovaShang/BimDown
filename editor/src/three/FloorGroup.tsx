@@ -3,12 +3,14 @@ import { useEditorState } from '../state/EditorContext.tsx';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import BoxInstances from './layers/BoxInstances.tsx';
+import WallExtrusions from './layers/WallExtrusions.tsx';
 import PolygonExtrusions from './layers/PolygonExtrusions.tsx';
 import SpaceWireframes from './layers/SpaceWireframes.tsx';
 import { useFloorElements } from './hooks/useFloorElements.ts';
 
+const WALL_TABLES = new Set(['wall', 'structure_wall']);
 const BOX_TABLES = new Set([
-  'wall', 'structure_wall', 'door', 'window',
+  'door', 'window',
   'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',
   'column', 'structure_column', 'equipment', 'terminal',
 ]);
@@ -115,6 +117,18 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
   return (
     <>
       {[...grouped.entries()].map(([tableName, els]) => {
+        if (WALL_TABLES.has(tableName)) {
+          return (
+            <WallExtrusions
+              key={tableName}
+              elements={els}
+              tableName={tableName}
+              levelElevation={levelElevation}
+              levelElevations={levelElevations}
+              ghost={ghost}
+            />
+          );
+        }
         if (tableName === 'space') {
           return (
             <SpaceWireframes
