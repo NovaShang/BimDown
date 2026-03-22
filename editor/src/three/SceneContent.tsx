@@ -1,5 +1,6 @@
 import { useRef, useEffect, Suspense } from 'react';
 import { OrbitControls, Bounds, useBounds, Environment } from '@react-three/drei';
+import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
 import { useEditorState } from '../state/EditorContext.tsx';
@@ -139,6 +140,11 @@ export default function SceneContent() {
         <FitOnLevelChange />
         <FloorGroup />
       </Bounds>
+
+      {/* Screen-space ambient occlusion for depth/contact shadows */}
+      <EffectComposer>
+        <N8AO aoRadius={2} intensity={1.5} distanceFalloff={0.5} />
+      </EffectComposer>
 
       {/* Subtle ground grid */}
       <gridHelper args={[200, 100, '#c8cdd3', '#d8dce2']} />
