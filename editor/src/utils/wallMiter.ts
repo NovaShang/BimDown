@@ -28,19 +28,6 @@ export interface CornerAdjustment {
   right: Pt;
 }
 
-/**
- * Overlay data for one junction gap (document mode).
- * Contains fill polygons and outline segments to render on top of
- * individually-rendered wall elements.
- */
-export interface JunctionOverlay {
-  outerFill: Pt[];
-  innerFill: Pt[];
-  fillColor: string;
-  outlines: [Pt, Pt][];
-  outlineColor: string;
-  outlineWidth: number;
-}
 
 const EPS = 0.002;
 const MITER_LIMIT = 4;
@@ -152,65 +139,3 @@ export function computeCornerAdjustments(walls: WallSegment[]): Map<string, Corn
   return result;
 }
 
-/**
- * Compute junction overlay data for document mode rendering.
- * Each overlay covers one gap between adjacent walls at a junction,
- * providing fill polygons and outline segments to render on top of
- * individually-rendered wall elements.
- */
-export function computeJunctionOverlays(
-  walls: WallSegment[],
-  outlineColor: string,
-  outlineWidth: number,
-): JunctionOverlay[] {
-  if (walls.length < 2) return [];
-  const junctions = buildJunctions(walls);
-  const overlays: JunctionOverlay[] = [];
-
-  for (const junc of junctions.values()) {
-    if (junc.walls.length < 2) continue;
-    const P = { x: junc.x, y: junc.y };
-    const sorted = junc.walls.slice().sort((a, b) => a.angle - b.angle);
-
-    for (let i = 0; i < sorted.length; i++) {
-      const wA = sorted[i];
-      const wB = sorted[(i + 1) % sorted.length];
-
-      const RA = cwPt(P, wA);
-      const LB = ccwPt(P, wB);
-
-      // Skip degenerate (collinear walls)
-      const area = Math.abs((RA.x - P.x) * (LB.y - P.y) - (LB.x - P.x) * (RA.y - P.y));
-      if (area < 1e-8) continue;
-
-      const LA = ccwPt(P, wA);
-      const RB = cwPt(P, wB);
-
-      const M_outer = miterPoint(P, wA, wB);
-      const M_inner_raw = rayIntersect(LA, { x: wA.dx, y: wA.dy }, RB, { x: wB.dx, y: wB.dy });
-      const M_inner = M_inner_raw && Math.sqrt((M_inner_raw.x - P.x) ** 2 + (M_inner_raw.y - P.y) ** 2)
-        <= MITER_LIMIT * Math.max(wA.halfWidth, wB.halfWidth) ? M_inner_raw : null;
-
-      const fillColor = wA.seg.fill !== 'none' ? wA.seg.fill : wB.seg.fill;
-
-      const outerFill = M_outer ? [P, RA, M_outer, LB] : [P, RA, LB];
-      const innerFill = M_inner ? [P, LA, M_inner, RB] : [P, LA, RB];
-
-      const outlines: [Pt, Pt][] = [];
-      if (M_outer) {
-        outlines.push([RA, M_outer], [M_outer, LB]);
-      } else {
-        outlines.push([RA, LB]);
-      }
-      if (M_inner) {
-        outlines.push([LA, M_inner], [M_inner, RB]);
-      } else {
-        outlines.push([LA, RB]);
-      }
-
-      overlays.push({ outerFill, innerFill, fillColor, outlines, outlineColor, outlineWidth });
-    }
-  }
-
-  return overlays;
-}

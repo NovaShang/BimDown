@@ -15,7 +15,7 @@ import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { ElementNode, pruneCache } from './ElementNode.tsx';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
-import { WallJoins } from './WallJoins.tsx';
+import { WallOutlines } from './WallOutlines.tsx';
 import { Icon } from './Icons.tsx';
 
 // Safari-only event for trackpad pinch gestures
@@ -490,8 +490,8 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
           );
         })}
 
-        {/* Wall miter joins */}
-        {state.document && <WallJoins document={state.document} />}
+        {/* Unified wall/MEP outlines (miter-joined, visibility-aware) */}
+        {state.document && <WallOutlines document={state.document} visibleLayers={state.visibleLayers} activeDiscipline={activeDiscipline} />}
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale} />
