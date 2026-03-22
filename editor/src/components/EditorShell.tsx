@@ -83,7 +83,7 @@ export default function EditorShell() {
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
     [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline],
   );
-  const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel]);
+  const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel, state.document, state.documentVersion]);
   const layerGroups = useMemo(() => getLayerGroups(state), [state.project, state.currentLevel]);
   const levelsWithData = useMemo(() => getLevelsWithData(state), [state.project]);
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);

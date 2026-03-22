@@ -116,8 +116,18 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
   }, []);
 
   const applyZoomToFit = useCallback(() => {
-    setTransform({ x: 0, y: 0, scale: 1 });
-  }, []);
+    const el = containerRef.current;
+    if (!el || !viewBox) {
+      setTransform({ x: 0, y: 0, scale: 1 });
+      return;
+    }
+    const cw = el.clientWidth, ch = el.clientHeight;
+    const margin = 40; // px padding inside container
+    const scale = Math.min((cw - margin * 2) / viewBox.w, (ch - margin * 2) / viewBox.h);
+    const x = (cw - viewBox.w * scale) / 2;
+    const y = (ch - viewBox.h * scale) / 2;
+    setTransform({ x, y, scale });
+  }, [viewBox]);
 
   const applyZoomToPercent = useCallback((percent: number) => {
     setTransform(prev => ({ ...prev, scale: percent / 100 }));
@@ -455,6 +465,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
         style={{
           transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           transformOrigin: '0 0',
+          overflow: 'visible',
         }}
       >
         {/* Grid layer */}

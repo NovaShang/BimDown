@@ -60,14 +60,53 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
 }
 
 export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
-  const floor = getVisibleFloor(state);
-  if (!floor || floor.layers.length === 0) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
 
-  for (const layer of floor.layers) {
-    const vb = extractViewBox(layer.svgContent);
-    if (vb) return vb;
+  // 1. Union of all layer viewBoxes
+  const floor = getVisibleFloor(state);
+  if (floor) {
+    for (const layer of floor.layers) {
+      const vb = extractViewBox(layer.svgContent);
+      if (!vb) continue;
+      found = true;
+      minX = Math.min(minX, vb.x);
+      minY = Math.min(minY, vb.y);
+      maxX = Math.max(maxX, vb.x + vb.w);
+      maxY = Math.max(maxY, vb.y + vb.h);
+    }
   }
-  return null;
+
+  // 2. Expand to include document elements (for new/moved elements)
+  if (state.document) {
+    for (const el of state.document.elements.values()) {
+      found = true;
+      if (el.geometry === 'line') {
+        for (const p of [el.start, el.end]) {
+          minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
+          maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
+        }
+      } else if (el.geometry === 'point') {
+        minX = Math.min(minX, el.position.x); minY = Math.min(minY, el.position.y);
+        maxX = Math.max(maxX, el.position.x + el.width); maxY = Math.max(maxY, el.position.y + el.height);
+      } else if (el.geometry === 'polygon') {
+        for (const v of el.vertices) {
+          minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
+          maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
+        }
+      }
+    }
+  }
+
+  // 3. Default for empty projects
+  if (!found) {
+    return state.currentLevel ? { x: -50, y: -50, w: 100, h: 100 } : null;
+  }
+
+  // Add padding (20% of larger dimension)
+  const w = maxX - minX, h = maxY - minY;
+  const pad = Math.max(w, h, 1) * 0.2;
+  return { x: minX - pad, y: minY - pad, w: w + pad * 2, h: h + pad * 2 };
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
