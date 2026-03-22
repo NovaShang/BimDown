@@ -33,7 +33,7 @@ const EPS = 0.002;
 const MITER_LIMIT = 4;
 
 function quantize(v: number) { return Math.round(v / EPS) * EPS; }
-function ptKey(x: number, y: number) { return `${quantize(x).toFixed(4)},${quantize(y).toFixed(4)}`; }
+export function ptKey(x: number, y: number) { return `${quantize(x).toFixed(4)},${quantize(y).toFixed(4)}`; }
 
 interface JunctionWall {
   seg: WallSegment;
@@ -70,7 +70,7 @@ function pointToSegDist(P: Pt, A: Pt, B: Pt): { dist: number; t: number } {
   return { dist: Math.sqrt(px * px + py * py), t };
 }
 
-export interface TJunction {
+interface TJunction {
   /** The wall whose endpoint hits the middle of another wall */
   tWallId: string;
   tWhich: 'start' | 'end';
@@ -130,9 +130,7 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
         // Main wall outline side 1: A + n*hw → B + n*hw
         // Main wall outline side 2: A - n*hw → B - n*hw
         const side1A = { x: A.x + mnx * mainHw, y: A.y + mny * mainHw };
-        const side1B = { x: B.x + mnx * mainHw, y: B.y + mny * mainHw };
         const side2A = { x: A.x - mnx * mainHw, y: A.y - mny * mainHw };
-        const side2B = { x: B.x - mnx * mainHw, y: B.y - mny * mainHw };
 
         // T-wall direction (away from junction = into the wall)
         const awayDx = which === 'start' ? seg.x2 - seg.x1 : seg.x1 - seg.x2;
@@ -144,8 +142,8 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
         const tHw = seg.halfWidth;
 
         // T-wall's two side origins at the endpoint
-        const tLeft = { x: ep.x - tnx * tHw, y: ep.y + tux * tHw }; // CCW side
-        const tRight = { x: ep.x + tuy * tHw, y: ep.y - tux * tHw }; // CW side
+        const tLeft = { x: ep.x + tnx * tHw, y: ep.y + tny * tHw }; // +normal side
+        const tRight = { x: ep.x - tnx * tHw, y: ep.y - tny * tHw }; // -normal side
 
         // Intersect each T-wall side ray (going opposite to away dir) with main wall outline sides
         const backDir = { x: -tux, y: -tuy };
@@ -156,18 +154,21 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
         const intR1 = rayIntersect(tRight, backDir, side1A, mainDir);
         const intR2 = rayIntersect(tRight, backDir, side2A, mainDir);
 
-        // Pick the intersection closest to the endpoint for each side
-        const pickClosest = (a: Pt | null, b: Pt | null): Pt | null => {
-          if (!a && !b) return null;
-          if (!a) return b;
-          if (!b) return a;
-          const da = (a.x - ep.x) ** 2 + (a.y - ep.y) ** 2;
-          const db = (b.x - ep.x) ** 2 + (b.y - ep.y) ** 2;
-          return da < db ? a : b;
+        // Only keep intersections in the backDir direction from origin
+        const isFwd = (origin: Pt, pt: Pt | null): pt is Pt =>
+          pt != null && (pt.x - origin.x) * backDir.x + (pt.y - origin.y) * backDir.y > -1e-8;
+        const pick = (pts: (Pt | null)[], origin: Pt): Pt | null => {
+          let best: Pt | null = null, bestD = Infinity;
+          for (const p of pts) {
+            if (!isFwd(origin, p)) continue;
+            const d = (p.x - origin.x) ** 2 + (p.y - origin.y) ** 2;
+            if (d < bestD) { bestD = d; best = p; }
+          }
+          return best;
         };
 
-        const left = pickClosest(intL1, intL2);
-        const right = pickClosest(intR1, intR2);
+        let left = pick([intL1, intL2], tLeft);
+        let right = pick([intR1, intR2], tRight);
         if (!left || !right) continue;
 
         result.push({ tWallId: seg.id, tWhich: which, mainWallId: other.id, left, right });
@@ -210,14 +211,14 @@ function miterPoint(P: Pt, wi: JunctionWall, wj: JunctionWall): Pt | null {
 }
 
 /**
- * Compute per-wall endpoint corner adjustments for miter joins.
- * Key: "wallId:start" or "wallId:end".
+ * Compute per-wall endpoint corner adjustments for miter joins + T-junctions.
+ * Returns adjustments map (key: "wallId:start"/"wallId:end"), junction fills,
+ * and uses edge clipping to produce only the outer boundary of the wall union.
  *
- * Mapping to polygon corners (wall direction = start→end):
+ * Corner mapping (wall direction = start→end):
  *   Start endpoint: p1 = adj.left,  p4 = adj.right
  *   End   endpoint: p2 = adj.right, p3 = adj.left
  */
-/** Result of miter computation: per-wall corner adjustments + junction fill data */
 export interface MiterResult {
   adjustments: Map<string, CornerAdjustment>;
   /** Fill polygons at junctions (to cover gaps between wall fills) */
@@ -281,21 +282,6 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
 
 // ─── Edge clipping: keep only outer edges of the wall polygon union ───
 
-/** Test if point P is strictly inside convex polygon (winding order doesn't matter). */
-function isInsideConvex(P: Pt, poly: Pt[]): boolean {
-  const n = poly.length;
-  if (n < 3) return false;
-  let pos = 0, neg = 0;
-  for (let i = 0; i < n; i++) {
-    const a = poly[i], b = poly[(i + 1) % n];
-    const cross = (b.x - a.x) * (P.y - a.y) - (b.y - a.y) * (P.x - a.x);
-    if (cross > 1e-8) pos++;
-    else if (cross < -1e-8) neg++;
-    if (pos > 0 && neg > 0) return false;
-  }
-  return true;
-}
-
 /**
  * Clip segment [A,B] against a convex polygon. Returns portions OUTSIDE the polygon.
  * Uses Cyrus-Beck parametric clipping.
@@ -343,20 +329,28 @@ function clipSegOutside(A: Pt, B: Pt, poly: Pt[]): [Pt, Pt][] {
 export interface WallPolygon {
   id: string;
   corners: [Pt, Pt, Pt, Pt]; // p1, p2, p3, p4
+  startKey: string;
+  endKey: string;
 }
 
 /**
- * Given wall polygons, compute only the outer edge segments
- * (edges not inside any other wall polygon).
+ * Given wall polygons, compute only the outer edge segments.
+ * Only the two SIDE edges (p1→p2 and p4→p3) are clipped against other polygons.
+ * End caps (p1↔p4 and p2↔p3) are only drawn at free endpoints.
  */
-export function computeOuterEdges(polygons: WallPolygon[]): [Pt, Pt][] {
+export function computeOuterEdges(
+  polygons: WallPolygon[],
+  /** Endpoint keys with 2+ walls (junctions). Free endpoints get end caps. */
+  junctionKeys: Set<string>,
+): [Pt, Pt][] {
   const result: [Pt, Pt][] = [];
 
   for (let wi = 0; wi < polygons.length; wi++) {
-    const [p1, p2, p3, p4] = polygons[wi].corners;
-    const edges: [Pt, Pt][] = [[p1, p2], [p2, p3], [p3, p4], [p4, p1]];
+    const { corners: [p1, p2, p3, p4], startKey, endKey } = polygons[wi];
+    // Only the two side edges — NOT the end-cap diagonals
+    const sideEdges: [Pt, Pt][] = [[p1, p2], [p4, p3]];
 
-    for (const [eA, eB] of edges) {
+    for (const [eA, eB] of sideEdges) {
       let segments: [Pt, Pt][] = [[eA, eB]];
 
       for (let wj = 0; wj < polygons.length; wj++) {
@@ -371,6 +365,14 @@ export function computeOuterEdges(polygons: WallPolygon[]): [Pt, Pt][] {
       }
 
       result.push(...segments);
+    }
+
+    // End caps at free endpoints only
+    if (!junctionKeys.has(startKey)) {
+      result.push([p1, p4]);
+    }
+    if (!junctionKeys.has(endKey)) {
+      result.push([p2, p3]);
     }
   }
 

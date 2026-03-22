@@ -4,6 +4,7 @@ import type { LineElement } from '../model/elements.ts';
 import {
   computeCornerAdjustments,
   computeOuterEdges,
+  ptKey,
   type WallSegment,
   type WallPolygon,
 } from '../utils/wallMiter.ts';
@@ -99,11 +100,20 @@ export const WallOutlines = React.memo(function WallOutlines({
         const ea = adj.get(`${seg.id}:end`);
         if (ea) { p2 = ea.right; p3 = ea.left; }
 
-        polygons.push({ id: seg.id, corners: [p1, p2, p3, p4] });
+        polygons.push({ id: seg.id, corners: [p1, p2, p3, p4], startKey: ptKey(seg.x1, seg.y1), endKey: ptKey(seg.x2, seg.y2) });
       }
 
-      // Clip edges to get outer boundary only
-      const outerEdges = computeOuterEdges(polygons);
+      // Build junction set (endpoints shared by 2+ walls)
+      const epCount = new Map<string, number>();
+      for (const p of polygons) {
+        epCount.set(p.startKey, (epCount.get(p.startKey) ?? 0) + 1);
+        epCount.set(p.endKey, (epCount.get(p.endKey) ?? 0) + 1);
+      }
+      const junctionKeys = new Set<string>();
+      for (const [k, c] of epCount) { if (c >= 2) junctionKeys.add(k); }
+
+      // Clip side edges, add end caps at free endpoints only
+      const outerEdges = computeOuterEdges(polygons, junctionKeys);
 
       // Junction fills (cover gaps between per-element fill polygons)
       const fills = miter.junctionFills.map(jf => ({
