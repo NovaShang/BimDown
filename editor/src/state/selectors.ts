@@ -63,22 +63,8 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   let found = false;
 
-  // 1. Union of all layer viewBoxes
-  const floor = getVisibleFloor(state);
-  if (floor) {
-    for (const layer of floor.layers) {
-      const vb = extractViewBox(layer.svgContent);
-      if (!vb) continue;
-      found = true;
-      minX = Math.min(minX, vb.x);
-      minY = Math.min(minY, vb.y);
-      maxX = Math.max(maxX, vb.x + vb.w);
-      maxY = Math.max(maxY, vb.y + vb.h);
-    }
-  }
-
-  // 2. Expand to include document elements (for new/moved elements)
-  if (state.document) {
+  // Document mode: compute from elements (in scale(1,-1) coordinate space)
+  if (state.document && state.document.elements.size > 0) {
     for (const el of state.document.elements.values()) {
       found = true;
       if (el.geometry === 'line') {
@@ -87,8 +73,10 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
           maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
         }
       } else if (el.geometry === 'point') {
-        minX = Math.min(minX, el.position.x); minY = Math.min(minY, el.position.y);
-        maxX = Math.max(maxX, el.position.x + el.width); maxY = Math.max(maxY, el.position.y + el.height);
+        minX = Math.min(minX, el.position.x - el.width / 2);
+        minY = Math.min(minY, el.position.y - el.height / 2);
+        maxX = Math.max(maxX, el.position.x + el.width / 2);
+        maxY = Math.max(maxY, el.position.y + el.height / 2);
       } else if (el.geometry === 'polygon') {
         for (const v of el.vertices) {
           minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
@@ -98,15 +86,26 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
     }
   }
 
-  // 3. Default for empty projects
+  // Read-only mode fallback: use first SVG layer viewBox (already in SVG coords)
+  if (!found) {
+    const floor = getVisibleFloor(state);
+    if (floor) {
+      for (const layer of floor.layers) {
+        const vb = extractViewBox(layer.svgContent);
+        if (vb) return { x: vb.x - vb.w * 0.15, y: vb.y - vb.h * 0.15, w: vb.w * 1.3, h: vb.h * 1.3 };
+      }
+    }
+  }
+
+  // Empty project fallback
   if (!found) {
     return state.currentLevel ? { x: -50, y: -50, w: 100, h: 100 } : null;
   }
 
-  // Add padding (20% of larger dimension)
+  // Element coords use scale(1,-1), so SVG viewBox Y = -elementY
   const w = maxX - minX, h = maxY - minY;
-  const pad = Math.max(w, h, 1) * 0.2;
-  return { x: minX - pad, y: minY - pad, w: w + pad * 2, h: h + pad * 2 };
+  const pad = Math.max(w, h, 1) * 0.15;
+  return { x: minX - pad, y: -maxY - pad, w: w + pad * 2, h: h + pad * 2 };
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
