@@ -40,7 +40,6 @@ export interface ToolStateSnapshot {
   document: DocumentState | null;
   project: ProjectData | null;
   grids: readonly GridData[];
-  activeDiscipline: string | null;
 }
 
 export interface ToolHandler {

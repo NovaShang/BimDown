@@ -172,15 +172,11 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
     let el = target as Element | null;
     while (el && el !== svgRef.current) {
       const id = el.getAttribute('data-id') || el.getAttribute('id');
-      if (id && /^[a-z]+-\d+$/i.test(id)) {
-        // Grids are not selectable outside the reference discipline
-        if (id.startsWith('gr-') && activeDiscipline !== 'reference') return null;
-        return id;
-      }
+      if (id && /^[a-z]+-\d+$/i.test(id)) return id;
       el = el.parentElement;
     }
     return null;
-  }, [activeDiscipline]);
+  }, []);
 
   const screenToSvg = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
@@ -210,7 +206,6 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
         document: s.document,
         project: s.project,
         grids: s.grids,
-        activeDiscipline: s.activeDiscipline,
       };
     },
     screenToSvg,
@@ -453,11 +448,6 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
       className={`canvas ${cursorClass}`}
       style={{
         '--canvas-scale': transform.scale * uiScale,
-        '--grid-stroke': `${0.06 / (transform.scale * uiScale)}`,
-        '--grid-dash': `${0.45 / (transform.scale * uiScale)} ${0.3 / (transform.scale * uiScale)}`,
-        '--grid-hit': `${0.6 / (transform.scale * uiScale)}`,
-        '--grid-circle-r': `${1.05 / (transform.scale * uiScale)}`,
-        '--grid-font': `${0.84 / (transform.scale * uiScale)}`,
       } as React.CSSProperties}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -505,7 +495,8 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
           let outlineInserted = false;
 
           for (const layer of layers) {
-            const isBackground = layer.discipline === 'architechture' && activeDiscipline !== 'architechture';
+            const isBackground = (layer.discipline === 'architechture' && activeDiscipline !== 'architechture')
+              || (layer.discipline === 'reference' && activeDiscipline !== 'reference');
             const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
             const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;
             const isBelowOutline = BELOW_OUTLINE.has(layer.tableName);
