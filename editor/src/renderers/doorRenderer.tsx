@@ -8,7 +8,7 @@ const BLOCK_MAP: Record<string, string> = {
   folding: 'door_folding',
 };
 
-/** Door: rendered from block SVG, positioned and scaled along the door line. */
+/** Door: block SVG positioned along door line, with hinge/swing flips. */
 export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'line') return null;
   const { start, end, strokeWidth, id, attrs } = el as LineElement;
@@ -21,12 +21,21 @@ export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
   const svg = getBlockSvg(blockName);
   if (!svg) return null;
 
-  // Transform: translate to start point, rotate to align with door direction, scale to door width
   const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+
+  // Hinge at 'end' → flip block along door line (mirror X)
+  const hingeEnd = attrs.hinge_position === 'end';
+  // Swing 'right' (facing start→end) → flip perpendicular to door line (mirror Y)
+  const swingRight = attrs.swing_side === 'right';
+
+  const sx = hingeEnd ? -1 : 1;
+  const sy = swingRight ? -1 : 1;
+  // When flipping X, shift origin so the block stays aligned to the door line
+  const tx = hingeEnd ? -1 : 0;
 
   return (
     <g data-id={id}
-      transform={`translate(${start.x},${start.y}) rotate(${angle}) scale(${len},${len})`}
+      transform={`translate(${start.x},${start.y}) rotate(${angle}) scale(${len},${len}) translate(${tx},0) scale(${sx},${sy})`}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

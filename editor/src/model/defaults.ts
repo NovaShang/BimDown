@@ -11,7 +11,7 @@ export function defaultAttrs(tableName: string, levelId: string): Record<string,
     case 'structure_column':
       return { ...base, top_level_id: levelId, top_offset: '0', material: tableName === 'column' ? 'Concrete' : 'Steel', shape: 'rectangular', size_x: '0.3', size_y: '0.3' };
     case 'door':
-      return { ...base, host_id: '', material: '', width: '0.9', height: '2.1', operation: 'single_swing' };
+      return { ...base, host_id: '', material: '', width: '0.9', height: '2.1', operation: 'single_swing', hinge_position: 'start', swing_side: 'left' };
     case 'window':
       return { ...base, host_id: '', material: '', width: '1.2', height: '1.5' };
     case 'space':

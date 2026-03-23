@@ -37,6 +37,16 @@ const OPERATION_OPTIONS = [
   { value: 'folding', label: 'Folding' },
 ];
 
+const HINGE_OPTIONS = [
+  { value: 'start', label: 'Start' },
+  { value: 'end', label: 'End' },
+];
+
+const SWING_SIDE_OPTIONS = [
+  { value: 'left', label: 'Left' },
+  { value: 'right', label: 'Right' },
+];
+
 const SLAB_FUNCTION_OPTIONS = [
   { value: 'floor', label: 'Floor' },
   { value: 'roof', label: 'Roof' },
@@ -75,6 +85,8 @@ export function getDrawingFields(tableName: string): DrawingField[] {
         { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
         { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.5, step: 0.1 },
         { key: 'operation', label: 'Type', type: 'select', options: OPERATION_OPTIONS },
+        { key: 'hinge_position', label: 'Hinge', type: 'select', options: HINGE_OPTIONS },
+        { key: 'swing_side', label: 'Swing', type: 'select', options: SWING_SIDE_OPTIONS },
       ];
     case 'window':
       return [
