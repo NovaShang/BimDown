@@ -1,5 +1,6 @@
 import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
+import type { DataSource } from './dataSource.ts';
 
 function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
@@ -51,21 +52,9 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
-async function fetchText(path: string): Promise<string | null> {
-  try {
-    const resp = await fetch(path);
-    if (!resp.ok) return null;
-    return await resp.text();
-  } catch {
-    return null;
-  }
-}
-
-export async function loadProject(model: string): Promise<ProjectData> {
-  const base = `/sample_data/${model}`;
-
+export async function loadProject(ds: DataSource): Promise<ProjectData> {
   let levels: Level[] = [];
-  const text = await fetchText(`${base}/global/level.csv`);
+  const text = await ds.fetchText('global/level.csv');
   if (text) {
     const rows = parseCsv(text);
     levels = rows.map(r => ({
@@ -80,7 +69,6 @@ export async function loadProject(model: string): Promise<ProjectData> {
 
   const floors = new Map<string, FloorData>();
 
-  // Build fetch tasks for all disciplines × tables × levels
   const fetchTasks: { disc: string; level: Level; tableName: string }[] = [];
   for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
     for (const level of levels) {
@@ -92,10 +80,9 @@ export async function loadProject(model: string): Promise<ProjectData> {
 
   const results = await Promise.all(
     fetchTasks.map(async ({ disc, level, tableName }) => {
-      const levelDir = `${base}/${level.id}`;
       const [svgContent, csvContent] = await Promise.all([
-        fetchText(`${levelDir}/${tableName}s.svg`),
-        fetchText(`${levelDir}/${tableName}.csv`),
+        ds.fetchText(`${level.id}/${tableName}s.svg`),
+        ds.fetchText(`${level.id}/${tableName}.csv`),
       ]);
       return { disc, level, tableName, svgContent, csvContent };
     })
@@ -130,9 +117,8 @@ export async function loadProject(model: string): Promise<ProjectData> {
   return { levels, floors };
 }
 
-
-export async function loadGrids(model: string): Promise<GridData[]> {
-  const text = await fetchText(`/sample_data/${model}/global/grid.csv`);
+export async function loadGrids(ds: DataSource): Promise<GridData[]> {
+  const text = await ds.fetchText('global/grid.csv');
   if (text) {
     const rows = parseCsv(text);
     return rows.map(r => ({
@@ -147,15 +133,11 @@ export async function loadGrids(model: string): Promise<GridData[]> {
   return [];
 }
 
-export async function loadLayer(model: string, levelId: string, tableName: string): Promise<LayerData | null> {
-  const levelDir = `/sample_data/${model}/${levelId}`;
-  const svgPath = `${levelDir}/${tableName}s.svg`;
-  const csvPath = `${levelDir}/${tableName}.csv`;
-
-  const svgContent = await fetchText(svgPath);
+export async function loadLayer(ds: DataSource, levelId: string, tableName: string): Promise<LayerData | null> {
+  const svgContent = await ds.fetchText(`${levelId}/${tableName}s.svg`);
   if (!svgContent) return null;
 
-  const csvContent = await fetchText(csvPath);
+  const csvContent = await ds.fetchText(`${levelId}/${tableName}.csv`);
   const csvMap = new Map<string, CsvRow>();
   if (csvContent) {
     const rows = parseCsv(csvContent);
@@ -166,7 +148,7 @@ export async function loadLayer(model: string, levelId: string, tableName: strin
 
   return {
     tableName,
-    discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architechture',
+    discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architectural',
     svgContent,
     csvRows: csvMap,
   };
