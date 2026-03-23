@@ -17,6 +17,7 @@ import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { WallOutlines } from './WallOutlines.tsx';
 import { renderSpaceLabels } from '../renderers/spaceRenderer.tsx';
 import { Icon } from './Icons.tsx';
+import CanvasContextMenu from './CanvasContextMenu.tsx';
 
 // Safari-only event for trackpad pinch gestures
 interface GestureEvent extends UIEvent {
@@ -49,6 +50,9 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
 
   // ────── LOCAL SNAP STATE ──────
   const [activeSnap, setActiveSnap] = useState<SnapResult | null>(null);
+
+  // ────── CONTEXT MENU STATE ──────
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: string | null } | null>(null);
 
   // Reset transform when level changes
   useEffect(() => {
@@ -110,6 +114,24 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
     setTransform(prev => ({ ...prev, scale: percent / 100 }));
   }, []);
 
+  const applyZoomToBBox = useCallback((minX: number, minY: number, maxX: number, maxY: number) => {
+    const el = containerRef.current;
+    if (!el || !viewBox) return;
+    const cw = el.clientWidth, ch = el.clientHeight;
+    const margin = 80;
+    const bw = maxX - minX || 1;
+    const bh = maxY - minY || 1;
+    const svgToPixel = Math.min(cw / viewBox.w, ch / viewBox.h);
+    const scale = Math.min((cw - margin * 2) / (bw * svgToPixel), (ch - margin * 2) / (bh * svgToPixel));
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const px = (cx - viewBox.x) * svgToPixel;
+    const py = (-cy - viewBox.y) * svgToPixel;
+    const tx = cw / 2 - px * scale;
+    const ty = ch / 2 - py * scale;
+    setTransform({ x: tx, y: ty, scale });
+  }, [viewBox]);
+
   // Wrap globalDispatch: intercept transform actions locally
   const dispatch = useCallback((action: CanvasAction) => {
     switch (action.type) {
@@ -125,10 +147,13 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
       case 'ZOOM_TO_PERCENT':
         applyZoomToPercent(action.percent);
         return;
+      case 'ZOOM_TO_BBOX':
+        applyZoomToBBox(action.minX, action.minY, action.maxX, action.maxY);
+        return;
       default:
         globalDispatch(action);
     }
-  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent]);
+  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent, applyZoomToBBox]);
 
   // Track last gesture scale to compute incremental delta
   const lastGestureScale = useRef(1);
@@ -147,11 +172,15 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
     let el = target as Element | null;
     while (el && el !== svgRef.current) {
       const id = el.getAttribute('data-id') || el.getAttribute('id');
-      if (id && /^[a-z]+-\d+$/i.test(id)) return id;
+      if (id && /^[a-z]+-\d+$/i.test(id)) {
+        // Grids are not selectable outside the reference discipline
+        if (id.startsWith('gr-') && activeDiscipline !== 'reference') return null;
+        return id;
+      }
       el = el.parentElement;
     }
     return null;
-  }, []);
+  }, [activeDiscipline]);
 
   const screenToSvg = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
@@ -181,6 +210,7 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
         document: s.document,
         project: s.project,
         grids: s.grids,
+        activeDiscipline: s.activeDiscipline,
       };
     },
     screenToSvg,
@@ -364,6 +394,8 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
   }, [applyZoomBy, hasViewBox]);
 
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
+    setContextMenu(null);
+
     // Middle mouse always pans regardless of tool
     if (e.button === 1) {
       middlePanning.current = true;
@@ -432,8 +464,8 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
       onContextMenu={(e) => {
+        e.preventDefault();
         if (stateRef.current.activeTool.startsWith('draw_')) {
-          e.preventDefault();
           if (stateRef.current.drawingState?.points.length) {
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
           } else {
@@ -441,7 +473,13 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
             globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
             globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
           }
+          return;
         }
+        const targetId = findElementId(e.target);
+        if (targetId && !stateRef.current.selectedIds.has(targetId)) {
+          globalDispatch({ type: 'SELECT', ids: [targetId] });
+        }
+        setContextMenu({ x: e.clientX, y: e.clientY, targetId });
       }}
       onDoubleClick={(e) => {
         const elementId = findElementId(e.target);
@@ -527,6 +565,19 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
 
       {/* Minimap */}
       <Minimap layers={layers} viewBox={viewBox} transform={transform} setTransform={setTransform} containerRef={containerRef} />
+
+      {/* Context menu */}
+      {contextMenu && state.document && (
+        <CanvasContextMenu
+          menu={contextMenu}
+          selectedIds={selectedIds}
+          document={state.document}
+          visibleLayers={state.visibleLayers}
+          dispatch={globalDispatch}
+          canvasDispatch={dispatch as (action: { type: string; [k: string]: unknown }) => void}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
 
       {/* Hover tooltip */}
       {hoveredId && (

@@ -222,7 +222,7 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
 
   // 3D mode: use resolveMarquee callback
   if (ctx.resolveMarquee) {
-    const ids = ctx.resolveMarquee(marqueeRect, containerRect);
+    const ids = filterSelectableIds(ctx, ctx.resolveMarquee(marqueeRect, containerRect));
     if (ids.length > 0) {
       ctx.dispatch({ type: 'SELECT', ids });
     }
@@ -273,6 +273,17 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   }
 
   if (ids.size > 0) {
-    ctx.dispatch({ type: 'SELECT', ids: Array.from(ids) });
+    const filtered = filterSelectableIds(ctx, Array.from(ids));
+    if (filtered.length > 0) ctx.dispatch({ type: 'SELECT', ids: filtered });
   }
+}
+
+/** Filter out elements that should not be selectable (e.g. grids outside reference discipline) */
+function filterSelectableIds(ctx: ToolContext, ids: string[]): string[] {
+  const state = ctx.getState();
+  if (state.activeDiscipline === 'reference') return ids;
+  return ids.filter(id => {
+    const el = state.document?.elements.get(id);
+    return el?.tableName !== 'grid';
+  });
 }
