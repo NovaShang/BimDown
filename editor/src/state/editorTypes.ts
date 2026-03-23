@@ -87,6 +87,7 @@ export type EditorAction =
   | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }
   | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string } | null }
   | { type: 'SET_DRAWING_ATTRS'; attrs: Record<string, string> }
+  | { type: 'DUPLICATE_ELEMENTS'; ids: string[]; offset: { dx: number; dy: number } }
   | { type: 'RELOAD_ELEMENTS'; elements: CanonicalElement[] }
   | { type: 'UNDO' }
   | { type: 'REDO' }

@@ -2,6 +2,7 @@ import type { EditorState, EditorAction } from './editorTypes.ts';
 import type { CanonicalElement, LineElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
+import { generateId } from '../model/ids.ts';
 
 export const initialState: EditorState = {
   modelName: '',
@@ -291,6 +292,36 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before) },
         selectedIds: nextSelected,
         editMode: false,
+      };
+    }
+
+    case 'DUPLICATE_ELEMENTS': {
+      if (!state.document) return state;
+      const { ids, offset } = action;
+      const before = new Map<string, CanonicalElement | null>();
+      const after = new Map<string, CanonicalElement | null>();
+      const next = new Map(state.document.elements);
+      const existingIds = new Set(next.keys());
+      const newIds: string[] = [];
+      for (const id of ids) {
+        const el = next.get(id);
+        if (!el) continue;
+        const newId = generateId(el.tableName, existingIds);
+        existingIds.add(newId);
+        const cloned = { ...moveElement(el, offset.dx, offset.dy), id: newId, attrs: { ...el.attrs, id: newId } };
+        next.set(newId, cloned);
+        before.set(newId, null);
+        after.set(newId, cloned);
+        newIds.push(newId);
+      }
+      if (newIds.length === 0) return state;
+      return {
+        ...state,
+        document: { ...state.document, elements: next },
+        history: pushCommand(state.history, createCommand('Duplicate elements', before, after)),
+        documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(after) },
+        selectedIds: new Set(newIds),
       };
     }
 
