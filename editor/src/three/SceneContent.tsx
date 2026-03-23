@@ -95,14 +95,14 @@ function useModelBounds() {
 
 function FitOnLevelChange() {
   const bounds = useBounds();
-  const { currentLevel, documentVersion } = useEditorState();
-  const prevKey = useRef('');
+  const { currentLevel } = useEditorState();
+  const prevLevel = useRef('');
 
   useEffect(() => {
-    const key = `${currentLevel}:${documentVersion}`;
-    if (key === prevKey.current) return;
-    prevKey.current = key;
+    if (currentLevel === prevLevel.current) return;
+    prevLevel.current = currentLevel;
 
+    // Retry a few frames to wait for geometry to mount
     let attempts = 0;
     const tryFit = () => {
       try {
@@ -112,7 +112,7 @@ function FitOnLevelChange() {
       }
     };
     requestAnimationFrame(tryFit);
-  }, [currentLevel, documentVersion, bounds]);
+  }, [currentLevel, bounds]);
 
   return null;
 }
