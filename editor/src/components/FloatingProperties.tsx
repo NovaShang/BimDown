@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import type { CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
+import { BIM_MATERIAL_OPTIONS } from '../three/utils/bimMaterials.ts';
 import { useEditorDispatch } from '../state/EditorContext.tsx';
 import { Icon } from './Icons.tsx';
 
@@ -21,6 +22,7 @@ const READ_ONLY_KEYS = new Set(['id', 'length', 'area', 'location_param']);
 
 // Fields with dropdown options
 const ENUM_OPTIONS: Record<string, string[]> = {
+  material: BIM_MATERIAL_OPTIONS,
   operation: ['single_swing', 'double_swing', 'sliding', 'folding'],
   function: ['floor', 'roof', 'finish'],
   system_type: ['hvac', 'plumbing', 'electrical'],
