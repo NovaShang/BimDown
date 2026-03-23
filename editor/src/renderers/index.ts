@@ -17,6 +17,7 @@ import { renderWindow } from './windowRenderer.tsx';
 import { renderSpace } from './spaceRenderer.tsx';
 import { renderSlab } from './slabRenderer.tsx';
 import { renderEquipment } from './equipmentRenderer.tsx';
+import { renderGrid } from './gridRenderer.tsx';
 
 export type ElementRenderFn = (el: CanonicalElement) => React.JSX.Element | null;
 
@@ -42,6 +43,8 @@ const RENDERERS: Record<string, ElementRenderFn> = {
   slab: renderSlab,
   structure_slab: renderSlab,
   stair: renderSlab,
+  // Reference elements
+  grid: renderGrid,
 };
 
 export function getRenderer(tableName: string): ElementRenderFn | null {

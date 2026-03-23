@@ -1,17 +1,19 @@
 import type { DocumentState } from '../model/document.ts';
+import type { Level, GridData } from '../types.ts';
 import { groupByLayer, serializeToSvg, serializeToCsv } from '../model/serialize.ts';
+import type { DataSource } from './dataSource.ts';
 
 /**
- * Persist document state to disk via Vite middleware.
- * Serializes all layers to CSV + SVG and POSTs to /api/save.
+ * Persist document state via the data source.
  */
-export async function persistDocument(doc: DocumentState, viewBox: string, model: string, changedKeys?: Set<string>): Promise<void> {
-  const elements = Array.from(doc.elements.values());
+export async function persistDocument(doc: DocumentState, viewBox: string, ds: DataSource, changedKeys?: Set<string>): Promise<void> {
+  // Grid elements are persisted to global/grid.csv separately, not per-level
+  const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
   const groups = groupByLayer(elements);
 
   const keysToProcess = changedKeys ? new Set([...groups.keys(), ...changedKeys]) : new Set(groups.keys());
 
-  const files: { path: string; content: string }[] = [];
+  const saves: Promise<void>[] = [];
 
   for (const key of keysToProcess) {
     if (changedKeys && !changedKeys.has(key)) continue;
@@ -20,26 +22,33 @@ export async function persistDocument(doc: DocumentState, viewBox: string, model
     const [, tableName] = key.split('/');
     const levelId = doc.levelId;
 
-    // SVG file: {levelId}/{tableName}s.svg
     const svgPath = `${levelId}/${tableName}s.svg`;
     const svgContent = serializeToSvg(groupElements, viewBox);
-    files.push({ path: svgPath, content: svgContent });
+    saves.push(ds.saveFile(svgPath, svgContent));
 
-    // CSV file: {levelId}/{tableName}.csv
     const csvPath = `${levelId}/${tableName}.csv`;
     const csvContent = serializeToCsv(groupElements, tableName);
-    files.push({ path: csvPath, content: csvContent });
+    saves.push(ds.saveFile(csvPath, csvContent));
   }
 
-  if (files.length === 0) return;
+  await Promise.all(saves);
+}
 
-  const resp = await fetch('/api/save', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model, files }),
-  });
+export async function persistLevels(levels: Level[], ds: DataSource): Promise<void> {
+  const header = 'id,number,name,elevation';
+  const rows = levels.map(l => `${l.id},${l.number},${csvEscape(l.name)},${l.elevation}`);
+  await ds.saveFile('global/level.csv', [header, ...rows].join('\n') + '\n');
+}
 
-  if (!resp.ok) {
-    throw new Error(`Save failed: ${resp.status} ${resp.statusText}`);
+export async function persistGrids(grids: GridData[], ds: DataSource): Promise<void> {
+  const header = 'id,number,start_x,start_y,end_x,end_y';
+  const rows = grids.map(g => `${g.id},${g.number},${g.x1},${g.y1},${g.x2},${g.y2}`);
+  await ds.saveFile('global/grid.csv', [header, ...rows].join('\n') + '\n');
+}
+
+function csvEscape(value: string): string {
+  if (value.includes(',') || value.includes('"') || value.includes('\n')) {
+    return `"${value.replace(/"/g, '""')}"`;
   }
+  return value;
 }

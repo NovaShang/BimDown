@@ -31,6 +31,8 @@ export function defaultAttrs(tableName: string, levelId: string): Record<string,
       return { ...base, system_type: 'hvac', equipment_type: '' };
     case 'terminal':
       return { ...base, system_type: 'hvac' };
+    case 'grid':
+      return {};
     default:
       return base;
   }

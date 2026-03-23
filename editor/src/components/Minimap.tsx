@@ -5,7 +5,6 @@ import { ElementNode } from './ElementNode.tsx';
 interface MinimapProps {
   layers: ProcessedLayer[];
   viewBox: { x: number; y: number; w: number; h: number };
-  gridSvg?: string;
   transform: ViewTransform;
   setTransform: React.Dispatch<React.SetStateAction<ViewTransform>>;
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -14,20 +13,17 @@ interface MinimapProps {
 const MINIMAP_W = 180;
 const MINIMAP_H = 120;
 
-export default function Minimap({ layers, viewBox, gridSvg, transform, setTransform, containerRef }: MinimapProps) {
+export default function Minimap({ layers, viewBox, transform, setTransform, containerRef }: MinimapProps) {
   const ref = useRef<HTMLDivElement>(null);
 
-  // Calculate viewport rect in SVG coordinates
   const cw = containerRef.current?.clientWidth ?? 800;
   const ch = containerRef.current?.clientHeight ?? 600;
 
-  // Visible SVG region accounting for pan/zoom
   const visX = viewBox.x - (transform.x / transform.scale) * (viewBox.w / cw);
   const visY = viewBox.y - (transform.y / transform.scale) * (viewBox.h / ch);
   const visW = viewBox.w / transform.scale;
   const visH = viewBox.h / transform.scale;
 
-  // Map SVG coords to minimap pixel coords
   const mapX = (svgX: number) => ((svgX - viewBox.x) / viewBox.w) * MINIMAP_W;
   const mapY = (svgY: number) => ((svgY - viewBox.y) / viewBox.h) * MINIMAP_H;
   const mapW = (svgW: number) => (svgW / viewBox.w) * MINIMAP_W;
@@ -42,15 +38,12 @@ export default function Minimap({ layers, viewBox, gridSvg, transform, setTransf
     const rect = ref.current?.getBoundingClientRect();
     if (!rect) return;
 
-    // Click position in minimap (0..MINIMAP_W, 0..MINIMAP_H)
     const mx = e.clientX - rect.left;
     const my = e.clientY - rect.top;
 
-    // Convert to SVG coordinates (center of viewport at click point)
     const targetSvgX = viewBox.x + (mx / MINIMAP_W) * viewBox.w;
     const targetSvgY = viewBox.y + (my / MINIMAP_H) * viewBox.h;
 
-    // Calculate new transform to center this SVG point
     const newX = (cw / 2) - ((targetSvgX - viewBox.x) / viewBox.w) * cw * transform.scale;
     const newY = (ch / 2) - ((targetSvgY - viewBox.y) / viewBox.h) * ch * transform.scale;
 
@@ -60,18 +53,17 @@ export default function Minimap({ layers, viewBox, gridSvg, transform, setTransf
   const vb = `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}`;
 
   return (
-    <div className="minimap" ref={ref} onClick={handleClick}>
+    <div
+      ref={ref}
+      onClick={handleClick}
+      className="absolute bottom-9 left-3 z-20 h-[120px] w-[180px] cursor-pointer overflow-hidden rounded-lg border border-border bg-[var(--bg-panel-dark)] opacity-85 transition-opacity hover:opacity-100"
+    >
       <svg
-        className="minimap-svg"
+        className="block size-full"
         viewBox={vb}
         width={MINIMAP_W}
         height={MINIMAP_H}
       >
-        {/* Grid (simplified) */}
-        {gridSvg && (
-          <g opacity="0.3" dangerouslySetInnerHTML={{ __html: gridSvg }} />
-        )}
-        {/* Layers */}
         {layers.map(layer => (
           <g key={layer.key} opacity="0.6">
             {layer.elements.map(el => (
@@ -80,9 +72,8 @@ export default function Minimap({ layers, viewBox, gridSvg, transform, setTransf
           </g>
         ))}
       </svg>
-      {/* Viewport indicator */}
       <div
-        className="minimap-viewport"
+        className="pointer-events-none absolute rounded-[1px] border-[1.5px] border-[var(--color-accent)] bg-[rgba(13,153,255,0.08)]"
         style={{
           left: Math.max(0, vpX),
           top: Math.max(0, vpY),

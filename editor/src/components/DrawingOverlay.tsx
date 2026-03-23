@@ -101,6 +101,49 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     return null;
   }
 
+  if (activeTool === 'draw_grid') {
+    if (points.length === 1 && cursor) {
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <line
+            x1={points[0].x} y1={points[0].y}
+            x2={cursor.x} y2={cursor.y}
+            stroke="#ef476f" strokeWidth={0.12 / scale} strokeDasharray={`${0.45 / scale},${0.3 / scale}`}
+            opacity="0.6"
+          />
+          <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="none" stroke="#ef476f" strokeWidth={0.08 / scale} opacity="0.6" />
+          <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#ef476f" opacity="0.4" />
+        </g>
+      );
+    }
+    return null;
+  }
+
+  if (activeTool === 'draw_hosted') {
+    // points[0] = start, cursor = end of the hosted span on the wall
+    if (points.length === 1 && cursor) {
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <line
+            x1={points[0].x} y1={points[0].y}
+            x2={cursor.x} y2={cursor.y}
+            stroke="#4fc3f7" strokeWidth={0.3 / scale}
+            opacity="0.45"
+          />
+          <line
+            x1={points[0].x} y1={points[0].y}
+            x2={cursor.x} y2={cursor.y}
+            stroke="#4fc3f7" strokeWidth={0.08 / scale}
+          />
+          <circle cx={points[0].x} cy={points[0].y} r={0.3 / scale} fill="#4fc3f7" opacity="0.7" />
+          <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#4fc3f7" opacity="0.7" />
+          <LengthLabel from={points[0]} to={cursor} scale={scale} />
+        </g>
+      );
+    }
+    return null;
+  }
+
   if (activeTool === 'draw_polygon') {
     if (points.length === 0 && !cursor) return null;
 

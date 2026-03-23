@@ -52,6 +52,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = {
   column:           { displayName: 'Columns',          color: '#2d2d2d', icon: '■', order: 3 },
   structure_column: { displayName: 'Str. Columns',     color: '#5c3d2e', icon: '■', order: 4 },
   door:             { displayName: 'Doors',            color: '#0077b6', icon: '▭', order: 5 },
+  window:           { displayName: 'Windows',          color: '#48cae4', icon: '⊟', order: 5.5 },
   space:            { displayName: 'Spaces',           color: '#3a86ff', icon: '⬡', order: 6 },
   slab:             { displayName: 'Slabs',            color: '#adb5bd', icon: '▨', order: 7 },
   structure_slab:   { displayName: 'Str. Slabs',       color: '#8d6e63', icon: '▨', order: 8 },
@@ -71,12 +72,14 @@ export const DISCIPLINE_COLORS: Record<string, string> = {
   architechture: '#3a86ff',
   structure:     '#e07a2f',
   mep:           '#00b4d8',
+  reference:     '#ef476f',
 };
 
 export const DISCIPLINE_TABLES: Record<string, string[]> = {
   architechture: ['wall', 'curtain_wall', 'column', 'door', 'window', 'space', 'slab', 'stair'],
   structure:     ['structure_wall', 'structure_column', 'structure_slab', 'beam', 'brace', 'isolated_foundation', 'raft_foundation', 'strip_foundation'],
   mep:           ['duct', 'pipe', 'conduit', 'cable_tray', 'equipment', 'terminal', 'mep_node'],
+  reference:     ['grid'],
 };
 
 export const TABLE_TO_DISCIPLINE: Record<string, string> = Object.fromEntries(

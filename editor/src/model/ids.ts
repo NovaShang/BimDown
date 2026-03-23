@@ -5,6 +5,7 @@ const PREFIX_MAP: Record<string, string> = {
   door: 'd', window: 'wi', space: 'sp', slab: 'sl', structure_slab: 'ssl',
   stair: 'st', duct: 'du', pipe: 'pi', equipment: 'eq', terminal: 'te',
   conduit: 'co', cable_tray: 'ct', beam: 'be', brace: 'br',
+  grid: 'gr',
 };
 
 /** Reverse lookup: prefix → tableName */

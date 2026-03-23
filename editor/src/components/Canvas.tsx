@@ -1,8 +1,7 @@
-import { useRef, useCallback, useEffect, useMemo, useState } from 'react';
+import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { ProcessedLayer, EditorAction } from '../state/editorTypes.ts';
 import type { ViewTransform } from '../state/editorTypes.ts';
-import type { GridData } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { getToolHandler } from '../tools/registry.ts';
 import type { ToolContext, ToolStateSnapshot, TransformAction } from '../tools/types.ts';
@@ -29,15 +28,13 @@ interface GestureEvent extends UIEvent {
 interface CanvasProps {
   layers: ProcessedLayer[];
   viewBox: { x: number; y: number; w: number; h: number } | null;
-  grids: GridData[];
-  showGrid: boolean;
   activeFilter: string | null;
   activeDiscipline: string | null;
 }
 
 type CanvasAction = EditorAction | TransformAction;
 
-export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter, activeDiscipline }: CanvasProps) {
+export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline }: CanvasProps) {
   const state = useEditorState();
   const globalDispatch = useEditorDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -78,42 +75,6 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
     }
   }
   const uiScale = uiScaleRef.current;
-
-  // ────── GRID SVG ──────
-  const gridSvg = useMemo(() => {
-    if (!showGrid || grids.length === 0) return undefined;
-
-    return grids.map(g => {
-      const dx = Math.abs(g.x2 - g.x1);
-      const dy = Math.abs(g.y2 - g.y1);
-      const isShort = Math.sqrt(dx * dx + dy * dy) < 1;
-      if (isShort) return '';
-
-      const ext = 200;
-      const ldx = g.x2 - g.x1;
-      const ldy = g.y2 - g.y1;
-      const len = Math.sqrt(ldx * ldx + ldy * ldy);
-      const ux = ldx / len, uy = ldy / len;
-
-      const x1 = g.x1 - ux * ext;
-      const y1 = -(g.y1 - uy * ext);
-      const x2 = g.x2 + ux * ext;
-      const y2 = -(g.y2 + uy * ext);
-
-      const lx = g.x1;
-      const ly = -g.y1;
-
-      return `
-        <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}"
-              stroke="#ef476f" stroke-width="${0.06 / (transform.scale * uiScale)}" stroke-dasharray="${0.45 / (transform.scale * uiScale)},${0.3 / (transform.scale * uiScale)}" opacity="0.4" />
-        <circle cx="${lx}" cy="${ly}" r="${1.05 / (transform.scale * uiScale)}" fill="none" stroke="#ef476f" stroke-width="${0.06 / (transform.scale * uiScale)}" opacity="0.5" />
-        <text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="central"
-              font-size="${0.84 / (transform.scale * uiScale)}" font-family="Inter, sans-serif" font-weight="600" fill="#ef476f" opacity="0.6">
-          ${g.number}
-        </text>
-      `;
-    }).join('');
-  }, [showGrid, grids, transform.scale]);
 
   // ────── TRANSFORM MATH (local, no context dispatch) ──────
   const applyZoomBy = useCallback((delta: number, centerX?: number, centerY?: number) => {
@@ -265,6 +226,13 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
             globalDispatch({ type: 'REDO' });
+          }
+          break;
+        case 'g': case 'G':
+          if (!e.ctrlKey && !e.metaKey) {
+            globalDispatch({ type: 'SET_TOOL', tool: 'draw_grid' });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
           }
           break;
         case 'Delete': case 'Backspace':
@@ -436,10 +404,10 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
 
   if (!viewBox) {
     return (
-      <div className="canvas empty-canvas">
-        <div className="empty-state">
-          <div className="empty-icon">&#x25C7;</div>
-          <p>Select a floor to view</p>
+      <div className="canvas flex items-center justify-center">
+        <div className="text-center text-muted-foreground">
+          <div className="mb-3 block text-5xl text-[var(--color-accent)] opacity-30">&#x25C7;</div>
+          <p className="text-[13px]">Select a floor to view</p>
         </div>
       </div>
     );
@@ -451,7 +419,14 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
-      style={{ '--canvas-scale': transform.scale * uiScale } as React.CSSProperties}
+      style={{
+        '--canvas-scale': transform.scale * uiScale,
+        '--grid-stroke': `${0.06 / (transform.scale * uiScale)}`,
+        '--grid-dash': `${0.45 / (transform.scale * uiScale)} ${0.3 / (transform.scale * uiScale)}`,
+        '--grid-hit': `${0.6 / (transform.scale * uiScale)}`,
+        '--grid-circle-r': `${1.05 / (transform.scale * uiScale)}`,
+        '--grid-font': `${0.84 / (transform.scale * uiScale)}`,
+      } as React.CSSProperties}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -485,11 +460,6 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
           overflow: 'visible',
         }}
       >
-        {/* Grid layer */}
-        {gridSvg && (
-          <g className="grid-layer" dangerouslySetInnerHTML={{ __html: gridSvg }} />
-        )}
-
         {/* Data layers + wall outlines inserted between wall fills and doors/windows */}
         {(() => {
           const BELOW_OUTLINE = new Set(['wall', 'structure_wall', 'curtain_wall', 'duct', 'pipe', 'conduit', 'cable_tray', 'space', 'slab', 'structure_slab', 'stair']);
@@ -556,29 +526,30 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
 
       {/* Minimap */}
-      <Minimap layers={layers} viewBox={viewBox} gridSvg={gridSvg} transform={transform} setTransform={setTransform} containerRef={containerRef} />
+      <Minimap layers={layers} viewBox={viewBox} transform={transform} setTransform={setTransform} containerRef={containerRef} />
 
       {/* Hover tooltip */}
       {hoveredId && (
-        <div className="hover-tooltip">
-          <span className="hover-type">{getElementType(hoveredId)}</span>
+        <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150">
+          <span className="text-[10px] font-normal text-muted-foreground">{getElementType(hoveredId)}</span>
           {hoveredId}
         </div>
       )}
 
       {/* Status bar */}
-      <div className="canvas-status">
-        <span className="status-tool" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+      <div className="absolute inset-x-0 bottom-0 z-[25] flex h-6 items-center gap-4 border-t border-border bg-[var(--bg-panel-dark)] px-3 text-[10px] text-muted-foreground select-none">
+        <span className="flex items-center gap-1 font-medium text-[var(--text-secondary)]">
           {activeTool === 'select' ? <><Icon name="select" width={16} height={16} /> Select</>
             : activeTool === 'pan' ? <><Icon name="pan" width={16} height={16} /> Pan</>
             : activeTool === 'zoom' ? <><Icon name="zoom" width={16} height={16} /> Zoom</>
+            : activeTool === 'draw_grid' ? <><Icon name="grid" width={16} height={16} /> Draw Grid</>
             : activeTool.startsWith('draw_') ? <><Icon name={state.drawingTarget?.tableName || 'wall'} width={16} height={16} /> Draw</>
             : activeTool}
         </span>
         {selectedIds.size > 0 && (
-          <span className="status-selection">{selectedIds.size} selected</span>
+          <span className="text-[var(--color-accent)]">{selectedIds.size} selected</span>
         )}
-        <span className="status-zoom">{(transform.scale * 100).toFixed(0)}%</span>
+        <span className="ml-auto tabular-nums">{(transform.scale * 100).toFixed(0)}%</span>
       </div>
     </div>
   );

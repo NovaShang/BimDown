@@ -1,10 +1,12 @@
 import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getLevelsWithData, getSelectedElementData } from '../state/selectors.ts';
+import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument } from '../utils/persist.ts';
-import { groupByLayer, serializeToSvg, serializeToCsv } from '../model/serialize.ts';
+import { persistDocument, persistLevels, persistGrids } from '../utils/persist.ts';
+import { groupByLayer, serializeToSvg } from '../model/serialize.ts';
+import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
+import { useDataSource } from '../utils/DataSourceContext.tsx';
 import LeftPanel from './LeftPanel.tsx';
 import Canvas from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
@@ -16,9 +18,12 @@ const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
 export default function EditorShell() {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
+  const ds = useDataSource();
 
   const stateRef = useRef(state);
   stateRef.current = state;
+  const dsRef = useRef(ds);
+  dsRef.current = ds;
 
   // Auto-persist: write to disk on every document mutation
   const persistTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -36,7 +41,15 @@ export default function EditorShell() {
     pendingKeys.current.clear();
     lastProcessedVersion.current = 0;
     try {
-      await persistDocument(currentState.document, vbStr, currentState.modelName, changedKeys);
+      await persistDocument(currentState.document, vbStr, dsRef.current, changedKeys);
+      // If grids changed, persist to global/grid.csv and sync state
+      if (changedKeys.has('reference/grid')) {
+        const gridEls = Array.from(currentState.document.elements.values()).filter(e => e.tableName === 'grid');
+        const grids = elementsToGrids(gridEls);
+        await persistGrids(grids, dsRef.current);
+        // Sync grids back to state for cross-level consistency
+        dispatch({ type: 'UPDATE_GRIDS', grids });
+      }
     } catch (err) {
       console.error('Flush persist failed:', err);
     }
@@ -48,7 +61,7 @@ export default function EditorShell() {
     const s = stateRef.current;
     if (!s.document || s.documentVersion === 0 || !s.project) return;
     const doc = s.document;
-    const elements = Array.from(doc.elements.values());
+    const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
     const groups = groupByLayer(elements);
     const viewBox = getComputedViewBox(s);
     const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
@@ -62,7 +75,22 @@ export default function EditorShell() {
       }
       dispatch({ type: 'UPDATE_LAYER', levelId: doc.levelId, layer: { tableName, discipline, svgContent, csvRows } });
     }
+
+    // Sync grid changes back to state.grids
+    const gridEls = Array.from(doc.elements.values()).filter(e => e.tableName === 'grid');
+    if (gridEls.length > 0 || s.grids.length > 0) {
+      dispatch({ type: 'UPDATE_GRIDS', grids: elementsToGrids(gridEls) });
+    }
   });
+
+  // Sync document to project when switching to 3D (so 3D sees latest edits)
+  const prevViewModeRef = useRef(state.viewMode);
+  useEffect(() => {
+    if (state.viewMode === '3d' && prevViewModeRef.current === '2d') {
+      syncDocumentToProject.current();
+    }
+    prevViewModeRef.current = state.viewMode;
+  }, [state.viewMode]);
 
   // Initialize document model when floor data loads or level changes
   const prevLevelRef = useRef('');
@@ -79,7 +107,9 @@ export default function EditorShell() {
     const floor = state.project?.floors.get(state.currentLevel);
     if (!floor) return;
     const elements = parseFloorLayers(floor.layers);
-    const doc = createDocument(state.currentLevel, elements);
+    // Inject grid elements from global state
+    const gridElements = gridsToElements(state.grids);
+    const doc = createDocument(state.currentLevel, [...elements, ...gridElements]);
     dispatch({ type: 'INIT_DOCUMENT', document: doc });
   }, [state.project, state.currentLevel, dispatch]);
 
@@ -105,10 +135,31 @@ export default function EditorShell() {
       const changedKeys = new Set(pendingKeys.current);
       pendingKeys.current.clear();
 
-      persistDocument(doc, vbStr, currentState.modelName, changedKeys).catch(err => console.error('Auto-persist failed:', err));
+      persistDocument(doc, vbStr, dsRef.current, changedKeys)
+        .then(async () => {
+          // If grids changed, also persist to global/grid.csv
+          if (changedKeys.has('reference/grid')) {
+            const gridEls = Array.from(currentState.document!.elements.values()).filter(e => e.tableName === 'grid');
+            const grids = elementsToGrids(gridEls);
+            await persistGrids(grids, dsRef.current);
+            dispatch({ type: 'UPDATE_GRIDS', grids });
+          }
+        })
+        .catch(err => console.error('Auto-persist failed:', err));
     }, 100);
     return () => clearTimeout(persistTimer.current);
   }, [state.documentVersion, state.lastMutation]);
+
+  // Persist levels when they change (add, remove, rename)
+  const prevLevelsRef = useRef(state.project?.levels);
+  useEffect(() => {
+    const levels = state.project?.levels;
+    if (!levels || levels === prevLevelsRef.current) return;
+    if (prevLevelsRef.current) {
+      persistLevels(levels, ds).catch(err => console.error('Persist levels failed:', err));
+    }
+    prevLevelsRef.current = levels;
+  }, [state.project?.levels, ds]);
 
   // Use document model for rendering when available
   const processedLayers = useMemo(
@@ -117,7 +168,6 @@ export default function EditorShell() {
   );
   const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel, state.document, state.documentVersion]);
   const layerGroups = useMemo(() => getLayerGroups(state), [state.project, state.currentLevel]);
-  const levelsWithData = useMemo(() => getLevelsWithData(state), [state.project]);
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
   const activeDiscipline = state.activeDiscipline;
 
@@ -128,28 +178,23 @@ export default function EditorShell() {
     }
   }, [viewBox, state.baseViewBox, dispatch]);
 
-
-
   return (
-    <div className="editor-shell">
+    <div className="flex h-full w-full">
       <LeftPanel
-        levels={levelsWithData}
+        levels={state.project?.levels ?? []}
         currentLevel={state.currentLevel}
         layerGroups={layerGroups}
         visibleLayers={state.visibleLayers}
-        showGrid={state.showGrid}
       />
-      <div className="canvas-area">
+      <div className="relative flex-1 overflow-hidden">
         {state.viewMode === '3d' ? (
-          <Suspense fallback={<div className="loading-screen"><div className="loader"><div className="loader-spinner" /><p>Loading 3D viewer...</p></div></div>}>
+          <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">Loading 3D viewer...</p></div></div>}>
             <Canvas3D />
           </Suspense>
         ) : (
           <Canvas
             layers={processedLayers}
             viewBox={viewBox}
-            grids={state.grids}
-            showGrid={state.showGrid}
             activeFilter={state.activeFilter}
             activeDiscipline={activeDiscipline}
           />

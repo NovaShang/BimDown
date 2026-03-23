@@ -132,6 +132,8 @@ function getCsvHeaders(tableName: string): string[] {
       return ['number', 'base_offset', 'system_type', 'equipment_type'];
     case 'terminal':
       return ['number', 'base_offset', 'system_type'];
+    case 'grid':
+      return ['number'];
     default:
       return ['number', 'base_offset'];
   }

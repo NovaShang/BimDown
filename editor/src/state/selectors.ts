@@ -15,6 +15,7 @@ export function getLevelsWithData(state: EditorState) {
 }
 
 const RENDER_Z_INDEX: Record<string, number> = {
+  grid: 1,
   space: 10,
   slab: 20,
   structure_slab: 21,
@@ -51,7 +52,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   return orderedLayers
-    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architechture') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architechture' || l.discipline === 'reference') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
@@ -83,6 +84,22 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
     for (const layer of floor.layers) {
       if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, []);
       byDiscipline.get(layer.discipline)!.push(layer);
+    }
+  }
+
+  // Add grid layer from document elements (grids are global, not in floor.layers)
+  if (state.document) {
+    const gridEls = Array.from(state.document.elements.values()).filter(e => e.tableName === 'grid');
+    if (gridEls.length > 0) {
+      const gridCsvRows = new Map<string, Record<string, string>>();
+      for (const el of gridEls) gridCsvRows.set(el.id, el.attrs);
+      if (!byDiscipline.has('reference')) byDiscipline.set('reference', []);
+      byDiscipline.get('reference')!.push({
+        tableName: 'grid',
+        discipline: 'reference',
+        svgContent: '',
+        csvRows: gridCsvRows,
+      });
     }
   }
 
@@ -163,7 +180,7 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
-    if (discipline !== state.activeDiscipline && discipline !== 'architechture') continue;
+    if (discipline !== state.activeDiscipline && discipline !== 'architechture' && discipline !== 'reference') continue;
     result.push({
       key,
       tableName,

@@ -74,6 +74,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           }
         }
       }
+      // Always show grids by default
+      if (grids.length > 0) visibleLayers.add('reference/grid');
 
       return { ...state, modelName: model, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
     }
@@ -113,6 +115,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const visibleLayers = floor
         ? new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`))
         : new Set<string>();
+      // Preserve grid visibility across levels
+      if (state.visibleLayers.has('reference/grid')) visibleLayers.add('reference/grid');
 
       let activeDiscipline = state.activeDiscipline;
       if (floor && floor.layers.length > 0) {
@@ -246,13 +250,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const after = new Map<string, CanonicalElement | null>([[action.element.id, action.element]]);
       const next = new Map(state.document.elements);
       next.set(action.element.id, action.element);
+      // Auto-show layer if not yet visible
+      const layerKey = `${action.element.discipline}/${action.element.tableName}`;
+      const visibleLayers = state.visibleLayers.has(layerKey)
+        ? state.visibleLayers
+        : new Set([...state.visibleLayers, layerKey]);
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Create element', before, after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: [`${action.element.discipline}/${action.element.tableName}`] },
+        lastMutation: { version: state.documentVersion + 1, keys: [layerKey] },
         selectedIds: state.drawingTarget ? state.selectedIds : new Set([action.element.id]),
+        visibleLayers,
       };
     }
 
@@ -387,6 +397,48 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         document: { ...state.document, elements: next },
       };
+    }
+
+    case 'ADD_LEVEL': {
+      if (!state.project) return state;
+      const levels = [...state.project.levels, action.level];
+      levels.sort((a, b) => a.elevation - b.elevation);
+      const floors = new Map(state.project.floors);
+      floors.set(action.level.id, { levelId: action.level.id, levelName: action.level.name, layers: [] });
+      return {
+        ...state,
+        project: { ...state.project, levels, floors },
+        currentLevel: action.level.id,
+        visibleLayers: new Set<string>(),
+        selectedIds: new Set(),
+        hoveredId: null,
+        baseViewBox: null,
+      };
+    }
+
+    case 'REMOVE_LEVEL': {
+      if (!state.project) return state;
+      const levels = state.project.levels.filter(l => l.id !== action.levelId);
+      const floors = new Map(state.project.floors);
+      floors.delete(action.levelId);
+      const newLevel = levels.length > 0 ? levels[0].id : '';
+      return {
+        ...state,
+        project: { ...state.project, levels, floors },
+        currentLevel: state.currentLevel === action.levelId ? newLevel : state.currentLevel,
+        selectedIds: new Set(),
+        hoveredId: null,
+        baseViewBox: null,
+      };
+    }
+
+    case 'RENAME_LEVEL': {
+      if (!state.project) return state;
+      const levels = state.project.levels.map(l =>
+        l.id === action.levelId ? { ...l, name: action.name, elevation: action.elevation } : l
+      );
+      levels.sort((a, b) => a.elevation - b.elevation);
+      return { ...state, project: { ...state.project, levels } };
     }
 
     default:

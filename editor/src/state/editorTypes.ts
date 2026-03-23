@@ -1,9 +1,9 @@
-import type { ProjectData, GridData, FloorData, LayerData } from '../types.ts';
+import type { Level, ProjectData, GridData, FloorData, LayerData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { HistoryState } from '../model/history.ts';
 
-export type Tool = 'select' | 'pan' | 'zoom' | 'draw_line' | 'draw_point' | 'draw_polygon';
+export type Tool = 'select' | 'pan' | 'zoom' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted';
 
 export interface ViewTransform {
   x: number;
@@ -91,7 +91,10 @@ export type EditorAction =
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'UPDATE_GRIDS'; grids: GridData[] }
-  | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData };
+  | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData }
+  | { type: 'ADD_LEVEL'; level: Level }
+  | { type: 'REMOVE_LEVEL'; levelId: string }
+  | { type: 'RENAME_LEVEL'; levelId: string; name: string; elevation: number };
 
 
 export interface ProcessedLayer {
