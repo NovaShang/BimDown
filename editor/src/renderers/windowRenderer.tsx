@@ -1,6 +1,7 @@
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
+import { getBlockSvg } from './blockLoader.ts';
 
-/** Window: outer frame rect + two inner parallel lines representing glass. */
+/** Window: rendered from block SVG, positioned along the window line. */
 export function renderWindow(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'line') return null;
   const { start, end, strokeWidth, id } = el as LineElement;
@@ -8,32 +9,18 @@ export function renderWindow(el: CanonicalElement): React.JSX.Element | null {
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 0.001) return null;
 
-  const nx = -dy / len, ny = dx / len; // perpendicular normal
+  const svg = getBlockSvg('window');
+  if (!svg) return null;
+
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
   const hw = strokeWidth / 2;
 
-  // Two inner lines offset from centerline
-  const offset = hw * 0.35;
-
-  // Outer rectangle corners
-  const p1 = `${start.x + nx * hw},${start.y + ny * hw}`;
-  const p2 = `${end.x + nx * hw},${end.y + ny * hw}`;
-  const p3 = `${end.x - nx * hw},${end.y - ny * hw}`;
-  const p4 = `${start.x - nx * hw},${start.y - ny * hw}`;
-
+  // Block SVG is 1×1: scale X to door length, Y to wall thickness.
+  // Offset Y by -hw so the block is centered on the wall centerline.
   return (
-    <g data-id={id}>
-      {/* Outer frame rectangle */}
-      <polygon points={`${p1} ${p2} ${p3} ${p4}`} fill="#4a90d9" fillOpacity={0.1} stroke="#4a90d9" strokeWidth={0.02} />
-      {/* Inner line 1 */}
-      <line
-        x1={start.x + nx * offset} y1={start.y + ny * offset}
-        x2={end.x + nx * offset} y2={end.y + ny * offset}
-        stroke="#4a90d9" strokeWidth={0.02} />
-      {/* Inner line 2 */}
-      <line
-        x1={start.x - nx * offset} y1={start.y - ny * offset}
-        x2={end.x - nx * offset} y2={end.y - ny * offset}
-        stroke="#4a90d9" strokeWidth={0.02} />
-    </g>
+    <g data-id={id}
+      transform={`translate(${start.x},${start.y}) rotate(${angle}) translate(0,${-hw}) scale(${len},${strokeWidth})`}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
   );
 }

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1">
+  <!-- Sliding door: frame + sliding panel indicator. -->
+  <rect x="0" y="-0.06" width="1" height="0.12" fill="#0077b6"/>
+  <!-- Slide track -->
+  <line x1="0" y1="0.15" x2="1" y2="0.15" stroke="#0077b6" stroke-width="0.02" stroke-dasharray="0.04,0.03"/>
+  <!-- Panel (slides to right) -->
+  <rect x="0.05" y="0.08" width="0.5" height="0.14" fill="none" stroke="#0077b6" stroke-width="0.025"/>
+  <!-- Arrow -->
+  <line x1="0.25" y1="0.15" x2="0.5" y2="0.15" stroke="#0077b6" stroke-width="0.03"/>
+  <line x1="0.43" y1="0.1" x2="0.5" y2="0.15" stroke="#0077b6" stroke-width="0.03"/>
+  <line x1="0.43" y1="0.2" x2="0.5" y2="0.15" stroke="#0077b6" stroke-width="0.03"/>
+</svg>

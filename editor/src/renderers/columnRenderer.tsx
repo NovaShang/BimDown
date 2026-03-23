@@ -1,20 +1,29 @@
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
+import { getBlockSvg } from './blockLoader.ts';
 
-/** Column: filled rect with diagonal cross lines. */
+const BLOCK_MAP: Record<string, string> = {
+  rectangular: 'column_rectangular',
+  round: 'column_round',
+};
+
+/** Column: rendered from block SVG, positioned and scaled to actual size. */
 export function renderColumn(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'point') return null;
-  const { position, width, height, id, tableName } = el as PointElement;
-  const isStructural = tableName === 'structure_column';
-  const color = isStructural ? '#6d4c41' : '#333';
-  const fill = isStructural ? '#d7ccc8' : '#e0e0e0';
+  const { position, width, height, id, attrs } = el as PointElement;
 
-  const x = position.x - width / 2, y = position.y - height / 2;
+  const shape = attrs.shape || 'rectangular';
+  const blockName = BLOCK_MAP[shape] ?? 'column_rectangular';
+  const svg = getBlockSvg(blockName);
+  if (!svg) return null;
+
+  // Block SVG is 1×1: scale to actual width/height, translate to top-left corner
+  const x = position.x - width / 2;
+  const y = position.y - height / 2;
 
   return (
-    <g data-id={id}>
-      <rect x={x} y={y} width={width} height={height} fill={fill} stroke={color} strokeWidth={0.02} />
-      <line x1={x} y1={y} x2={x + width} y2={y + height} stroke={color} strokeWidth={0.015} />
-      <line x1={x + width} y1={y} x2={x} y2={y + height} stroke={color} strokeWidth={0.015} />
-    </g>
+    <g data-id={id}
+      transform={`translate(${x},${y}) scale(${width},${height})`}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
   );
 }

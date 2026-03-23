@@ -1,6 +1,14 @@
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
+import { getBlockSvg } from './blockLoader.ts';
 
-/** Door: frame rectangle along the door line + swing arc. */
+const BLOCK_MAP: Record<string, string> = {
+  single_swing: 'door_single_swing',
+  double_swing: 'door_double_swing',
+  sliding: 'door_sliding',
+  folding: 'door_folding',
+};
+
+/** Door: rendered from block SVG, positioned and scaled along the door line. */
 export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'line') return null;
   const { start, end, strokeWidth, id, attrs } = el as LineElement;
@@ -8,27 +16,18 @@ export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 0.001) return null;
 
-  const nx = -dy / len, ny = dx / len; // perpendicular normal
-  const frameDepth = 0.05;
-
-  // Frame rectangle corners
-  const p1 = `${start.x + nx * frameDepth / 2},${start.y + ny * frameDepth / 2}`;
-  const p2 = `${end.x + nx * frameDepth / 2},${end.y + ny * frameDepth / 2}`;
-  const p3 = `${end.x - nx * frameDepth / 2},${end.y - ny * frameDepth / 2}`;
-  const p4 = `${start.x - nx * frameDepth / 2},${start.y - ny * frameDepth / 2}`;
-
-  // Swing arc from start point, radius = door width
   const operation = attrs.operation || 'single_swing';
-  const showArc = operation.includes('swing');
+  const blockName = BLOCK_MAP[operation] ?? 'door_single_swing';
+  const svg = getBlockSvg(blockName);
+  if (!svg) return null;
+
+  // Transform: translate to start point, rotate to align with door direction, scale to door width
+  const angle = Math.atan2(dy, dx) * (180 / Math.PI);
 
   return (
-    <g data-id={id}>
-      <polygon points={`${p1} ${p2} ${p3} ${p4}`} fill="#0077b6" stroke="none" />
-      {showArc && (
-        <path
-          d={`M ${end.x},${end.y} A ${len},${len} 0 0 1 ${start.x + nx * len},${start.y + ny * len}`}
-          fill="none" stroke="#0077b6" strokeWidth={0.02} strokeDasharray="0.06,0.04" />
-      )}
-    </g>
+    <g data-id={id}
+      transform={`translate(${start.x},${start.y}) rotate(${angle}) scale(${len},${len})`}
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
   );
 }

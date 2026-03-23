@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1">
+  <!-- Single swing door: frame + 90° arc. Origin at hinge (0,0), width along X. -->
+  <rect x="0" y="-0.06" width="1" height="0.12" fill="#0077b6"/>
+  <path d="M 1,0 A 1,1 0 0,1 0,1" fill="none" stroke="#0077b6" stroke-width="0.03" stroke-dasharray="0.08,0.05"/>
+  <line x1="0" y1="0" x2="0" y2="1" stroke="#0077b6" stroke-width="0.02" stroke-dasharray="0.06,0.04"/>
+</svg>
