@@ -1,10 +1,46 @@
 import { useRef, useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
-import { Billboard } from '@react-three/drei';
+import { Billboard, Html } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import type { CanonicalElement } from '../../model/elements.ts';
+import type { CanonicalElement, Point } from '../../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../../state/EditorContext.tsx';
 import { snapPoint } from '../../utils/snap.ts';
+
+function formatLength(meters: number): string {
+  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
+  return `${meters.toFixed(3)} m`;
+}
+
+function LengthLabel3D({ from, to, elevation }: { from: Point; to: Point; elevation: number }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-6) return null;
+
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const offset = 0.3;
+
+  return (
+    <Html
+      position={[mx + nx * offset, elevation + 0.15, -(my + ny * offset)]}
+      style={{
+        color: '#4fc3f7',
+        fontSize: '11px',
+        fontFamily: 'monospace',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        userSelect: 'none',
+        textShadow: '0 0 3px rgba(0,0,0,0.5)',
+      }}
+      center
+    >
+      {formatLength(len)}
+    </Html>
+  );
+}
 
 interface ResizeHandles3DProps {
   element: CanonicalElement;
@@ -91,6 +127,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
             dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { end: { x, y: yy } } });
           })}
         />
+        <LengthLabel3D from={element.start} to={element.end} elevation={elevation} />
       </group>
     );
   }

@@ -1,5 +1,43 @@
 import type { DrawingState, Tool } from '../state/editorTypes.ts';
+import type { Point } from '../model/elements.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
+
+function formatLength(meters: number): string {
+  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
+  return `${meters.toFixed(3)} m`;
+}
+
+/** Length label positioned at the midpoint of a line, offset perpendicular to it */
+function LengthLabel({ from, to, scale }: { from: Point; to: Point; scale: number }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-6) return null;
+
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  // Offset perpendicular to line
+  const nx = -dy / len;
+  const ny = dx / len;
+  const offset = 0.8 / scale;
+  const lx = mx + nx * offset;
+  const ly = my + ny * offset;
+  const fontSize = 1.0 / scale;
+
+  return (
+    <text
+      x={lx} y={-ly}
+      fill="#4fc3f7"
+      fontSize={fontSize}
+      fontFamily="monospace"
+      textAnchor="middle"
+      transform="scale(1,-1)"
+      opacity={0.9}
+    >
+      {formatLength(len)}
+    </text>
+  );
+}
 
 interface DrawingOverlayProps {
   drawingState: DrawingState;
@@ -34,6 +72,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           />
           <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="#4fc3f7" />
           <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#4fc3f7" opacity="0.6" />
+          <LengthLabel from={points[0]} to={cursor} scale={scale} />
         </g>
       );
     }

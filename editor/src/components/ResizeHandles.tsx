@@ -1,7 +1,39 @@
 import { useCallback, useRef } from 'react';
-import type { CanonicalElement } from '../model/elements.ts';
+import type { CanonicalElement, Point } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
+
+function formatLength(meters: number): string {
+  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
+  return `${meters.toFixed(3)} m`;
+}
+
+function LengthLabel({ from, to, scale }: { from: Point; to: Point; scale: number }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-6) return null;
+
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const offset = 0.8 / scale;
+  const fontSize = 1.0 / scale;
+
+  return (
+    <text
+      x={mx + nx * offset} y={my + ny * offset}
+      fill="#4fc3f7"
+      fontSize={fontSize}
+      fontFamily="monospace"
+      textAnchor="middle"
+      opacity={0.9}
+    >
+      {formatLength(len)}
+    </text>
+  );
+}
 
 interface ResizeHandlesProps {
   element: CanonicalElement;
@@ -116,6 +148,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             });
           })}
         />
+        <LengthLabel from={element.start} to={element.end} scale={scale} />
       </g>
     );
   }

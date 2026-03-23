@@ -1,6 +1,43 @@
-import { Line } from '@react-three/drei';
+import { Line, Html } from '@react-three/drei';
 import { useEditorState } from '../../state/EditorContext.tsx';
 import { resolveLineStrokeWidth } from '../../utils/geometry.ts';
+import type { Point } from '../../model/elements.ts';
+
+function formatLength(meters: number): string {
+  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
+  return `${meters.toFixed(3)} m`;
+}
+
+function LengthLabel3D({ from, to, elevation }: { from: Point; to: Point; elevation: number }) {
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-6) return null;
+
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2;
+  const nx = -dy / len;
+  const ny = dx / len;
+  const offset = 0.3;
+
+  return (
+    <Html
+      position={[mx + nx * offset, elevation + 0.15, -(my + ny * offset)]}
+      style={{
+        color: '#4fc3f7',
+        fontSize: '11px',
+        fontFamily: 'monospace',
+        pointerEvents: 'none',
+        whiteSpace: 'nowrap',
+        userSelect: 'none',
+        textShadow: '0 0 3px rgba(0,0,0,0.5)',
+      }}
+      center
+    >
+      {formatLength(len)}
+    </Html>
+  );
+}
 
 interface DrawingOverlay3DProps {
   elevation: number;
@@ -52,6 +89,7 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
             <sphereGeometry args={[0.1, 16, 16]} />
             <meshBasicMaterial color="#4fc3f7" transparent opacity={0.6} />
           </mesh>
+          <LengthLabel3D from={points[0]} to={cursor} elevation={elevation} />
         </group>
       );
     }

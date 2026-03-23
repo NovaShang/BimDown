@@ -16,7 +16,8 @@ export const drawLineTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const anchor = state.drawingState?.points[0] ?? undefined;
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor);
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -69,7 +70,8 @@ export const drawLineTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const anchor = state.drawingState?.points[0] ?? undefined;
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor);
     const pt = snap.point;
 
     if (state.drawingState && state.drawingState.points.length > 0) {

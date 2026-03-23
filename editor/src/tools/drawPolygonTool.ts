@@ -20,11 +20,11 @@ export const drawPolygonTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const points = state.drawingState?.points || [];
+    const anchor = points.length > 0 ? points[points.length - 1] : undefined;
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor);
     const pt = snap.point;
     ctx.setSnap(snap);
-
-    const points = state.drawingState?.points || [];
 
     // Check if closing the polygon (click near first point)
     if (points.length >= MIN_VERTICES) {
@@ -50,10 +50,11 @@ export const drawPolygonTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const points = state.drawingState?.points || [];
+    const anchor = points.length > 0 ? points[points.length - 1] : undefined;
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor);
     const pt = snap.point;
 
-    const points = state.drawingState?.points || [];
     ctx.dispatch({
       type: 'SET_DRAWING_STATE',
       state: { points, cursor: pt },
