@@ -61,19 +61,57 @@ function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<O
   );
 }
 
+/** Extract model center and size from any available floor's viewBox. */
+function useModelBounds() {
+  const { project, currentLevel } = useEditorState();
+  return useMemo(() => {
+    if (!project) return null;
+
+    let elevation = 0;
+    for (const l of project.levels) {
+      if (l.id === currentLevel) { elevation = l.elevation; break; }
+    }
+
+    // Try current floor first, then any floor with data
+    const floorsToTry = [project.floors.get(currentLevel), ...project.floors.values()];
+    for (const floor of floorsToTry) {
+      if (!floor) continue;
+      for (const layer of floor.layers) {
+        const match = layer.svgContent.match(/viewBox="([^"]+)"/);
+        if (match) {
+          const [vx, vy, vw, vh] = match[1].split(/\s+/).map(Number);
+          return {
+            cx: vx + vw / 2,
+            cz: -(vy + vh / 2),
+            size: Math.max(vw, vh) * 1.5,
+            elevation,
+          };
+        }
+      }
+    }
+    return null;
+  }, [project, currentLevel]);
+}
+
 function FitOnLevelChange() {
   const bounds = useBounds();
   const { currentLevel, documentVersion } = useEditorState();
-  const prevLevel = useRef('');
+  const prevKey = useRef('');
 
   useEffect(() => {
-    if (currentLevel !== prevLevel.current) {
-      prevLevel.current = currentLevel;
-      const raf = requestAnimationFrame(() => {
-        try { bounds.refresh().clip().fit(); } catch {}
-      });
-      return () => cancelAnimationFrame(raf);
-    }
+    const key = `${currentLevel}:${documentVersion}`;
+    if (key === prevKey.current) return;
+    prevKey.current = key;
+
+    let attempts = 0;
+    const tryFit = () => {
+      try {
+        bounds.refresh().clip().fit();
+      } catch {
+        if (attempts++ < 5) requestAnimationFrame(tryFit);
+      }
+    };
+    requestAnimationFrame(tryFit);
   }, [currentLevel, documentVersion, bounds]);
 
   return null;
@@ -196,13 +234,42 @@ export default function SceneContent() {
         <N8AO aoRadius={2} intensity={1.5} distanceFalloff={0.5} />
       </EffectComposer>
 
-      {/* Subtle ground grid */}
-      <gridHelper args={[200, 100, '#c8cdd3', '#d8dce2']} />
-      {/* Ground plane to receive shadows */}
+      {/* Dynamic ground grid + shadow plane at model center and current elevation */}
+      <GroundPlane />
+    </>
+  );
+}
+
+/** Ground grid + shadow plane positioned at model center, set once after Bounds.fit. */
+function GroundPlane() {
+  const groupRef = useRef<any>(null);
+  const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
+  const { currentLevel } = useEditorState();
+  const modelBounds = useModelBounds();
+  const size = modelBounds?.size ?? 200;
+  const elevation = modelBounds?.elevation ?? 0;
+  const gridDivisions = Math.max(10, Math.round(size / 2));
+
+  // After Bounds.fit, orbit target = model center. Snap grid there once.
+  const prevLevel = useRef('');
+  useEffect(() => {
+    if (!groupRef.current || !controls || currentLevel === prevLevel.current) return;
+    prevLevel.current = currentLevel;
+    // Small delay to let Bounds.fit finish first
+    const timer = setTimeout(() => {
+      const target = (controls as any).target as Vector3;
+      groupRef.current.position.set(target.x, elevation, target.z);
+    }, 200);
+    return () => clearTimeout(timer);
+  }, [controls, currentLevel, elevation]);
+
+  return (
+    <group ref={groupRef} position={[modelBounds?.cx ?? 0, elevation, modelBounds?.cz ?? 0]}>
+      <gridHelper args={[size, gridDivisions, '#c8cdd3', '#d8dce2']} />
       <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
-        <planeGeometry args={[1000, 1000]} />
+        <planeGeometry args={[size * 3, size * 3]} />
         <shadowMaterial opacity={0.2} />
       </mesh>
-    </>
+    </group>
   );
 }
