@@ -77,28 +77,6 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
   const allDisciplines = Object.keys(DISCIPLINE_TABLES);
 
-  if (state.currentLevel === '__all__' && state.project) {
-    // Aggregate layers across all floors, deduplicating by discipline/tableName
-    const byDiscipline = new Map<string, Map<string, LayerData>>();
-    for (const floor of state.project.floors.values()) {
-      for (const layer of floor.layers) {
-        if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, new Map());
-        const existing = byDiscipline.get(layer.discipline)!.get(layer.tableName);
-        if (existing) {
-          const merged = new Map(existing.csvRows);
-          for (const [k, v] of layer.csvRows) merged.set(k, v);
-          byDiscipline.get(layer.discipline)!.set(layer.tableName, { ...existing, csvRows: merged });
-        } else {
-          byDiscipline.get(layer.discipline)!.set(layer.tableName, layer);
-        }
-      }
-    }
-    return allDisciplines.map(discipline => ({
-      discipline,
-      layers: Array.from(byDiscipline.get(discipline)?.values() ?? []),
-    }));
-  }
-
   const floor = getVisibleFloor(state);
   const byDiscipline = new Map<string, LayerData[]>();
   if (floor) {
@@ -119,7 +97,8 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
   if (state.selectedIds.size === 0) return result;
 
   // All Floors mode: IDs are prefixed as "levelId:elementId"
-  if (state.currentLevel === '__all__' && state.project) {
+  // Handle prefixed IDs from 3D multi-floor mode (format: "levelId:elementId")
+  if (state.project) {
     for (const prefixedId of state.selectedIds) {
       const colonIdx = prefixedId.indexOf(':');
       if (colonIdx === -1) continue;
@@ -135,7 +114,7 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
         }
       }
     }
-    return result;
+    if (result.size > 0) return result;
   }
 
   // When document model exists, read from it (reflects edits)

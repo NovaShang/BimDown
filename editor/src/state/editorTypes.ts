@@ -12,6 +12,7 @@ export interface ViewTransform {
 }
 
 export type ViewMode = '2d' | '3d';
+export type Floor3DMode = 'current' | 'current+below' | 'all';
 
 export interface EditorState {
   modelName: string;
@@ -22,6 +23,7 @@ export interface EditorState {
   currentLevel: string;
 
   viewMode: ViewMode;
+  floor3DMode: Floor3DMode;
 
   visibleLayers: Set<string>;
   showGrid: boolean;
@@ -57,6 +59,7 @@ export interface DrawingState {
 
 export type EditorAction =
   | { type: 'SET_VIEW_MODE'; mode: ViewMode }
+  | { type: 'SET_FLOOR_3D_MODE'; mode: Floor3DMode }
   | { type: 'SET_PROJECT'; model: string; project: ProjectData; grids: GridData[] }
   | { type: 'SET_LOADING'; loading: boolean }
   | { type: 'SET_LEVEL'; levelId: string }

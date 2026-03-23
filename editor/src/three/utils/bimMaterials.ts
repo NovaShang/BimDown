@@ -5,6 +5,12 @@ export type BimMaterial =
   | 'wood' | 'brick' | 'gypsum' | 'metal_panel' | 'insulation'
   | 'stone' | 'ceramic' | 'copper' | 'pvc' | 'galvanized_steel' | 'default';
 
+export const BIM_MATERIAL_OPTIONS: BimMaterial[] = [
+  'concrete', 'concrete_precast', 'steel', 'aluminum', 'glass',
+  'wood', 'brick', 'gypsum', 'metal_panel', 'insulation',
+  'stone', 'ceramic', 'copper', 'pvc', 'galvanized_steel',
+];
+
 interface MaterialDef {
   color: string;
   roughness: number;

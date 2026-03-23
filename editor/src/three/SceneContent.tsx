@@ -10,7 +10,7 @@ import DrawingOverlay3D from './overlays/DrawingOverlay3D.tsx';
 import SnapOverlay3D from './overlays/SnapOverlay3D.tsx';
 import ResizeHandles3D from './overlays/ResizeHandles3D.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { TOUCH, MOUSE, DirectionalLight, Vector3 } from 'three';
+import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane } from 'three';
 
 function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const gl = useThree(s => s.gl);
@@ -156,6 +156,40 @@ function ShadowLight() {
   );
 }
 
+/** Horizontal clipping planes to trim cross-floor elements to the visible elevation range. */
+function ClippingController() {
+  const { currentLevel, floor3DMode, project } = useEditorState();
+  const gl = useThree(s => s.gl);
+
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+
+    if (floor3DMode === 'all' || !project) {
+      gl.clippingPlanes = [];
+      return;
+    }
+
+    const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
+    const idx = sorted.findIndex(l => l.id === currentLevel);
+    if (idx < 0) { gl.clippingPlanes = []; return; }
+
+    const bottomIdx = floor3DMode === 'current+below' && idx > 0 ? idx - 1 : idx;
+    const bottomElev = sorted[bottomIdx].elevation - 0.5; // margin below to avoid z-fighting
+    const topElev = (idx < sorted.length - 1
+      ? sorted[idx + 1].elevation
+      : sorted[idx].elevation + 10) + 0.01; // margin above to avoid z-fighting with slab tops
+
+    gl.clippingPlanes = [
+      new Plane(new Vector3(0, 1, 0), -bottomElev),
+      new Plane(new Vector3(0, -1, 0), topElev),
+    ];
+
+    return () => { gl.clippingPlanes = []; };
+  }, [currentLevel, floor3DMode, project, gl]);
+
+  return null;
+}
+
 /** Resolve current floor elevation from project levels. */
 function useFloorElevation(): number {
   const { project, currentLevel } = useEditorState();
@@ -225,6 +259,8 @@ export default function SceneContent() {
         <FitOnLevelChange />
         <FloorGroup />
       </Bounds>
+
+      <ClippingController />
 
       {/* 3D editing interaction + overlays */}
       <InteractionLayer controlsRef={controlsRef} />

@@ -20,7 +20,7 @@ export default function LeftPanel({
   showGrid,
 }: LeftPanelProps) {
   const dispatch = useEditorDispatch();
-  const { activeDiscipline, viewMode: rawViewMode } = useEditorState();
+  const { activeDiscipline, viewMode: rawViewMode, floor3DMode } = useEditorState();
   const viewMode = rawViewMode ?? '2d';
 
   const currentGroup = layerGroups.find(g => g.discipline === activeDiscipline);
@@ -49,13 +49,23 @@ export default function LeftPanel({
         <div className="section-header">Floors</div>
         <div className="floor-list">
           {viewMode === '3d' && (
-            <button
-              className={`floor-btn ${currentLevel === '__all__' ? 'active' : ''}`}
-              onClick={() => dispatch({ type: 'SET_LEVEL', levelId: '__all__' })}
-              title="All Floors"
-            >
-              <span className="floor-name">All Floors</span>
-            </button>
+            <div className="view-mode-toggle" style={{ marginBottom: '4px' }}>
+              <button
+                className={`view-mode-btn ${floor3DMode === 'current' ? 'active' : ''}`}
+                onClick={() => dispatch({ type: 'SET_FLOOR_3D_MODE', mode: 'current' })}
+                title="Show current floor only"
+              >Current</button>
+              <button
+                className={`view-mode-btn ${floor3DMode === 'current+below' ? 'active' : ''}`}
+                onClick={() => dispatch({ type: 'SET_FLOOR_3D_MODE', mode: 'current+below' })}
+                title="Show current floor + one below"
+              >+Below</button>
+              <button
+                className={`view-mode-btn ${floor3DMode === 'all' ? 'active' : ''}`}
+                onClick={() => dispatch({ type: 'SET_FLOOR_3D_MODE', mode: 'all' })}
+                title="Show all floors"
+              >All</button>
+            </div>
           )}
           {levels.map(level => (
             <button

@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
-import { Shape, ExtrudeGeometry, BufferGeometry, type MeshPhysicalMaterial } from 'three';
+import { type BufferGeometry, type MeshPhysicalMaterial } from 'three';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { useEditorState } from '../../state/EditorContext.tsx';
-import { elementTo3DParams, type ExtrudeParams } from '../utils/elementTo3D.ts';
+import { elementTo3DParams } from '../utils/elementTo3D.ts';
+import { createExtrudeGeometry } from '../utils/extrudePolygon.ts';
 import { resolveBimMaterial, getBimMaterial, getGhostMaterial } from '../utils/bimMaterials.ts';
 
 interface PolygonExtrusionsProps {
@@ -11,23 +12,6 @@ interface PolygonExtrusionsProps {
   levelElevation: number;
   levelElevations: Map<string, number>;
   ghost?: boolean;
-}
-
-function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
-  if (params.vertices.length < 3) return null;
-
-  const shape = new Shape();
-  shape.moveTo(params.vertices[0].x, params.vertices[0].y);
-  for (let i = 1; i < params.vertices.length; i++) {
-    shape.lineTo(params.vertices[i].x, params.vertices[i].y);
-  }
-  shape.closePath();
-
-  const geo = new ExtrudeGeometry(shape, { depth: params.height, bevelEnabled: false });
-  geo.rotateX(-Math.PI / 2);
-  geo.translate(0, params.baseY, 0);
-
-  return geo;
 }
 
 interface PolygonMeshData {

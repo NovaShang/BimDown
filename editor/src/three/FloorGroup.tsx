@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useEditorState } from '../state/EditorContext.tsx';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
-import { useFloorElements } from './hooks/useFloorElements.ts';
 import { resolveBimMaterial } from './utils/bimMaterials.ts';
 import { getRenderer } from './renderers/index.ts';
 import './renderers/registerDefaults.ts';
@@ -13,31 +12,21 @@ interface FloorRenderData {
   elements: CanonicalElement[];
 }
 
-export default function FloorGroup() {
-  const state = useEditorState();
-  const singleFloorElements = useFloorElements();
-  const levels = state.project?.levels ?? [];
-  const currentLevel = state.currentLevel;
-  const isAllFloors = currentLevel === '__all__';
-  const activeDiscipline = state.activeDiscipline;
+/** Parse all floors once, filter by discipline + layer visibility. */
+function useAllFloorsElements(): FloorRenderData[] {
+  const { project, visibleLayers, activeDiscipline } = useEditorState();
 
-  const levelElevations = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const l of levels) map.set(l.id, l.elevation);
-    return map;
-  }, [levels]);
-
-  const allFloorsData = useMemo(() => {
-    if (!isAllFloors || !state.project) return null;
-    const { activeDiscipline, visibleLayers } = state;
+  return useMemo(() => {
+    if (!project) return [];
     const result: FloorRenderData[] = [];
 
-    for (const [levelId, floor] of state.project.floors) {
-      const elevation = levelElevations.get(levelId) ?? 0;
+    for (const [levelId, floor] of project.floors) {
+      const elevation = project.levels.find(l => l.id === levelId)?.elevation ?? 0;
       const parsed = parseFloorLayers(floor.layers);
       const filtered = parsed.filter(el => {
+        // Discipline filter: active discipline + architecture as context
         if (activeDiscipline !== 'architechture') {
-          if (el.discipline !== activeDiscipline) return false;
+          if (el.discipline !== activeDiscipline && el.discipline !== 'architechture') return false;
         } else {
           if (el.discipline !== 'architechture') return false;
         }
@@ -49,39 +38,81 @@ export default function FloorGroup() {
       }
     }
     return result;
-  }, [isAllFloors, state.project, state.activeDiscipline, state.visibleLayers, levelElevations]);
+  }, [project, visibleLayers, activeDiscipline]);
+}
 
-  const isNonArchDiscipline = !isAllFloors && activeDiscipline !== 'architechture';
+/** Compute which levels are visible based on floor3DMode. */
+function useVisibleLevels(): Set<string> {
+  const { currentLevel, floor3DMode, project } = useEditorState();
 
-  const { activeElements, ghostElements } = useMemo(() => {
-    if (!isNonArchDiscipline) return { activeElements: singleFloorElements, ghostElements: [] };
-    const active: CanonicalElement[] = [];
-    const ghost: CanonicalElement[] = [];
-    for (const el of singleFloorElements) {
-      if (el.discipline === 'architechture') ghost.push(el);
-      else active.push(el);
+  return useMemo(() => {
+    if (!project) return new Set<string>();
+
+    if (floor3DMode === 'all') {
+      return new Set(project.levels.map(l => l.id));
     }
-    return { activeElements: active, ghostElements: ghost };
-  }, [singleFloorElements, isNonArchDiscipline]);
 
-  if (!isAllFloors) {
-    const currentElevation = levelElevations.get(currentLevel) ?? 0;
-    return (
-      <group>
-        {ghostElements.length > 0 && (
-          <RenderElements elements={ghostElements} levelElevation={currentElevation} levelElevations={levelElevations} ghost />
-        )}
-        <RenderElements elements={activeElements} levelElevation={currentElevation} levelElevations={levelElevations} />
-      </group>
-    );
-  }
+    const visible = new Set([currentLevel]);
 
-  if (!allFloorsData) return null;
+    if (floor3DMode === 'current+below') {
+      const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
+      const idx = sorted.findIndex(l => l.id === currentLevel);
+      if (idx > 0) visible.add(sorted[idx - 1].id);
+    }
+
+    return visible;
+  }, [currentLevel, floor3DMode, project]);
+}
+
+export default function FloorGroup() {
+  const { currentLevel, floor3DMode, activeDiscipline } = useEditorState();
+  const allFloors = useAllFloorsElements();
+  const visibleLevels = useVisibleLevels();
+
+  const levelElevations = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const f of allFloors) map.set(f.levelId, f.elevation);
+    return map;
+  }, [allFloors]);
+
   return (
     <group>
-      {allFloorsData.map(({ levelId, elevation, elements }) => (
-        <RenderElements key={levelId} elements={elements} levelElevation={elevation} levelElevations={levelElevations} />
-      ))}
+      {allFloors.map(({ levelId, elevation, elements }) => {
+        const isVisible = visibleLevels.has(levelId);
+        const isCurrentLevel = levelId === currentLevel;
+        // Ghost: non-current levels when multiple are visible
+        const ghost = !isCurrentLevel && floor3DMode !== 'current';
+        // Non-arch discipline: architecture elements on current level also ghost
+        const isNonArch = activeDiscipline !== 'architechture';
+
+        return (
+          <group key={levelId} visible={isVisible}>
+            {isNonArch ? (
+              <>
+                <RenderElements
+                  elements={elements.filter(el => el.discipline !== 'architechture')}
+                  levelElevation={elevation}
+                  levelElevations={levelElevations}
+                  ghost={ghost}
+                />
+                <RenderElements
+                  elements={elements.filter(el => el.discipline === 'architechture')}
+                  levelElevation={elevation}
+                  levelElevations={levelElevations}
+                  ghost
+                />
+              </>
+            ) : (
+              <RenderElements
+                elements={elements}
+                levelElevation={elevation}
+                levelElevations={levelElevations}
+                ghost={ghost}
+              />
+            )}
+          </group>
+        );
+      })}
     </group>
   );
 }
@@ -92,7 +123,6 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
   levelElevations: Map<string, number>;
   ghost?: boolean;
 }) {
-  // Build allElements map for cross-type lookups (e.g., wall → hosted doors/windows)
   const allElements = useMemo(() => {
     const map = new Map<string, CanonicalElement>();
     for (const el of elements) map.set(el.id, el);

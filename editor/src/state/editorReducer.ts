@@ -12,6 +12,7 @@ export const initialState: EditorState = {
   currentLevel: '',
 
   viewMode: '2d',
+  floor3DMode: 'current',
 
   visibleLayers: new Set(),
   showGrid: true,
@@ -52,6 +53,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
   switch (action.type) {
     case 'SET_VIEW_MODE':
       return { ...state, viewMode: action.mode };
+
+    case 'SET_FLOOR_3D_MODE':
+      return { ...state, floor3DMode: action.mode };
 
     case 'SET_PROJECT': {
       const { model, project, grids } = action;
@@ -105,26 +109,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'SET_LEVEL': {
-      if (action.levelId === '__all__') {
-        // All Floors mode: collect visible layers from all floors
-        const allLayers = new Set<string>();
-        if (state.project) {
-          for (const floor of state.project.floors.values()) {
-            for (const l of floor.layers) allLayers.add(`${l.discipline}/${l.tableName}`);
-          }
-        }
-        return {
-          ...state,
-          currentLevel: '__all__',
-          visibleLayers: allLayers,
-          activeDiscipline: state.activeDiscipline ?? 'architechture',
-          selectedIds: new Set(),
-          hoveredId: null,
-          activeFilter: null,
-          baseViewBox: null,
-        };
-      }
-
       const floor = state.project?.floors.get(action.levelId);
       const visibleLayers = floor
         ? new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`))

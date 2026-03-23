@@ -4,6 +4,7 @@ import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox,
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
 import { persistDocument } from '../utils/persist.ts';
+import { groupByLayer, serializeToSvg, serializeToCsv } from '../model/serialize.ts';
 import LeftPanel from './LeftPanel.tsx';
 import Canvas from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
@@ -24,8 +25,8 @@ export default function EditorShell() {
   const pendingKeys = useRef(new Set<string>());
   const lastProcessedVersion = useRef(0);
 
-  // Flush pending saves immediately (used before document rebuild to avoid data loss)
-  const flushPendingSave = useRef(() => {
+  // Flush pending saves immediately, returns a promise that resolves when persist completes.
+  const flushPendingSave = useRef(async () => {
     clearTimeout(persistTimer.current);
     const currentState = stateRef.current;
     if (!currentState.document || pendingKeys.current.size === 0) return;
@@ -34,18 +35,49 @@ export default function EditorShell() {
     const changedKeys = new Set(pendingKeys.current);
     pendingKeys.current.clear();
     lastProcessedVersion.current = 0;
-    persistDocument(currentState.document, vbStr, currentState.modelName, changedKeys)
-      .catch(err => console.error('Flush persist failed:', err));
+    try {
+      await persistDocument(currentState.document, vbStr, currentState.modelName, changedKeys);
+    } catch (err) {
+      console.error('Flush persist failed:', err);
+    }
+  });
+
+  // Sync current document's in-memory edits back to project.floors before switching levels.
+  // This ensures switching away and back doesn't lose unsaved edits.
+  const syncDocumentToProject = useRef(() => {
+    const s = stateRef.current;
+    if (!s.document || s.documentVersion === 0 || !s.project) return;
+    const doc = s.document;
+    const elements = Array.from(doc.elements.values());
+    const groups = groupByLayer(elements);
+    const viewBox = getComputedViewBox(s);
+    const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
+
+    for (const [key, groupElements] of groups) {
+      const [discipline, tableName] = key.split('/');
+      const svgContent = serializeToSvg(groupElements, vbStr);
+      const csvRows = new Map<string, Record<string, string>>();
+      for (const el of groupElements) {
+        csvRows.set(el.id, el.attrs);
+      }
+      dispatch({ type: 'UPDATE_LAYER', levelId: doc.levelId, layer: { tableName, discipline, svgContent, csvRows } });
+    }
   });
 
   // Initialize document model when floor data loads or level changes
-  // Skip for __all__ — 3D all-floors mode parses directly, no document model
+  const prevLevelRef = useRef('');
   useEffect(() => {
-    if (state.currentLevel === '__all__') return;
+
+    const isLevelChange = state.currentLevel !== prevLevelRef.current;
+    if (isLevelChange) {
+      // Sync previous document back to project before switching
+      syncDocumentToProject.current();
+      flushPendingSave.current();
+      prevLevelRef.current = state.currentLevel;
+    }
+
     const floor = state.project?.floors.get(state.currentLevel);
     if (!floor) return;
-    // Flush any pending saves before rebuilding the document to avoid data loss
-    flushPendingSave.current();
     const elements = parseFloorLayers(floor.layers);
     const doc = createDocument(state.currentLevel, elements);
     dispatch({ type: 'INIT_DOCUMENT', document: doc });
