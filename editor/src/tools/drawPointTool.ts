@@ -15,7 +15,7 @@ export const drawPointTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids);
     const pt = snap.point;
 
     const target = state.drawingTarget;
@@ -51,7 +51,7 @@ export const drawPointTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids);
     const pt = snap.point;
 
     ctx.dispatch({

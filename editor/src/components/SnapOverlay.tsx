@@ -12,11 +12,13 @@ const OBJECT_COLOR = '#ff6b6b';
 const EDGE_COLOR = '#4ecdc4';
 const ANGLE_COLOR = '#a8e6cf';
 const GRID_COLOR = '#ffd166';
+const GRIDLINE_COLOR = '#ef476f';
 
 function colorForSnapType(t?: SnapType): string {
   if (!t) return OBJECT_COLOR;
   if (t === 'edge') return EDGE_COLOR;
   if (t === 'angle') return ANGLE_COLOR;
+  if (t === 'gridline') return GRIDLINE_COLOR;
   if (t === 'grid') return GRID_COLOR;
   return OBJECT_COLOR;
 }

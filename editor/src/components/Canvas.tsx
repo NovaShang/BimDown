@@ -219,6 +219,7 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
         drawingState: s.drawingState,
         document: s.document,
         project: s.project,
+        grids: s.grids,
       };
     },
     screenToSvg,

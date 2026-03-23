@@ -66,7 +66,8 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
     if (!raw) return null;
     const elements = stateRef.current.document?.elements ?? null;
     const exclude = new Set([element.id]);
-    const snap = snapPoint(raw, screenToSvg, elements, exclude);
+    const grids = stateRef.current.grids;
+    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids);
     return snap.point;
   }, [element.id, screenToSvg]);
 

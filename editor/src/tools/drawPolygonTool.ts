@@ -22,7 +22,7 @@ export const drawPolygonTool: ToolHandler = {
     const state = ctx.getState();
     const points = state.drawingState?.points || [];
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids);
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -52,7 +52,7 @@ export const drawPolygonTool: ToolHandler = {
     const state = ctx.getState();
     const points = state.drawingState?.points || [];
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids);
     const pt = snap.point;
 
     ctx.dispatch({

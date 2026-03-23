@@ -1,6 +1,6 @@
 import type { EditorAction, ViewTransform } from '../state/editorTypes.ts';
 import type { DocumentState } from '../model/document.ts';
-import type { ProjectData } from '../types.ts';
+import type { ProjectData, GridData } from '../types.ts';
 import type { SnapResult } from '../utils/snap.ts';
 
 // Transform actions are Canvas-local (not in EditorAction), but tools still dispatch them
@@ -38,6 +38,7 @@ export interface ToolStateSnapshot {
   drawingState: { points: { x: number; y: number }[]; cursor: { x: number; y: number } | null } | null;
   document: DocumentState | null;
   project: ProjectData | null;
+  grids: readonly GridData[];
 }
 
 export interface ToolHandler {

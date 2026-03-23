@@ -126,7 +126,7 @@ export const selectTool: ToolHandler = {
             // Snap the anchor point's would-be position
             const anchorTarget = { x: gesture.moveAnchor.x + rawDx, y: gesture.moveAnchor.y + rawDy };
             const state = ctx.getState();
-            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds);
+            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds, undefined, undefined, state.grids);
             ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
 
             const snappedDx = snap.point.x - gesture.moveAnchor.x;

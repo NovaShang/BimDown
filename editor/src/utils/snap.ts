@@ -1,8 +1,9 @@
 import type { CanonicalElement, Point } from '../model/elements.ts';
+import type { GridData } from '../types.ts';
 
 // ── Snap types ──
 
-export type SnapType = 'endpoint' | 'center' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid';
+export type SnapType = 'endpoint' | 'center' | 'gridline' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid';
 
 export type SnapGuideType = 'point' | 'vline' | 'hline' | 'edge_segment' | 'angle_line' | 'length_ring';
 
@@ -73,6 +74,16 @@ function perpendicularOffset(a: Point, b: Point, dist: number): { dx: number; dy
   const len = Math.sqrt(ex * ex + ey * ey);
   if (len === 0) return { dx: 0, dy: 0 };
   return { dx: (-ey / len) * dist, dy: (ex / len) * dist };
+}
+
+/** Intersection of two infinite lines (a1→a2) and (b1→b2). Returns null if parallel. */
+function lineLineIntersection(a1: Point, a2: Point, b1: Point, b2: Point): Point | null {
+  const d1x = a2.x - a1.x, d1y = a2.y - a1.y;
+  const d2x = b2.x - b1.x, d2y = b2.y - b1.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-12) return null; // parallel
+  const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / denom;
+  return { x: a1.x + t * d1x, y: a1.y + t * d1y };
 }
 
 function dist2D(a: Point, b: Point): number {
@@ -236,6 +247,7 @@ export function computeSnap(
   excludeIds: Set<string> = new Set(),
   anchor?: Point,
   angleIncrement: number = 45,
+  grids?: readonly GridData[],
 ): SnapResult {
   const threshold = pixelSize * SNAP_THRESHOLD_PX;
   const guides: SnapGuide[] = [];
@@ -249,6 +261,72 @@ export function computeSnap(
   let bestEdge: { target: SnapTarget; dist: number } | null = null;
 
   const targets = elements ? extractSnapTargets(elements, excludeIds, input) : [];
+
+  // ── Pass 0: Grid line (轴网) targets ──
+  if (grids && grids.length > 0) {
+    // Pre-compute extended grid lines
+    const extLines: { a: Point; b: Point }[] = [];
+    for (const g of grids) {
+      const dx = g.x2 - g.x1, dy = g.y2 - g.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-9) continue;
+      const ux = dx / len, uy = dy / len;
+      const ext = 500;
+      extLines.push({
+        a: { x: g.x1 - ux * ext, y: g.y1 - uy * ext },
+        b: { x: g.x2 + ux * ext, y: g.y2 + uy * ext },
+      });
+    }
+
+    // Pass 0a: Grid line intersections — priority 1 (same as endpoints)
+    let bestIntersection: { pt: Point; dist: number; lineI: number; lineJ: number } | null = null;
+    for (let i = 0; i < extLines.length; i++) {
+      for (let j = i + 1; j < extLines.length; j++) {
+        const pt = lineLineIntersection(extLines[i].a, extLines[i].b, extLines[j].a, extLines[j].b);
+        if (!pt) continue;
+        const d = dist2D(input, pt);
+        if (d < threshold && (!bestIntersection || d < bestIntersection.dist)) {
+          bestIntersection = { pt, dist: d, lineI: i, lineJ: j };
+        }
+      }
+    }
+    if (bestIntersection) {
+      snapX = { type: 'gridline', value: bestIntersection.pt.x, priority: 1 };
+      snapY = { type: 'gridline', value: bestIntersection.pt.y, priority: 1 };
+      guides.push({ type: 'point', x: bestIntersection.pt.x, y: bestIntersection.pt.y, snapType: 'gridline' });
+      // Highlight both intersecting grid lines
+      const li = extLines[bestIntersection.lineI];
+      const lj = extLines[bestIntersection.lineJ];
+      guides.push({ type: 'edge_segment', x: li.a.x, y: li.a.y, x2: li.b.x, y2: li.b.y, snapType: 'gridline' });
+      guides.push({ type: 'edge_segment', x: lj.a.x, y: lj.a.y, x2: lj.b.x, y2: lj.b.y, snapType: 'gridline' });
+    }
+
+    // Pass 0b: Nearest point on grid line — priority 1.5
+    if (!bestIntersection) {
+      let bestGridLine: { target: SnapTarget; dist: number } | null = null;
+      for (const line of extLines) {
+        const np = nearestPointOnSegment(input, line.a, line.b);
+        const d = dist2D(input, np);
+        if (d < threshold && (!bestGridLine || d < bestGridLine.dist)) {
+          bestGridLine = {
+            target: { x: np.x, y: np.y, type: 'gridline', priority: 1.5, edgeFrom: line.a, edgeTo: line.b },
+            dist: d,
+          };
+        }
+      }
+      if (bestGridLine) {
+        const t = bestGridLine.target;
+        snapX = { type: 'gridline', value: t.x, priority: 1.5 };
+        snapY = { type: 'gridline', value: t.y, priority: 1.5 };
+        if (t.edgeFrom && t.edgeTo) {
+          guides.push({
+            type: 'edge_segment', x: t.edgeFrom.x, y: t.edgeFrom.y,
+            x2: t.edgeTo.x, y2: t.edgeTo.y, snapType: 'gridline',
+          });
+        }
+      }
+    }
+  }
 
   // ── Pass 1: Point-like targets (endpoint, center, midpoint) — independent X/Y ──
   // Proximity limit: only align axes when the perpendicular distance is reasonable.
@@ -395,7 +473,7 @@ export function computeSnap(
     : (snapX?.type ?? snapY?.type);
 
   // Axis alignment guides (only for point-like object snaps)
-  const noAxisGuide = new Set<SnapType>(['grid', 'edge', 'angle', 'length']);
+  const noAxisGuide = new Set<SnapType>(['grid', 'gridline', 'edge', 'angle', 'length']);
   if (snapX && !noAxisGuide.has(snapX.type)) {
     guides.push({ type: 'vline', x: snapX.value, y: input.y, snapType: snapX.type });
   }
@@ -444,7 +522,8 @@ export function snapPoint(
   excludeIds?: Set<string>,
   anchor?: Point,
   angleIncrement?: number,
+  grids?: readonly GridData[],
 ): SnapResult {
   const pixelSize = computePixelSize(screenToSvg);
-  return computeSnap(raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement);
+  return computeSnap(raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement, grids);
 }

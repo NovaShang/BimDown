@@ -81,6 +81,7 @@ export function useToolContext3D(floorElevation: number) {
       drawingState: s.drawingState,
       document: s.document,
       project: s.project,
+      grids: s.grids,
     };
   }, []);
 
