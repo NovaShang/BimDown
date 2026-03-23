@@ -21,13 +21,17 @@ function LengthLabel({ from, to, scale }: { from: Point; to: Point; scale: numbe
   const offset = 0.8 / scale;
   const fontSize = 1.0 / scale;
 
+  const lx = mx + nx * offset;
+  const ly = my + ny * offset;
+
   return (
     <text
-      x={mx + nx * offset} y={my + ny * offset}
+      x={lx} y={-ly}
       fill="#4fc3f7"
       fontSize={fontSize}
       fontFamily="monospace"
       textAnchor="middle"
+      transform="scale(1,-1)"
       opacity={0.9}
     >
       {formatLength(len)}
