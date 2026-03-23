@@ -59,7 +59,7 @@ function formatLength(meters: number): string {
 
 // ── Geometry utilities ──
 
-function nearestPointOnSegment(p: Point, a: Point, b: Point): Point {
+export function nearestPointOnSegment(p: Point, a: Point, b: Point): Point {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
   const lenSq = dx * dx + dy * dy;
