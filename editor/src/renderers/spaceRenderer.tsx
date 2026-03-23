@@ -19,36 +19,53 @@ function centroid(vertices: { x: number; y: number }[]): { x: number; y: number 
   return { x: cx / (6 * area), y: cy / (6 * area) };
 }
 
-/** Space: dashed polygon boundary + number/name labels at centroid. */
+/** Space polygon only (no text). Text labels rendered separately in SpaceLabels overlay. */
 export function renderSpace(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'polygon') return null;
-  const { vertices, id, attrs } = el as PolygonElement;
+  const { vertices, id } = el as PolygonElement;
   if (vertices.length < 3) return null;
 
   const pts = vertices.map(v => `${v.x},${v.y}`).join(' ');
-  const c = centroid(vertices);
-  const number = attrs.number || '';
-  const name = attrs.name || '';
 
-  // Parent already applies scale(1,-1). Text needs scale(1,-1) at its
-  // position to flip back upright, since SVG text renders in screen Y-down.
   return (
-    <g data-id={id}>
-      <polygon points={pts} fill="rgba(58,134,255,0.06)" stroke="#3a86ff" strokeWidth={0.03} strokeDasharray="0.15,0.08" />
-      {number && (
-        <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
-          fontSize={0.4} fontFamily="Inter, sans-serif" fontWeight={700} fill="#1e3a5f"
-          transform={`translate(${c.x},${c.y}) scale(1,-1) translate(${-c.x},${-c.y})`}>
-          {number}
-        </text>
-      )}
-      {name && (
-        <text x={c.x} y={c.y - 0.45} textAnchor="middle" dominantBaseline="central"
-          fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={400} fill="#4a6fa5"
-          transform={`translate(${c.x},${c.y - 0.45}) scale(1,-1) translate(${-c.x},${-(c.y - 0.45)})`}>
-          {name}
-        </text>
-      )}
-    </g>
+    <polygon points={pts} fill="rgba(58,134,255,0.06)" stroke="#3a86ff"
+      strokeWidth={0.03} strokeDasharray="0.15,0.08" data-id={id} />
   );
+}
+
+/** Render space labels as a separate overlay (above slabs). */
+export function renderSpaceLabels(elements: CanonicalElement[]): React.JSX.Element[] {
+  const labels: React.JSX.Element[] = [];
+
+  for (const el of elements) {
+    if (el.geometry !== 'polygon' || el.tableName !== 'space') continue;
+    const { vertices, id, attrs } = el as PolygonElement;
+    if (vertices.length < 3) continue;
+
+    const c = centroid(vertices);
+    const number = attrs.number || '';
+    const name = attrs.name || '';
+    if (!number && !name) continue;
+
+    labels.push(
+      <g key={id} data-id={id}>
+        {number && (
+          <text x={c.x} y={c.y} textAnchor="middle" dominantBaseline="central"
+            fontSize={0.4} fontFamily="Inter, sans-serif" fontWeight={700} fill="#3a86ff"
+            transform={`translate(${c.x},${c.y}) scale(1,-1) translate(${-c.x},${-c.y})`}>
+            {number}
+          </text>
+        )}
+        {name && (
+          <text x={c.x} y={c.y - 0.45} textAnchor="middle" dominantBaseline="central"
+            fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={500} fill="#5a9fff"
+            transform={`translate(${c.x},${c.y - 0.45}) scale(1,-1) translate(${-c.x},${-(c.y - 0.45)})`}>
+            {name}
+          </text>
+        )}
+      </g>
+    );
+  }
+
+  return labels;
 }

@@ -16,6 +16,7 @@ import Minimap from './Minimap.tsx';
 import { ElementNode, pruneCache } from './ElementNode.tsx';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { WallOutlines } from './WallOutlines.tsx';
+import { renderSpaceLabels } from '../renderers/spaceRenderer.tsx';
 import { Icon } from './Icons.tsx';
 
 // Safari-only event for trackpad pinch gestures
@@ -517,6 +518,11 @@ export default function Canvas({ layers, viewBox, grids, showGrid, activeFilter,
           if (!outlineInserted) nodes.push(<WallOutlines key="__wall_outlines__" layers={layers} />);
           return nodes;
         })()}
+
+        {/* Space labels — rendered above slabs so text is clickable and visible */}
+        <g className="space-labels" transform="scale(1,-1)">
+          {layers.filter(l => l.tableName === 'space').flatMap(l => renderSpaceLabels(l.elements))}
+        </g>
 
         {/* Selection overlay */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={transform.scale * uiScale} />
