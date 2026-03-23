@@ -7,6 +7,7 @@ interface SnapOverlay3DProps {
 }
 
 const GUIDE_EXTENT = 200;
+const RENDER_ORDER = 999;
 
 const OBJECT_COLOR = '#ff6b6b';
 const EDGE_COLOR = '#4ecdc4';
@@ -29,62 +30,58 @@ function SnapMarker3D({ x, z, y, snapType }: {
 
   switch (snapType) {
     case 'endpoint':
-      // Small box
       return (
-        <mesh position={[x, y, z]}>
+        <mesh position={[x, y, z]} renderOrder={RENDER_ORDER}>
           <boxGeometry args={[s * 2, s * 2, s * 2]} />
-          <meshBasicMaterial color={color} />
+          <meshBasicMaterial color={color} depthTest={false} />
         </mesh>
       );
     case 'center':
-      // Diamond (rotated box)
       return (
-        <mesh position={[x, y, z]} rotation={[0, Math.PI / 4, 0]}>
+        <mesh position={[x, y, z]} rotation={[0, Math.PI / 4, 0]} renderOrder={RENDER_ORDER}>
           <boxGeometry args={[s * 2, s * 2, s * 2]} />
-          <meshBasicMaterial color={color} wireframe />
+          <meshBasicMaterial color={color} wireframe depthTest={false} />
         </mesh>
       );
     case 'midpoint':
-      // Cone (triangle-like)
       return (
-        <mesh position={[x, y + s, z]}>
+        <mesh position={[x, y + s, z]} renderOrder={RENDER_ORDER}>
           <coneGeometry args={[s, s * 2, 3]} />
-          <meshBasicMaterial color={color} />
+          <meshBasicMaterial color={color} depthTest={false} />
         </mesh>
       );
     case 'edge':
-      // Crosshair lines
       return (
         <group>
           <Line
             points={[[x - s * 2, y, z], [x + s * 2, y, z]]}
             color={color} lineWidth={2}
+            depthTest={false} renderOrder={RENDER_ORDER}
           />
           <Line
             points={[[x, y, z - s * 2], [x, y, z + s * 2]]}
             color={color} lineWidth={2}
+            depthTest={false} renderOrder={RENDER_ORDER}
           />
         </group>
       );
     case 'angle':
-      // Small sphere
       return (
-        <mesh position={[x, y, z]}>
+        <mesh position={[x, y, z]} renderOrder={RENDER_ORDER}>
           <sphereGeometry args={[s, 8, 8]} />
-          <meshBasicMaterial color={ANGLE_COLOR} />
+          <meshBasicMaterial color={ANGLE_COLOR} depthTest={false} />
         </mesh>
       );
     default:
-      // Torus + sphere (original)
       return (
         <group>
-          <mesh position={[x, y, z]}>
+          <mesh position={[x, y, z]} renderOrder={RENDER_ORDER}>
             <torusGeometry args={[0.12, 0.02, 8, 24]} />
-            <meshBasicMaterial color={color} />
+            <meshBasicMaterial color={color} depthTest={false} />
           </mesh>
-          <mesh position={[x, y, z]}>
+          <mesh position={[x, y, z]} renderOrder={RENDER_ORDER}>
             <sphereGeometry args={[0.04, 8, 8]} />
-            <meshBasicMaterial color={color} />
+            <meshBasicMaterial color={color} depthTest={false} />
           </mesh>
         </group>
       );
@@ -116,6 +113,8 @@ export default function SnapOverlay3D({ snap, elevation }: SnapOverlay3DProps) {
               gapSize={0.2}
               opacity={0.7}
               transparent
+              depthTest={false}
+              renderOrder={RENDER_ORDER}
             />
           );
         }
@@ -134,6 +133,8 @@ export default function SnapOverlay3D({ snap, elevation }: SnapOverlay3DProps) {
               gapSize={0.2}
               opacity={0.7}
               transparent
+              depthTest={false}
+              renderOrder={RENDER_ORDER}
             />
           );
         }
@@ -158,6 +159,8 @@ export default function SnapOverlay3D({ snap, elevation }: SnapOverlay3DProps) {
               lineWidth={2}
               opacity={0.5}
               transparent
+              depthTest={false}
+              renderOrder={RENDER_ORDER}
             />
           );
         }
@@ -176,6 +179,8 @@ export default function SnapOverlay3D({ snap, elevation }: SnapOverlay3DProps) {
                 gapSize={0.2}
                 opacity={0.6}
                 transparent
+                depthTest={false}
+                renderOrder={RENDER_ORDER}
               />
               {g.label && (
                 <Html
@@ -203,9 +208,9 @@ export default function SnapOverlay3D({ snap, elevation }: SnapOverlay3DProps) {
           const radius = g.x2;
           return (
             <group key={i}>
-              <mesh position={[g.x, y, -g.y]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[g.x, y, -g.y]} rotation={[-Math.PI / 2, 0, 0]} renderOrder={RENDER_ORDER}>
                 <ringGeometry args={[radius - 0.01, radius + 0.01, 64]} />
-                <meshBasicMaterial color="#ffa07a" transparent opacity={0.35} side={2} />
+                <meshBasicMaterial color="#ffa07a" transparent opacity={0.35} side={2} depthTest={false} />
               </mesh>
               {g.label && (
                 <Html
