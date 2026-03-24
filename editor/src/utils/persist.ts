@@ -6,7 +6,7 @@ import type { DataSource } from './dataSource.ts';
 /**
  * Persist document state via the data source.
  */
-export async function persistDocument(doc: DocumentState, viewBox: string, ds: DataSource, changedKeys?: Set<string>): Promise<void> {
+export async function persistDocument(doc: DocumentState, ds: DataSource, changedKeys?: Set<string>): Promise<void> {
   // Grid elements are persisted to global/grid.csv separately, not per-level
   const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
   const groups = groupByLayer(elements);
@@ -23,7 +23,7 @@ export async function persistDocument(doc: DocumentState, viewBox: string, ds: D
     const levelId = doc.levelId;
 
     const svgPath = `${levelId}/${tableName}s.svg`;
-    const svgContent = serializeToSvg(groupElements, viewBox);
+    const svgContent = serializeToSvg(groupElements);
     saves.push(ds.saveFile(svgPath, svgContent));
 
     const csvPath = `${levelId}/${tableName}.csv`;

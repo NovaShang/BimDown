@@ -9,13 +9,6 @@ function parseSvg(svgString: string): Document {
   return parser.parseFromString(svgString, 'image/svg+xml');
 }
 
-export function extractViewBox(svgString: string): { x: number; y: number; w: number; h: number } | null {
-  const match = svgString.match(/viewBox="([^"]+)"/);
-  if (!match) return null;
-  const parts = match[1].split(/\s+/).map(Number);
-  return { x: parts[0], y: parts[1], w: parts[2], h: parts[3] };
-}
-
 function transformWalls(svgString: string, csvRows: Map<string, CsvRow>): string {
   const doc = parseSvg(svgString);
   const g = doc.querySelector('g');

@@ -24,8 +24,6 @@ export const initialState: EditorState = {
   activeDiscipline: null,
   spaceHeld: false,
 
-  baseViewBox: null,
-
   selectedIds: new Set(),
   hoveredId: null,
 
@@ -136,7 +134,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         selectedIds: new Set(),
         hoveredId: null,
         activeFilter: null,
-        baseViewBox: null,
       };
     }
 
@@ -186,9 +183,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'SET_DISCIPLINE':
       return { ...state, activeDiscipline: action.discipline };
-
-    case 'SET_BASE_VIEWBOX':
-      return { ...state, baseViewBox: action.viewBox };
 
     case 'SELECT': {
       if (action.additive) {
@@ -468,7 +462,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         visibleLayers: new Set<string>(),
         selectedIds: new Set(),
         hoveredId: null,
-        baseViewBox: null,
       };
     }
 
@@ -484,7 +477,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         currentLevel: state.currentLevel === action.levelId ? newLevel : state.currentLevel,
         selectedIds: new Set(),
         hoveredId: null,
-        baseViewBox: null,
       };
     }
 

@@ -34,8 +34,6 @@ export interface EditorState {
   activeDiscipline: string | null;
   spaceHeld: boolean;
 
-  baseViewBox: { x: number; y: number; w: number; h: number } | null;
-
   selectedIds: Set<string>;
   hoveredId: string | null;
 
@@ -70,7 +68,6 @@ export type EditorAction =
   | { type: 'SET_SPACE_HELD'; held: boolean }
   | { type: 'SET_FILTER'; filter: string | null }
   | { type: 'SET_DISCIPLINE'; discipline: string | null }
-  | { type: 'SET_BASE_VIEWBOX'; viewBox: { x: number; y: number; w: number; h: number } }
   | { type: 'SELECT'; ids: string[]; additive?: boolean }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SET_HOVER'; id: string | null }

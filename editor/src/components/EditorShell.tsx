@@ -37,13 +37,11 @@ export default function EditorShell() {
     clearTimeout(persistTimer.current);
     const currentState = stateRef.current;
     if (!currentState.document || pendingKeys.current.size === 0) return;
-    const viewBox = getComputedViewBox(currentState);
-    const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
     const changedKeys = new Set(pendingKeys.current);
     pendingKeys.current.clear();
     lastProcessedVersion.current = 0;
     try {
-      await persistDocument(currentState.document, vbStr, dsRef.current, changedKeys);
+      await persistDocument(currentState.document, dsRef.current, changedKeys);
       // If grids changed, persist to global/grid.csv and sync state
       if (changedKeys.has('reference/grid')) {
         const gridEls = Array.from(currentState.document.elements.values()).filter(e => e.tableName === 'grid');
@@ -65,12 +63,10 @@ export default function EditorShell() {
     const doc = s.document;
     const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
     const groups = groupByLayer(elements);
-    const viewBox = getComputedViewBox(s);
-    const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
 
     for (const [key, groupElements] of groups) {
       const [discipline, tableName] = key.split('/');
-      const svgContent = serializeToSvg(groupElements, vbStr);
+      const svgContent = serializeToSvg(groupElements);
       const csvRows = new Map<string, Record<string, string>>();
       for (const el of groupElements) {
         csvRows.set(el.id, el.attrs);
@@ -127,9 +123,6 @@ export default function EditorShell() {
     clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(() => {
       const currentState = stateRef.current;
-      const viewBox = getComputedViewBox(currentState);
-      const vbStr = viewBox ? `${viewBox.x} ${viewBox.y} ${viewBox.w} ${viewBox.h}` : '0 0 100 100';
-
       const doc = currentState.document!;
 
       if (pendingKeys.current.size === 0) return; // nothing to save
@@ -137,7 +130,7 @@ export default function EditorShell() {
       const changedKeys = new Set(pendingKeys.current);
       pendingKeys.current.clear();
 
-      persistDocument(doc, vbStr, dsRef.current, changedKeys)
+      persistDocument(doc, dsRef.current, changedKeys)
         .then(async () => {
           // If grids changed, also persist to global/grid.csv
           if (changedKeys.has('reference/grid')) {
@@ -188,13 +181,6 @@ export default function EditorShell() {
     }, 200);
     return () => clearInterval(id);
   }, []);
-
-  // Set base viewBox when it changes
-  useEffect(() => {
-    if (viewBox && !state.baseViewBox) {
-      dispatch({ type: 'SET_BASE_VIEWBOX', viewBox });
-    }
-  }, [viewBox, state.baseViewBox, dispatch]);
 
   return (
     <div className="flex h-full w-full">

@@ -1,4 +1,5 @@
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from './elements.ts';
+import { computeBounds } from './elements.ts';
 import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
 
@@ -23,8 +24,11 @@ export function groupByLayer(elements: CanonicalElement[]): Map<string, Canonica
  * Serialize elements of one layer to canonical SVG string.
  * Produces the simplified SVG that processor.ts expects as input.
  */
-export function serializeToSvg(elements: CanonicalElement[], viewBox: string): string {
+export function serializeToSvg(elements: CanonicalElement[]): string {
   if (elements.length === 0) return '';
+
+  const bounds = computeBounds(elements);
+  const vb = bounds ? `${r(bounds.x)} ${r(bounds.y)} ${r(bounds.w)} ${r(bounds.h)}` : '0 0 100 100';
 
   const innerElements: string[] = [];
 
@@ -45,7 +49,7 @@ export function serializeToSvg(elements: CanonicalElement[], viewBox: string): s
     }
   }
 
-  return `<?xml version="1.0" encoding="utf-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">\n  <g transform="scale(1,-1)">\n${innerElements.map(s => '    ' + s).join('\n')}\n  </g>\n</svg>`;
+  return `<?xml version="1.0" encoding="utf-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}">\n  <g transform="scale(1,-1)">\n${innerElements.map(s => '    ' + s).join('\n')}\n  </g>\n</svg>`;
 }
 
 function serializeLine(el: LineElement): string {

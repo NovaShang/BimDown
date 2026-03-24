@@ -10,10 +10,10 @@ import { serializeToSvg, elementsToCsvRows } from '../model/serialize.ts';
  */
 const svgCache = new Map<string, { element: CanonicalElement; html: string }>();
 
-function getElementHtml(element: CanonicalElement, viewBoxStr: string): string {
+function getElementHtml(element: CanonicalElement): string {
   const cached = svgCache.get(element.id);
   if (cached && cached.element === element) return cached.html;
-  const svgString = serializeToSvg([element], viewBoxStr);
+  const svgString = serializeToSvg([element]);
   const csvRows = elementsToCsvRows([element]);
   const processed = processSvg(element.tableName, svgString, csvRows);
   const html = extractInnerSvg(processed);
@@ -29,20 +29,19 @@ export function pruneCache(currentIds: Set<string>): void {
 
 interface ElementNodeProps {
   element: CanonicalElement;
-  viewBoxStr: string;
 }
 
 /**
  * Renders a single canonical element.
  * Uses registered renderer if available, falls back to serialize→process pipeline.
  */
-export const ElementNode = React.memo(function ElementNode({ element, viewBoxStr }: ElementNodeProps) {
+export const ElementNode = React.memo(function ElementNode({ element }: ElementNodeProps) {
   const render = getRenderer(element.tableName);
   if (render) {
     const result = render(element);
     if (result) return <g transform="scale(1,-1)">{result}</g>;
   }
   // Fallback: serialize→process→extractInnerSvg
-  const html = getElementHtml(element, viewBoxStr);
+  const html = getElementHtml(element);
   return <g dangerouslySetInnerHTML={{ __html: html }} />;
 });

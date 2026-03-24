@@ -1,10 +1,10 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
 import type { LayerData } from '../types.ts';
 import { DISCIPLINE_TABLES } from '../types.ts';
-import { extractViewBox } from '../utils/processor.ts';
 import { groupByLayer } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import { renderZIndexForTable } from '../model/tableRegistry.ts';
+import { computeBounds } from '../model/elements.ts';
 
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
@@ -38,13 +38,19 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
 }
 
 export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
-  // Use first SVG layer viewBox (stable, matches original data)
+  // Compute from document elements when available (reflects edits)
+  if (state.document) {
+    const elements = Array.from(state.document.elements.values());
+    const bounds = computeBounds(elements);
+    if (bounds) return bounds;
+  }
+
+  // Fallback: compute from floor layer elements
   const floor = getVisibleFloor(state);
   if (floor) {
-    for (const layer of floor.layers) {
-      const vb = extractViewBox(layer.svgContent);
-      if (vb) return vb;
-    }
+    const allElements = floor.layers.flatMap(l => parseLayer(l));
+    const bounds = computeBounds(allElements);
+    if (bounds) return bounds;
   }
 
   // Empty project fallback

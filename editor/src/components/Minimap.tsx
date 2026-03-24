@@ -67,7 +67,7 @@ export default function Minimap({ layers, viewBox, transform, setTransform, cont
         {layers.map(layer => (
           <g key={layer.key} opacity="0.6">
             {layer.elements.map(el => (
-              <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+              <ElementNode key={el.id} element={el} />
             ))}
           </g>
         ))}

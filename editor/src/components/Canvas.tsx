@@ -522,7 +522,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
             nodes.push(
               <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
                 {layer.elements.map(el => (
-                  <ElementNode key={el.id} element={el} viewBoxStr={vb} />
+                  <ElementNode key={el.id} element={el} />
                 ))}
               </g>
             );

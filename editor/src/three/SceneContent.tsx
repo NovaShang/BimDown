@@ -4,6 +4,8 @@ import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
 import { useEditorState } from '../state/EditorContext.tsx';
+import { parseLayer } from '../model/parse.ts';
+import { computeBounds } from '../model/elements.ts';
 import { useToolContext3D } from './hooks/useToolContext3D.ts';
 import { useInteraction3D } from './hooks/useInteraction3D.ts';
 import DrawingOverlay3D from './overlays/DrawingOverlay3D.tsx';
@@ -61,7 +63,7 @@ function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<O
   );
 }
 
-/** Extract model center and size from any available floor's viewBox. */
+/** Extract model center and size from element bounds. */
 function useModelBounds() {
   const { project, currentLevel } = useEditorState();
   return useMemo(() => {
@@ -76,17 +78,15 @@ function useModelBounds() {
     const floorsToTry = [project.floors.get(currentLevel), ...project.floors.values()];
     for (const floor of floorsToTry) {
       if (!floor) continue;
-      for (const layer of floor.layers) {
-        const match = layer.svgContent.match(/viewBox="([^"]+)"/);
-        if (match) {
-          const [vx, vy, vw, vh] = match[1].split(/\s+/).map(Number);
-          return {
-            cx: vx + vw / 2,
-            cz: -(vy + vh / 2),
-            size: Math.max(vw, vh) * 1.5,
-            elevation,
-          };
-        }
+      const allElements = floor.layers.flatMap(l => parseLayer(l));
+      const bounds = computeBounds(allElements);
+      if (bounds) {
+        return {
+          cx: bounds.x + bounds.w / 2,
+          cz: -(bounds.y + bounds.h / 2),
+          size: Math.max(bounds.w, bounds.h) * 1.5,
+          elevation,
+        };
       }
     }
     return null;
