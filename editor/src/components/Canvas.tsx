@@ -67,6 +67,13 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     setTransform({ x: 0, y: 0, scale: 1 });
   }, [state.currentLevel]);
 
+  // Clear snap guides when exiting draw mode
+  useEffect(() => {
+    if (!state.drawingState && !state.activeTool.startsWith('draw_')) {
+      setActiveSnap(null);
+    }
+  }, [state.drawingState, state.activeTool]);
+
   // Prune SVG cache when elements change to prevent memory leaks
   const elements = state.document?.elements;
   useEffect(() => {

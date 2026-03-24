@@ -1,10 +1,44 @@
-import { useEffect, useMemo } from 'react';
+import { Component, useEffect, useMemo } from 'react';
+import type { ReactNode, ErrorInfo } from 'react';
 import { EditorProvider, useEditorDispatch } from './state/EditorContext.tsx';
 import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
 import { createLocalDataSource, createApiDataSource } from './utils/dataSource.ts';
 import { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 import { TooltipProvider } from './components/ui/tooltip';
 import EditorShell from './components/EditorShell.tsx';
+
+class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | null }> {
+  state: { error: Error | null } = { error: null };
+
+  static getDerivedStateFromError(error: Error) {
+    return { error };
+  }
+
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error('Editor crashed:', error, info.componentStack);
+  }
+
+  render() {
+    if (this.state.error) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#1a1a1a', color: '#ccc', fontFamily: 'system-ui' }}>
+          <div style={{ maxWidth: 480, textAlign: 'center' }}>
+            <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>&#x26A0;</div>
+            <h2 style={{ margin: '0 0 8px', fontSize: 16, color: '#fff' }}>Something went wrong</h2>
+            <p style={{ margin: '0 0 16px', fontSize: 13, opacity: 0.7 }}>{this.state.error.message}</p>
+            <button
+              onClick={() => this.setState({ error: null })}
+              style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #444', background: '#2c2c2c', color: '#fff', cursor: 'pointer', fontSize: 13 }}
+            >
+              Try Again
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 const params = new URLSearchParams(window.location.search);
 const model = params.get('model') || 'Architecture';
@@ -75,12 +109,14 @@ export default function App() {
   }, []);
 
   return (
-    <TooltipProvider>
-      <DataSourceProvider ds={ds}>
-        <EditorProvider>
-          <AppInner />
-        </EditorProvider>
-      </DataSourceProvider>
-    </TooltipProvider>
+    <ErrorBoundary>
+      <TooltipProvider>
+        <DataSourceProvider ds={ds}>
+          <EditorProvider>
+            <AppInner />
+          </EditorProvider>
+        </DataSourceProvider>
+      </TooltipProvider>
+    </ErrorBoundary>
   );
 }
