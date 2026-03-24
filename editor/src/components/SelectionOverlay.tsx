@@ -21,7 +21,7 @@ export default function SelectionOverlay({ document, selectedIds, scale }: Selec
   return (
     <g className="selection-overlay" transform="scale(1,-1)">
       {selectedElements.map((el) => {
-        if (el.geometry === 'line') {
+        if (el.geometry === 'line' || el.geometry === 'spatial_line') {
           return (
             <line
               key={el.id}

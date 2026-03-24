@@ -125,7 +125,7 @@ function extractSnapTargets(
   for (const [id, el] of elements) {
     if (excludeIds.has(id)) continue;
 
-    if (el.geometry === 'line') {
+    if (el.geometry === 'line' || el.geometry === 'spatial_line') {
       // Priority 1: centerline endpoints
       targets.push({ x: el.start.x, y: el.start.y, type: 'endpoint', priority: 1 });
       targets.push({ x: el.end.x, y: el.end.y, type: 'endpoint', priority: 1 });

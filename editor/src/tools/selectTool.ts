@@ -199,7 +199,7 @@ function getElementAnchor(snapshot: Map<string, CanonicalElement | null> | null)
   if (!snapshot) return null;
   for (const el of snapshot.values()) {
     if (!el) continue;
-    if (el.geometry === 'line') return { x: el.start.x, y: el.start.y };
+    if (el.geometry === 'line' || el.geometry === 'spatial_line') return { x: el.start.x, y: el.start.y };
     if (el.geometry === 'point') return { x: el.position.x, y: el.position.y };
     if (el.geometry === 'polygon' && el.vertices.length > 0) return { x: el.vertices[0].x, y: el.vertices[0].y };
   }

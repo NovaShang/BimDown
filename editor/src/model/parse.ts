@@ -1,6 +1,6 @@
 import type { LayerData, CsvRow } from '../types.ts';
-import type { CanonicalElement, LineElement, PointElement, PolygonElement, Point } from './elements.ts';
-import { geometryTypeForTable } from './elements.ts';
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point } from './elements.ts';
+import { geometryTypeForTable, isHostedTable } from './elements.ts';
 
 const parser = new DOMParser();
 
@@ -17,14 +17,21 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
 
   const elements: CanonicalElement[] = [];
 
+  const hosted = isHostedTable(layer.tableName);
+
   switch (geoType) {
-    case 'line': {
+    case 'line':
+    case 'spatial_line': {
       const lines = g.querySelectorAll('line');
       for (const line of lines) {
         const id = line.getAttribute('id') || '';
         if (!id) continue;
-        const el = parseLineElement(id, line, layer, layer.csvRows.get(id));
-        if (el) elements.push(el);
+        const csv = layer.csvRows.get(id);
+        const el = geoType === 'spatial_line'
+          ? parseSpatialLineElement(id, line, layer, csv)
+          : parseLineElement(id, line, layer, csv);
+        if (hosted) applyHostFields(el, csv);
+        elements.push(el);
       }
       break;
     }
@@ -33,8 +40,10 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
       for (const rect of rects) {
         const id = rect.getAttribute('id') || '';
         if (!id) continue;
-        const el = parsePointElement(id, rect, layer, layer.csvRows.get(id));
-        if (el) elements.push(el);
+        const csv = layer.csvRows.get(id);
+        const el = parsePointElement(id, rect, layer, csv);
+        if (hosted) applyHostFields(el, csv);
+        elements.push(el);
       }
       break;
     }
@@ -43,8 +52,10 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
       for (const poly of polys) {
         const id = poly.getAttribute('id') || '';
         if (!id) continue;
-        const el = parsePolygonElement(id, poly, layer, layer.csvRows.get(id));
-        if (el) elements.push(el);
+        const csv = layer.csvRows.get(id);
+        const el = parsePolygonElement(id, poly, layer, csv);
+        if (hosted) applyHostFields(el, csv);
+        elements.push(el);
       }
       break;
     }
@@ -72,6 +83,35 @@ function parseLineElement(
     strokeWidth: parseFloat(line.getAttribute('stroke-width') || '0.1'),
     attrs: csvToAttrs(csv, id),
   };
+}
+
+function parseSpatialLineElement(
+  id: string, line: SVGLineElement, layer: LayerData, csv?: CsvRow
+): SpatialLineElement {
+  return {
+    geometry: 'spatial_line',
+    id,
+    tableName: layer.tableName,
+    discipline: layer.discipline,
+    start: {
+      x: parseFloat(line.getAttribute('x1') || '0'),
+      y: parseFloat(line.getAttribute('y1') || '0'),
+    },
+    end: {
+      x: parseFloat(line.getAttribute('x2') || '0'),
+      y: parseFloat(line.getAttribute('y2') || '0'),
+    },
+    startZ: parseFloat(csv?.start_z ?? '0'),
+    endZ: parseFloat(csv?.end_z ?? '0'),
+    strokeWidth: parseFloat(line.getAttribute('stroke-width') || '0.1'),
+    attrs: csvToAttrs(csv, id),
+  };
+}
+
+function applyHostFields(el: CanonicalElement, csv?: CsvRow): void {
+  if (!csv) return;
+  if (csv.host_id) el.hostId = csv.host_id;
+  if (csv.location_param) el.locationParam = parseFloat(csv.location_param);
 }
 
 function parsePointElement(

@@ -113,7 +113,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
 
   const y = elevation + 0.05;
 
-  if (element.geometry === 'line') {
+  if (element.geometry === 'line' || element.geometry === 'spatial_line') {
     return (
       <group>
         <HandleSphere

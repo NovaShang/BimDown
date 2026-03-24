@@ -1,4 +1,4 @@
-import type { CanonicalElement, LineElement, PointElement, PolygonElement } from '../../model/elements.ts';
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from '../../model/elements.ts';
 
 export interface BoxParams {
   kind: 'box';
@@ -161,6 +161,31 @@ function polygonToExtrude(
   };
 }
 
+/** Convert a SPATIAL_LINE element (MEP/structural with z) to a 3D box */
+function spatialLineToBox(el: SpatialLineElement): BoxParams | null {
+  const dx = el.end.x - el.start.x;
+  const dy = el.end.y - el.start.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length < 0.001) return null;
+
+  const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
+  const baseY = Math.min(el.startZ, el.endZ) - sizeY / 2;
+
+  const cx = (el.start.x + el.end.x) / 2;
+  const cz = -(el.start.y + el.end.y) / 2;
+  const cy = baseY + sizeY / 2;
+  const rotY = -Math.atan2(dy, dx);
+
+  return {
+    kind: 'box',
+    cx, cy, cz,
+    sx: length,
+    sy: sizeY,
+    sz: el.strokeWidth,
+    rotY,
+  };
+}
+
 export function elementTo3DParams(
   element: CanonicalElement,
   levelElevation: number,
@@ -169,6 +194,8 @@ export function elementTo3DParams(
   switch (element.geometry) {
     case 'line':
       return lineToBox(element, levelElevation, levelElevations);
+    case 'spatial_line':
+      return spatialLineToBox(element);
     case 'point':
       return pointToBox(element, levelElevation, levelElevations);
     case 'polygon':

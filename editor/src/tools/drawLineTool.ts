@@ -1,5 +1,6 @@
 import type { ToolHandler, ToolContext } from './types.ts';
-import type { LineElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, SpatialLineElement } from '../model/elements.ts';
+import { geometryTypeForTable } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
@@ -48,16 +49,30 @@ export const drawLineTool: ToolHandler = {
       const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
       const mergedAttrs = { ...baseAttrs, ...da, id };
 
-      const element: LineElement = {
-        id,
-        tableName: target.tableName,
-        discipline: target.discipline,
-        geometry: 'line',
-        start,
-        end,
-        strokeWidth,
-        attrs: mergedAttrs,
-      };
+      const geo = geometryTypeForTable(target.tableName);
+      const element: CanonicalElement = geo === 'spatial_line'
+        ? {
+            id,
+            tableName: target.tableName,
+            discipline: target.discipline,
+            geometry: 'spatial_line',
+            start,
+            end,
+            startZ: parseFloat(da.start_z ?? '0'),
+            endZ: parseFloat(da.end_z ?? '0'),
+            strokeWidth,
+            attrs: mergedAttrs,
+          } satisfies SpatialLineElement
+        : {
+            id,
+            tableName: target.tableName,
+            discipline: target.discipline,
+            geometry: 'line',
+            start,
+            end,
+            strokeWidth,
+            attrs: mergedAttrs,
+          } satisfies LineElement;
 
       ctx.dispatch({ type: 'CREATE_ELEMENT', element });
       ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });

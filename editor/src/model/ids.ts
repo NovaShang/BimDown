@@ -1,20 +1,24 @@
 import type { CanonicalElement } from './elements.ts';
+import { TABLE_REGISTRY, prefixForTable, tableByPrefix } from './tableRegistry.ts';
 
-const PREFIX_MAP: Record<string, string> = {
-  wall: 'w', curtain_wall: 'cw', structure_wall: 'sw', column: 'c', structure_column: 'sc',
-  door: 'd', window: 'wi', space: 'sp', slab: 'sl', structure_slab: 'ssl',
-  stair: 'st', duct: 'du', pipe: 'pi', equipment: 'eq', terminal: 'te',
-  conduit: 'co', cable_tray: 'ct', beam: 'be', brace: 'br',
-  grid: 'gr',
-};
-
-/** Reverse lookup: prefix → tableName */
-export const REVERSE_PREFIX_MAP: Record<string, string> = Object.fromEntries(
-  Object.entries(PREFIX_MAP).map(([table, prefix]) => [prefix, table])
-);
+/** Reverse lookup: prefix → tableName.
+ *  Includes legacy prefixes for backward compatibility with existing data. */
+export const REVERSE_PREFIX_MAP: Record<string, string> = (() => {
+  const map: Record<string, string> = {};
+  // Current prefixes from registry
+  for (const [name, def] of Object.entries(TABLE_REGISTRY)) {
+    map[def.prefix] = name;
+  }
+  // Legacy prefixes (editor used to use these, existing data may still have them)
+  map['wi'] = 'window';     // now 'wn'
+  map['te'] = 'terminal';   // now 'tm'
+  map['be'] = 'beam';       // now 'bm'
+  map['ssl'] = 'structure_slab'; // now 'ss'
+  return map;
+})();
 
 export function generateId(tableName: string, existingIds: Set<string>): string {
-  const prefix = PREFIX_MAP[tableName] || 'x';
+  const prefix = prefixForTable(tableName);
   let n = 1;
   while (existingIds.has(`${prefix}-${n}`)) n++;
   return `${prefix}-${n}`;

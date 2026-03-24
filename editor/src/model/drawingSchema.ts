@@ -1,155 +1,16 @@
-import { defaultAttrs } from './defaults.ts';
+import { defaultAttrsForTable, drawingFieldsForTable, TABLE_REGISTRY } from './tableRegistry.ts';
 import type { Level } from '../types.ts';
 
-/**
- * Schema for the creation properties bar.
- * Defines which fields appear when drawing each element type,
- * along with display info, defaults, and constraints.
- */
+// Re-export DrawingField from the registry
+export type { DrawingField } from './tableRegistry.ts';
 
-export interface DrawingField {
-  key: string;
-  label: string;
-  type: 'number' | 'text' | 'select';
-  unit?: string;
-  options?: { value: string; label: string }[];
-  min?: number;
-  max?: number;
-  step?: number;
-}
-
-/** Tables that have a top_level_id constraint */
-const TOP_LEVEL_TABLES = new Set(['wall', 'structure_wall', 'curtain_wall', 'column', 'structure_column']);
-
-const SHAPE_OPTIONS = [
-  { value: 'rectangular', label: 'Rect' },
-  { value: 'round', label: 'Round' },
-];
-
-const WALL_MATERIALS = [
-  { value: 'Default Wall', label: 'Default' },
-  { value: 'Concrete, Cast-in-Place', label: 'Concrete' },
-  { value: 'Brick', label: 'Brick' },
-  { value: 'Block', label: 'Block' },
-  { value: 'Metal Stud', label: 'Metal Stud' },
-];
-
-const OPERATION_OPTIONS = [
-  { value: 'single_swing', label: 'Single' },
-  { value: 'double_swing', label: 'Double' },
-  { value: 'sliding', label: 'Sliding' },
-  { value: 'folding', label: 'Folding' },
-];
-
-const HINGE_OPTIONS = [
-  { value: 'start', label: 'Start' },
-  { value: 'end', label: 'End' },
-];
-
-const SWING_SIDE_OPTIONS = [
-  { value: 'left', label: 'Left' },
-  { value: 'right', label: 'Right' },
-];
-
-const SLAB_FUNCTION_OPTIONS = [
-  { value: 'floor', label: 'Floor' },
-  { value: 'roof', label: 'Roof' },
-  { value: 'finish', label: 'Finish' },
-];
-
-/** Fields shown in the creation properties bar for each table type.
- *  If levels are provided, tables with top constraints get a top_level_id selector. */
-export function getDrawingFields(tableName: string, levels?: Level[]): DrawingField[] {
-  const topFields: DrawingField[] = TOP_LEVEL_TABLES.has(tableName) && levels
-    ? [
-        { key: 'top_level_id', label: 'Top', type: 'select', options: levels.map(l => ({ value: l.id, label: l.name || l.id })) },
-        { key: 'top_offset', label: 'Top Offset', type: 'number', unit: 'm', step: 0.1 },
-      ]
-    : [];
-
-  switch (tableName) {
-    case 'wall':
-      return [
-        { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
-        { key: 'material', label: 'Material', type: 'select', options: WALL_MATERIALS },
-        ...topFields,
-      ];
-    case 'structure_wall':
-      return [
-        { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
-        ...topFields,
-      ];
-    case 'curtain_wall':
-      return [
-        { key: 'u_grid_count', label: 'U Grids', type: 'number', min: 0, step: 1 },
-        { key: 'v_grid_count', label: 'V Grids', type: 'number', min: 0, step: 1 },
-        { key: 'u_spacing', label: 'U Spacing', type: 'number', unit: 'm', min: 0.1, step: 0.1 },
-        { key: 'v_spacing', label: 'V Spacing', type: 'number', unit: 'm', min: 0.1, step: 0.1 },
-        { key: 'panel_material', label: 'Panel Material', type: 'text' },
-        ...topFields,
-      ];
-    case 'column':
-    case 'structure_column':
-      return [
-        { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-        { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-        { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
-        ...topFields,
-      ];
-    case 'door':
-      return [
-        { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
-        { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.5, step: 0.1 },
-        { key: 'operation', label: 'Type', type: 'select', options: OPERATION_OPTIONS },
-        { key: 'hinge_position', label: 'Hinge', type: 'select', options: HINGE_OPTIONS },
-        { key: 'swing_side', label: 'Swing', type: 'select', options: SWING_SIDE_OPTIONS },
-      ];
-    case 'window':
-      return [
-        { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
-        { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
-      ];
-    case 'space':
-      return [
-        { key: 'name', label: 'Name', type: 'text' },
-      ];
-    case 'slab':
-    case 'structure_slab':
-      return [
-        { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-        { key: 'function', label: 'Function', type: 'select', options: SLAB_FUNCTION_OPTIONS },
-      ];
-    case 'duct':
-      return [
-        { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-        { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-        { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
-      ];
-    case 'pipe':
-      return [
-        { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
-      ];
-    case 'conduit':
-      return [
-        { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.005, step: 0.005 },
-      ];
-    case 'cable_tray':
-      return [
-        { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-        { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-      ];
-    case 'equipment':
-      return [
-        { key: 'equipment_type', label: 'Type', type: 'text' },
-      ];
-    default:
-      return [];
-  }
+export function getDrawingFields(tableName: string, levels?: Level[]) {
+  return drawingFieldsForTable(tableName, levels);
 }
 
 /**
  * Build the initial drawingAttrs for a table type.
- * Seeds from defaultAttrs (the canonical defaults) filtered to drawing-relevant fields.
+ * Seeds from defaults filtered to drawing-relevant fields.
  * When levels are provided, computes smart top_level_id default:
  *   - next higher level → top_offset: 0
  *   - no higher level → current level, top_offset: 3
@@ -161,21 +22,20 @@ export function getDefaultDrawingAttrs(
 ): Record<string, string> {
   const attrs: Record<string, string> = {};
   const fields = getDrawingFields(tableName, levels);
-  const defaults = defaultAttrs(tableName, currentLevelId ?? '');
+  const defaults = defaultAttrsForTable(tableName, currentLevelId ?? '');
   for (const f of fields) {
     attrs[f.key] = defaults[f.key] ?? '';
   }
 
   // Smart top_level_id default
-  if (TOP_LEVEL_TABLES.has(tableName) && levels && currentLevelId) {
+  const def = TABLE_REGISTRY[tableName];
+  if (def?.hasVerticalSpan && levels && currentLevelId) {
     const sorted = [...levels].sort((a, b) => a.elevation - b.elevation);
     const currentIdx = sorted.findIndex(l => l.id === currentLevelId);
     if (currentIdx >= 0 && currentIdx < sorted.length - 1) {
-      // Next higher level exists
       attrs.top_level_id = sorted[currentIdx + 1].id;
       attrs.top_offset = '0';
     } else {
-      // No higher level — use current level with 3m offset
       attrs.top_level_id = currentLevelId;
       attrs.top_offset = '3';
     }

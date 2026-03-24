@@ -1,5 +1,6 @@
-import type { CanonicalElement, LineElement, PointElement, PolygonElement } from './elements.ts';
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from './elements.ts';
 import type { CsvRow } from '../types.ts';
+import { csvHeadersForTable } from './tableRegistry.ts';
 
 /**
  * Group elements by discipline/tableName key.
@@ -32,6 +33,9 @@ export function serializeToSvg(elements: CanonicalElement[], viewBox: string): s
       case 'line':
         innerElements.push(serializeLine(el));
         break;
+      case 'spatial_line':
+        innerElements.push(serializeSpatialLine(el));
+        break;
       case 'point':
         innerElements.push(serializePoint(el));
         break;
@@ -45,6 +49,11 @@ export function serializeToSvg(elements: CanonicalElement[], viewBox: string): s
 }
 
 function serializeLine(el: LineElement): string {
+  return `<line id="${el.id}" x1="${r(el.start.x)}" y1="${r(el.start.y)}" x2="${r(el.end.x)}" y2="${r(el.end.y)}" stroke="black" stroke-width="${r(el.strokeWidth)}" stroke-linecap="square" />`;
+}
+
+function serializeSpatialLine(el: SpatialLineElement): string {
+  // SVG is 2D projection — same as line, z lives in CSV only
   return `<line id="${el.id}" x1="${r(el.start.x)}" y1="${r(el.start.y)}" x2="${r(el.end.x)}" y2="${r(el.end.y)}" stroke="black" stroke-width="${r(el.strokeWidth)}" stroke-linecap="square" />`;
 }
 
@@ -99,44 +108,8 @@ export function serializeToCsv(elements: CanonicalElement[], tableName: string):
   return lines.join('\n');
 }
 
-/**
- * Standard CSV headers per table type (order matches BimDown spec).
- */
 function getCsvHeaders(tableName: string): string[] {
-  switch (tableName) {
-    case 'wall':
-    case 'structure_wall':
-      return ['number', 'base_offset', 'top_level_id', 'top_offset', 'material'];
-    case 'curtain_wall':
-      return ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'u_grid_count', 'v_grid_count', 'u_spacing', 'v_spacing', 'panel_count', 'panel_material'];
-    case 'column':
-    case 'structure_column':
-      return ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y'];
-    case 'door':
-      return ['number', 'base_offset', 'host_id', 'material', 'width', 'height', 'operation', 'hinge_position', 'swing_side'];
-    case 'window':
-      return ['number', 'base_offset', 'host_id', 'material', 'width', 'height'];
-    case 'space':
-      return ['number', 'base_offset', 'name'];
-    case 'slab':
-    case 'structure_slab':
-      return ['number', 'base_offset', 'material', 'function', 'thickness'];
-    case 'stair':
-      return ['number', 'base_offset', 'start_z', 'end_z', 'width', 'rise', 'run'];
-    case 'duct':
-    case 'pipe':
-    case 'conduit':
-    case 'cable_tray':
-      return ['number', 'base_offset', 'start_z', 'end_z', 'shape', 'size_x', 'size_y', 'system_type', 'start_node_id', 'end_node_id'];
-    case 'equipment':
-      return ['number', 'base_offset', 'system_type', 'equipment_type'];
-    case 'terminal':
-      return ['number', 'base_offset', 'system_type'];
-    case 'grid':
-      return ['number'];
-    default:
-      return ['number', 'base_offset'];
-  }
+  return csvHeadersForTable(tableName);
 }
 
 /**

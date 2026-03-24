@@ -43,7 +43,7 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
       if (!isWall && !isMep) continue;
 
       for (const el of layer.elements) {
-        if (el.geometry !== 'line') continue;
+        if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
         const line = el as LineElement;
 
         const material = (line.attrs.material ?? '').toLowerCase();

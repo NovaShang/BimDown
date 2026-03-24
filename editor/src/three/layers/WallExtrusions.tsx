@@ -47,7 +47,7 @@ function buildHostedMap(
   // Collect all door/window line elements
   const openings: LineElement[] = [];
   for (const el of allElements.values()) {
-    if (el.geometry !== 'line') continue;
+    if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
     if (el.tableName !== 'door' && el.tableName !== 'window') continue;
     openings.push(el as LineElement);
   }
@@ -149,7 +149,7 @@ function subtractOpenings(
 export default function WallExtrusions({ elements, tableName, levelElevation, levelElevations, ghost, allElements }: WallExtrusionsProps) {
   const { selectedIds, hoveredId } = useEditorState();
 
-  const walls = useMemo(() => elements.filter((el): el is LineElement => el.geometry === 'line'), [elements]);
+  const walls = useMemo(() => elements.filter((el): el is LineElement => el.geometry === 'line' || el.geometry === 'spatial_line'), [elements]);
   const hostedMap = useMemo(() => buildHostedMap(allElements, walls), [allElements, walls]);
 
   const meshes = useMemo(() => {

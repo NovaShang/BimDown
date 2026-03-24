@@ -97,7 +97,7 @@ export function useToolContext3D(floorElevation: number) {
     for (const [id, el] of doc.elements) {
       // Get element center in model coords
       let cx: number, cy: number;
-      if (el.geometry === 'line') {
+      if (el.geometry === 'line' || el.geometry === 'spatial_line') {
         cx = (el.start.x + el.end.x) / 2;
         cy = (el.start.y + el.end.y) / 2;
       } else if (el.geometry === 'point') {

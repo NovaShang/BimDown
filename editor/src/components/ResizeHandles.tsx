@@ -120,7 +120,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
     };
   }, [snapSvgPoint, element.id, dispatch, onSnap]);
 
-  if (element.geometry === 'line') {
+  if (element.geometry === 'line' || element.geometry === 'spatial_line') {
     return (
       <g className="resize-handles" transform="scale(1,-1)">
         {/* Start endpoint */}

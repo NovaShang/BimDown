@@ -23,6 +23,7 @@ function getDrawTool(tableName: string): Tool {
   switch (placement) {
     case 'hosted': return 'draw_hosted';
     case 'free_line': return 'draw_line';
+    case 'spatial_line': return 'draw_line';
     case 'free_point': return 'draw_point';
     case 'free_polygon': return 'draw_polygon';
     case 'grid': return 'draw_grid';

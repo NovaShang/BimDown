@@ -12,7 +12,7 @@ const FILL_FN: Record<string, (m: string) => string> = {
 
 /** Fill-only polygon for wall/MEP lines. Outlines handled by WallOutlines. */
 export function renderWallFill(el: CanonicalElement): React.JSX.Element | null {
-  if (el.geometry !== 'line') return null;
+  if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
   const { start, end, strokeWidth, id, tableName, attrs } = el as LineElement;
   const dx = end.x - start.x, dy = end.y - start.y;
   const len = Math.sqrt(dx * dx + dy * dy);

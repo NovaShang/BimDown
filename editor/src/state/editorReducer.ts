@@ -1,5 +1,5 @@
 import type { EditorState, EditorAction } from './editorTypes.ts';
-import type { CanonicalElement, LineElement, PointElement, PolygonElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId } from '../model/ids.ts';
@@ -220,8 +220,17 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.document) return state;
       const { ids, dx, dy, preview } = action;
       const next = new Map(state.document.elements);
+      // Collect hosted elements that should cascade with moved hosts
+      const movedSet = new Set(ids);
+      const allIds = [...ids];
+      for (const el of next.values()) {
+        if (el.hostId && movedSet.has(el.hostId) && !movedSet.has(el.id)) {
+          allIds.push(el.id);
+          movedSet.add(el.id);
+        }
+      }
       let changed = false;
-      for (const id of ids) {
+      for (const id of allIds) {
         const el = next.get(id);
         if (!el) continue;
         changed = true;
@@ -233,7 +242,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
-      for (const id of ids) {
+      for (const id of allIds) {
         const pre = state.document.elements.get(id);
         const post = next.get(id);
         before.set(id, pre ?? null);
@@ -275,6 +284,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
       const next = new Map(state.document.elements);
+      const deletedSet = new Set(action.ids);
+      // Delete requested elements
       for (const id of action.ids) {
         const el = next.get(id);
         if (el) {
@@ -283,9 +294,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           next.delete(id);
         }
       }
+      // Cascade delete hosted elements whose host was deleted
+      for (const [id, el] of next) {
+        if (el.hostId && deletedSet.has(el.hostId)) {
+          before.set(id, el);
+          after.set(id, null);
+          next.delete(id);
+          deletedSet.add(id);
+        }
+      }
       if (before.size === 0) return state;
       const nextSelected = new Set(state.selectedIds);
-      for (const id of action.ids) nextSelected.delete(id);
+      for (const id of deletedSet) nextSelected.delete(id);
       
       return {
         ...state,
@@ -490,6 +510,12 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
         start: { x: el.start.x + dx, y: el.start.y + dy },
         end: { x: el.end.x + dx, y: el.end.y + dy },
       };
+    case 'spatial_line':
+      return {
+        ...el,
+        start: { x: el.start.x + dx, y: el.start.y + dy },
+        end: { x: el.end.x + dx, y: el.end.y + dy },
+      };
     case 'point':
       return {
         ...el,
@@ -511,6 +537,13 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
         start: 'start' in changes ? (changes as Partial<LineElement>).start! : el.start,
         end: 'end' in changes ? (changes as Partial<LineElement>).end! : el.end,
         strokeWidth: 'strokeWidth' in changes ? (changes as Partial<LineElement>).strokeWidth! : el.strokeWidth,
+      };
+    case 'spatial_line':
+      return {
+        ...el,
+        start: 'start' in changes ? (changes as Partial<SpatialLineElement>).start! : el.start,
+        end: 'end' in changes ? (changes as Partial<SpatialLineElement>).end! : el.end,
+        strokeWidth: 'strokeWidth' in changes ? (changes as Partial<SpatialLineElement>).strokeWidth! : el.strokeWidth,
       };
     case 'point':
       return {

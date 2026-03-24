@@ -1,6 +1,6 @@
 import type { ToolHandler, ToolContext } from './types.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
-import { HOSTED_TABLES } from '../model/elements.ts';
+import { hostTablesFor, widthAttrFor, isHostedTable } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
@@ -26,7 +26,7 @@ function findNearestHost(
   let best: HostHit | null = null;
 
   for (const el of elements.values()) {
-    if (el.geometry !== 'line') continue;
+    if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
     if (!hostTables.has(el.tableName)) continue;
     const wall = el as LineElement;
     const { start, end } = wall;
@@ -92,17 +92,18 @@ export const drawHostedTool: ToolHandler = {
     const target = state.drawingTarget;
     if (!target) return;
 
-    const config = HOSTED_TABLES[target.tableName];
-    if (!config) return;
+    if (!isHostedTable(target.tableName)) return;
+    const tables = hostTablesFor(target.tableName);
+    const wAttr = widthAttrFor(target.tableName);
 
     const elements = state.document?.elements;
     if (!elements) return;
 
-    const hit = findNearestHost(svgPt, elements, config.hostTables);
+    const hit = findNearestHost(svgPt, elements, tables);
     if (!hit) return;
 
     const da = state.drawingAttrs;
-    const width = parseFloat(da[config.widthAttr] || '0.9');
+    const width = parseFloat(da[wAttr] || '0.9');
     const { start, end } = computeHostedSpan(hit, width);
 
     const existingIds = new Set(elements.keys());
@@ -120,6 +121,8 @@ export const drawHostedTool: ToolHandler = {
       end,
       strokeWidth: 0.1,
       attrs: mergedAttrs,
+      hostId: hit.wall.id,
+      locationParam: hit.t,
     };
 
     ctx.dispatch({ type: 'CREATE_ELEMENT', element });
@@ -134,17 +137,18 @@ export const drawHostedTool: ToolHandler = {
     const target = state.drawingTarget;
     if (!target) return;
 
-    const config = HOSTED_TABLES[target.tableName];
-    if (!config) return;
+    if (!isHostedTable(target.tableName)) return;
+    const tables = hostTablesFor(target.tableName);
+    const wAttr = widthAttrFor(target.tableName);
 
     const elements = state.document?.elements;
     if (!elements) return;
 
-    const hit = findNearestHost(svgPt, elements, config.hostTables);
+    const hit = findNearestHost(svgPt, elements, tables);
 
     if (hit) {
       const da = state.drawingAttrs;
-      const width = parseFloat(da[config.widthAttr] || '0.9');
+      const width = parseFloat(da[wAttr] || '0.9');
       const { start, end } = computeHostedSpan(hit, width);
       // Store preview span as points[0] = start, cursor = end
       ctx.dispatch({

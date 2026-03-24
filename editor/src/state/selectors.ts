@@ -4,6 +4,7 @@ import { DISCIPLINE_TABLES } from '../types.ts';
 import { extractViewBox } from '../utils/processor.ts';
 import { groupByLayer } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
+import { renderZIndexForTable } from '../model/tableRegistry.ts';
 
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
@@ -14,33 +15,8 @@ export function getLevelsWithData(state: EditorState) {
   return state.project.levels.filter(l => state.project!.floors.has(l.id));
 }
 
-const RENDER_Z_INDEX: Record<string, number> = {
-  grid: 1,
-  space: 10,
-  slab: 20,
-  structure_slab: 21,
-  raft_foundation: 22,
-  strip_foundation: 23,
-  isolated_foundation: 24,
-  stair: 30,
-  wall: 40,
-  structure_wall: 41,
-  column: 50,
-  structure_column: 51,
-  window: 60,
-  door: 61,
-  beam: 70,
-  brace: 71,
-  duct: 80,
-  pipe: 81,
-  cable_tray: 82,
-  conduit: 83,
-  equipment: 90,
-  terminal: 91,
-};
-
 function getRenderZIndex(tableName: string): number {
-  return RENDER_Z_INDEX[tableName] ?? 100;
+  return renderZIndexForTable(tableName);
 }
 
 export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
