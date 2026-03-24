@@ -106,9 +106,9 @@ export default function EditorShell() {
       prevLevelRef.current = state.currentLevel;
     }
 
+    if (!state.currentLevel) return;
     const floor = state.project?.floors.get(state.currentLevel);
-    if (!floor) return;
-    const elements = parseFloorLayers(floor.layers);
+    const elements = floor ? parseFloorLayers(floor.layers) : [];
     // Inject grid elements from global state
     const gridElements = gridsToElements(state.grids);
     const doc = createDocument(state.currentLevel, [...elements, ...gridElements]);

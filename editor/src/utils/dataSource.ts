@@ -76,6 +76,9 @@ export function createLocalDataSource(model: string): DataSource {
  */
 export function createApiDataSource(projectId: string): DataSource {
   const filesBase = `/api/projects/${projectId}/files`;
+  // Track self-writes to suppress WebSocket echo (path → timestamp)
+  const selfWrites = new Map<string, number>();
+  const SELF_WRITE_TTL = 2000; // ignore WS events for 2s after our own write
 
   return {
     async fetchText(path: string): Promise<string | null> {
@@ -89,6 +92,7 @@ export function createApiDataSource(projectId: string): DataSource {
     },
 
     async saveFile(path: string, content: string): Promise<void> {
+      selfWrites.set(path, Date.now());
       const resp = await fetch(`${filesBase}/${path}`, {
         method: 'PUT',
         credentials: 'include',
@@ -114,6 +118,10 @@ export function createApiDataSource(projectId: string): DataSource {
           try {
             const data = JSON.parse(event.data);
             if ((data.type === 'file:updated' || data.type === 'file:deleted') && data.path) {
+              // Skip events caused by our own writes
+              const writeTime = selfWrites.get(data.path);
+              if (writeTime && Date.now() - writeTime < SELF_WRITE_TTL) return;
+              selfWrites.delete(data.path);
               onFileChanged(data.path);
             }
           } catch { /* ignore */ }

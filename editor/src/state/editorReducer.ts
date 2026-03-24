@@ -74,6 +74,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
             if (floor.layers.length > 0) activeDiscipline = floor.layers[0].discipline;
           }
         }
+      } else if (project.levels.length > 0) {
+        // New/empty project: auto-select first level so editor is ready to draw
+        currentLevel = project.levels[0].id;
       }
       // Always show grids by default
       if (grids.length > 0) visibleLayers.add('reference/grid');
