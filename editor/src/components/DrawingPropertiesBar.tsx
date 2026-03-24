@@ -30,7 +30,7 @@ export default function DrawingPropertiesBar() {
 
   return (
     <div
-      className="absolute bottom-[60px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-[10px] border border-border bg-card px-3 py-[5px] shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-1.5 duration-200"
+      className="absolute bottom-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap glass-panel rounded-[10px] border border-border px-3 py-[5px] shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-1.5 duration-200"
       style={{ '--dp-color': disciplineColor } as React.CSSProperties}
     >
       <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold select-none" style={{ color: disciplineColor }}>

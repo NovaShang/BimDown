@@ -568,7 +568,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
 
       {/* Minimap */}
-      <Minimap layers={layers} viewBox={viewBox} transform={transform} setTransform={setTransform} containerRef={containerRef} />
+      {state.showMinimap && <Minimap layers={layers} viewBox={viewBox} transform={transform} setTransform={setTransform} containerRef={containerRef} />}
 
       {/* Context menu */}
       {contextMenu && state.document && (
@@ -585,7 +585,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
 
       {/* Hover tooltip */}
       {hoveredId && (
-        <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 rounded border border-border bg-card px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150">
+        <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 glass-panel rounded border border-border px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150">
           <span className="text-[10px] font-normal text-muted-foreground">{getElementType(hoveredId)}</span>
           {hoveredId}
         </div>

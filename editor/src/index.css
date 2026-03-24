@@ -91,6 +91,13 @@
   }
 }
 
+/* ─── Glass Panel ────────────────────────────── */
+.glass-panel {
+  background: rgba(30, 30, 30, 0.75);
+  backdrop-filter: blur(20px) saturate(1.5);
+  -webkit-backdrop-filter: blur(20px) saturate(1.5);
+}
+
 /* ─── Canvas ─────────────────────────────────── */
 .canvas {
   width: 100%;

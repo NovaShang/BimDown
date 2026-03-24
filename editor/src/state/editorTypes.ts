@@ -27,6 +27,7 @@ export interface EditorState {
 
   visibleLayers: Set<string>;
   showGrid: boolean;
+  showMinimap: boolean;
 
   activeTool: Tool;
   previousTool: Tool;
@@ -64,6 +65,7 @@ export type EditorAction =
   | { type: 'TOGGLE_LAYER'; key: string }
   | { type: 'SET_VISIBLE_LAYERS'; keys: Set<string> }
   | { type: 'TOGGLE_GRID' }
+  | { type: 'TOGGLE_MINIMAP' }
   | { type: 'SET_TOOL'; tool: Tool }
   | { type: 'SET_SPACE_HELD'; held: boolean }
   | { type: 'SET_FILTER'; filter: string | null }

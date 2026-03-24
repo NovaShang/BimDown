@@ -17,6 +17,7 @@ export const initialState: EditorState = {
 
   visibleLayers: new Set(),
   showGrid: true,
+  showMinimap: true,
 
   activeTool: 'select',
   previousTool: 'select',
@@ -149,6 +150,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'TOGGLE_GRID':
       return { ...state, showGrid: !state.showGrid };
+
+    case 'TOGGLE_MINIMAP':
+      return { ...state, showMinimap: !state.showMinimap };
 
     case 'SET_TOOL':
       return {

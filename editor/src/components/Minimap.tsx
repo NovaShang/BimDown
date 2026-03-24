@@ -56,7 +56,7 @@ export default function Minimap({ layers, viewBox, transform, setTransform, cont
     <div
       ref={ref}
       onClick={handleClick}
-      className="absolute bottom-9 left-3 z-20 h-[120px] w-[180px] cursor-pointer overflow-hidden rounded-lg border border-border bg-[var(--bg-panel-dark)] opacity-85 transition-opacity hover:opacity-100"
+      className="glass-panel absolute top-14 left-3 z-20 h-[120px] w-[180px] cursor-pointer overflow-hidden rounded-lg border border-border opacity-85 transition-opacity hover:opacity-100"
     >
       <svg
         className="block size-full"

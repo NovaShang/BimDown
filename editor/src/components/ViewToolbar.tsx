@@ -17,11 +17,11 @@ interface ViewToolbarProps {
 }
 
 export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
-  const { viewMode, floor3DMode } = useEditorState();
+  const { viewMode, floor3DMode, showMinimap } = useEditorState();
   const dispatch = useEditorDispatch();
 
   return (
-    <div className="absolute top-3 left-3 z-30 flex items-center gap-0.5 rounded-xl border border-border bg-card px-1.5 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.4)] select-none">
+    <div className="absolute top-3 left-3 z-30 flex items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.4)] select-none">
       {/* 2D / 3D toggle */}
       {(['2d', '3d'] as const).map((mode: ViewMode) => (
         <Tooltip key={mode}>
@@ -74,6 +74,30 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
           <FloorModeDropdown floor3DMode={floor3DMode} onChange={(mode) => dispatch({ type: 'SET_FLOOR_3D_MODE', mode })} />
         </>
       )}
+
+      {/* Minimap toggle */}
+      {viewMode === '2d' && (
+        <>
+          <Separator orientation="vertical" className="mx-0.5 h-5" />
+          <Tooltip>
+            <TooltipTrigger
+              className={cn(
+                'flex size-8 cursor-pointer items-center justify-center rounded-lg border-none transition-all',
+                showMinimap
+                  ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+                  : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+              onClick={() => dispatch({ type: 'TOGGLE_MINIMAP' })}
+            >
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="2" y="2" width="12" height="8" rx="1" />
+                <rect x="4" y="4" width="4" height="3" rx="0.5" strokeWidth="1" />
+              </svg>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Toggle Minimap (M)</TooltipContent>
+          </Tooltip>
+        </>
+      )}
     </div>
   );
 }
@@ -105,7 +129,7 @@ function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode
         </svg>
       </button>
       {open && (
-        <div className="absolute left-0 top-full mt-1 min-w-[140px] rounded-md border border-border bg-card py-1 shadow-xl animate-in fade-in duration-100">
+        <div className="glass-panel absolute left-0 top-full mt-1 min-w-[140px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100">
           {FLOOR_3D_OPTIONS.map(({ mode, label, title }) => (
             <button
               key={mode}

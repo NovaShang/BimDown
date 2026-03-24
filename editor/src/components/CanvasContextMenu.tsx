@@ -144,7 +144,7 @@ export default function CanvasContextMenu({
     return (
       <div
         ref={ref}
-        className="fixed z-50 min-w-[160px] rounded-md border border-border bg-card py-1 shadow-xl animate-in fade-in duration-100"
+        className="glass-panel fixed z-50 min-w-[160px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100"
         style={{ left: x, top: y }}
         onPointerDown={e => e.stopPropagation()}
       >
@@ -187,7 +187,7 @@ export default function CanvasContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 min-w-[160px] rounded-md border border-border bg-card py-1 shadow-xl animate-in fade-in duration-100"
+      className="glass-panel fixed z-50 min-w-[160px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100"
       style={{ left: x, top: y }}
       onPointerDown={e => e.stopPropagation()}
     >

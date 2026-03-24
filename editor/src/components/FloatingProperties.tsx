@@ -85,7 +85,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
   };
 
   return (
-    <div className="absolute right-3 top-3 z-30 flex max-h-[calc(100%-80px)] w-[260px] flex-col overflow-hidden rounded-lg border border-border bg-card shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-right-3 duration-200">
+    <div className="absolute right-3 top-3 z-30 flex max-h-[calc(100%-80px)] w-[260px] flex-col overflow-hidden glass-panel rounded-lg border border-border shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-right-3 duration-200">
       {/* Header */}
       <div className="relative border-b border-border px-3 pb-2 pt-2.5">
         <div className="flex items-center gap-1.5">

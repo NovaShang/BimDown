@@ -36,7 +36,7 @@ function LevelContextMenu({
   return (
     <div
       ref={ref}
-      className="fixed z-50 min-w-[120px] rounded-md border border-border bg-card py-1 shadow-xl"
+      className="glass-panel fixed z-50 min-w-[120px] rounded-md border border-border py-1 shadow-xl"
       style={{ left: x, top: y }}
     >
       <button
