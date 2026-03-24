@@ -12,17 +12,32 @@ interface FloorRenderData {
   elements: CanonicalElement[];
 }
 
-/** Parse all floors once, filter by discipline + layer visibility. */
+/** Parse all floors once, filter by discipline + layer visibility.
+ *  For the current level, use the live document model so 3D reflects edits immediately. */
 function useAllFloorsElements(): FloorRenderData[] {
-  const { project, visibleLayers, activeDiscipline } = useEditorState();
+  const { project, visibleLayers, activeDiscipline, document: doc, documentVersion, currentLevel } = useEditorState();
 
   return useMemo(() => {
     if (!project) return [];
     const result: FloorRenderData[] = [];
 
-    for (const [levelId, floor] of project.floors) {
+    // Collect all level IDs (from floors + current level if it has a document)
+    const levelIds = new Set(project.floors.keys());
+    if (doc && currentLevel) levelIds.add(currentLevel);
+
+    for (const levelId of levelIds) {
       const elevation = project.levels.find(l => l.id === levelId)?.elevation ?? 0;
-      const parsed = parseFloorLayers(floor.layers);
+
+      // For current level with a live document, use document elements directly
+      let parsed: CanonicalElement[];
+      if (levelId === currentLevel && doc) {
+        parsed = Array.from(doc.elements.values()).filter(el => el.tableName !== 'grid');
+      } else {
+        const floor = project.floors.get(levelId);
+        if (!floor) continue;
+        parsed = parseFloorLayers(floor.layers);
+      }
+
       const filtered = parsed.filter(el => {
         // Discipline filter: active discipline + architecture as context
         if (activeDiscipline !== 'architechture') {
@@ -38,7 +53,7 @@ function useAllFloorsElements(): FloorRenderData[] {
       }
     }
     return result;
-  }, [project, visibleLayers, activeDiscipline]);
+  }, [project, visibleLayers, activeDiscipline, doc, documentVersion, currentLevel]);
 }
 
 /** Compute which levels are visible based on floor3DMode. */
