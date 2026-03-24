@@ -41,7 +41,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 }
 
 const params = new URLSearchParams(window.location.search);
-const model = params.get('model') || 'Architecture';
+const model = params.get('model') || 'merged';
 const projectId = params.get('project');
 
 function AppInner() {
