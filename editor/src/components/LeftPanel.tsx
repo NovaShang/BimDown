@@ -62,8 +62,7 @@ export default function LeftPanel({
   visibleLayers,
 }: LeftPanelProps) {
   const dispatch = useEditorDispatch();
-  const { activeDiscipline, viewMode: rawViewMode, floor3DMode } = useEditorState();
-  const viewMode = rawViewMode ?? '2d';
+  const { activeDiscipline } = useEditorState();
   const [showAddLevel, setShowAddLevel] = useState(false);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Level | null>(null);
@@ -77,25 +76,6 @@ export default function LeftPanel({
 
   return (
     <div className="flex h-full w-60 min-w-60 flex-col overflow-hidden border-r border-border bg-card select-none">
-      {/* 2D / 3D Toggle */}
-      <div className="flex shrink-0 gap-0.5 px-2 pt-2">
-        {(['2d', '3d'] as const).map(mode => (
-          <button
-            key={mode}
-            className={cn(
-              'flex-1 rounded py-[5px] text-[11px] font-semibold uppercase transition-all',
-              'border cursor-pointer',
-              viewMode === mode
-                ? 'border-[var(--color-accent)] bg-[var(--accent-dim)] text-[var(--color-accent)]'
-                : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-            onClick={() => dispatch({ type: 'SET_VIEW_MODE', mode })}
-          >
-            {mode.toUpperCase()}
-          </button>
-        ))}
-      </div>
-
       {/* Floor Switcher */}
       <div className="max-h-[35%] shrink-0 overflow-y-auto p-2">
         <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
@@ -111,26 +91,6 @@ export default function LeftPanel({
           </button>
         </div>
         <div className="flex flex-col gap-px">
-          {viewMode === '3d' && (
-            <div className="mb-1 flex gap-0.5">
-              {(['current', 'current+below', 'all'] as const).map(mode => (
-                <button
-                  key={mode}
-                  className={cn(
-                    'flex-1 rounded py-[5px] text-[11px] font-semibold transition-all',
-                    'border cursor-pointer',
-                    floor3DMode === mode
-                      ? 'border-[var(--color-accent)] bg-[var(--accent-dim)] text-[var(--color-accent)]'
-                      : 'border-border text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                  onClick={() => dispatch({ type: 'SET_FLOOR_3D_MODE', mode })}
-                  title={mode === 'current' ? 'Show current floor only' : mode === 'current+below' ? 'Show current floor + one below' : 'Show all floors'}
-                >
-                  {mode === 'current' ? 'Current' : mode === 'current+below' ? '+Below' : 'All'}
-                </button>
-              ))}
-            </div>
-          )}
           {levels.map(level => (
             <button
               key={level.id}

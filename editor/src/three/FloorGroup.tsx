@@ -65,7 +65,6 @@ function useVisibleLevels(): Set<string> {
 }
 
 export default function FloorGroup() {
-  const { currentLevel, floor3DMode, activeDiscipline } = useEditorState();
   const allFloors = useAllFloorsElements();
   const visibleLevels = useVisibleLevels();
 
@@ -79,37 +78,14 @@ export default function FloorGroup() {
     <group>
       {allFloors.map(({ levelId, elevation, elements }) => {
         const isVisible = visibleLevels.has(levelId);
-        const isCurrentLevel = levelId === currentLevel;
-        // Ghost: non-current levels when multiple are visible
-        const ghost = !isCurrentLevel && floor3DMode !== 'current';
-        // Non-arch discipline: architecture elements on current level also ghost
-        const isNonArch = activeDiscipline !== 'architechture';
 
         return (
           <group key={levelId} visible={isVisible}>
-            {isNonArch ? (
-              <>
-                <RenderElements
-                  elements={elements.filter(el => el.discipline !== 'architechture')}
-                  levelElevation={elevation}
-                  levelElevations={levelElevations}
-                  ghost={ghost}
-                />
-                <RenderElements
-                  elements={elements.filter(el => el.discipline === 'architechture')}
-                  levelElevation={elevation}
-                  levelElevations={levelElevations}
-                  ghost
-                />
-              </>
-            ) : (
-              <RenderElements
-                elements={elements}
-                levelElevation={elevation}
-                levelElevations={levelElevations}
-                ghost={ghost}
-              />
-            )}
+            <RenderElements
+              elements={elements}
+              levelElevation={elevation}
+              levelElevations={levelElevations}
+            />
           </group>
         );
       })}

@@ -3,8 +3,6 @@ import type { DocumentState } from '../model/document.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { LAYER_STYLES } from '../types.ts';
-import type { CanonicalElement } from '../model/elements.ts';
-
 interface ContextMenuState {
   x: number;
   y: number;
@@ -28,30 +26,6 @@ function getTableName(id: string): string | null {
 
 function getDisplayName(tableName: string): string {
   return LAYER_STYLES[tableName]?.displayName ?? tableName;
-}
-
-function getElementBBox(el: CanonicalElement): { minX: number; minY: number; maxX: number; maxY: number } {
-  switch (el.geometry) {
-    case 'line':
-      return {
-        minX: Math.min(el.start.x, el.end.x),
-        minY: Math.min(el.start.y, el.end.y),
-        maxX: Math.max(el.start.x, el.end.x),
-        maxY: Math.max(el.start.y, el.end.y),
-      };
-    case 'point':
-      return {
-        minX: el.position.x - el.width / 2,
-        minY: el.position.y - el.height / 2,
-        maxX: el.position.x + el.width / 2,
-        maxY: el.position.y + el.height / 2,
-      };
-    case 'polygon': {
-      const xs = el.vertices.map(v => v.x);
-      const ys = el.vertices.map(v => v.y);
-      return { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) };
-    }
-  }
 }
 
 /** Separator line between menu groups */
@@ -154,21 +128,6 @@ export default function CanvasContextMenu({
     dispatch({ type: 'SET_VISIBLE_LAYERS', keys: merged });
   };
 
-  const zoomToElements = (ids: Iterable<string>) => {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const id of ids) {
-      const el = document.elements.get(id);
-      if (!el) continue;
-      const bb = getElementBBox(el);
-      minX = Math.min(minX, bb.minX);
-      minY = Math.min(minY, bb.minY);
-      maxX = Math.max(maxX, bb.maxX);
-      maxY = Math.max(maxY, bb.maxY);
-    }
-    if (!isFinite(minX)) return;
-    canvasDispatch({ type: 'ZOOM_TO_BBOX', minX, minY, maxX, maxY });
-  };
-
   // -- Element context menu (single or multi) --
   if (hasSelection) {
     const count = selectedIds.size;
@@ -214,9 +173,12 @@ export default function CanvasContextMenu({
             dispatch({ type: 'SET_VISIBLE_LAYERS', keys });
           })} />
         )}
-        <Sep />
-        <Item label="Zoom to Element" onClick={act(() => zoomToElements(selectedIds))} />
-        {isMulti && <Item label="Deselect All" shortcut="Esc" onClick={act(() => dispatch({ type: 'CLEAR_SELECTION' }))} />}
+        {isMulti && (
+          <>
+            <Sep />
+            <Item label="Deselect All" shortcut="Esc" onClick={act(() => dispatch({ type: 'CLEAR_SELECTION' }))} />
+          </>
+        )}
       </div>
     );
   }

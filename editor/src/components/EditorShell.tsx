@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useRef } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
@@ -9,7 +9,9 @@ import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import LeftPanel from './LeftPanel.tsx';
 import Canvas from './Canvas.tsx';
+import type { CanvasHandle } from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
+import ViewToolbar from './ViewToolbar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
 import FloatingProperties from './FloatingProperties.tsx';
 
@@ -171,6 +173,22 @@ export default function EditorShell() {
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
   const activeDiscipline = state.activeDiscipline;
 
+  // Canvas ref for view toolbar integration
+  const canvasRef = useRef<CanvasHandle>(null);
+  const [canvasScale, setCanvasScale] = useState(1);
+  const handleZoomToFit2D = useCallback(() => canvasRef.current?.zoomToFit(), []);
+  const handleZoomToFit3D = useCallback(() => window.dispatchEvent(new Event('zoom-to-fit-3d')), []);
+  const handleZoomToFit = state.viewMode === '3d' ? handleZoomToFit3D : handleZoomToFit2D;
+
+  // Poll scale from canvas (updates on re-render triggered by state changes)
+  useEffect(() => {
+    const id = setInterval(() => {
+      const s = canvasRef.current?.getScale();
+      if (s != null) setCanvasScale(s);
+    }, 200);
+    return () => clearInterval(id);
+  }, []);
+
   // Set base viewBox when it changes
   useEffect(() => {
     if (viewBox && !state.baseViewBox) {
@@ -193,6 +211,7 @@ export default function EditorShell() {
           </Suspense>
         ) : (
           <Canvas
+            ref={canvasRef}
             layers={processedLayers}
             viewBox={viewBox}
             activeFilter={state.activeFilter}
@@ -204,6 +223,10 @@ export default function EditorShell() {
         {selectedData.size > 0 && (
           <FloatingProperties selectedData={selectedData} />
         )}
+        <ViewToolbar
+          onZoomToFit={handleZoomToFit}
+          scale={state.viewMode === '2d' ? canvasScale : undefined}
+        />
       </div>
     </div>
   );

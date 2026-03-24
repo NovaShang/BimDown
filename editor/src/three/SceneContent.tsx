@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, Suspense } from 'react';
+import { useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
 import { OrbitControls, Bounds, useBounds, Environment } from '@react-three/drei';
 import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
@@ -98,11 +98,7 @@ function FitOnLevelChange() {
   const { currentLevel } = useEditorState();
   const prevLevel = useRef('');
 
-  useEffect(() => {
-    if (currentLevel === prevLevel.current) return;
-    prevLevel.current = currentLevel;
-
-    // Retry a few frames to wait for geometry to mount
+  const doFit = useCallback(() => {
     let attempts = 0;
     const tryFit = () => {
       try {
@@ -112,7 +108,20 @@ function FitOnLevelChange() {
       }
     };
     requestAnimationFrame(tryFit);
-  }, [currentLevel, bounds]);
+  }, [bounds]);
+
+  useEffect(() => {
+    if (currentLevel === prevLevel.current) return;
+    prevLevel.current = currentLevel;
+    doFit();
+  }, [currentLevel, doFit]);
+
+  // Listen for external zoom-to-fit requests
+  useEffect(() => {
+    const handler = () => doFit();
+    window.addEventListener('zoom-to-fit-3d', handler);
+    return () => window.removeEventListener('zoom-to-fit-3d', handler);
+  }, [doFit]);
 
   return null;
 }

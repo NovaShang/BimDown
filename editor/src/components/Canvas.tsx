@@ -1,4 +1,4 @@
-import { useRef, useCallback, useEffect, useState, useMemo } from 'react';
+import { useRef, useCallback, useEffect, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { ProcessedLayer, EditorAction } from '../state/editorTypes.ts';
 import type { ViewTransform } from '../state/editorTypes.ts';
@@ -35,7 +35,12 @@ interface CanvasProps {
 
 type CanvasAction = EditorAction | TransformAction;
 
-export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline }: CanvasProps) {
+export interface CanvasHandle {
+  zoomToFit: () => void;
+  getScale: () => number;
+}
+
+export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, viewBox, activeFilter, activeDiscipline }, ref) {
   const state = useEditorState();
   const globalDispatch = useEditorDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -53,6 +58,9 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
 
   // ────── CONTEXT MENU STATE ──────
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; targetId: string | null } | null>(null);
+
+  // ────── ANIMATED TRANSFORM ──────
+  const [animating, setAnimating] = useState(false);
 
   // Reset transform when level changes
   useEffect(() => {
@@ -97,22 +105,19 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
   }, []);
 
   const applyZoomToFit = useCallback(() => {
-    const el = containerRef.current;
-    if (!el || !viewBox) {
-      setTransform({ x: 0, y: 0, scale: 1 });
-      return;
-    }
-    const cw = el.clientWidth, ch = el.clientHeight;
-    const margin = 40; // px padding inside container
-    const scale = Math.min((cw - margin * 2) / viewBox.w, (ch - margin * 2) / viewBox.h);
-    const x = (cw - viewBox.w * scale) / 2;
-    const y = (ch - viewBox.h * scale) / 2;
-    setTransform({ x, y, scale });
-  }, [viewBox]);
+    setAnimating(true);
+    setTransform({ x: 0, y: 0, scale: 1 });
+    setTimeout(() => setAnimating(false), 300);
+  }, []);
 
   const applyZoomToPercent = useCallback((percent: number) => {
     setTransform(prev => ({ ...prev, scale: percent / 100 }));
   }, []);
+
+  useImperativeHandle(ref, () => ({
+    zoomToFit: applyZoomToFit,
+    getScale: () => transformRef.current.scale,
+  }), [applyZoomToFit]);
 
   const applyZoomToBBox = useCallback((minX: number, minY: number, maxX: number, maxY: number) => {
     const el = containerRef.current;
@@ -486,6 +491,7 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
           transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
           transformOrigin: '0 0',
           overflow: 'visible',
+          transition: animating ? 'transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)' : 'none',
         }}
       >
         {/* Data layers + wall outlines inserted between wall fills and doors/windows */}
@@ -578,24 +584,9 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
         </div>
       )}
 
-      {/* Status bar */}
-      <div className="absolute inset-x-0 bottom-0 z-[25] flex h-6 items-center gap-4 border-t border-border bg-[var(--bg-panel-dark)] px-3 text-[10px] text-muted-foreground select-none">
-        <span className="flex items-center gap-1 font-medium text-[var(--text-secondary)]">
-          {activeTool === 'select' ? <><Icon name="select" width={16} height={16} /> Select</>
-            : activeTool === 'pan' ? <><Icon name="pan" width={16} height={16} /> Pan</>
-            : activeTool === 'zoom' ? <><Icon name="zoom" width={16} height={16} /> Zoom</>
-            : activeTool === 'draw_grid' ? <><Icon name="grid" width={16} height={16} /> Draw Grid</>
-            : activeTool.startsWith('draw_') ? <><Icon name={state.drawingTarget?.tableName || 'wall'} width={16} height={16} /> Draw</>
-            : activeTool}
-        </span>
-        {selectedIds.size > 0 && (
-          <span className="text-[var(--color-accent)]">{selectedIds.size} selected</span>
-        )}
-        <span className="ml-auto tabular-nums">{(transform.scale * 100).toFixed(0)}%</span>
-      </div>
     </div>
   );
-}
+});
 
 function getElementType(id: string): string {
   const prefix = id.replace(/-\d+$/, '');
