@@ -415,7 +415,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return {
         ...state,
         drawingTarget: action.target,
-        drawingAttrs: action.target ? getDefaultDrawingAttrs(action.target.tableName) : {},
+        drawingAttrs: action.target
+          ? getDefaultDrawingAttrs(action.target.tableName, state.currentLevel, state.project?.levels)
+          : {},
       };
 
     case 'SET_DRAWING_ATTRS':

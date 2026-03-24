@@ -95,8 +95,8 @@ function useModelBounds() {
 
 function FitOnLevelChange() {
   const bounds = useBounds();
-  const { currentLevel } = useEditorState();
-  const prevLevel = useRef('');
+  const { currentLevel, floor3DMode } = useEditorState();
+  const prevKey = useRef('');
 
   const doFit = useCallback(() => {
     let attempts = 0;
@@ -104,17 +104,19 @@ function FitOnLevelChange() {
       try {
         bounds.refresh().clip().fit();
       } catch {
-        if (attempts++ < 5) requestAnimationFrame(tryFit);
+        if (attempts++ < 10) requestAnimationFrame(tryFit);
       }
     };
     requestAnimationFrame(tryFit);
   }, [bounds]);
 
+  // Re-fit when level or floor display mode changes
   useEffect(() => {
-    if (currentLevel === prevLevel.current) return;
-    prevLevel.current = currentLevel;
+    const key = `${currentLevel}:${floor3DMode}`;
+    if (key === prevKey.current) return;
+    prevKey.current = key;
     doFit();
-  }, [currentLevel, doFit]);
+  }, [currentLevel, floor3DMode, doFit]);
 
   // Listen for external zoom-to-fit requests
   useEffect(() => {

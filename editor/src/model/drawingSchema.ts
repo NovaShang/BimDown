@@ -1,4 +1,5 @@
 import { defaultAttrs } from './defaults.ts';
+import type { Level } from '../types.ts';
 
 /**
  * Schema for the creation properties bar.
@@ -16,6 +17,9 @@ export interface DrawingField {
   max?: number;
   step?: number;
 }
+
+/** Tables that have a top_level_id constraint */
+const TOP_LEVEL_TABLES = new Set(['wall', 'structure_wall', 'curtain_wall', 'column', 'structure_column']);
 
 const SHAPE_OPTIONS = [
   { value: 'rectangular', label: 'Rect' },
@@ -53,17 +57,27 @@ const SLAB_FUNCTION_OPTIONS = [
   { value: 'finish', label: 'Finish' },
 ];
 
-/** Fields shown in the creation properties bar for each table type */
-export function getDrawingFields(tableName: string): DrawingField[] {
+/** Fields shown in the creation properties bar for each table type.
+ *  If levels are provided, tables with top constraints get a top_level_id selector. */
+export function getDrawingFields(tableName: string, levels?: Level[]): DrawingField[] {
+  const topFields: DrawingField[] = TOP_LEVEL_TABLES.has(tableName) && levels
+    ? [
+        { key: 'top_level_id', label: 'Top', type: 'select', options: levels.map(l => ({ value: l.id, label: l.name || l.id })) },
+        { key: 'top_offset', label: 'Top Offset', type: 'number', unit: 'm', step: 0.1 },
+      ]
+    : [];
+
   switch (tableName) {
     case 'wall':
       return [
         { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
         { key: 'material', label: 'Material', type: 'select', options: WALL_MATERIALS },
+        ...topFields,
       ];
     case 'structure_wall':
       return [
         { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+        ...topFields,
       ];
     case 'curtain_wall':
       return [
@@ -72,6 +86,7 @@ export function getDrawingFields(tableName: string): DrawingField[] {
         { key: 'u_spacing', label: 'U Spacing', type: 'number', unit: 'm', min: 0.1, step: 0.1 },
         { key: 'v_spacing', label: 'V Spacing', type: 'number', unit: 'm', min: 0.1, step: 0.1 },
         { key: 'panel_material', label: 'Panel Material', type: 'text' },
+        ...topFields,
       ];
     case 'column':
     case 'structure_column':
@@ -79,6 +94,7 @@ export function getDrawingFields(tableName: string): DrawingField[] {
         { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
         { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
         { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
+        ...topFields,
       ];
     case 'door':
       return [
@@ -134,13 +150,36 @@ export function getDrawingFields(tableName: string): DrawingField[] {
 /**
  * Build the initial drawingAttrs for a table type.
  * Seeds from defaultAttrs (the canonical defaults) filtered to drawing-relevant fields.
+ * When levels are provided, computes smart top_level_id default:
+ *   - next higher level → top_offset: 0
+ *   - no higher level → current level, top_offset: 3
  */
-export function getDefaultDrawingAttrs(tableName: string): Record<string, string> {
+export function getDefaultDrawingAttrs(
+  tableName: string,
+  currentLevelId?: string,
+  levels?: Level[],
+): Record<string, string> {
   const attrs: Record<string, string> = {};
-  const fields = getDrawingFields(tableName);
-  const defaults = defaultAttrs(tableName, '');
+  const fields = getDrawingFields(tableName, levels);
+  const defaults = defaultAttrs(tableName, currentLevelId ?? '');
   for (const f of fields) {
     attrs[f.key] = defaults[f.key] ?? '';
   }
+
+  // Smart top_level_id default
+  if (TOP_LEVEL_TABLES.has(tableName) && levels && currentLevelId) {
+    const sorted = [...levels].sort((a, b) => a.elevation - b.elevation);
+    const currentIdx = sorted.findIndex(l => l.id === currentLevelId);
+    if (currentIdx >= 0 && currentIdx < sorted.length - 1) {
+      // Next higher level exists
+      attrs.top_level_id = sorted[currentIdx + 1].id;
+      attrs.top_offset = '0';
+    } else {
+      // No higher level — use current level with 3m offset
+      attrs.top_level_id = currentLevelId;
+      attrs.top_offset = '3';
+    }
+  }
+
   return attrs;
 }

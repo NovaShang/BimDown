@@ -1,7 +1,13 @@
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getDrawingFields } from '../model/drawingSchema.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
+import { Input } from './ui/input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { Button } from './ui/button';
+import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
+
+const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
 export default function DrawingPropertiesBar() {
   const state = useEditorState();
@@ -10,7 +16,8 @@ export default function DrawingPropertiesBar() {
   const target = state.drawingTarget;
   if (!target) return null;
 
-  const fields = getDrawingFields(target.tableName);
+  const levels = state.project?.levels ?? [];
+  const fields = getDrawingFields(target.tableName, levels);
   if (fields.length === 0) return null;
 
   const style = LAYER_STYLES[target.tableName];
@@ -22,40 +29,48 @@ export default function DrawingPropertiesBar() {
   };
 
   return (
-    <div className="drawing-props-bar" style={{ '--dp-color': disciplineColor } as React.CSSProperties}>
-      <span className="dp-label" style={{ color: disciplineColor, display: 'flex', alignItems: 'center', gap: '6px' }}>
+    <div
+      className="absolute bottom-[60px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-[10px] border border-border bg-card px-3 py-[5px] shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-1.5 duration-200"
+      style={{ '--dp-color': disciplineColor } as React.CSSProperties}
+    >
+      <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold select-none" style={{ color: disciplineColor }}>
         <Icon name={target.tableName} width={20} height={20} /> {style?.displayName || target.tableName}
       </span>
-      <div className="dp-separator" />
+      <Separator orientation="vertical" className="h-4" />
       {fields.map(f => (
-        <div key={f.key} className="dp-field">
-          <label className="dp-field-label">{f.label}</label>
+        <div key={f.key} className="flex items-center gap-1.5">
+          <label className="text-[10px] text-muted-foreground">{f.label}</label>
           {f.type === 'select' && f.options ? (
-            <select
-              className="dp-input dp-select"
+            <Select
               value={attrs[f.key] ?? ''}
-              onChange={e => handleChange(f.key, e.target.value)}
+              onValueChange={(v) => { if (v) handleChange(f.key, v); }}
             >
-              {f.options.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
+              <SelectTrigger size="sm" className={`${fieldInputClass} min-w-16 gap-1`}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {f.options.map(o => (
+                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           ) : f.type === 'number' ? (
-            <div className="dp-number-wrap">
-              <input
-                className="dp-input dp-number"
-                type="number"
+            <div className="flex items-center gap-1">
+              <Input
+                className={`${fieldInputClass} w-[60px] text-right`}
+                type="text"
+                inputMode="decimal"
                 value={attrs[f.key] ?? ''}
-                min={f.min}
-                max={f.max}
-                step={f.step}
-                onChange={e => handleChange(f.key, e.target.value)}
+                onChange={e => {
+                  const v = e.target.value;
+                  if (v === '' || v === '-' || !isNaN(Number(v))) handleChange(f.key, v);
+                }}
               />
-              {f.unit && <span className="dp-unit">{f.unit}</span>}
+              {f.unit && <span className="text-[9px] text-muted-foreground select-none">{f.unit}</span>}
             </div>
           ) : (
-            <input
-              className="dp-input dp-text"
+            <Input
+              className={`${fieldInputClass} w-20`}
               type="text"
               value={attrs[f.key] ?? ''}
               placeholder={f.label}
@@ -64,9 +79,11 @@ export default function DrawingPropertiesBar() {
           )}
         </div>
       ))}
-      <div className="dp-separator" />
-      <button
-        className="dp-cancel-btn"
+      <Separator orientation="vertical" className="h-4" />
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="size-[22px] text-muted-foreground"
         onClick={() => {
           dispatch({ type: 'SET_TOOL', tool: 'select' });
           dispatch({ type: 'SET_DRAWING_TARGET', target: null });
@@ -75,7 +92,7 @@ export default function DrawingPropertiesBar() {
         title="Cancel (Esc)"
       >
         &#x2715;
-      </button>
+      </Button>
     </div>
   );
 }
