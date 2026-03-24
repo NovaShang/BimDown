@@ -81,7 +81,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const results = await Promise.all(
     fetchTasks.map(async ({ disc, level, tableName }) => {
       const [svgContent, csvContent] = await Promise.all([
-        ds.fetchText(`${level.id}/${tableName}s.svg`),
+        ds.fetchText(`${level.id}/${tableName}.svg`),
         ds.fetchText(`${level.id}/${tableName}.csv`),
       ]);
       return { disc, level, tableName, svgContent, csvContent };
@@ -134,7 +134,7 @@ export async function loadGrids(ds: DataSource): Promise<GridData[]> {
 }
 
 export async function loadLayer(ds: DataSource, levelId: string, tableName: string): Promise<LayerData | null> {
-  const svgContent = await ds.fetchText(`${levelId}/${tableName}s.svg`);
+  const svgContent = await ds.fetchText(`${levelId}/${tableName}.svg`);
   if (!svgContent) return null;
 
   const csvContent = await ds.fetchText(`${levelId}/${tableName}.csv`);

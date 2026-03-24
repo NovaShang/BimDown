@@ -22,7 +22,7 @@ export async function persistDocument(doc: DocumentState, ds: DataSource, change
     const [, tableName] = key.split('/');
     const levelId = doc.levelId;
 
-    const svgPath = `${levelId}/${tableName}s.svg`;
+    const svgPath = `${levelId}/${tableName}.svg`;
     const svgContent = serializeToSvg(groupElements);
     saves.push(ds.saveFile(svgPath, svgContent));
 
