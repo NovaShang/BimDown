@@ -43,7 +43,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
       {/* Zoom to fit (both 2D and 3D) */}
       {onZoomToFit && (
         <>
-          <Separator orientation="vertical" className="mx-0.5 h-5" />
+          <Separator orientation="vertical" className="mx-0.5 self-stretch" />
 
           <Tooltip>
             <TooltipTrigger
@@ -70,7 +70,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
       {/* 3D-only: floor display mode dropdown */}
       {viewMode === '3d' && (
         <>
-          <Separator orientation="vertical" className="mx-0.5 h-5" />
+          <Separator orientation="vertical" className="mx-0.5 self-stretch" />
           <FloorModeDropdown floor3DMode={floor3DMode} onChange={(mode) => dispatch({ type: 'SET_FLOOR_3D_MODE', mode })} />
         </>
       )}
@@ -78,7 +78,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
       {/* Minimap toggle */}
       {viewMode === '2d' && (
         <>
-          <Separator orientation="vertical" className="mx-0.5 h-5" />
+          <Separator orientation="vertical" className="mx-0.5 self-stretch" />
           <Tooltip>
             <TooltipTrigger
               className={cn(
