@@ -83,10 +83,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         ))}
       </div>
 
-      {/* Separator */}
+      {/* Grid tool — only in reference discipline */}
+      {activeDiscipline === 'reference' && <>
       <Separator orientation="vertical" className="mx-1 h-6" />
-
-      {/* Grid tool */}
       <div className="flex items-center gap-0.5">
         <Tooltip>
           <TooltipTrigger
@@ -112,6 +111,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           <TooltipContent side="top">Draw Grid (G)</TooltipContent>
         </Tooltip>
       </div>
+      </>}
 
       {/* Separator */}
       {disciplineTables.length > 0 && <Separator orientation="vertical" className="mx-1 h-6" />}

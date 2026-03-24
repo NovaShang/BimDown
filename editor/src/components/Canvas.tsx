@@ -254,7 +254,7 @@ export default function Canvas({ layers, viewBox, activeFilter, activeDiscipline
           }
           break;
         case 'g': case 'G':
-          if (!e.ctrlKey && !e.metaKey) {
+          if (!e.ctrlKey && !e.metaKey && activeDiscipline === 'reference') {
             globalDispatch({ type: 'SET_TOOL', tool: 'draw_grid' });
             globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
