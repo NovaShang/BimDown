@@ -44,8 +44,8 @@ export default function Canvas3D() {
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
         raycaster={{ params: { Line: { threshold: 0.5 } } }}
       >
-        <color attach="background" args={['#e8ecf1']} />
-        <fog attach="fog" args={['#e8ecf1', far * 0.3, far * 0.9]} />
+        <color attach="background" args={['#1a1d23']} />
+        <fog attach="fog" args={['#1a1d23', far * 0.3, far * 0.9]} />
         <SceneContent />
       </Canvas>
     </div>
