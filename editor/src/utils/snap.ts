@@ -18,6 +18,14 @@ export interface SnapGuide {
   label?: string;
 }
 
+/** Distance to the nearest grid line (轴网) along an axis */
+export interface GridDistanceInfo {
+  /** Distance in meters to the nearest grid line */
+  distance: number;
+  /** The point on the grid line closest to the snap point */
+  gridPoint: Point;
+}
+
 export interface SnapResult {
   point: Point;
   snapX: { type: SnapType; value: number } | null;
@@ -25,6 +33,10 @@ export interface SnapResult {
   guides: SnapGuide[];
   /** The highest-priority snap type that contributed to the result */
   dominantType?: SnapType;
+  /** Distance to nearest grid line in X direction (perpendicular) */
+  nearestGridX?: GridDistanceInfo;
+  /** Distance to nearest grid line in Y direction (perpendicular) */
+  nearestGridY?: GridDistanceInfo;
 }
 
 // ── Grid spacing ──
@@ -415,20 +427,41 @@ export function computeSnap(
     }
   }
 
-  // ── Pass 4: Grid fallback ──
-  const gridSpacing = adaptiveGridSpacing(pixelSize);
-  const gridThreshold = gridSpacing * 0.45;
+  // ── Pass 4: Grid-distance snap (snap to round distances from nearest 轴网) ──
+  if (grids && grids.length > 0) {
+    const gridSpacing = adaptiveGridSpacing(pixelSize);
+    const gridThreshold = gridSpacing * 0.45;
 
-  if (!snapX) {
-    const gridX = Math.round(input.x / gridSpacing) * gridSpacing;
-    if (Math.abs(input.x - gridX) < Math.min(gridThreshold, threshold)) {
-      snapX = { type: 'grid', value: gridX, priority: 4 };
-    }
-  }
-  if (!snapY) {
-    const gridY = Math.round(input.y / gridSpacing) * gridSpacing;
-    if (Math.abs(input.y - gridY) < Math.min(gridThreshold, threshold)) {
-      snapY = { type: 'grid', value: gridY, priority: 4 };
+    for (const g of grids) {
+      const gdx = g.x2 - g.x1, gdy = g.y2 - g.y1;
+      const glen = Math.sqrt(gdx * gdx + gdy * gdy);
+      if (glen < 1e-9) continue;
+      const ux = gdx / glen, uy = gdy / glen;
+      const nx = -uy, ny = ux;
+
+      // Perpendicular distance from input to this grid line
+      const perpDist = (input.x - g.x1) * nx + (input.y - g.y1) * ny;
+      const snappedDist = Math.round(perpDist / gridSpacing) * gridSpacing;
+      const diff = Math.abs(perpDist - snappedDist);
+
+      if (diff < Math.min(gridThreshold, threshold) && diff > 1e-9) {
+        // Shift input along the normal to achieve snappedDist
+        const shiftedX = input.x + (snappedDist - perpDist) * nx;
+        const shiftedY = input.y + (snappedDist - perpDist) * ny;
+
+        // Classify by grid line orientation
+        if (Math.abs(ux) < Math.abs(uy)) {
+          // Vertical-ish grid → snaps X
+          if (!snapX || 4 < snapX.priority) {
+            snapX = { type: 'grid', value: shiftedX, priority: 4 };
+          }
+        } else {
+          // Horizontal-ish grid → snaps Y
+          if (!snapY || 4 < snapY.priority) {
+            snapY = { type: 'grid', value: shiftedY, priority: 4 };
+          }
+        }
+      }
     }
   }
 
@@ -492,12 +525,59 @@ export function computeSnap(
 
   // Grid snaps: no guide lines, just silently snap
 
+  // ── Pass 6: Nearest grid line distances ──
+  let nearestGridX: GridDistanceInfo | undefined;
+  let nearestGridY: GridDistanceInfo | undefined;
+  if (grids && grids.length > 0) {
+    const fp: Point = { x: finalX, y: finalY };
+    let bestDistX = Infinity;
+    let bestDistY = Infinity;
+
+    for (const g of grids) {
+      const dx = g.x2 - g.x1, dy = g.y2 - g.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-9) continue;
+
+      // Unit direction of grid line
+      const ux = dx / len, uy = dy / len;
+      // Perpendicular (normal) direction
+      const nx = -uy, ny = ux;
+
+      // Signed perpendicular distance from finalPoint to the grid line
+      const perpDist = (fp.x - g.x1) * nx + (fp.y - g.y1) * ny;
+      const absDist = Math.abs(perpDist);
+
+      // Project snap point onto the grid line to get the closest point
+      const projT = (fp.x - g.x1) * ux + (fp.y - g.y1) * uy;
+      const projPt: Point = { x: g.x1 + projT * ux, y: g.y1 + projT * uy };
+
+      // Classify as X-distance or Y-distance based on grid line orientation
+      // A mostly-vertical grid line (|ux| < |uy|) → measures X distance
+      // A mostly-horizontal grid line (|ux| >= |uy|) → measures Y distance
+      if (Math.abs(ux) < Math.abs(uy)) {
+        // Vertical-ish grid line → X distance
+        if (absDist < bestDistX) {
+          bestDistX = absDist;
+          nearestGridX = { distance: absDist, gridPoint: projPt };
+        }
+      } else {
+        // Horizontal-ish grid line → Y distance
+        if (absDist < bestDistY) {
+          bestDistY = absDist;
+          nearestGridY = { distance: absDist, gridPoint: projPt };
+        }
+      }
+    }
+  }
+
   return {
     point: { x: finalX, y: finalY },
     snapX: snapX ? { type: snapX.type, value: snapX.value } : null,
     snapY: snapY ? { type: snapY.type, value: snapY.value } : null,
     guides,
     dominantType,
+    nearestGridX,
+    nearestGridY,
   };
 }
 

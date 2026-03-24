@@ -79,10 +79,8 @@ export const drawLineTool: ToolHandler = {
         type: 'SET_DRAWING_STATE',
         state: { ...state.drawingState, cursor: pt },
       });
-      ctx.setSnap(snap);
-    } else {
-      ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
     }
+    ctx.setSnap(snap);
   },
 };
 

@@ -1,4 +1,4 @@
-import type { SnapResult, SnapType } from '../utils/snap.ts';
+import type { SnapResult, SnapType, GridDistanceInfo } from '../utils/snap.ts';
 
 interface SnapOverlayProps {
   snap: SnapResult | null;
@@ -81,10 +81,83 @@ function SnapMarker({ x, y, snapType, s, sw }: {
   }
 }
 
+const DIM_COLOR = '#8cb4ff';
+
+function formatDim(meters: number): string {
+  if (meters < 0.01) return `${(meters * 1000).toFixed(1)}`;
+  if (meters < 1) return `${(meters * 1000).toFixed(0)}`;
+  return `${meters.toFixed(3)}`;
+}
+
+/** Render a dimension line from snap point to the nearest grid line */
+function GridDimension({ from, info, scale }: {
+  from: { x: number; y: number };
+  info: GridDistanceInfo;
+  scale: number;
+}) {
+  const sw = 0.04 / scale;
+  const fontSize = 0.7 / scale;
+  const tickLen = 0.2 / scale;
+  const { gridPoint, distance } = info;
+
+  if (distance < 1e-6) return null;
+
+  // Midpoint of dimension line for label
+  const mx = (from.x + gridPoint.x) / 2;
+  const my = (from.y + gridPoint.y) / 2;
+
+  // Direction from gridPoint to from (for tick orientation)
+  const dx = from.x - gridPoint.x;
+  const dy = from.y - gridPoint.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-9) return null;
+  // Perpendicular for ticks
+  const px = -dy / len * tickLen;
+  const py = dx / len * tickLen;
+
+  return (
+    <g opacity={0.8}>
+      {/* Dimension line */}
+      <line
+        x1={from.x} y1={from.y}
+        x2={gridPoint.x} y2={gridPoint.y}
+        stroke={DIM_COLOR} strokeWidth={sw}
+      />
+      {/* Tick at snap point */}
+      <line
+        x1={from.x - px} y1={from.y - py}
+        x2={from.x + px} y2={from.y + py}
+        stroke={DIM_COLOR} strokeWidth={sw}
+      />
+      {/* Tick at grid point */}
+      <line
+        x1={gridPoint.x - px} y1={gridPoint.y - py}
+        x2={gridPoint.x + px} y2={gridPoint.y + py}
+        stroke={DIM_COLOR} strokeWidth={sw}
+      />
+      {/* Label */}
+      <text
+        x={mx + py * 2}
+        y={-(my + (-px) * 2)}
+        fill={DIM_COLOR}
+        fontSize={fontSize}
+        fontFamily="monospace"
+        textAnchor="middle"
+        dominantBaseline="middle"
+        transform="scale(1,-1)"
+      >
+        {formatDim(distance)}
+      </text>
+    </g>
+  );
+}
+
 export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
   if (!snap) return null;
   const { guides } = snap;
-  if (guides.length === 0) return null;
+  const hasGuides = guides.length > 0;
+  const hasDims = snap.nearestGridX || snap.nearestGridY;
+  if (!hasGuides && !hasDims) return null;
 
   const sw = 0.06 / scale;
   const dashLen = 0.6 / scale;
@@ -206,6 +279,13 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
         }
         return null;
       })}
+      {/* Grid distance dimensions */}
+      {snap.nearestGridX && (
+        <GridDimension from={snap.point} info={snap.nearestGridX} scale={scale} />
+      )}
+      {snap.nearestGridY && (
+        <GridDimension from={snap.point} info={snap.nearestGridY} scale={scale} />
+      )}
     </g>
   );
 }

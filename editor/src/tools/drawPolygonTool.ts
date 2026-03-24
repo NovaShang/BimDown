@@ -59,7 +59,7 @@ export const drawPolygonTool: ToolHandler = {
       type: 'SET_DRAWING_STATE',
       state: { points, cursor: pt },
     });
-    ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
+    ctx.setSnap(snap);
   },
 };
 
