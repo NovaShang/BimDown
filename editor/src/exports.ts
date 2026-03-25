@@ -7,3 +7,9 @@ export { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
 export { default as EditorShell } from './components/EditorShell.tsx';
 export type { EditorState, EditorAction } from './state/editorTypes.ts';
 export { TooltipProvider } from './components/ui/tooltip.tsx';
+
+// Export functions (lazy-loaded internally)
+export { exportGltf } from './export/exportGltf.ts';
+export { exportIfc } from './export/exportIfc.ts';
+export { exportPdf } from './export/exportPdf.ts';
+export { exportDxf } from './export/exportDxf.ts';
