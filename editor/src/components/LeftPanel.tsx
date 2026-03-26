@@ -20,9 +20,9 @@ interface LeftPanelProps {
 
 /** Inline context menu for level items */
 function LevelContextMenu({
-  x, y, level, onRename, onDelete, onClose,
+  x, y, onRename, onDelete, onClose,
 }: {
-  x: number; y: number; level: Level;
+  x: number; y: number;
   onRename: () => void; onDelete: () => void; onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -110,7 +110,7 @@ function InlineProperties({ selectedData }: { selectedData: Map<string, { tableN
 
 function DisciplineSelect({ value, onChange }: { value: string | null; onChange: (d: string) => void }) {
   return (
-    <Select value={value ?? DISCIPLINES[0]} onValueChange={onChange}>
+    <Select value={value ?? DISCIPLINES[0]} onValueChange={(v) => { if (v) onChange(v) }}>
       <SelectTrigger className="h-5 min-w-0 gap-1 border-none bg-transparent px-1 py-0 text-[10px] shadow-none">
         <span className="size-1.5 shrink-0 rounded-full" style={{ background: value ? DISCIPLINE_COLORS[value] : '#888' }} />
         <SelectValue />
@@ -281,7 +281,6 @@ export default function LeftPanel({
         <LevelContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          level={contextMenu.level}
           onRename={() => setRenameTarget(contextMenu.level)}
           onDelete={() => dispatch({ type: 'REMOVE_LEVEL', levelId: contextMenu.level.id })}
           onClose={() => setContextMenu(null)}
