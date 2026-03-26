@@ -1,5 +1,5 @@
 import type { CanonicalElement } from './elements.ts';
-import { TABLE_REGISTRY, prefixForTable, tableByPrefix } from './tableRegistry.ts';
+import { TABLE_REGISTRY, prefixForTable } from './tableRegistry.ts';
 
 /** Reverse lookup: prefix → tableName.
  *  Includes legacy prefixes for backward compatibility with existing data. */

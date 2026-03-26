@@ -45,7 +45,7 @@ interface UseInteraction3DOptions {
  *
  * Middle = pan, right = dolly, scroll = zoom (always via OrbitControls)
  */
-export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation, controlsRef, resizeDraggingRef }: UseInteraction3DOptions) {
+export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _floorElevation, controlsRef, resizeDraggingRef }: UseInteraction3DOptions) {
   const { camera, gl, scene } = useThree();
   const state = useEditorState();
   const stateRef = useRef(state);

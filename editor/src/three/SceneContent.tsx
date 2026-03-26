@@ -154,7 +154,7 @@ function ShadowLight() {
       ref={lightRef}
       intensity={2.0}
       castShadow
-      shadow-mapSize={[2048, 2048]}
+      shadow-mapSize={[1024, 1024]}
       shadow-bias={-0.0002}
       shadow-radius={8}
       shadow-camera-left={-60}
@@ -278,7 +278,7 @@ export default function SceneContent() {
 
       {/* Screen-space ambient occlusion for depth/contact shadows */}
       <EffectComposer>
-        <N8AO aoRadius={2} intensity={1.5} distanceFalloff={0.5} />
+        <N8AO aoRadius={1} intensity={1} distanceFalloff={0.5} halfRes />
       </EffectComposer>
 
       {/* Dynamic ground grid + shadow plane at model center and current elevation */}

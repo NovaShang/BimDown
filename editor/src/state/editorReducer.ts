@@ -15,6 +15,7 @@ export const initialState: EditorState = {
   viewMode: '2d',
   floor3DMode: 'current',
 
+  readonly: false,
   visibleLayers: new Set(),
   showGrid: true,
   showMinimap: true,

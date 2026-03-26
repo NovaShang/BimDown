@@ -11,7 +11,7 @@ const BLOCK_MAP: Record<string, string> = {
 /** Door: block SVG positioned along door line, with hinge/swing flips. */
 export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'line') return null;
-  const { start, end, strokeWidth, id, attrs } = el as LineElement;
+  const { start, end, id, attrs } = el as LineElement;
   const dx = end.x - start.x, dy = end.y - start.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 0.001) return null;

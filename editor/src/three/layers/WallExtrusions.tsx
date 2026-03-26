@@ -92,7 +92,7 @@ function subtractOpenings(
   wall: LineElement,
   hosted: LineElement[],
   levelElevation: number,
-  wallHeight: number,
+  _wallHeight: number,
   baseOffset: number,
 ): BufferGeometry {
   let wallBrush = new Brush(wallGeo);

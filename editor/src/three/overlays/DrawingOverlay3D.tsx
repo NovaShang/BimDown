@@ -1,7 +1,16 @@
+import { SphereGeometry, MeshBasicMaterial } from 'three';
 import { Line, Html } from '@react-three/drei';
 import { useEditorState } from '../../state/EditorContext.tsx';
 import { resolveLineStrokeWidth } from '../../utils/geometry.ts';
 import type { Point } from '../../model/elements.ts';
+
+// Shared geometries & materials — allocated once, reused across all overlay dots
+const SPHERE_GEO_LG = new SphereGeometry(0.15, 8, 8);
+const SPHERE_GEO_MD = new SphereGeometry(0.12, 8, 8);
+const SPHERE_GEO_SM = new SphereGeometry(0.1, 8, 8);
+const SPHERE_GEO_XS = new SphereGeometry(0.08, 8, 8);
+const DOT_MATERIAL = new MeshBasicMaterial({ color: '#4fc3f7' });
+const DOT_MATERIAL_FADED = new MeshBasicMaterial({ color: '#4fc3f7', transparent: true, opacity: 0.6 });
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
@@ -80,15 +89,9 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
             gapSize={0.15}
           />
           {/* Start dot */}
-          <mesh position={toWorld(points[0].x, points[0].y, elevation)}>
-            <sphereGeometry args={[0.15, 16, 16]} />
-            <meshBasicMaterial color="#4fc3f7" />
-          </mesh>
+          <mesh position={toWorld(points[0].x, points[0].y, elevation)} geometry={SPHERE_GEO_LG} material={DOT_MATERIAL} />
           {/* Cursor dot */}
-          <mesh position={toWorld(cursor.x, cursor.y, elevation)}>
-            <sphereGeometry args={[0.1, 16, 16]} />
-            <meshBasicMaterial color="#4fc3f7" transparent opacity={0.6} />
-          </mesh>
+          <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL_FADED} />
           <LengthLabel3D from={points[0]} to={cursor} elevation={elevation} />
         </group>
       );
@@ -169,19 +172,13 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
             transparent
           />
         )}
-        {/* Vertex dots */}
+        {/* Vertex dots — shared geometry */}
         {points.map((p, i) => (
-          <mesh key={i} position={toWorld(p.x, p.y, elevation)}>
-            <sphereGeometry args={[0.12, 16, 16]} />
-            <meshBasicMaterial color="#4fc3f7" />
-          </mesh>
+          <mesh key={i} position={toWorld(p.x, p.y, elevation)} geometry={SPHERE_GEO_MD} material={DOT_MATERIAL} />
         ))}
         {/* Cursor dot */}
         {cursor && (
-          <mesh position={toWorld(cursor.x, cursor.y, elevation)}>
-            <sphereGeometry args={[0.08, 16, 16]} />
-            <meshBasicMaterial color="#4fc3f7" transparent opacity={0.6} />
-          </mesh>
+          <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_XS} material={DOT_MATERIAL_FADED} />
         )}
       </group>
     );

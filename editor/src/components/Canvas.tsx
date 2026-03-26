@@ -16,7 +16,7 @@ import { ElementNode, pruneCache } from './ElementNode.tsx';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { WallOutlines } from './WallOutlines.tsx';
 import { renderSpaceLabels } from '../renderers/spaceRenderer.tsx';
-import { Icon } from './Icons.tsx';
+
 import CanvasContextMenu from './CanvasContextMenu.tsx';
 
 // Safari-only event for trackpad pinch gestures

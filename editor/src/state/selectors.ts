@@ -1,5 +1,5 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
-import type { LayerData } from '../types.ts';
+import type { LayerData, CsvRow } from '../types.ts';
 import { DISCIPLINE_TABLES } from '../types.ts';
 import { groupByLayer } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';

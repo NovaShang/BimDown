@@ -25,6 +25,7 @@ export interface EditorState {
   viewMode: ViewMode;
   floor3DMode: Floor3DMode;
 
+  readonly: boolean;
   visibleLayers: Set<string>;
   showGrid: boolean;
   showMinimap: boolean;

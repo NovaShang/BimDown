@@ -50,7 +50,7 @@ export {
 } from './model/tableRegistry.ts';
 
 // Backward-compatible aliases derived from the registry
-import { TABLE_REGISTRY, tablesForDiscipline, disciplineForTable } from './model/tableRegistry.ts';
+import { TABLE_REGISTRY, tablesForDiscipline } from './model/tableRegistry.ts';
 import type { LayerStyle } from './model/tableRegistry.ts';
 
 export const LAYER_STYLES: Record<string, LayerStyle> = Object.fromEntries(

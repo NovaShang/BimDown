@@ -42,7 +42,7 @@ export default function Canvas3D() {
         shadows="soft"
         camera={{ position, fov: 50, near: 0.1, far }}
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
-        raycaster={{ params: { Line: { threshold: 0.5 } } }}
+        raycaster={{ params: { Line: { threshold: 0.5 } } as any }}
       >
         <color attach="background" args={['#1a1d23']} />
         <fog attach="fog" args={['#1a1d23', far * 0.3, far * 0.9]} />
