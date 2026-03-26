@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { type BufferGeometry, type MeshPhysicalMaterial } from 'three';
 import type { CanonicalElement } from '../../model/elements.ts';
-import { useEditorState } from '../../state/EditorContext.tsx';
+import { useSelectionState } from '../../state/EditorContext.tsx';
 import { elementTo3DParams } from '../utils/elementTo3D.ts';
 import { createExtrudeGeometry } from '../utils/extrudePolygon.ts';
 import { resolveBimMaterial, getBimMaterial, getGhostMaterial } from '../utils/bimMaterials.ts';
@@ -20,8 +20,30 @@ interface PolygonMeshData {
   material: MeshPhysicalMaterial;
 }
 
+/** Individual mesh — only re-renders when its highlighted state or geometry changes. */
+const PolygonMesh = memo(function PolygonMesh({
+  id, geometry, material, ghost, highlighted,
+}: PolygonMeshData & { ghost?: boolean; highlighted: boolean }) {
+  return (
+    <mesh
+      geometry={geometry}
+      material={highlighted ? undefined : material}
+      castShadow={!ghost}
+      receiveShadow
+      renderOrder={ghost ? -1 : 0}
+      userData={{ elementId: id }}
+      {...(ghost ? { raycast: () => {} } : {})}
+    >
+      {highlighted && (
+        <meshStandardMaterial attach="material" color="#06b6d4"
+          transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
+      )}
+    </mesh>
+  );
+});
+
 export default function PolygonExtrusions({ elements, tableName, levelElevation, levelElevations, ghost }: PolygonExtrusionsProps) {
-  const { selectedIds, hoveredId } = useEditorState();
+  const { selectedIds, hoveredId } = useSelectionState();
 
   const meshes = useMemo(() => {
     const result: PolygonMeshData[] = [];
@@ -43,27 +65,16 @@ export default function PolygonExtrusions({ elements, tableName, levelElevation,
 
   return (
     <group>
-      {meshes.map(({ id, geometry, material }) => {
-        const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
-        return (
-          <group key={id}>
-            <mesh
-              geometry={geometry}
-              material={material}
-              castShadow={!ghost}
-              receiveShadow
-              renderOrder={ghost ? -1 : 0}
-              userData={{ elementId: id }}
-              {...(ghost ? { raycast: () => {} } : {})}
-            >
-              {isHighlighted && (
-                <meshStandardMaterial attach="material" color="#0d99ff"
-                  transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-              )}
-            </mesh>
-          </group>
-        );
-      })}
+      {meshes.map(({ id, geometry, material }) => (
+        <PolygonMesh
+          key={id}
+          id={id}
+          geometry={geometry}
+          material={material}
+          ghost={ghost}
+          highlighted={!ghost && (selectedIds.has(id) || hoveredId === id)}
+        />
+      ))}
     </group>
   );
 }

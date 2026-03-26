@@ -127,7 +127,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
         <circle
           cx={element.start.x} cy={element.start.y}
           r={r}
-          fill="#0d99ff" stroke="white" strokeWidth={sw}
+          fill="#06b6d4" stroke="white" strokeWidth={sw}
           cursor="move"
           onPointerDown={handleDrag((x, y) => {
             dispatch({
@@ -142,7 +142,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
         <circle
           cx={element.end.x} cy={element.end.y}
           r={r}
-          fill="#0d99ff" stroke="white" strokeWidth={sw}
+          fill="#06b6d4" stroke="white" strokeWidth={sw}
           cursor="move"
           onPointerDown={handleDrag((x, y) => {
             dispatch({
@@ -176,7 +176,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             key={i}
             cx={c.x} cy={c.y}
             r={r}
-            fill="#0d99ff" stroke="white" strokeWidth={sw}
+            fill="#06b6d4" stroke="white" strokeWidth={sw}
             cursor={c.cursor}
             onPointerDown={handleDrag((x, y) => {
               // Compute new position (center) and size based on which corner is dragged
@@ -209,7 +209,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             key={i}
             cx={v.x} cy={v.y}
             r={r}
-            fill="#0d99ff" stroke="white" strokeWidth={sw}
+            fill="#06b6d4" stroke="white" strokeWidth={sw}
             cursor="move"
             onPointerDown={handleDrag((x, y) => {
               const newVertices = [...element.vertices];

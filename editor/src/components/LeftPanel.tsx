@@ -1,10 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
-import type { Level } from '../types.ts';
+import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
+import { DISCIPLINES } from '../model/tableRegistry.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { LayerGroup } from '../state/editorTypes.ts';
 import { ScrollArea } from './ui/scroll-area';
-import { Separator } from './ui/separator';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Icon } from './Icons.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
@@ -14,6 +15,7 @@ interface LeftPanelProps {
   currentLevel: string;
   layerGroups: LayerGroup[];
   visibleLayers: Set<string>;
+  selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>;
 }
 
 /** Inline context menu for level items */
@@ -55,11 +57,82 @@ function LevelContextMenu({
   );
 }
 
+const READ_ONLY_KEYS = new Set(['id', 'length', 'area', 'location_param']);
+
+function InlineProperties({ selectedData }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }> }) {
+  const dispatch = useEditorDispatch();
+  const [firstId, firstData] = selectedData.entries().next().value!;
+  const style = LAYER_STYLES[firstData.tableName];
+  const csv = firstData.csv;
+  const isSingle = selectedData.size === 1;
+
+  const handleChange = (key: string, value: string) => {
+    if (!isSingle) return;
+    dispatch({ type: 'UPDATE_ATTRS', id: firstId, attrs: { [key]: value } });
+  };
+
+  return (
+    <ScrollArea className="h-full p-2">
+      {/* Header */}
+      <div className="flex items-center gap-1.5 px-2 pb-1.5 pt-0.5">
+        <span style={{ color: style?.color }}>
+          <Icon name={firstData.tableName} width={16} height={16} />
+        </span>
+        <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+          {isSingle ? (style?.displayName || firstData.tableName) : `${selectedData.size} selected`}
+        </span>
+      </div>
+      {/* Properties */}
+      <div className="flex flex-col gap-px">
+        {Object.entries(csv).map(([key, value]) => (
+          <div key={key} className="flex items-center gap-1 px-2 py-[3px]">
+            <span className="w-[70px] shrink-0 truncate text-[10px] text-muted-foreground">{key}</span>
+            {READ_ONLY_KEYS.has(key) || !isSingle ? (
+              <span className="flex-1 truncate text-[10px] text-foreground">{value}</span>
+            ) : (
+              <input
+                className="flex-1 rounded border border-transparent bg-transparent px-1 py-0.5 text-[10px] text-foreground outline-none transition-colors hover:border-border focus:border-[var(--color-accent)] focus:bg-[var(--bg-input)]"
+                defaultValue={value}
+                onBlur={e => {
+                  if (e.target.value !== value) handleChange(key, e.target.value);
+                }}
+                onKeyDown={e => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                }}
+              />
+            )}
+          </div>
+        ))}
+      </div>
+    </ScrollArea>
+  );
+}
+
+function DisciplineSelect({ value, onChange }: { value: string | null; onChange: (d: string) => void }) {
+  return (
+    <Select value={value ?? DISCIPLINES[0]} onValueChange={onChange}>
+      <SelectTrigger className="h-5 min-w-0 gap-1 border-none bg-transparent px-1 py-0 text-[10px] shadow-none">
+        <span className="size-1.5 shrink-0 rounded-full" style={{ background: value ? DISCIPLINE_COLORS[value] : '#888' }} />
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent className="min-w-[130px]">
+        {DISCIPLINES.map(d => (
+          <SelectItem key={d} value={d} className="text-[11px]">
+            <span className="size-1.5 shrink-0 rounded-full" style={{ background: DISCIPLINE_COLORS[d] }} />
+            {d.charAt(0).toUpperCase() + d.slice(1)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
+
 export default function LeftPanel({
   levels,
   currentLevel,
   layerGroups,
   visibleLayers,
+  selectedData,
 }: LeftPanelProps) {
   const dispatch = useEditorDispatch();
   const { activeDiscipline } = useEditorState();
@@ -75,9 +148,9 @@ export default function LeftPanel({
   }) : [];
 
   return (
-    <div className="flex h-full w-60 min-w-60 flex-col overflow-hidden border-r border-border bg-card select-none">
+    <div className="absolute left-3 top-16 bottom-3 z-30 flex w-52 flex-col gap-2 select-none">
       {/* Floor Switcher */}
-      <div className="max-h-[35%] shrink-0 overflow-y-auto p-2">
+      <div className="glass-panel shrink-0 overflow-y-auto rounded-2xl border border-[#2a2a2a] shadow-[0_4px_24px_rgba(0,0,0,0.4)] p-2">
         <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Floors
@@ -120,47 +193,18 @@ export default function LeftPanel({
         </div>
       </div>
 
-      <Separator />
-
-      {/* Discipline Switcher */}
-      <div className="max-h-[35%] shrink-0 overflow-y-auto p-2">
-        <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          Disciplines
-        </div>
-        <div className="flex flex-col gap-px">
-          {layerGroups.map(group => {
-            const color = DISCIPLINE_COLORS[group.discipline] || '#888';
-            return (
-              <button
-                key={group.discipline}
-                className={cn(
-                  'flex items-center justify-between rounded px-2 py-[5px] text-[11px] transition-all',
-                  'border cursor-pointer text-left',
-                  activeDiscipline === group.discipline
-                    ? 'border-[var(--color-accent)] bg-[var(--accent-dim)] font-medium text-[var(--color-accent)]'
-                    : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-                )}
-                onClick={() => dispatch({ type: 'SET_DISCIPLINE', discipline: group.discipline })}
-              >
-                <div className="flex items-center gap-1.5">
-                  <span className="size-1.5 shrink-0 rounded-full" style={{ background: color }} />
-                  <span className="truncate">
-                    {group.discipline.charAt(0).toUpperCase() + group.discipline.slice(1)}
-                  </span>
-                </div>
-                <span className="text-[9px] text-muted-foreground tabular-nums">{group.layers.length} layers</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <Separator />
-
-      {/* Layers */}
-      <ScrollArea className="flex-1 p-2">
-        <div className="px-2 pb-1.5 pt-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          Layers {activeDiscipline ? `(${activeDiscipline.charAt(0).toUpperCase() + activeDiscipline.slice(1)})` : ''}
+      {/* Layers / Properties (switches when element selected) */}
+      <div className="glass-panel max-h-[60%] overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+      {selectedData.size > 0 ? (
+        <InlineProperties selectedData={selectedData} />
+      ) : (
+      <ScrollArea className="h-full p-2">
+        <div className="flex items-center justify-between px-2 pb-1 pt-0.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Layers</span>
+          <DisciplineSelect
+            value={activeDiscipline}
+            onChange={(d) => dispatch({ type: 'SET_DISCIPLINE', discipline: d })}
+          />
         </div>
 
         <div className="mb-1">
@@ -190,6 +234,8 @@ export default function LeftPanel({
           })}
         </div>
       </ScrollArea>
+      )}
+      </div>
 
       {/* Add Level Dialog */}
       <AddLevelDialog

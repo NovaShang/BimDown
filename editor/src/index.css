@@ -14,7 +14,7 @@
   --card-foreground: #f0f0f0;
   --popover: #2c2c2c;
   --popover-foreground: #f0f0f0;
-  --primary: #0d99ff;
+  --primary: #06b6d4;
   --primary-foreground: #fff;
   --secondary: #383838;
   --secondary-foreground: #f0f0f0;
@@ -25,23 +25,23 @@
   --destructive: #ef4444;
   --border: #3d3d3d;
   --input: #383838;
-  --ring: #0d99ff;
+  --ring: #06b6d4;
 
   /* Editor-specific tokens */
   --bg-canvas: #1a1a1a;
   --bg-panel: #2c2c2c;
   --bg-panel-dark: #252525;
   --bg-hover: #3a3a3a;
-  --bg-active: #0d99ff22;
+  --bg-active: #06b6d422;
   --bg-input: #383838;
   --border-subtle: #333;
   --text-primary: #f0f0f0;
   --text-secondary: #adadad;
   --text-muted: #6e6e6e;
-  --color-accent: #0d99ff;
-  --accent-hover: #3dabff;
-  --accent-dim: #0d99ff30;
-  --selection: #0d99ff;
+  --color-accent: #06b6d4;
+  --accent-hover: #22d3ee;
+  --accent-dim: #06b6d430;
+  --selection: #06b6d4;
   --panel-width: 240px;
   --transition: 120ms ease;
 }
@@ -132,7 +132,7 @@
 
 /* ─── Hover Highlight ────────────────────────── */
 .hover-highlight {
-  filter: drop-shadow(0 0 calc(0.24px / var(--canvas-scale, 1)) #0d99ff) drop-shadow(0 0 calc(0.45px / var(--canvas-scale, 1)) #0d99ff);
+  filter: drop-shadow(0 0 calc(0.24px / var(--canvas-scale, 1)) #06b6d4) drop-shadow(0 0 calc(0.45px / var(--canvas-scale, 1)) #06b6d4);
   cursor: pointer;
 }
 

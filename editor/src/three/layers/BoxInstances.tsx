@@ -1,7 +1,7 @@
 import { useRef, useMemo, useEffect } from 'react';
 import { InstancedMesh, BoxGeometry, Object3D, Color } from 'three';
 import type { CanonicalElement } from '../../model/elements.ts';
-import { useEditorState } from '../../state/EditorContext.tsx';
+import { useSelectionState } from '../../state/EditorContext.tsx';
 import { elementTo3DParams, type BoxParams } from '../utils/elementTo3D.ts';
 import { useMaterial, useGhostMaterial } from '../hooks/useMaterials.ts';
 
@@ -16,7 +16,7 @@ interface BoxInstancesProps {
 
 const unitBox = new BoxGeometry(1, 1, 1);
 const tempObject = new Object3D();
-const HIGHLIGHT_COLOR = new Color('#0d99ff');
+const HIGHLIGHT_COLOR = new Color('#06b6d4');
 
 const SHADOW_CAST_TABLES = new Set(['column', 'structure_column']);
 
@@ -25,7 +25,10 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
   const normalMaterial = useMaterial(tableName, materialName);
   const ghostMaterial = useGhostMaterial(tableName, materialName);
   const material = ghost ? ghostMaterial : normalMaterial;
-  const { selectedIds, hoveredId } = useEditorState();
+  const { selectedIds, hoveredId } = useSelectionState();
+
+  // Track previous highlight state per instance to do delta updates
+  const prevHighlightRef = useRef<boolean[]>([]);
 
   const { boxes, indexToId } = useMemo(() => {
     const boxes: BoxParams[] = [];
@@ -54,6 +57,8 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
     }
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
+    // Reset highlight tracking when instances change
+    prevHighlightRef.current = [];
   }, [boxes]);
 
   useEffect(() => {
@@ -62,15 +67,31 @@ export default function BoxInstances({ elements, tableName, materialName, levelE
     if (!mesh) return;
 
     const baseColor = new Color(material.color);
+    const prev = prevHighlightRef.current;
+    let anyChanged = false;
+
     for (let i = 0; i < indexToId.length; i++) {
       const id = indexToId[i];
-      if (selectedIds.has(id) || hoveredId === id) {
-        mesh.setColorAt(i, HIGHLIGHT_COLOR);
-      } else {
-        mesh.setColorAt(i, baseColor);
-      }
+      const isHighlighted = selectedIds.has(id) || hoveredId === id;
+
+      // Skip if highlight state unchanged (delta update)
+      if (prev.length === indexToId.length && prev[i] === isHighlighted) continue;
+
+      mesh.setColorAt(i, isHighlighted ? HIGHLIGHT_COLOR : baseColor);
+      anyChanged = true;
     }
-    if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
+
+    if (anyChanged && mesh.instanceColor) {
+      mesh.instanceColor.needsUpdate = true;
+    }
+
+    // Store current highlight state for next comparison
+    const next = new Array<boolean>(indexToId.length);
+    for (let i = 0; i < indexToId.length; i++) {
+      const id = indexToId[i];
+      next[i] = selectedIds.has(id) || hoveredId === id;
+    }
+    prevHighlightRef.current = next;
   }, [ghost, selectedIds, hoveredId, indexToId, material.color]);
 
   if (boxes.length === 0) return null;

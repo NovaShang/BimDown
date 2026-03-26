@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { Shape, ExtrudeGeometry, BoxGeometry, BufferGeometry, Matrix4, type MeshPhysicalMaterial } from 'three';
 import { SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
 import type { CanonicalElement, LineElement } from '../../model/elements.ts';
-import { useEditorState } from '../../state/EditorContext.tsx';
+import { useSelectionState } from '../../state/EditorContext.tsx';
 import { computeCornerAdjustments, type WallSegment } from '../../utils/wallMiter.ts';
 import { resolveHeight } from '../utils/elementTo3D.ts';
 import { resolveBimMaterial, getBimMaterial, getGhostMaterial } from '../utils/bimMaterials.ts';
@@ -102,9 +102,6 @@ function subtractOpenings(
   const wallLen = Math.sqrt(wallDx * wallDx + wallDy * wallDy);
   if (wallLen < 0.001) return wallGeo;
 
-  const ux = wallDx / wallLen;
-  const uy = wallDy / wallLen;
-
   for (const h of hosted) {
     const openingWidth = parseFloat(h.attrs.width) || 0.9;
     const openingHeight = parseFloat(h.attrs.height) || 2.1;
@@ -146,8 +143,30 @@ function subtractOpenings(
   return wallBrush.geometry;
 }
 
+/** Individual wall mesh — only re-renders when highlighted state changes. */
+const WallMesh = memo(function WallMesh({
+  id, geometry, material, ghost, highlighted,
+}: WallMeshData & { ghost?: boolean; highlighted: boolean }) {
+  return (
+    <mesh
+      geometry={geometry}
+      material={highlighted ? undefined : material}
+      castShadow={!ghost}
+      receiveShadow
+      renderOrder={ghost ? -1 : 0}
+      userData={{ elementId: id }}
+      {...(ghost ? { raycast: () => {} } : {})}
+    >
+      {highlighted && (
+        <meshStandardMaterial attach="material" color="#06b6d4"
+          transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
+      )}
+    </mesh>
+  );
+});
+
 export default function WallExtrusions({ elements, tableName, levelElevation, levelElevations, ghost, allElements }: WallExtrusionsProps) {
-  const { selectedIds, hoveredId } = useEditorState();
+  const { selectedIds, hoveredId } = useSelectionState();
 
   const walls = useMemo(() => elements.filter((el): el is LineElement => el.geometry === 'line' || el.geometry === 'spatial_line'), [elements]);
   const hostedMap = useMemo(() => buildHostedMap(allElements, walls), [allElements, walls]);
@@ -209,8 +228,6 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
       const hosted = hostedMap.get(w.id);
       if (hosted && hosted.length > 0 && !ghost) {
         geo = subtractOpenings(geo, w, hosted, levelElevation, height, baseOffset);
-        // Merge coincident vertices to eliminate CSG floating-point noise,
-        // so EdgesGeometry doesn't detect spurious edges on coplanar faces.
       }
 
       const bimMat = resolveBimMaterial(w.attrs.material, tableName);
@@ -225,27 +242,16 @@ export default function WallExtrusions({ elements, tableName, levelElevation, le
 
   return (
     <group>
-      {meshes.map(({ id, geometry, material }) => {
-        const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
-        return (
-          <group key={id}>
-            <mesh
-              geometry={geometry}
-              material={material}
-              castShadow={!ghost}
-              receiveShadow
-              renderOrder={ghost ? -1 : 0}
-              userData={{ elementId: id }}
-              {...(ghost ? { raycast: () => {} } : {})}
-            >
-              {isHighlighted && (
-                <meshStandardMaterial attach="material" color="#0d99ff"
-                  transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-              )}
-            </mesh>
-          </group>
-        );
-      })}
+      {meshes.map(({ id, geometry, material }) => (
+        <WallMesh
+          key={id}
+          id={id}
+          geometry={geometry}
+          material={material}
+          ghost={ghost}
+          highlighted={!ghost && (selectedIds.has(id) || hoveredId === id)}
+        />
+      ))}
     </group>
   );
 }

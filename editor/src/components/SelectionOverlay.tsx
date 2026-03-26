@@ -29,7 +29,7 @@ export default function SelectionOverlay({ document, selectedIds, scale }: Selec
               y1={el.start.y}
               x2={el.end.x}
               y2={el.end.y}
-              stroke="#0d99ff"
+              stroke="#06b6d4"
               strokeWidth={0.24 / scale}
               opacity="0.6"
               strokeLinecap="round"
@@ -45,7 +45,7 @@ export default function SelectionOverlay({ document, selectedIds, scale }: Selec
               key={el.id}
               points={pointsStr}
               fill="rgba(13, 153, 255, 0.1)"
-              stroke="#0d99ff"
+              stroke="#06b6d4"
               strokeWidth={0.15 / scale}
               strokeLinejoin="round"
               pointerEvents="none"

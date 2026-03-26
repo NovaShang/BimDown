@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
+import { memo, useMemo } from 'react';
 import { EdgesGeometry, LineBasicMaterial } from 'three';
 import type { CanonicalElement } from '../../model/elements.ts';
-import { useEditorState } from '../../state/EditorContext.tsx';
+import { useSelectionState } from '../../state/EditorContext.tsx';
 import { elementTo3DParams } from '../utils/elementTo3D.ts';
 import { createExtrudeGeometry } from '../utils/extrudePolygon.ts';
 
@@ -14,15 +14,30 @@ interface SpaceWireframesProps {
 
 const WIRE_MATERIAL = new LineBasicMaterial({ color: '#7eb8da', transparent: true, opacity: 0.6 });
 const WIRE_GHOST_MATERIAL = new LineBasicMaterial({ color: '#7eb8da', transparent: true, opacity: 0.15 });
-const WIRE_HIGHLIGHT_MATERIAL = new LineBasicMaterial({ color: '#0d99ff', opacity: 1 });
+const WIRE_HIGHLIGHT_MATERIAL = new LineBasicMaterial({ color: '#06b6d4', opacity: 1 });
 
 interface SpaceMeshData {
   id: string;
   edgeGeometry: EdgesGeometry;
 }
 
+/** Individual wireframe — only re-renders when highlighted state changes. */
+const SpaceWire = memo(function SpaceWire({
+  id, edgeGeometry, ghost, highlighted,
+}: SpaceMeshData & { ghost?: boolean; highlighted: boolean }) {
+  const baseMaterial = ghost ? WIRE_GHOST_MATERIAL : WIRE_MATERIAL;
+  return (
+    <lineSegments
+      geometry={edgeGeometry}
+      material={highlighted ? WIRE_HIGHLIGHT_MATERIAL : baseMaterial}
+      userData={{ elementId: id }}
+      {...(ghost ? { raycast: () => {} } : {})}
+    />
+  );
+});
+
 export default function SpaceWireframes({ elements, levelElevation, levelElevations, ghost }: SpaceWireframesProps) {
-  const { selectedIds, hoveredId } = useEditorState();
+  const { selectedIds, hoveredId } = useSelectionState();
 
   const meshes = useMemo(() => {
     const result: SpaceMeshData[] = [];
@@ -42,22 +57,17 @@ export default function SpaceWireframes({ elements, levelElevation, levelElevati
 
   if (meshes.length === 0) return null;
 
-  const baseMaterial = ghost ? WIRE_GHOST_MATERIAL : WIRE_MATERIAL;
-
   return (
     <group>
-      {meshes.map(({ id, edgeGeometry }) => {
-        const isHighlighted = !ghost && (selectedIds.has(id) || hoveredId === id);
-        return (
-          <lineSegments
-            key={id}
-            geometry={edgeGeometry}
-            material={isHighlighted ? WIRE_HIGHLIGHT_MATERIAL : baseMaterial}
-            userData={{ elementId: id }}
-            {...(ghost ? { raycast: () => {} } : {})}
-          />
-        );
-      })}
+      {meshes.map(({ id, edgeGeometry }) => (
+        <SpaceWire
+          key={id}
+          id={id}
+          edgeGeometry={edgeGeometry}
+          ghost={ghost}
+          highlighted={!ghost && (selectedIds.has(id) || hoveredId === id)}
+        />
+      ))}
     </group>
   );
 }

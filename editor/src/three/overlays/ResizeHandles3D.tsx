@@ -51,7 +51,7 @@ interface ResizeHandles3DProps {
 }
 
 const HANDLE_SIZE = 0.15;
-const HANDLE_COLOR = '#0d99ff';
+const HANDLE_COLOR = '#06b6d4';
 
 export default function ResizeHandles3D({ element, elevation, screenToSvg, resizeDraggingRef, controlsRef }: ResizeHandles3DProps) {
   const dispatch = useEditorDispatch();
