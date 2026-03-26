@@ -84,7 +84,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   const canRedo = state.history.redoStack.length > 0;
 
   return (
-    <div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.4)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
         {TOOLS.map(t => (

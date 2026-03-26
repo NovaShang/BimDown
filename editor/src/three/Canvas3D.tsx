@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useEditorState } from '../state/EditorContext.tsx';
 import SceneContent from './SceneContent.tsx';
@@ -36,6 +36,19 @@ function useInitialCamera(): { position: [number, number, number]; far: number }
 export default function Canvas3D() {
   const { position, far } = useInitialCamera();
 
+  // Read --bg-canvas CSS variable for theme-aware 3D background
+  const [bgColor, setBgColor] = useState('#1a1d23');
+  useEffect(() => {
+    const update = () => {
+      const c = getComputedStyle(document.documentElement).getPropertyValue('--bg-canvas').trim();
+      if (c) setBgColor(c);
+    };
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+
   return (
     <div style={{ width: '100%', height: '100%' }}>
       <Canvas
@@ -44,8 +57,8 @@ export default function Canvas3D() {
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
         raycaster={{ params: { Line: { threshold: 0.5 } } as any }}
       >
-        <color attach="background" args={['#1a1d23']} />
-        <fog attach="fog" args={['#1a1d23', far * 0.3, far * 0.9]} />
+        <color attach="background" args={[bgColor]} />
+        <fog attach="fog" args={[bgColor, far * 0.3, far * 0.9]} />
         <SceneContent />
       </Canvas>
     </div>

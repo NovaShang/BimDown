@@ -150,7 +150,7 @@ export default function LeftPanel({
   return (
     <div className="absolute left-3 top-16 bottom-3 z-30 flex w-52 flex-col gap-2 select-none">
       {/* Floor Switcher */}
-      <div className="glass-panel shrink-0 overflow-y-auto rounded-2xl border border-[#2a2a2a] shadow-[0_4px_24px_rgba(0,0,0,0.4)] p-2">
+      <div className="glass-panel shrink-0 overflow-y-auto rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)] p-2">
         <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             Floors
@@ -194,7 +194,7 @@ export default function LeftPanel({
       </div>
 
       {/* Layers / Properties (switches when element selected) */}
-      <div className="glass-panel max-h-[60%] overflow-hidden rounded-2xl border border-[#2a2a2a] shadow-[0_4px_24px_rgba(0,0,0,0.4)]">
+      <div className="glass-panel max-h-[60%] overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
       {selectedData.size > 0 ? (
         <InlineProperties selectedData={selectedData} />
       ) : (

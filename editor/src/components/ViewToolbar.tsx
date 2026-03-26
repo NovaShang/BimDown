@@ -21,7 +21,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
   const dispatch = useEditorDispatch();
 
   return (
-    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[0_4px_24px_rgba(0,0,0,0.4)] select-none">
+    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none">
       {/* 2D / 3D toggle */}
       {(['2d', '3d'] as const).map((mode: ViewMode) => (
         <Tooltip key={mode}>
