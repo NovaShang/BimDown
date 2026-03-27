@@ -3,18 +3,8 @@ import type { CanonicalElement, PointElement, PolygonElement } from '../model/el
 /** Space: render a seed point marker. */
 export function renderSpace(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry === 'point') {
-    const { position, id } = el as PointElement;
-    const r = 0.15;
-    return (
-      <g data-id={id}>
-        <circle cx={position.x} cy={position.y} r={r}
-          fill="rgba(58,134,255,0.15)" stroke="#3a86ff" strokeWidth={0.03} />
-        <line x1={position.x - r} y1={position.y} x2={position.x + r} y2={position.y}
-          stroke="#3a86ff" strokeWidth={0.02} />
-        <line x1={position.x} y1={position.y - r} x2={position.x} y2={position.y + r}
-          stroke="#3a86ff" strokeWidth={0.02} />
-      </g>
-    );
+    // Point spaces render only via renderSpaceLabels — no geometry marker needed
+    return null;
   }
 
   // Legacy: polygon spaces (backward compat for old data)
