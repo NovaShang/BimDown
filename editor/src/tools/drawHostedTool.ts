@@ -5,6 +5,7 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
+import { resolveHostedGeometry } from '../model/hosted.ts';
 
 const HOST_SNAP_THRESHOLD = 1; // metres — max distance from cursor to wall centerline
 
@@ -50,34 +51,6 @@ function findNearestHost(
   return best;
 }
 
-/** Compute door/window start & end on the wall centerline, centered at the projected point. */
-function computeHostedSpan(
-  hit: HostHit,
-  width: number,
-): { start: Point; end: Point } {
-  const { wall, t } = hit;
-  const dx = wall.end.x - wall.start.x;
-  const dy = wall.end.y - wall.start.y;
-  const wallLen = Math.sqrt(dx * dx + dy * dy);
-  if (wallLen < 1e-10) return { start: hit.projected, end: hit.projected };
-
-  // Unit direction along wall
-  const ux = dx / wallLen;
-  const uy = dy / wallLen;
-
-  // Center position along wall (in metres from wall start)
-  const center = t * wallLen;
-  const half = width / 2;
-
-  // Clamp so the door/window doesn't extend beyond wall endpoints
-  const lo = Math.max(0, Math.min(wallLen - width, center - half));
-  const hi = lo + width;
-
-  return {
-    start: { x: wall.start.x + ux * lo, y: wall.start.y + uy * lo },
-    end:   { x: wall.start.x + ux * hi, y: wall.start.y + uy * hi },
-  };
-}
 
 export const drawHostedTool: ToolHandler = {
   cursor: 'crosshair',
@@ -104,13 +77,14 @@ export const drawHostedTool: ToolHandler = {
 
     const da = state.drawingAttrs;
     const width = parseFloat(da[wAttr] || '0.9');
-    const { start, end } = computeHostedSpan(hit, width);
+    const { start, end } = resolveHostedGeometry(hit.wall, hit.t, width);
 
     const existingIds = new Set(elements.keys());
     const id = generateId(target.tableName, existingIds);
 
+    const position = hit.t.toFixed(4);
     const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: hit.wall.id };
+    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: hit.wall.id, position };
 
     const element: LineElement = {
       id,
@@ -149,7 +123,7 @@ export const drawHostedTool: ToolHandler = {
     if (hit) {
       const da = state.drawingAttrs;
       const width = parseFloat(da[wAttr] || '0.9');
-      const { start, end } = computeHostedSpan(hit, width);
+      const { start, end } = resolveHostedGeometry(hit.wall, hit.t, width);
       // Store preview span as points[0] = start, cursor = end
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
