@@ -508,7 +508,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           let outlineInserted = false;
 
           for (const layer of layers) {
-            const isBackground = (layer.discipline === 'architechture' && activeDiscipline !== 'architechture')
+            const isBackground = (layer.discipline === 'architecture' && activeDiscipline !== 'architecture')
               || (layer.discipline === 'reference' && activeDiscipline !== 'reference');
             const layerStyle = isBackground ? { pointerEvents: 'none' as const, opacity: 0.35 } : undefined;
             const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isBackground ? 'background-layer' : ''}`;

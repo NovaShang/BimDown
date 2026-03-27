@@ -28,7 +28,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   return orderedLayers
-    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architechture' || l.discipline === 'reference') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architecture' || l.discipline === 'reference') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
@@ -162,7 +162,7 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
-    if (discipline !== state.activeDiscipline && discipline !== 'architechture' && discipline !== 'reference') continue;
+    if (discipline !== state.activeDiscipline && discipline !== 'architecture' && discipline !== 'reference') continue;
     result.push({
       key,
       tableName,

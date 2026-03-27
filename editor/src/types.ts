@@ -58,7 +58,7 @@ export const LAYER_STYLES: Record<string, LayerStyle> = Object.fromEntries(
 );
 
 export const DISCIPLINE_TABLES: Record<string, string[]> = {
-  architechture: tablesForDiscipline('architechture'),
+  architecture: tablesForDiscipline('architecture'),
   structure:     tablesForDiscipline('structure'),
   mep:           tablesForDiscipline('mep'),
   reference:     tablesForDiscipline('reference'),

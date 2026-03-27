@@ -47,7 +47,7 @@ export interface TableDef {
 
 // ─── Shared option lists ─────────────────────────────────────────────────────
 
-const WALL_MATERIALS: DrawingField['options'] = [
+export const WALL_MATERIALS: DrawingField['options'] = [
   { value: 'Default Wall', label: 'Default' },
   { value: 'Concrete, Cast-in-Place', label: 'Concrete' },
   { value: 'Brick', label: 'Brick' },
@@ -55,35 +55,35 @@ const WALL_MATERIALS: DrawingField['options'] = [
   { value: 'Metal Stud', label: 'Metal Stud' },
 ];
 
-const OPERATION_OPTIONS: DrawingField['options'] = [
+export const OPERATION_OPTIONS: DrawingField['options'] = [
   { value: 'single_swing', label: 'Single' },
   { value: 'double_swing', label: 'Double' },
   { value: 'sliding', label: 'Sliding' },
   { value: 'folding', label: 'Folding' },
 ];
 
-const HINGE_OPTIONS: DrawingField['options'] = [
+export const HINGE_OPTIONS: DrawingField['options'] = [
   { value: 'start', label: 'Start' },
   { value: 'end', label: 'End' },
 ];
 
-const SWING_SIDE_OPTIONS: DrawingField['options'] = [
+export const SWING_SIDE_OPTIONS: DrawingField['options'] = [
   { value: 'left', label: 'Left' },
   { value: 'right', label: 'Right' },
 ];
 
-const SHAPE_OPTIONS: DrawingField['options'] = [
+export const SHAPE_OPTIONS: DrawingField['options'] = [
   { value: 'rectangular', label: 'Rect' },
   { value: 'round', label: 'Round' },
 ];
 
-const SLAB_FUNCTION_OPTIONS: DrawingField['options'] = [
+export const SLAB_FUNCTION_OPTIONS: DrawingField['options'] = [
   { value: 'floor', label: 'Floor' },
   { value: 'roof', label: 'Roof' },
   { value: 'finish', label: 'Finish' },
 ];
 
-const ROOF_TYPE_OPTIONS: DrawingField['options'] = [
+export const ROOF_TYPE_OPTIONS: DrawingField['options'] = [
   { value: 'flat', label: 'Flat' },
   { value: 'gable', label: 'Gable' },
   { value: 'hip', label: 'Hip' },
@@ -91,10 +91,16 @@ const ROOF_TYPE_OPTIONS: DrawingField['options'] = [
   { value: 'mansard', label: 'Mansard' },
 ];
 
-const OPENING_SHAPE_OPTIONS: DrawingField['options'] = [
+export const OPENING_SHAPE_OPTIONS: DrawingField['options'] = [
   { value: 'rect', label: 'Rect' },
   { value: 'round', label: 'Round' },
   { value: 'arch', label: 'Arch' },
+];
+
+export const SYSTEM_TYPE_OPTIONS: DrawingField['options'] = [
+  { value: 'hvac', label: 'HVAC' },
+  { value: 'plumbing', label: 'Plumbing' },
+  { value: 'electrical', label: 'Electrical' },
 ];
 
 // ─── Registry ────────────────────────────────────────────────────────────────
@@ -102,7 +108,7 @@ const OPENING_SHAPE_OPTIONS: DrawingField['options'] = [
 export const TABLE_REGISTRY: Record<string, TableDef> = {
   // ── Architecture ──────────────────────────────────────────────────────────
   wall: {
-    name: 'wall', prefix: 'w', discipline: 'architechture', geometry: 'line',
+    name: 'wall', prefix: 'w', discipline: 'architecture', geometry: 'line',
     hasVerticalSpan: true,
     csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness'],
     defaults: { base_offset: '0', thickness: '0.2', top_level_id: '', top_offset: '0', material: 'Default Wall' },
@@ -114,7 +120,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Walls', color: '#1a1a2e', icon: '▬', order: 1 },
   },
   curtain_wall: {
-    name: 'curtain_wall', prefix: 'cw', discipline: 'architechture', geometry: 'line',
+    name: 'curtain_wall', prefix: 'cw', discipline: 'architecture', geometry: 'line',
     hasVerticalSpan: true,
     csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'u_grid_count', 'v_grid_count', 'u_spacing', 'v_spacing', 'panel_count', 'panel_material'],
     defaults: { base_offset: '0', top_level_id: '', top_offset: '0', material: 'Glass', u_grid_count: '3', v_grid_count: '3', u_spacing: '', v_spacing: '', panel_material: 'Glass' },
@@ -129,7 +135,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Curtain Walls', color: '#7ec8e3', icon: '⊞', order: 1.5 },
   },
   column: {
-    name: 'column', prefix: 'c', discipline: 'architechture', geometry: 'point',
+    name: 'column', prefix: 'c', discipline: 'architecture', geometry: 'point',
     hasVerticalSpan: true,
     csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y'],
     defaults: { base_offset: '0', top_level_id: '', top_offset: '0', material: 'Concrete', shape: 'rectangular', size_x: '0.3', size_y: '0.3' },
@@ -142,7 +148,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Columns', color: '#2d2d2d', icon: '■', order: 3 },
   },
   door: {
-    name: 'door', prefix: 'd', discipline: 'architechture', geometry: 'line',
+    name: 'door', prefix: 'd', discipline: 'architecture', geometry: 'line',
     hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
     csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height', 'operation', 'hinge_position', 'swing_side'],
     defaults: { base_offset: '0', host_id: '', position: '0.5', material: '', width: '0.9', height: '2.1', operation: 'single_swing', hinge_position: 'start', swing_side: 'left' },
@@ -157,7 +163,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Doors', color: '#0077b6', icon: '▭', order: 5 },
   },
   window: {
-    name: 'window', prefix: 'wn', discipline: 'architechture', geometry: 'line',
+    name: 'window', prefix: 'wn', discipline: 'architecture', geometry: 'line',
     hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
     csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height'],
     defaults: { base_offset: '0', host_id: '', position: '0.5', material: '', width: '1.2', height: '1.5' },
@@ -169,7 +175,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Windows', color: '#48cae4', icon: '⊟', order: 5.5 },
   },
   space: {
-    name: 'space', prefix: 'sp', discipline: 'architechture', geometry: 'point',
+    name: 'space', prefix: 'sp', discipline: 'architecture', geometry: 'point',
     csvHeaders: ['number', 'base_offset', 'x', 'y', 'name'],
     defaults: { base_offset: '0', x: '0', y: '0', name: '' },
     drawingFields: [
@@ -179,7 +185,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Spaces', color: '#3a86ff', icon: '⬡', order: 6 },
   },
   room_separator: {
-    name: 'room_separator', prefix: 'rs', discipline: 'architechture', geometry: 'line',
+    name: 'room_separator', prefix: 'rs', discipline: 'architecture', geometry: 'line',
     csvHeaders: ['number', 'base_offset'],
     defaults: { base_offset: '0' },
     drawingFields: [],
@@ -187,7 +193,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Room Separators', color: '#adb5bd', icon: '╌', order: 6.5 },
   },
   slab: {
-    name: 'slab', prefix: 'sl', discipline: 'architechture', geometry: 'polygon',
+    name: 'slab', prefix: 'sl', discipline: 'architecture', geometry: 'polygon',
     csvHeaders: ['number', 'base_offset', 'material', 'function', 'thickness'],
     defaults: { base_offset: '0', material: 'Concrete', function: 'floor', thickness: '0.2' },
     drawingFields: [
@@ -198,7 +204,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Slabs', color: '#adb5bd', icon: '▨', order: 7 },
   },
   roof: {
-    name: 'roof', prefix: 'ro', discipline: 'architechture', geometry: 'polygon',
+    name: 'roof', prefix: 'ro', discipline: 'architecture', geometry: 'polygon',
     csvHeaders: ['number', 'base_offset', 'material', 'roof_type', 'slope', 'thickness'],
     defaults: { base_offset: '0', material: 'Concrete', roof_type: 'flat', slope: '0', thickness: '0.2' },
     drawingFields: [
@@ -210,7 +216,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Roofs', color: '#8d6e63', icon: '△', order: 7.5 },
   },
   ceiling: {
-    name: 'ceiling', prefix: 'cl', discipline: 'architechture', geometry: 'polygon',
+    name: 'ceiling', prefix: 'cl', discipline: 'architecture', geometry: 'polygon',
     csvHeaders: ['number', 'base_offset', 'material', 'height_offset'],
     defaults: { base_offset: '0', material: 'Gypsum', height_offset: '-0.3' },
     drawingFields: [
@@ -220,7 +226,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Ceilings', color: '#b0bec5', icon: '▤', order: 7.8 },
   },
   opening: {
-    name: 'opening', prefix: 'op', discipline: 'architechture', geometry: 'line',
+    name: 'opening', prefix: 'op', discipline: 'architecture', geometry: 'line',
     hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
     csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'width', 'height', 'shape'],
     defaults: { base_offset: '0', host_id: '', position: '0.5', width: '1.0', height: '2.4', shape: 'rect' },
@@ -233,7 +239,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Openings', color: '#ff8a65', icon: '▢', order: 5.8 },
   },
   stair: {
-    name: 'stair', prefix: 'st', discipline: 'architechture', geometry: 'polygon',
+    name: 'stair', prefix: 'st', discipline: 'architecture', geometry: 'polygon',
     csvHeaders: ['number', 'base_offset', 'start_z', 'end_z', 'width', 'rise', 'run'],
     defaults: { base_offset: '0' },
     drawingFields: [],
@@ -509,7 +515,7 @@ export function allTableNames(): string[] {
 // ─── Discipline metadata ─────────────────────────────────────────────────────
 
 export const DISCIPLINE_COLORS: Record<string, string> = {
-  architechture: '#3a86ff',
+  architecture: '#3a86ff',
   structure:     '#e07a2f',
   mep:           '#00b4d8',
   reference:     '#ef476f',

@@ -40,10 +40,10 @@ function useAllFloorsElements(): FloorRenderData[] {
 
       const filtered = parsed.filter(el => {
         // Discipline filter: active discipline + architecture as context
-        if (activeDiscipline !== 'architechture') {
-          if (el.discipline !== activeDiscipline && el.discipline !== 'architechture') return false;
+        if (activeDiscipline !== 'architecture') {
+          if (el.discipline !== activeDiscipline && el.discipline !== 'architecture') return false;
         } else {
-          if (el.discipline !== 'architechture') return false;
+          if (el.discipline !== 'architecture') return false;
         }
         return visibleLayers.has(`${el.discipline}/${el.tableName}`);
       });
