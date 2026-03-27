@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
 import { DISCIPLINES } from '../model/tableRegistry.ts';
@@ -25,6 +26,7 @@ function LevelContextMenu({
   x: number; y: number;
   onRename: () => void; onDelete: () => void; onClose: () => void;
 }) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -45,13 +47,13 @@ function LevelContextMenu({
         className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
         onClick={() => { onRename(); onClose(); }}
       >
-        Rename
+        {t('panel.rename')}
       </button>
       <button
         className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-accent"
         onClick={() => { onDelete(); onClose(); }}
       >
-        Delete
+        {t('panel.delete')}
       </button>
     </div>
   );
@@ -60,6 +62,7 @@ function LevelContextMenu({
 const READ_ONLY_KEYS = new Set(['id', 'length', 'area', 'location_param']);
 
 function InlineProperties({ selectedData }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }> }) {
+  const { t } = useTranslation();
   const dispatch = useEditorDispatch();
   const [firstId, firstData] = selectedData.entries().next().value!;
   const style = LAYER_STYLES[firstData.tableName];
@@ -79,7 +82,7 @@ function InlineProperties({ selectedData }: { selectedData: Map<string, { tableN
           <Icon name={firstData.tableName} width={16} height={16} />
         </span>
         <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-          {isSingle ? (style?.displayName || firstData.tableName) : `${selectedData.size} selected`}
+          {isSingle ? (style ? t(`display.${style.displayName}`) : firstData.tableName) : t('panel.selected', { count: selectedData.size })}
         </span>
       </div>
       {/* Properties */}
@@ -134,6 +137,7 @@ export default function LeftPanel({
   visibleLayers,
   selectedData,
 }: LeftPanelProps) {
+  const { t } = useTranslation();
   const dispatch = useEditorDispatch();
   const { activeDiscipline } = useEditorState();
   const [showAddLevel, setShowAddLevel] = useState(false);
@@ -153,12 +157,12 @@ export default function LeftPanel({
       <div className="glass-panel shrink-0 overflow-y-auto rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)] p-2">
         <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-            Floors
+            {t('panel.floors')}
           </span>
           <button
             className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             onClick={() => setShowAddLevel(true)}
-            title="Add level"
+            title={t('panel.addLevel')}
           >
             +
           </button>
@@ -200,7 +204,7 @@ export default function LeftPanel({
       ) : (
       <ScrollArea className="h-full p-2">
         <div className="flex items-center justify-between px-2 pb-1 pt-0.5">
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">Layers</span>
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
           <DisciplineSelect
             value={activeDiscipline}
             onChange={(d) => dispatch({ type: 'SET_DISCIPLINE', discipline: d })}
@@ -224,7 +228,7 @@ export default function LeftPanel({
               >
                 <span className="size-1.5 shrink-0 rounded-sm" style={{ background: style?.color || '#888' }} />
                 <span className="w-4.5 shrink-0 text-center"><Icon name={layer.tableName} width={16} height={16} /></span>
-                <span className="flex-1">{style?.displayName || layer.tableName}</span>
+                <span className="flex-1">{style ? t(`display.${style.displayName}`) : layer.tableName}</span>
                 <span className="text-[9px] text-muted-foreground tabular-nums">{layer.csvRows.size}</span>
                 <span className={isVisible ? 'text-[var(--color-accent)]' : 'text-muted-foreground'}>
                   <Icon name={isVisible ? 'eye-visible' : 'eye-hidden'} width={18} height={18} />
@@ -271,8 +275,8 @@ export default function LeftPanel({
           }}
           defaultName={renameTarget.name}
           defaultElevation={renameTarget.elevation}
-          title="Rename Level"
-          confirmLabel="Save"
+          title={t('dialog.renameLevel')}
+          confirmLabel={t('dialog.save')}
         />
       )}
 

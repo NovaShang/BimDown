@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { BIM_MATERIAL_OPTIONS } from '../three/utils/bimMaterials.ts';
@@ -14,12 +15,12 @@ interface FloatingPropertiesProps {
   selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>;
 }
 
-const PROPERTY_GROUPS: { label: string; keys: string[] }[] = [
-  { label: 'Identity', keys: ['id', 'number', 'name'] },
-  { label: 'Geometry', keys: ['base_offset', 'top_offset', 'height', 'width', 'thickness', 'size_x', 'size_y', 'shape', 'start_z', 'end_z', 'length', 'area'] },
-  { label: 'Material', keys: ['material', 'function'] },
-  { label: 'Relationships', keys: ['host_id', 'top_level_id', 'start_node_id', 'end_node_id'] },
-  { label: 'System', keys: ['system_type', 'equipment_type', 'terminal_type', 'operation'] },
+const PROPERTY_GROUP_KEYS: { labelKey: string; keys: string[] }[] = [
+  { labelKey: 'prop.Identity', keys: ['id', 'number', 'name'] },
+  { labelKey: 'prop.Geometry', keys: ['base_offset', 'top_offset', 'height', 'width', 'thickness', 'size_x', 'size_y', 'shape', 'start_z', 'end_z', 'length', 'area'] },
+  { labelKey: 'prop.Material', keys: ['material', 'function'] },
+  { labelKey: 'prop.Relationships', keys: ['host_id', 'top_level_id', 'start_node_id', 'end_node_id'] },
+  { labelKey: 'prop.System', keys: ['system_type', 'equipment_type', 'terminal_type', 'operation'] },
 ];
 
 const READ_ONLY_KEYS = new Set(['id', 'length', 'area', 'location_param']);
@@ -33,6 +34,7 @@ const ENUM_OPTIONS: Record<string, string[]> = {
 };
 
 export default function FloatingProperties({ selectedData }: FloatingPropertiesProps) {
+  const { t } = useTranslation();
   const dispatch = useEditorDispatch();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
@@ -52,7 +54,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
   const grouped: { label: string; props: [string, string][] }[] = [];
   const usedKeys = new Set<string>();
 
-  for (const group of PROPERTY_GROUPS) {
+  for (const group of PROPERTY_GROUP_KEYS) {
     const props: [string, string][] = [];
     for (const key of group.keys) {
       if (csv[key] !== undefined) {
@@ -61,7 +63,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
       }
     }
     if (props.length > 0) {
-      grouped.push({ label: group.label, props });
+      grouped.push({ label: t(group.labelKey), props });
     }
   }
 
@@ -72,7 +74,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
     }
   }
   if (otherProps.length > 0) {
-    grouped.push({ label: 'Other', props: otherProps });
+    grouped.push({ label: t('prop.Other'), props: otherProps });
   }
 
   const toggleGroup = (label: string) => {
@@ -92,7 +94,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
           <span className="text-sm" style={{ color: style?.color }}>
             <Icon name={firstData.tableName} width={20} height={20} />
           </span>
-          <span className="text-xs font-semibold">{style?.displayName || firstData.tableName}</span>
+          <span className="text-xs font-semibold">{style ? t(`display.${style.displayName}`) : firstData.tableName}</span>
           <span className="text-[10px] text-muted-foreground tabular-nums">{firstId}</span>
         </div>
         <Button
@@ -104,7 +106,7 @@ export default function FloatingProperties({ selectedData }: FloatingPropertiesP
           x
         </Button>
         {selectedData.size > 1 && (
-          <div className="mt-0.5 text-[10px] text-muted-foreground">{selectedData.size} elements selected</div>
+          <div className="mt-0.5 text-[10px] text-muted-foreground">{t('prop.elementsSelected', { count: selectedData.size })}</div>
         )}
       </div>
 

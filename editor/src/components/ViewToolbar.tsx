@@ -1,15 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { ViewMode, Floor3DMode } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
-
-const FLOOR_3D_OPTIONS: { mode: Floor3DMode; label: string; title: string }[] = [
-  { mode: 'current', label: 'Current', title: 'Show current floor only' },
-  { mode: 'current+below', label: '+Below', title: 'Show current floor + one below' },
-  { mode: 'all', label: 'All', title: 'Show all floors' },
-];
 
 interface ViewToolbarProps {
   onZoomToFit?: () => void;
@@ -17,6 +12,7 @@ interface ViewToolbarProps {
 }
 
 export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
+  const { t } = useTranslation();
   const { viewMode, floor3DMode, showMinimap } = useEditorState();
   const dispatch = useEditorDispatch();
 
@@ -36,7 +32,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
           >
             {mode}
           </TooltipTrigger>
-          <TooltipContent side="top">{mode === '2d' ? '2D View' : '3D View'}</TooltipContent>
+          <TooltipContent side="top">{mode === '2d' ? t('view.2d') : t('view.3d')}</TooltipContent>
         </Tooltip>
       ))}
 
@@ -55,7 +51,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
                 <path d="M4 7v5.5a.5.5 0 00.5.5h2.75V10h1.5v3h2.75a.5.5 0 00.5-.5V7" />
               </svg>
             </TooltipTrigger>
-            <TooltipContent side="top">Zoom to Fit (⌘0)</TooltipContent>
+            <TooltipContent side="top">{t('view.zoomToFit')} (⌘0)</TooltipContent>
           </Tooltip>
         </>
       )}
@@ -94,7 +90,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
                 <rect x="4" y="4" width="4" height="3" rx="0.5" strokeWidth="1" />
               </svg>
             </TooltipTrigger>
-            <TooltipContent side="top">Toggle Minimap (M)</TooltipContent>
+            <TooltipContent side="top">{t('view.toggleMinimap')} (M)</TooltipContent>
           </Tooltip>
         </>
       )}
@@ -104,6 +100,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
 }
 
 function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode; onChange: (mode: Floor3DMode) => void }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -116,6 +113,12 @@ function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode
     return () => window.removeEventListener('mousedown', handle);
   }, [open]);
 
+  const FLOOR_3D_OPTIONS: { mode: Floor3DMode; labelKey: string; titleKey: string }[] = [
+    { mode: 'current', labelKey: 'view.floor.current', titleKey: 'view.floor.currentTitle' },
+    { mode: 'current+below', labelKey: 'view.floor.below', titleKey: 'view.floor.belowTitle' },
+    { mode: 'all', labelKey: 'view.floor.all', titleKey: 'view.floor.allTitle' },
+  ];
+
   const current = FLOOR_3D_OPTIONS.find(o => o.mode === floor3DMode)!;
 
   return (
@@ -124,14 +127,14 @@ function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode
         className="flex h-7 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
         onClick={() => setOpen(!open)}
       >
-        {current.label}
+        {t(current.labelKey)}
         <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 4l2 2 2-2" />
         </svg>
       </button>
       {open && (
         <div className="glass-panel absolute left-0 top-full mt-1 min-w-[140px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100">
-          {FLOOR_3D_OPTIONS.map(({ mode, label, title }) => (
+          {FLOOR_3D_OPTIONS.map(({ mode, labelKey, titleKey }) => (
             <button
               key={mode}
               className={cn(
@@ -139,9 +142,9 @@ function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode
                 floor3DMode === mode ? 'text-[var(--color-accent)]' : 'text-foreground'
               )}
               onClick={() => { onChange(mode); setOpen(false); }}
-              title={title}
+              title={t(titleKey)}
             >
-              {label}
+              {t(labelKey)}
             </button>
           ))}
         </div>

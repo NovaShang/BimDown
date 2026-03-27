@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getDrawingFields } from '../model/drawingSchema.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
@@ -10,6 +11,7 @@ import { Icon } from './Icons.tsx';
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
 export default function DrawingPropertiesBar() {
+  const { t } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
 
@@ -34,12 +36,12 @@ export default function DrawingPropertiesBar() {
       style={{ '--dp-color': disciplineColor } as React.CSSProperties}
     >
       <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold select-none" style={{ color: disciplineColor }}>
-        <Icon name={target.tableName} width={20} height={20} /> {style?.displayName || target.tableName}
+        <Icon name={target.tableName} width={20} height={20} /> {style ? t(`display.${style.displayName}`) : target.tableName}
       </span>
       <Separator orientation="vertical" className="h-4" />
       {fields.map(f => (
         <div key={f.key} className="flex items-center gap-1.5">
-          <label className="text-[10px] text-muted-foreground">{f.label}</label>
+          <label className="text-[10px] text-muted-foreground">{t(`field.${f.label}`, f.label)}</label>
           {f.type === 'select' && f.options ? (
             <Select
               value={attrs[f.key] ?? ''}
@@ -50,7 +52,7 @@ export default function DrawingPropertiesBar() {
               </SelectTrigger>
               <SelectContent>
                 {f.options.map(o => (
-                  <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>{t(`option.${o.label}`, o.label)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

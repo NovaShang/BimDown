@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { LAYER_STYLES, DISCIPLINE_TABLES, DISCIPLINE_COLORS } from '../types.ts';
 import { placementTypeForTable } from '../model/elements.ts';
@@ -12,35 +13,35 @@ interface FloatingToolbarProps {
   activeDiscipline: string | null;
 }
 
-const SHORT_LABELS: Record<string, string> = {
-  wall: 'Wall',
-  curtain_wall: 'CW',
-  column: 'Column',
-  door: 'Door',
-  window: 'Window',
-  space: 'Space',
-  slab: 'Slab',
-  stair: 'Stair',
-  structure_wall: 'Str. Wall',
-  structure_column: 'Str. Col',
-  structure_slab: 'Str. Slab',
-  beam: 'Beam',
-  brace: 'Brace',
-  isolated_foundation: 'Iso. Fdn',
-  strip_foundation: 'Strip Fdn',
-  raft_foundation: 'Raft Fdn',
-  duct: 'Duct',
-  pipe: 'Pipe',
-  conduit: 'Conduit',
-  cable_tray: 'Cable Tray',
-  equipment: 'Equip',
-  terminal: 'Terminal',
-  grid: 'Grid',
+const SHORT_LABEL_KEYS: Record<string, string> = {
+  wall: 'layer.wall',
+  curtain_wall: 'layer.curtain_wall',
+  column: 'layer.column',
+  door: 'layer.door',
+  window: 'layer.window',
+  space: 'layer.space',
+  slab: 'layer.slab',
+  stair: 'layer.stair',
+  structure_wall: 'layer.structure_wall',
+  structure_column: 'layer.structure_column',
+  structure_slab: 'layer.structure_slab',
+  beam: 'layer.beam',
+  brace: 'layer.brace',
+  isolated_foundation: 'layer.isolated_foundation',
+  strip_foundation: 'layer.strip_foundation',
+  raft_foundation: 'layer.raft_foundation',
+  duct: 'layer.duct',
+  pipe: 'layer.pipe',
+  conduit: 'layer.conduit',
+  cable_tray: 'layer.cable_tray',
+  equipment: 'layer.equipment',
+  terminal: 'layer.terminal',
+  grid: 'layer.grid',
 };
 
-const TOOLS: { tool: Tool; label: string; icon: IconName; shortcut: string }[] = [
-  { tool: 'select', label: 'Select', icon: 'select', shortcut: 'V' },
-  { tool: 'pan', label: 'Pan', icon: 'pan', shortcut: 'H' },
+const TOOLS: { tool: Tool; labelKey: string; icon: IconName; shortcut: string }[] = [
+  { tool: 'select', labelKey: 'tool.select', icon: 'select', shortcut: 'V' },
+  { tool: 'pan', labelKey: 'tool.pan', icon: 'pan', shortcut: 'H' },
 ];
 
 function getDrawTool(tableName: string): Tool {
@@ -56,6 +57,7 @@ function getDrawTool(tableName: string): Tool {
 }
 
 export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarProps) {
+  const { t } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
 
@@ -87,25 +89,25 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
     <div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
-        {TOOLS.map(t => (
-          <Tooltip key={t.tool}>
+        {TOOLS.map(tool => (
+          <Tooltip key={tool.tool}>
             <TooltipTrigger
               className={cn(
                 'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
-                state.activeTool === t.tool
+                state.activeTool === tool.tool
                   ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
                   : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
               )}
               onClick={() => {
-                dispatch({ type: 'SET_TOOL', tool: t.tool });
+                dispatch({ type: 'SET_TOOL', tool: tool.tool });
                 dispatch({ type: 'SET_DRAWING_TARGET', target: null });
                 dispatch({ type: 'SET_DRAWING_STATE', state: null });
               }}
             >
-              <span className="text-base leading-none"><Icon name={t.icon} /></span>
-              <span className="whitespace-nowrap text-[9px] leading-none">{t.label}</span>
+              <span className="text-base leading-none"><Icon name={tool.icon} /></span>
+              <span className="whitespace-nowrap text-[9px] leading-none">{t(tool.labelKey)}</span>
             </TooltipTrigger>
-            <TooltipContent side="top">{t.label} ({t.shortcut})</TooltipContent>
+            <TooltipContent side="top">{t(tool.labelKey)} ({tool.shortcut})</TooltipContent>
           </Tooltip>
         ))}
       </div>
@@ -134,9 +136,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
             }}
           >
             <span className="text-base leading-none"><Icon name="grid" /></span>
-            <span className="whitespace-nowrap text-[9px] leading-none">Grid</span>
+            <span className="whitespace-nowrap text-[9px] leading-none">{t('tool.grid')}</span>
           </TooltipTrigger>
-          <TooltipContent side="top">Draw Grid (G)</TooltipContent>
+          <TooltipContent side="top">{t('draw.gridTooltip')}</TooltipContent>
         </Tooltip>
       </div>
       </>}
@@ -168,9 +170,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
                   onClick={() => handleDrawToolClick(table, activeDiscipline!)}
                 >
                   <span className="text-base leading-none"><Icon name={table} /></span>
-                  <span className="whitespace-nowrap text-[9px] leading-none">{SHORT_LABELS[table] || style.displayName}</span>
+                  <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
                 </TooltipTrigger>
-                <TooltipContent side="top">Draw {style.displayName}</TooltipContent>
+                <TooltipContent side="top">{t('draw.tooltip', { name: t(`display.${style.displayName}`) })}</TooltipContent>
               </Tooltip>
             );
           })}
@@ -192,9 +194,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
             onClick={() => canUndo && dispatch({ type: 'UNDO' })}
           >
             <span className="text-base leading-none"><Icon name="undo" /></span>
-            <span className="whitespace-nowrap text-[9px] leading-none">Undo</span>
+            <span className="whitespace-nowrap text-[9px] leading-none">{t('tool.undo')}</span>
           </TooltipTrigger>
-          <TooltipContent side="top">Undo (Ctrl+Z)</TooltipContent>
+          <TooltipContent side="top">{t('tool.undo')} (Ctrl+Z)</TooltipContent>
         </Tooltip>
         <Tooltip>
           <TooltipTrigger
@@ -206,9 +208,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
             onClick={() => canRedo && dispatch({ type: 'REDO' })}
           >
             <span className="text-base leading-none"><Icon name="redo" /></span>
-            <span className="whitespace-nowrap text-[9px] leading-none">Redo</span>
+            <span className="whitespace-nowrap text-[9px] leading-none">{t('tool.redo')}</span>
           </TooltipTrigger>
-          <TooltipContent side="top">Redo (Ctrl+Y)</TooltipContent>
+          <TooltipContent side="top">{t('tool.redo')} (Ctrl+Y)</TooltipContent>
         </Tooltip>
       </div>
     </div>

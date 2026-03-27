@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
 
 interface AddLevelDialogProps {
@@ -11,10 +12,14 @@ interface AddLevelDialogProps {
   confirmLabel?: string;
 }
 
-export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, defaultElevation, title = 'Add Level', confirmLabel = 'Add' }: AddLevelDialogProps) {
+export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, defaultElevation, title, confirmLabel }: AddLevelDialogProps) {
+  const { t } = useTranslation();
   const [name, setName] = useState(defaultName);
   const [elevation, setElevation] = useState(String(defaultElevation));
   const nameRef = useRef<HTMLInputElement>(null);
+
+  const dialogTitle = title ?? t('dialog.addLevel');
+  const dialogConfirm = confirmLabel ?? t('dialog.add');
 
   useEffect(() => {
     if (open) {
@@ -41,9 +46,9 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
         onClick={e => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
-        <div className="mb-3 text-[12px] font-semibold text-foreground">{title}</div>
+        <div className="mb-3 text-[12px] font-semibold text-foreground">{dialogTitle}</div>
 
-        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Name</label>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('dialog.name')}</label>
         <input
           ref={nameRef}
           className="mb-3 block w-full rounded border border-border bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-[var(--color-accent)]"
@@ -52,7 +57,7 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
           autoFocus
         />
 
-        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">Elevation (m)</label>
+        <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('dialog.elevation')}</label>
         <input
           className="mb-4 block w-full rounded border border-border bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-[var(--color-accent)]"
           type="number"
@@ -70,7 +75,7 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
             )}
             onClick={onClose}
           >
-            Cancel
+            {t('dialog.cancel')}
           </button>
           <button
             type="submit"
@@ -79,7 +84,7 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
               'border-none cursor-pointer bg-[var(--color-accent)] text-white hover:opacity-90'
             )}
           >
-            {confirmLabel}
+            {dialogConfirm}
           </button>
         </div>
       </form>

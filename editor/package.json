@@ -4,7 +4,9 @@
   "version": "0.0.0",
   "type": "module",
   "exports": {
-    ".": "./src/exports.ts"
+    ".": "./src/exports.ts",
+    "./src/i18n/en.json": "./src/i18n/en.json",
+    "./src/i18n/zh.json": "./src/i18n/zh.json"
   },
   "scripts": {
     "dev": "vite",
@@ -23,11 +25,13 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dxf-writer": "^1.18.4",
+    "i18next": "^25.10.10",
     "jspdf": "^4.2.1",
     "lucide-react": "^0.577.0",
     "postprocessing": "^6.39.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
+    "react-i18next": "^16.6.6",
     "shadcn": "^4.1.0",
     "svg2pdf.js": "^2.7.0",
     "tailwind-merge": "^3.5.0",

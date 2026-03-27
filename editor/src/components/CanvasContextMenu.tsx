@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { DocumentState } from '../model/document.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
@@ -53,6 +54,7 @@ function Item({
 export default function CanvasContextMenu({
   menu, selectedIds, document, visibleLayers, dispatch, canvasDispatch, onClose,
 }: CanvasContextMenuProps) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
 
   // Click-outside + Esc to close
@@ -138,7 +140,7 @@ export default function CanvasContextMenu({
     if (!isMulti) {
       const [id] = selectedIds;
       const tn = getTableName(id);
-      if (tn) typeName = getDisplayName(tn);
+      if (tn) typeName = t(`display.${getDisplayName(tn)}`);
     }
 
     return (
@@ -156,11 +158,11 @@ export default function CanvasContextMenu({
             <Sep />
           </>
         )}
-        <Item label={`Delete${label}`} shortcut="Del" danger onClick={act(() => dispatch({ type: 'DELETE_ELEMENTS', ids: [...selectedIds] }))} />
-        <Item label={`Duplicate${label}`} onClick={act(() => dispatch({ type: 'DUPLICATE_ELEMENTS', ids: [...selectedIds], offset: { dx: 0.5, dy: 0.5 } }))} />
+        <Item label={`${t('ctx.delete')}${label}`} shortcut="Del" danger onClick={act(() => dispatch({ type: 'DELETE_ELEMENTS', ids: [...selectedIds] }))} />
+        <Item label={`${t('ctx.duplicate')}${label}`} onClick={act(() => dispatch({ type: 'DUPLICATE_ELEMENTS', ids: [...selectedIds], offset: { dx: 0.5, dy: 0.5 } }))} />
         <Sep />
-        <Item label="Select Similar" onClick={act(selectSimilar)} />
-        <Item label="Hide Layer" onClick={act(() => {
+        <Item label={t('ctx.selectSimilar')} onClick={act(selectSimilar)} />
+        <Item label={t('ctx.hideLayer')} onClick={act(() => {
           const keys = getSelectedLayerKeys();
           for (const key of keys) {
             dispatch({ type: 'TOGGLE_LAYER', key });
@@ -168,7 +170,7 @@ export default function CanvasContextMenu({
           dispatch({ type: 'CLEAR_SELECTION' });
         })} />
         {!isMulti && (
-          <Item label="Isolate Layer" onClick={act(() => {
+          <Item label={t('ctx.isolateLayer')} onClick={act(() => {
             const keys = getSelectedLayerKeys();
             dispatch({ type: 'SET_VISIBLE_LAYERS', keys });
           })} />
@@ -176,7 +178,7 @@ export default function CanvasContextMenu({
         {isMulti && (
           <>
             <Sep />
-            <Item label="Deselect All" shortcut="Esc" onClick={act(() => dispatch({ type: 'CLEAR_SELECTION' }))} />
+            <Item label={t('ctx.deselectAll')} shortcut="Esc" onClick={act(() => dispatch({ type: 'CLEAR_SELECTION' }))} />
           </>
         )}
       </div>
@@ -191,11 +193,11 @@ export default function CanvasContextMenu({
       style={{ left: x, top: y }}
       onPointerDown={e => e.stopPropagation()}
     >
-      <Item label="Select All" shortcut={'\u2318A'} onClick={act(selectAll)} />
-      <Item label="Show All Layers" onClick={act(showAllLayers)} />
+      <Item label={t('ctx.selectAll')} shortcut={'\u2318A'} onClick={act(selectAll)} />
+      <Item label={t('ctx.showAllLayers')} onClick={act(showAllLayers)} />
       <Sep />
-      <Item label="Zoom to Fit" shortcut={'\u23180'} onClick={act(() => canvasDispatch({ type: 'ZOOM_TO_FIT' }))} />
-      <Item label="Zoom 100%" shortcut={'\u23181'} onClick={act(() => canvasDispatch({ type: 'ZOOM_TO_PERCENT', percent: 100 }))} />
+      <Item label={t('ctx.zoomToFit')} shortcut={'\u23180'} onClick={act(() => canvasDispatch({ type: 'ZOOM_TO_FIT' }))} />
+      <Item label={t('ctx.zoom100')} shortcut={'\u23181'} onClick={act(() => canvasDispatch({ type: 'ZOOM_TO_PERCENT', percent: 100 }))} />
     </div>
   );
 }

@@ -24,13 +24,13 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', background: '#1a1a1a', color: '#ccc', fontFamily: 'system-ui' }}>
           <div style={{ maxWidth: 480, textAlign: 'center' }}>
             <div style={{ fontSize: 48, marginBottom: 16, opacity: 0.3 }}>&#x26A0;</div>
-            <h2 style={{ margin: '0 0 8px', fontSize: 16, color: '#fff' }}>Something went wrong</h2>
+            <h2 style={{ margin: '0 0 8px', fontSize: 16, color: '#fff' }}>Something went wrong / 出了点问题</h2>
             <p style={{ margin: '0 0 16px', fontSize: 13, opacity: 0.7 }}>{this.state.error.message}</p>
             <button
               onClick={() => this.setState({ error: null })}
               style={{ padding: '6px 16px', borderRadius: 6, border: '1px solid #444', background: '#2c2c2c', color: '#fff', cursor: 'pointer', fontSize: 13 }}
             >
-              Try Again
+              Try Again / 重试
             </button>
           </div>
         </div>
