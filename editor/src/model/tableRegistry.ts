@@ -110,7 +110,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
   wall: {
     name: 'wall', prefix: 'w', discipline: 'architecture', geometry: 'line',
     hasVerticalSpan: true,
-    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material'],
+    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness'],
     defaults: { base_offset: '0', thickness: '0.2', top_level_id: '', top_offset: '0', material: 'Default Wall' },
     drawingFields: [
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
