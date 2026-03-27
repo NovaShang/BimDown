@@ -4,7 +4,7 @@ import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'opening']);
 
 /**
  * Group elements by discipline/tableName key.

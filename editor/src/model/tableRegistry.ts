@@ -83,6 +83,20 @@ const SLAB_FUNCTION_OPTIONS: DrawingField['options'] = [
   { value: 'finish', label: 'Finish' },
 ];
 
+const ROOF_TYPE_OPTIONS: DrawingField['options'] = [
+  { value: 'flat', label: 'Flat' },
+  { value: 'gable', label: 'Gable' },
+  { value: 'hip', label: 'Hip' },
+  { value: 'shed', label: 'Shed' },
+  { value: 'mansard', label: 'Mansard' },
+];
+
+const OPENING_SHAPE_OPTIONS: DrawingField['options'] = [
+  { value: 'rect', label: 'Rect' },
+  { value: 'round', label: 'Round' },
+  { value: 'arch', label: 'Arch' },
+];
+
 // ─── Registry ────────────────────────────────────────────────────────────────
 
 export const TABLE_REGISTRY: Record<string, TableDef> = {
@@ -182,6 +196,41 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     ],
     renderZIndex: 20,
     layerStyle: { displayName: 'Slabs', color: '#adb5bd', icon: '▨', order: 7 },
+  },
+  roof: {
+    name: 'roof', prefix: 'ro', discipline: 'architechture', geometry: 'polygon',
+    csvHeaders: ['number', 'base_offset', 'material', 'roof_type', 'slope', 'thickness'],
+    defaults: { base_offset: '0', material: 'Concrete', roof_type: 'flat', slope: '0', thickness: '0.2' },
+    drawingFields: [
+      { key: 'roof_type', label: 'Type', type: 'select', options: ROOF_TYPE_OPTIONS },
+      { key: 'slope', label: 'Slope', type: 'number', unit: '°', min: 0, max: 60, step: 5 },
+      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    ],
+    renderZIndex: 19,
+    layerStyle: { displayName: 'Roofs', color: '#8d6e63', icon: '△', order: 7.5 },
+  },
+  ceiling: {
+    name: 'ceiling', prefix: 'cl', discipline: 'architechture', geometry: 'polygon',
+    csvHeaders: ['number', 'base_offset', 'material', 'height_offset'],
+    defaults: { base_offset: '0', material: 'Gypsum', height_offset: '-0.3' },
+    drawingFields: [
+      { key: 'height_offset', label: 'Drop', type: 'number', unit: 'm', step: 0.05 },
+    ],
+    renderZIndex: 18,
+    layerStyle: { displayName: 'Ceilings', color: '#b0bec5', icon: '▤', order: 7.8 },
+  },
+  opening: {
+    name: 'opening', prefix: 'op', discipline: 'architechture', geometry: 'line',
+    hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
+    csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'width', 'height', 'shape'],
+    defaults: { base_offset: '0', host_id: '', position: '0.5', width: '1.0', height: '2.4', shape: 'rect' },
+    drawingFields: [
+      { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+      { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+      { key: 'shape', label: 'Shape', type: 'select', options: OPENING_SHAPE_OPTIONS },
+    ],
+    renderZIndex: 62,
+    layerStyle: { displayName: 'Openings', color: '#ff8a65', icon: '▢', order: 5.8 },
   },
   stair: {
     name: 'stair', prefix: 'st', discipline: 'architechture', geometry: 'polygon',
@@ -330,6 +379,16 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     drawingFields: [],
     renderZIndex: 91,
     layerStyle: { displayName: 'Terminals', color: '#f77f00', icon: '◆', order: 13 },
+  },
+
+  // ── Mesh (non-parametric elements) ────────────────────────────────────────
+  mesh: {
+    name: 'mesh', prefix: 'mesh', discipline: 'reference', geometry: 'point',
+    csvHeaders: ['category', 'name', 'level_id', 'mesh_file', 'x', 'y', 'z', 'rotation'],
+    defaults: { category: 'other', name: '', level_id: '', mesh_file: '', x: '0', y: '0', z: '0', rotation: '0' },
+    drawingFields: [],
+    renderZIndex: 5,
+    layerStyle: { displayName: 'Mesh Objects', color: '#9e9e9e', icon: '◇', order: 20 },
   },
 
   // ── Reference ─────────────────────────────────────────────────────────────

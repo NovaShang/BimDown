@@ -6,7 +6,7 @@ import { resolveHostedGeometry } from './hosted.ts';
 const parser = new DOMParser();
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'opening']);
 
 /**
  * Parse a LayerData (raw SVG + CSV) into CanonicalElement[].
