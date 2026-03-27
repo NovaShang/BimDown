@@ -11,6 +11,8 @@ export interface HistoryState {
   redoStack: EditCommand[];
 }
 
+const MAX_HISTORY = 100;
+
 export const emptyHistory: HistoryState = {
   undoStack: [],
   redoStack: [],
@@ -18,7 +20,7 @@ export const emptyHistory: HistoryState = {
 
 export function pushCommand(history: HistoryState, command: EditCommand): HistoryState {
   return {
-    undoStack: [...history.undoStack, command],
+    undoStack: [...history.undoStack, command].slice(-MAX_HISTORY),
     redoStack: [],  // clear redo on new edit
   };
 }

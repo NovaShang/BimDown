@@ -17,8 +17,10 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
 
   // CSV-only tables: parse directly from CSV rows
   if (CSV_ONLY_TABLES.has(layer.tableName)) {
-    return parseCsvOnlyLayer(layer);
+    return parseCsvOnlyLayer({ ...layer, csvRows: validateCsvRows(layer.csvRows, layer.tableName) });
   }
+
+  const csvRows = validateCsvRows(layer.csvRows, layer.tableName);
 
   const doc = parser.parseFromString(layer.svgContent, 'image/svg+xml');
   const g = doc.querySelector('g');
@@ -35,7 +37,7 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
       for (const line of lines) {
         const id = line.getAttribute('id') || '';
         if (!id) continue;
-        const csv = layer.csvRows.get(id);
+        const csv = csvRows.get(id);
         const el = geoType === 'spatial_line'
           ? parseSpatialLineElement(id, line, layer, csv)
           : parseLineElement(id, line, layer, csv);
@@ -49,7 +51,7 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
       for (const rect of rects) {
         const id = rect.getAttribute('id') || '';
         if (!id) continue;
-        const csv = layer.csvRows.get(id);
+        const csv = csvRows.get(id);
         const el = parsePointElement(id, rect, layer, csv);
         if (hosted) applyHostFields(el, csv);
         elements.push(el);
@@ -61,7 +63,7 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
       for (const poly of polys) {
         const id = poly.getAttribute('id') || '';
         if (!id) continue;
-        const csv = layer.csvRows.get(id);
+        const csv = csvRows.get(id);
         const el = parsePolygonElement(id, poly, layer, csv);
         if (hosted) applyHostFields(el, csv);
         elements.push(el);
@@ -206,12 +208,27 @@ function parsePolygonElement(
 
 function csvToAttrs(csv: CsvRow | undefined, id: string): Record<string, string> {
   if (!csv) return { id };
-  // Copy all CSV fields except 'id' (stored separately)
   const attrs: Record<string, string> = {};
   for (const [k, v] of Object.entries(csv)) {
-    if (k !== 'id') attrs[k] = v;
+    if (k && k !== 'id') attrs[k] = v;
   }
   return attrs;
+}
+
+/**
+ * Validate a CSV layer's rows, filtering out invalid entries.
+ * Returns the valid rows and logs warnings for skipped ones.
+ */
+function validateCsvRows(rows: Map<string, CsvRow>, tableName: string): Map<string, CsvRow> {
+  const valid = new Map<string, CsvRow>();
+  for (const [id, row] of rows) {
+    if (!id || id.trim() === '') {
+      console.warn(`[parse] Skipping row with empty id in ${tableName}`);
+      continue;
+    }
+    valid.set(id, row);
+  }
+  return valid;
 }
 
 export function parsePoints(pointsStr: string): Point[] {

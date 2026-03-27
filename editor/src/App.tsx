@@ -66,7 +66,6 @@ function AppInner() {
 
       const levelId = parts[0];
       const fileName = parts.slice(1).join('/');
-      console.log('Data changed:', levelId, fileName);
 
       if (levelId === 'global' && fileName === 'level.csv') {
         loadData();

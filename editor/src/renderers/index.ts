@@ -43,6 +43,16 @@ const RENDERERS: Record<string, ElementRenderFn> = {
   slab: renderSlab,
   structure_slab: renderSlab,
   stair: renderSlab,
+  roof: renderSlab,
+  ceiling: renderSlab,
+  raft_foundation: renderSlab,
+  // Line / spatial_line elements
+  beam: renderWallFill,
+  brace: renderWallFill,
+  strip_foundation: renderWallFill,
+  room_separator: renderWallFill,
+  // Point elements (foundations)
+  isolated_foundation: renderEquipment,
   // Reference elements
   grid: renderGrid,
 };
