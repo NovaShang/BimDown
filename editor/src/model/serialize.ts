@@ -3,6 +3,9 @@ import { computeBounds } from './elements.ts';
 import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
 
+/** Tables that are CSV-only (no SVG geometry file). */
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
+
 /**
  * Group elements by discipline/tableName key.
  */
@@ -21,11 +24,22 @@ export function groupByLayer(elements: CanonicalElement[]): Map<string, Canonica
 }
 
 /**
+ * Check if a table is CSV-only (no SVG file).
+ */
+export function isCsvOnlyTable(tableName: string): boolean {
+  return CSV_ONLY_TABLES.has(tableName);
+}
+
+/**
  * Serialize elements of one layer to canonical SVG string.
- * Produces the simplified SVG that processor.ts expects as input.
+ * Returns empty string for CSV-only tables (no SVG needed).
  */
 export function serializeToSvg(elements: CanonicalElement[]): string {
   if (elements.length === 0) return '';
+
+  // CSV-only tables don't have SVG
+  const tableName = elements[0].tableName;
+  if (CSV_ONLY_TABLES.has(tableName)) return '';
 
   const bounds = computeBounds(elements);
   const vb = bounds ? `${r(bounds.x)} ${r(bounds.y)} ${r(bounds.w)} ${r(bounds.h)}` : '0 0 100 100';

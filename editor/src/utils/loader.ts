@@ -89,7 +89,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   );
 
   for (const { disc, level, tableName, svgContent, csvContent } of results) {
-    if (!svgContent) continue;
+    if (!svgContent && !csvContent) continue;
 
     const csvMap = new Map<string, CsvRow>();
     if (csvContent) {
@@ -109,7 +109,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     floors.get(level.id)!.layers.push({
       tableName,
       discipline: disc,
-      svgContent,
+      svgContent: svgContent ?? '',
       csvRows: csvMap,
     });
   }
@@ -134,10 +134,12 @@ export async function loadGrids(ds: DataSource): Promise<GridData[]> {
 }
 
 export async function loadLayer(ds: DataSource, levelId: string, tableName: string): Promise<LayerData | null> {
-  const svgContent = await ds.fetchText(`${levelId}/${tableName}.svg`);
-  if (!svgContent) return null;
+  const [svgContent, csvContent] = await Promise.all([
+    ds.fetchText(`${levelId}/${tableName}.svg`),
+    ds.fetchText(`${levelId}/${tableName}.csv`),
+  ]);
+  if (!svgContent && !csvContent) return null;
 
-  const csvContent = await ds.fetchText(`${levelId}/${tableName}.csv`);
   const csvMap = new Map<string, CsvRow>();
   if (csvContent) {
     const rows = parseCsv(csvContent);
@@ -149,7 +151,7 @@ export async function loadLayer(ds: DataSource, levelId: string, tableName: stri
   return {
     tableName,
     discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architectural',
-    svgContent,
+    svgContent: svgContent ?? '',
     csvRows: csvMap,
   };
 }

@@ -1,6 +1,6 @@
 import type { DocumentState } from '../model/document.ts';
 import type { Level, GridData } from '../types.ts';
-import { groupByLayer, serializeToSvg, serializeToCsv } from '../model/serialize.ts';
+import { groupByLayer, serializeToSvg, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
 import type { DataSource } from './dataSource.ts';
 
 /**
@@ -22,9 +22,12 @@ export async function persistDocument(doc: DocumentState, ds: DataSource, change
     const [, tableName] = key.split('/');
     const levelId = doc.levelId;
 
-    const svgPath = `${levelId}/${tableName}.svg`;
-    const svgContent = serializeToSvg(groupElements);
-    saves.push(ds.saveFile(svgPath, svgContent));
+    // Only save SVG for tables that have geometry in SVG
+    if (!isCsvOnlyTable(tableName)) {
+      const svgPath = `${levelId}/${tableName}.svg`;
+      const svgContent = serializeToSvg(groupElements);
+      saves.push(ds.saveFile(svgPath, svgContent));
+    }
 
     const csvPath = `${levelId}/${tableName}.csv`;
     const csvContent = serializeToCsv(groupElements, tableName);

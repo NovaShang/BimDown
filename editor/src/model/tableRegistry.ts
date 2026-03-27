@@ -90,7 +90,7 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
   wall: {
     name: 'wall', prefix: 'w', discipline: 'architechture', geometry: 'line',
     hasVerticalSpan: true,
-    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material'],
+    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness'],
     defaults: { base_offset: '0', thickness: '0.2', top_level_id: '', top_offset: '0', material: 'Default Wall' },
     drawingFields: [
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
@@ -130,8 +130,8 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
   door: {
     name: 'door', prefix: 'd', discipline: 'architechture', geometry: 'line',
     hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
-    csvHeaders: ['number', 'base_offset', 'host_id', 'material', 'width', 'height', 'operation', 'hinge_position', 'swing_side'],
-    defaults: { base_offset: '0', host_id: '', material: '', width: '0.9', height: '2.1', operation: 'single_swing', hinge_position: 'start', swing_side: 'left' },
+    csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height', 'operation', 'hinge_position', 'swing_side'],
+    defaults: { base_offset: '0', host_id: '', position: '0.5', material: '', width: '0.9', height: '2.1', operation: 'single_swing', hinge_position: 'start', swing_side: 'left' },
     drawingFields: [
       { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
       { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.5, step: 0.1 },
@@ -145,8 +145,8 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
   window: {
     name: 'window', prefix: 'wn', discipline: 'architechture', geometry: 'line',
     hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
-    csvHeaders: ['number', 'base_offset', 'host_id', 'material', 'width', 'height'],
-    defaults: { base_offset: '0', host_id: '', material: '', width: '1.2', height: '1.5' },
+    csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height'],
+    defaults: { base_offset: '0', host_id: '', position: '0.5', material: '', width: '1.2', height: '1.5' },
     drawingFields: [
       { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
       { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
@@ -155,14 +155,22 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Windows', color: '#48cae4', icon: '⊟', order: 5.5 },
   },
   space: {
-    name: 'space', prefix: 'sp', discipline: 'architechture', geometry: 'polygon',
-    csvHeaders: ['number', 'base_offset', 'name'],
-    defaults: { base_offset: '0', name: '' },
+    name: 'space', prefix: 'sp', discipline: 'architechture', geometry: 'point',
+    csvHeaders: ['number', 'base_offset', 'x', 'y', 'name'],
+    defaults: { base_offset: '0', x: '0', y: '0', name: '' },
     drawingFields: [
       { key: 'name', label: 'Name', type: 'text' },
     ],
     renderZIndex: 10,
     layerStyle: { displayName: 'Spaces', color: '#3a86ff', icon: '⬡', order: 6 },
+  },
+  room_separator: {
+    name: 'room_separator', prefix: 'rs', discipline: 'architechture', geometry: 'line',
+    csvHeaders: ['number', 'base_offset'],
+    defaults: { base_offset: '0' },
+    drawingFields: [],
+    renderZIndex: 15,
+    layerStyle: { displayName: 'Room Separators', color: '#adb5bd', icon: '╌', order: 6.5 },
   },
   slab: {
     name: 'slab', prefix: 'sl', discipline: 'architechture', geometry: 'polygon',

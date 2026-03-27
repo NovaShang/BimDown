@@ -1,8 +1,12 @@
 import type { LayerData, CsvRow } from '../types.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point } from './elements.ts';
 import { geometryTypeForTable, isHostedTable } from './elements.ts';
+import { resolveHostedGeometry } from './hosted.ts';
 
 const parser = new DOMParser();
+
+/** Tables that are CSV-only (no SVG geometry file). */
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
 
 /**
  * Parse a LayerData (raw SVG + CSV) into CanonicalElement[].
@@ -10,6 +14,11 @@ const parser = new DOMParser();
 export function parseLayer(layer: LayerData): CanonicalElement[] {
   const geoType = geometryTypeForTable(layer.tableName);
   if (!geoType) return [];
+
+  // CSV-only tables: parse directly from CSV rows
+  if (CSV_ONLY_TABLES.has(layer.tableName)) {
+    return parseCsvOnlyLayer(layer);
+  }
 
   const doc = parser.parseFromString(layer.svgContent, 'image/svg+xml');
   const g = doc.querySelector('g');
@@ -64,6 +73,53 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
   return elements;
 }
 
+/**
+ * Parse CSV-only layer (door, window, space) — no SVG geometry.
+ */
+function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
+  const elements: CanonicalElement[] = [];
+
+  for (const [id, csv] of layer.csvRows) {
+    if (!id) continue;
+    const attrs = csvToAttrs(csv, id);
+
+    if (layer.tableName === 'space') {
+      // Space: point from CSV x, y
+      const el: PointElement = {
+        geometry: 'point',
+        id,
+        tableName: layer.tableName,
+        discipline: layer.discipline,
+        position: {
+          x: parseFloat(csv.x ?? '0'),
+          y: parseFloat(csv.y ?? '0'),
+        },
+        width: 0.3,
+        height: 0.3,
+        attrs,
+      };
+      elements.push(el);
+    } else {
+      // Door/window: hosted line — start/end will be resolved later in parseFloorLayers
+      const el: LineElement = {
+        geometry: 'line',
+        id,
+        tableName: layer.tableName,
+        discipline: layer.discipline,
+        start: { x: 0, y: 0 },
+        end: { x: 0, y: 0 },
+        strokeWidth: 0.08,
+        attrs,
+      };
+      el.hostId = csv.host_id ?? '';
+      el.locationParam = parseFloat(csv.position ?? '0.5');
+      elements.push(el);
+    }
+  }
+
+  return elements;
+}
+
 function parseLineElement(
   id: string, line: SVGLineElement, layer: LayerData, csv?: CsvRow
 ): LineElement {
@@ -111,7 +167,7 @@ function parseSpatialLineElement(
 function applyHostFields(el: CanonicalElement, csv?: CsvRow): void {
   if (!csv) return;
   if (csv.host_id) el.hostId = csv.host_id;
-  if (csv.location_param) el.locationParam = parseFloat(csv.location_param);
+  if (csv.position) el.locationParam = parseFloat(csv.position);
 }
 
 function parsePointElement(
@@ -171,11 +227,36 @@ export function parsePoints(pointsStr: string): Point[] {
 
 /**
  * Parse all layers of a floor into CanonicalElement[].
+ * Second pass: resolve hosted element geometry from host walls.
  */
 export function parseFloorLayers(layers: LayerData[]): CanonicalElement[] {
   const elements: CanonicalElement[] = [];
   for (const layer of layers) {
     elements.push(...parseLayer(layer));
   }
+
+  // Second pass: resolve hosted elements (doors/windows) using wall geometry
+  const wallMap = new Map<string, LineElement>();
+  for (const el of elements) {
+    if (el.geometry === 'line' && (el.tableName === 'wall' || el.tableName === 'structure_wall' || el.tableName === 'curtain_wall')) {
+      wallMap.set(el.id, el as LineElement);
+    }
+  }
+
+  for (const el of elements) {
+    if (el.geometry !== 'line') continue;
+    const line = el as LineElement;
+    if (!line.hostId) continue;
+
+    const hostWall = wallMap.get(line.hostId);
+    if (!hostWall) continue;
+
+    const position = line.locationParam ?? 0.5;
+    const width = parseFloat(line.attrs.width ?? '0.9');
+    const resolved = resolveHostedGeometry(hostWall, position, width);
+    line.start = resolved.start;
+    line.end = resolved.end;
+  }
+
   return elements;
 }

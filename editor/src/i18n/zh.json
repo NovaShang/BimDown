@@ -27,6 +27,7 @@
   "layer.cable_tray": "桥架",
   "layer.equipment": "设备",
   "layer.terminal": "末端",
+  "layer.room_separator": "分隔线",
   "layer.grid": "轴网",
 
   "display.Walls": "墙",
@@ -51,6 +52,7 @@
   "display.Cable Trays": "桥架",
   "display.Equipment": "设备",
   "display.Terminals": "末端",
+  "display.Room Separators": "房间分隔线",
   "display.Grids": "轴网",
 
   "field.Thickness": "厚度",

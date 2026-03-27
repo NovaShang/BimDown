@@ -27,6 +27,7 @@
   "layer.cable_tray": "Cable Tray",
   "layer.equipment": "Equip",
   "layer.terminal": "Terminal",
+  "layer.room_separator": "Separator",
   "layer.grid": "Grid",
 
   "display.Walls": "Walls",
@@ -51,6 +52,7 @@
   "display.Cable Trays": "Cable Trays",
   "display.Equipment": "Equipment",
   "display.Terminals": "Terminals",
+  "display.Room Separators": "Room Separators",
   "display.Grids": "Grids",
 
   "field.Thickness": "Thickness",
