@@ -39,8 +39,9 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
 
 export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
   // Compute from document elements when available (reflects edits)
+  // Exclude grid lines — they're reference elements that shouldn't drive the view extent
   if (state.document) {
-    const elements = Array.from(state.document.elements.values());
+    const elements = Array.from(state.document.elements.values()).filter(e => e.tableName !== 'grid');
     const bounds = computeBounds(elements);
     if (bounds) return bounds;
   }

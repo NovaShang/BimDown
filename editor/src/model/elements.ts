@@ -64,6 +64,8 @@ export function computeBounds(elements: CanonicalElement[]): { x: number; y: num
         break;
       }
       case 'point': {
+        // Skip point elements at origin (0,0) — likely invalid/unresolved positions from Revit
+        if (el.position.x === 0 && el.position.y === 0) break;
         minX = Math.min(minX, el.position.x - el.width / 2);
         minY = Math.min(minY, el.position.y - el.height / 2);
         maxX = Math.max(maxX, el.position.x + el.width / 2);

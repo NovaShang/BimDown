@@ -13,7 +13,6 @@ import type { CanvasHandle } from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
 import ViewToolbar from './ViewToolbar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
-import FloatingProperties from './FloatingProperties.tsx';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
@@ -191,6 +190,7 @@ export default function EditorShell() {
           currentLevel={state.currentLevel}
           layerGroups={layerGroups}
           visibleLayers={state.visibleLayers}
+          selectedData={selectedData}
         />
         {state.viewMode === '3d' ? (
           <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">Loading 3D viewer...</p></div></div>}>
@@ -205,7 +205,6 @@ export default function EditorShell() {
             activeDiscipline={activeDiscipline}
           />
         )}
-        <FloatingProperties selectedData={selectedData} levels={state.project?.levels ?? []} />
         {!state.readonly && <DrawingPropertiesBar />}
         {!state.readonly && <FloatingToolbar activeDiscipline={activeDiscipline} />}
         <ViewToolbar
