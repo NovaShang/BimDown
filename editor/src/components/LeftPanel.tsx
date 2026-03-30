@@ -174,7 +174,7 @@ function InlineProperties({ selectedData, levels }: { selectedData: Map<string, 
                         value={csv[f.key] ?? ''}
                         editable={isSingleSelection && f.type !== 'readonly'}
                         onChange={handleChange}
-                        t={t}
+                        t={(key: string, fallback?: string) => t(key, { defaultValue: fallback }) as string}
                       />
                     ))}
                   </div>

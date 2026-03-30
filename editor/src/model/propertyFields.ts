@@ -9,7 +9,6 @@ import {
   SWING_SIDE_OPTIONS,
   SYSTEM_TYPE_OPTIONS,
   ROOF_TYPE_OPTIONS,
-  OPENING_SHAPE_OPTIONS,
 } from './tableRegistry.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
