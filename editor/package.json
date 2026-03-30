@@ -1,7 +1,13 @@
 {
   "name": "bimdown-editor",
-  "private": true,
   "version": "0.0.0",
+  "description": "A browser-based 2D/3D building editor component for the BimDown format",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NovaShang/bimdown-editor.git",
+    "directory": "editor"
+  },
   "type": "module",
   "exports": {
     ".": "./src/exports.ts",

@@ -3,7 +3,7 @@ import { initReactI18next } from 'react-i18next'
 import en from './en.json'
 import zh from './zh.json'
 
-const saved = localStorage.getItem('bimclaw-lang')
+const saved = localStorage.getItem('bimdown-lang')
 const detected = navigator.language.startsWith('zh') ? 'zh' : 'en'
 
 i18n.use(initReactI18next).init({

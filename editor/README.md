@@ -1,6 +1,6 @@
 # BimDown Editor
 
-Figma-style 2D BIM plan editor. Renders BimDown CSV + SVG data as interactive engineering drawings with selection, properties inspection, and discipline-based filtering.
+Figma-style 2D/3D BIM plan editor component. Renders BimDown CSV + SVG data as interactive engineering drawings with selection, drawing tools, properties inspection, and discipline-based filtering.
 
 ## Quick Start
 
@@ -16,9 +16,15 @@ Opens at http://localhost:5174. Requires `../sample_data/` with BimDown CSV/SVG 
 
 ```
 src/
-  App.tsx                        Root — provider + data loading
+  exports.ts                     Public API surface for embedding
+  App.tsx                        Root — provider + data loading (dev mode)
   index.css                      Figma dark theme (single stylesheet)
-  types.ts                       Data types, layer styles, discipline tables
+
+  model/
+    elements.ts                  Canonical element types (Line, Point, Polygon)
+    tableRegistry.ts             Element type definitions, fields, defaults
+    hosted.ts                    Hosted geometry resolution (doors, windows)
+    parse.ts / serialize.ts      CSV/SVG ↔ element conversion
 
   state/
     EditorContext.tsx             Dual context (state/dispatch split)
@@ -30,26 +36,62 @@ src/
     EditorShell.tsx              Layout orchestrator
     Canvas.tsx                   SVG rendering, pan/zoom, selection, hover
     LeftPanel.tsx                Floor switcher + discipline/layer toggles
-    FloatingToolbar.tsx          General tools + discipline-specific filters
-    FloatingProperties.tsx       Element properties (appears on selection)
+    FloatingToolbar.tsx          Drawing tools + discipline-specific filters
+    ViewToolbar.tsx              View controls (zoom, fit, 3D toggle)
+    DrawingOverlay.tsx           Active drawing visualization
+    DrawingPropertiesBar.tsx     Properties bar during drawing
     SelectionOverlay.tsx         Blue outlines on selected elements
     MarqueeSelection.tsx         Rubber-band drag-to-select
     Minimap.tsx                  Corner overview with click-to-navigate
+    ResizeHandles.tsx            Element resize handles
+    SnapOverlay.tsx              Snap point visualization
+
+  renderers/                     2D SVG renderers per element type
+  three/                         3D view with Three.js
+  tools/                         Drawing tools (line, point, polygon, hosted)
+  export/                        Export: glTF, IFC (web-ifc), PDF (jspdf), DXF (dxf-writer)
 
   utils/
-    loader.ts                   CSV + SVG data loading
-    processor.ts                SVG transformation pipeline (walls, doors, etc.)
-    geometry.ts                 Coordinate conversion helpers
+    dataSource.ts                DataSource interface + factories
+    DataSourceContext.tsx         React context for DataSource
+    loader.ts                    CSV + SVG data loading
+    processor.ts                 SVG transformation pipeline
+    geometry.ts                  Coordinate conversion helpers
+    snap.ts                      Snap logic for drawing tools
+
+  i18n/                          English and Chinese translations
 ```
+
+## Exported API
+
+Defined in `src/exports.ts`. Everything below is importable from `bimdown-editor`:
+
+**Providers & Hooks**
+- `EditorProvider`, `useEditorState`, `useSelectionState`, `useEditorDispatch` — editor state
+- `DataSourceProvider`, `useDataSource` — data source context
+- `TooltipProvider` — required by EditorShell internals
+
+**Components**
+- `EditorShell` — the main editor UI (expects to be inside all three providers)
+
+**Data Loading**
+- `loadProject(ds)`, `loadGrids(ds)`, `loadLayer(ds, levelId, table)` — load data from a DataSource
+- `createLocalDataSource(model)` — DataSource factory for local dev server
+
+**Export**
+- `exportGltf`, `exportIfc`, `exportPdf`, `exportDxf`
+
+**Types**
+- `DataSource`, `EditorState`, `EditorAction`
 
 ## Layout
 
 ```
 +------------------------------------------------------------------+
-|  [Left Panel]  |              Canvas                 [Properties] |
-|  +-----------+ |                                      (floating,  |
-|  | Floors    | |                                       top-right, |
-|  +-----------+ |                                       on select) |
+|  [Left Panel]  |              Canvas                              |
+|  +-----------+ |                                                  |
+|  | Floors    | |                                                  |
+|  +-----------+ |                                                  |
 |  | Layers    | |                                                  |
 |  | > Arch    | |                                                  |
 |  |   - Walls | |                                                  |
@@ -73,7 +115,7 @@ src/
 | `Ctrl+0` | Zoom to fit |
 | `Ctrl+1` | Zoom 100% |
 | `+` / `-` | Zoom in / out |
-| `Escape` | Clear selection |
+| `Escape` | Clear selection / cancel drawing |
 | `Ctrl+A` | Select all visible |
 
 ## Mouse
@@ -101,7 +143,11 @@ Clicking a filter highlights that element type and dims everything else. Click a
 ## Tech Stack
 
 - React 19 + TypeScript + Vite 8
-- Zero runtime dependencies beyond React
+- Three.js / @react-three/fiber for 3D view
+- jspdf + svg2pdf.js for PDF export
+- web-ifc for IFC export
+- dxf-writer for DXF export
+- Tailwind CSS + shadcn/ui
 - `useReducer` + dual context for state management
 - CSS transform-based pan/zoom
 - DOM event delegation for hit testing
