@@ -60,11 +60,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'SET_PROJECT': {
       const { model, project, grids } = action;
+
+      // Preserve current level if it still exists in the new data
+      const keepLevel = state.currentLevel && project.levels.some(l => l.id === state.currentLevel);
+
       let currentLevel = '';
       let visibleLayers = new Set<string>();
       let activeDiscipline: string | null = 'architecture';
 
-      if (project.floors.size > 0) {
+      if (keepLevel) {
+        currentLevel = state.currentLevel;
+        visibleLayers = state.visibleLayers;
+        activeDiscipline = state.activeDiscipline;
+      } else if (project.floors.size > 0) {
         const firstLevel = project.levels.find(l => project.floors.has(l.id));
         if (firstLevel) {
           currentLevel = firstLevel.id;
