@@ -22,9 +22,19 @@ export interface FloorData {
   layers: LayerData[];
 }
 
+export interface ProjectMetadata {
+  format_version: string;
+  project_name?: string;
+  units?: string;
+  source?: string;
+}
+
 export interface ProjectData {
   levels: Level[];
   floors: Map<string, FloorData>;
+  /** Element layers from global/ directory (multi-story elements spanning >1 level) */
+  globalLayers: LayerData[];
+  metadata: ProjectMetadata;
 }
 
 export interface GridData {

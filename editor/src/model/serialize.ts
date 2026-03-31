@@ -4,7 +4,7 @@ import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'opening']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
 
 /**
  * Group elements by discipline/tableName key.
@@ -25,10 +25,14 @@ export function groupByLayer(elements: CanonicalElement[]): Map<string, Canonica
 
 /**
  * Check if a table is CSV-only (no SVG file).
+ * Opening is dual-mode: returns false so SVG is checked per-element.
  */
 export function isCsvOnlyTable(tableName: string): boolean {
   return CSV_ONLY_TABLES.has(tableName);
 }
+
+/** Tables that support dual mode (some elements have SVG, some don't). */
+const DUAL_MODE_TABLES = new Set(['opening']);
 
 /**
  * Serialize elements of one layer to canonical SVG string.
@@ -40,6 +44,14 @@ export function serializeToSvg(elements: CanonicalElement[]): string {
   // CSV-only tables don't have SVG
   const tableName = elements[0].tableName;
   if (CSV_ONLY_TABLES.has(tableName)) return '';
+
+  // Dual-mode tables: only serialize SVG for polygon elements (slab openings)
+  if (DUAL_MODE_TABLES.has(tableName)) {
+    const svgElements = elements.filter(el => el.geometry === 'polygon');
+    if (svgElements.length === 0) return '';
+    // Recurse with only polygon elements to generate their SVG
+    elements = svgElements;
+  }
 
   const bounds = computeBounds(elements);
   const vb = bounds ? `${r(bounds.x)} ${r(bounds.y)} ${r(bounds.w)} ${r(bounds.h)}` : '0 0 100 100';
@@ -67,23 +79,28 @@ export function serializeToSvg(elements: CanonicalElement[]): string {
 }
 
 function serializeLine(el: LineElement): string {
-  return `<line id="${el.id}" x1="${r(el.start.x)}" y1="${r(el.start.y)}" x2="${r(el.end.x)}" y2="${r(el.end.y)}" stroke="black" stroke-width="${r(el.strokeWidth)}" stroke-linecap="square" />`;
+  return `<path id="${el.id}" d="M ${r(el.start.x)},${r(el.start.y)} L ${r(el.end.x)},${r(el.end.y)}" />`;
 }
 
 function serializeSpatialLine(el: SpatialLineElement): string {
   // SVG is 2D projection — same as line, z lives in CSV only
-  return `<line id="${el.id}" x1="${r(el.start.x)}" y1="${r(el.start.y)}" x2="${r(el.end.x)}" y2="${r(el.end.y)}" stroke="black" stroke-width="${r(el.strokeWidth)}" stroke-linecap="square" />`;
+  return `<path id="${el.id}" d="M ${r(el.start.x)},${r(el.start.y)} L ${r(el.end.x)},${r(el.end.y)}" />`;
 }
 
 function serializePoint(el: PointElement): string {
+  if (el.width === el.height) {
+    // Circular: use <circle>
+    const radius = el.width / 2;
+    return `<circle id="${el.id}" cx="${r(el.position.x)}" cy="${r(el.position.y)}" r="${r(radius)}" />`;
+  }
   const x = el.position.x - el.width / 2;
   const y = el.position.y - el.height / 2;
-  return `<rect id="${el.id}" x="${r(x)}" y="${r(y)}" width="${r(el.width)}" height="${r(el.height)}" stroke="black" stroke-width="0.02" fill="none" />`;
+  return `<rect id="${el.id}" x="${r(x)}" y="${r(y)}" width="${r(el.width)}" height="${r(el.height)}" />`;
 }
 
 function serializePolygon(el: PolygonElement): string {
   const points = el.vertices.map(v => `${r(v.x)},${r(v.y)}`).join(' ');
-  return `<polygon id="${el.id}" points="${points}" stroke="black" stroke-width="0.02" fill="none" />`;
+  return `<polygon id="${el.id}" points="${points}" />`;
 }
 
 /** Round to 3 decimal places */

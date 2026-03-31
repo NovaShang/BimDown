@@ -1,6 +1,24 @@
-import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData } from '../types.ts';
+import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import type { DataSource } from './dataSource.ts';
+
+const DEFAULT_METADATA: ProjectMetadata = { format_version: '3.0' };
+
+export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetadata> {
+  const text = await ds.fetchText('project_metadata.json');
+  if (!text) return { ...DEFAULT_METADATA };
+  try {
+    const json = JSON.parse(text);
+    return {
+      format_version: json.format_version ?? '2.0',
+      project_name: json.project_name,
+      units: json.units,
+      source: json.source,
+    };
+  } catch {
+    return { ...DEFAULT_METADATA };
+  }
+}
 
 function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
@@ -53,6 +71,8 @@ function parseCsvLine(line: string): string[] {
 }
 
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
+  const metadataPromise = loadProjectMetadata(ds);
+
   let levels: Level[] = [];
   const text = await ds.fetchText('global/level.csv');
   if (text) {
@@ -114,7 +134,45 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     });
   }
 
-  return { levels, floors };
+  // Load element layers from global/ directory (multi-story elements spanning >1 level)
+  const globalFetchTasks: { disc: string; tableName: string }[] = [];
+  for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
+    for (const tableName of tables) {
+      globalFetchTasks.push({ disc, tableName });
+    }
+  }
+
+  const globalResults = await Promise.all(
+    globalFetchTasks.map(async ({ disc, tableName }) => {
+      const [svgContent, csvContent] = await Promise.all([
+        ds.fetchText(`global/${tableName}.svg`),
+        ds.fetchText(`global/${tableName}.csv`),
+      ]);
+      return { disc, tableName, svgContent, csvContent };
+    })
+  );
+
+  const globalLayers: LayerData[] = [];
+  for (const { disc, tableName, svgContent, csvContent } of globalResults) {
+    if (!svgContent && !csvContent) continue;
+
+    const csvMap = new Map<string, CsvRow>();
+    if (csvContent) {
+      for (const row of parseCsv(csvContent)) {
+        if (row.id) csvMap.set(row.id, row);
+      }
+    }
+
+    globalLayers.push({
+      tableName,
+      discipline: disc,
+      svgContent: svgContent ?? '',
+      csvRows: csvMap,
+    });
+  }
+
+  const metadata = await metadataPromise;
+  return { levels, floors, globalLayers, metadata };
 }
 
 export async function loadGrids(ds: DataSource): Promise<GridData[]> {

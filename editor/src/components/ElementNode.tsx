@@ -1,6 +1,6 @@
 import React from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
-import { getRenderer } from '../renderers/index.ts';
+import { getRenderer } from '../renderers/index.tsx';
 import { processSvg, extractInnerSvg } from '../utils/processor.ts';
 import { serializeToSvg, elementsToCsvRows } from '../model/serialize.ts';
 

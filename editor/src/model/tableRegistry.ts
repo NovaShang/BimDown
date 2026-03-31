@@ -2,7 +2,7 @@ import type { Level } from '../types.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type GeometryType = 'line' | 'spatial_line' | 'point' | 'polygon';
+export type GeometryType = 'line' | 'spatial_line' | 'point' | 'polygon' | 'mixed';
 export type PlacementType = 'free_line' | 'spatial_line' | 'hosted' | 'free_point' | 'free_polygon' | 'grid';
 
 export interface DrawingField {
@@ -226,8 +226,8 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     layerStyle: { displayName: 'Ceilings', color: '#b0bec5', icon: '▤', order: 7.8 },
   },
   opening: {
-    name: 'opening', prefix: 'op', discipline: 'architecture', geometry: 'line',
-    hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall'], widthAttr: 'width',
+    name: 'opening', prefix: 'op', discipline: 'architecture', geometry: 'mixed',
+    hostType: 'wall', hostTables: ['wall', 'curtain_wall', 'structure_wall', 'slab', 'structure_slab'], widthAttr: 'width',
     csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'width', 'height', 'shape'],
     defaults: { base_offset: '0', host_id: '', position: '0.5', width: '1.0', height: '2.4', shape: 'rect' },
     drawingFields: [
@@ -245,6 +245,27 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     drawingFields: [],
     renderZIndex: 30,
     layerStyle: { displayName: 'Stairs', color: '#7b68ee', icon: '⊞', order: 9 },
+  },
+
+  ramp: {
+    name: 'ramp', prefix: 'rp', discipline: 'architecture', geometry: 'spatial_line',
+    csvHeaders: ['number', 'base_offset', 'top_level_id', 'start_z', 'end_z', 'width', 'material'],
+    defaults: { base_offset: '0', top_level_id: '', start_z: '0', end_z: '3', width: '1.2', material: 'Concrete' },
+    drawingFields: [
+      { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+    ],
+    renderZIndex: 31,
+    layerStyle: { displayName: 'Ramps', color: '#7b68ee', icon: '⟋', order: 9.1 },
+  },
+  railing: {
+    name: 'railing', prefix: 'rl', discipline: 'architecture', geometry: 'spatial_line',
+    csvHeaders: ['number', 'base_offset', 'top_level_id', 'start_z', 'end_z', 'height', 'material'],
+    defaults: { base_offset: '0', top_level_id: '', start_z: '0', end_z: '0', height: '1.0', material: 'Metal' },
+    drawingFields: [
+      { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+    ],
+    renderZIndex: 32,
+    layerStyle: { displayName: 'Railings', color: '#546e7a', icon: '┃', order: 9.2 },
   },
 
   // ── Structure ─────────────────────────────────────────────────────────────
@@ -307,36 +328,15 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     renderZIndex: 71,
     layerStyle: { displayName: 'Braces', color: '#8d6e63', icon: '╲', order: 17 },
   },
-  isolated_foundation: {
-    name: 'isolated_foundation', prefix: 'if', discipline: 'structure', geometry: 'point',
-    csvHeaders: ['number', 'base_offset', 'material', 'size_x', 'size_y'],
-    defaults: { base_offset: '0', material: 'Concrete', size_x: '1.0', size_y: '1.0' },
-    drawingFields: [
-      { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
-      { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
-    ],
-    renderZIndex: 24,
-    layerStyle: { displayName: 'Iso. Foundations', color: '#8d6e63', icon: '■', order: 8.1 },
-  },
-  strip_foundation: {
-    name: 'strip_foundation', prefix: 'sf', discipline: 'structure', geometry: 'line',
-    csvHeaders: ['number', 'base_offset', 'material', 'thickness'],
+  foundation: {
+    name: 'foundation', prefix: 'f', discipline: 'structure', geometry: 'mixed',
+    csvHeaders: ['number', 'base_offset', 'thickness', 'width', 'length', 'material'],
     defaults: { base_offset: '0', material: 'Concrete', thickness: '0.4' },
     drawingFields: [
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
     ],
-    renderZIndex: 23,
-    layerStyle: { displayName: 'Strip Foundations', color: '#8d6e63', icon: '▬', order: 8.2 },
-  },
-  raft_foundation: {
-    name: 'raft_foundation', prefix: 'rf', discipline: 'structure', geometry: 'polygon',
-    csvHeaders: ['number', 'base_offset', 'material', 'thickness'],
-    defaults: { base_offset: '0', material: 'Concrete', thickness: '0.5' },
-    drawingFields: [
-      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
-    ],
     renderZIndex: 22,
-    layerStyle: { displayName: 'Raft Foundations', color: '#8d6e63', icon: '▨', order: 8.3 },
+    layerStyle: { displayName: 'Foundations', color: '#8d6e63', icon: '▨', order: 8.1 },
   },
 
   // ── MEP ───────────────────────────────────────────────────────────────────
@@ -398,18 +398,29 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
     csvHeaders: ['number', 'base_offset', 'system_type'],
     defaults: { base_offset: '0', system_type: 'hvac' },
     drawingFields: [
-      { key: 'system_type', label: 'System', type: 'select', options: [{ value: 'hvac', label: 'HVAC' }, { value: 'exhaust', label: 'Exhaust' }] },
+      { key: 'system_type', label: 'System', type: 'text' },
     ],
     renderZIndex: 91,
     layerStyle: { displayName: 'Terminals', color: '#f77f00', icon: '◆', order: 13 },
   },
 
+  mep_node: {
+    name: 'mep_node', prefix: 'mn', discipline: 'mep', geometry: 'point',
+    csvHeaders: ['number', 'base_offset', 'system_type'],
+    defaults: { base_offset: '0', system_type: 'hvac' },
+    drawingFields: [],
+    renderZIndex: 92,
+    layerStyle: { displayName: 'MEP Nodes', color: '#ff6b6b', icon: '●', order: 13.5 },
+  },
+
   // ── Mesh (non-parametric elements) ────────────────────────────────────────
   mesh: {
-    name: 'mesh', prefix: 'mesh', discipline: 'reference', geometry: 'point',
+    name: 'mesh', prefix: 'ms', discipline: 'reference', geometry: 'point',
     csvHeaders: ['category', 'name', 'level_id', 'mesh_file', 'x', 'y', 'z', 'rotation'],
-    defaults: { category: 'other', name: '', level_id: '', mesh_file: '', x: '0', y: '0', z: '0', rotation: '0' },
-    drawingFields: [],
+    defaults: { category: '', name: '', level_id: '', mesh_file: '', x: '0', y: '0', z: '0', rotation: '0' },
+    drawingFields: [
+      { key: 'category', label: 'Category', type: 'text' },
+    ],
     renderZIndex: 5,
     layerStyle: { displayName: 'Mesh Objects', color: '#9e9e9e', icon: '◇', order: 20 },
   },

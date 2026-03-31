@@ -2,7 +2,7 @@ import { Component, useEffect, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { EditorProvider, useEditorDispatch } from './state/EditorContext.tsx';
 import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
-import { createLocalDataSource, createApiDataSource } from './utils/dataSource.ts';
+import { createLocalDataSource } from './utils/dataSource.ts';
 import { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 import { TooltipProvider } from './components/ui/tooltip';
 import EditorShell from './components/EditorShell.tsx';
@@ -103,7 +103,6 @@ function AppInner() {
 
 export default function App() {
   const ds = useMemo(() => {
-    if (projectId) return createApiDataSource(projectId);
     return createLocalDataSource(model);
   }, []);
 

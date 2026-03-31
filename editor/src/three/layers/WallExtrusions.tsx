@@ -48,7 +48,7 @@ function buildHostedMap(
   const openings: LineElement[] = [];
   for (const el of allElements.values()) {
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
-    if (el.tableName !== 'door' && el.tableName !== 'window') continue;
+    if (el.tableName !== 'door' && el.tableName !== 'window' && el.tableName !== 'opening') continue;
     openings.push(el as LineElement);
   }
 

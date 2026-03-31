@@ -3,7 +3,8 @@ export { EditorProvider, useEditorState, useSelectionState, useEditorDispatch } 
 export { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 export { createLocalDataSource } from './utils/dataSource.ts';
 export type { DataSource } from './utils/dataSource.ts';
-export { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
+export { loadProject, loadGrids, loadLayer, loadProjectMetadata } from './utils/loader.ts';
+export type { ProjectMetadata } from './types.ts';
 export { default as EditorShell } from './components/EditorShell.tsx';
 export type { EditorState, EditorAction } from './state/editorTypes.ts';
 export { TooltipProvider } from './components/ui/tooltip.tsx';
