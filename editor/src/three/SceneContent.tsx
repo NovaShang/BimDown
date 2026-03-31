@@ -1,5 +1,5 @@
-import { useRef, useCallback, useEffect, useMemo, Suspense } from 'react';
-import { OrbitControls, Bounds, useBounds, Environment } from '@react-three/drei';
+import { useRef, useEffect, useMemo, Suspense } from 'react';
+import { OrbitControls, Environment } from '@react-three/drei';
 import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
@@ -91,41 +91,6 @@ function useModelBounds() {
     }
     return null;
   }, [project, currentLevel]);
-}
-
-function FitOnLevelChange() {
-  const bounds = useBounds();
-  const { currentLevel, floor3DMode } = useEditorState();
-  const prevKey = useRef('');
-
-  const doFit = useCallback(() => {
-    let attempts = 0;
-    const tryFit = () => {
-      try {
-        bounds.refresh().clip().fit();
-      } catch {
-        if (attempts++ < 10) requestAnimationFrame(tryFit);
-      }
-    };
-    requestAnimationFrame(tryFit);
-  }, [bounds]);
-
-  // Re-fit when level or floor display mode changes
-  useEffect(() => {
-    const key = `${currentLevel}:${floor3DMode}`;
-    if (key === prevKey.current) return;
-    prevKey.current = key;
-    doFit();
-  }, [currentLevel, floor3DMode, doFit]);
-
-  // Listen for external zoom-to-fit requests
-  useEffect(() => {
-    const handler = () => doFit();
-    window.addEventListener('zoom-to-fit-3d', handler);
-    return () => window.removeEventListener('zoom-to-fit-3d', handler);
-  }, [doFit]);
-
-  return null;
 }
 
 /** Makes the shadow-casting light follow the orbit target so shadows always cover the visible area. */
@@ -266,10 +231,7 @@ export default function SceneContent() {
 
       <TrackpadOrbitControls controlsRef={controlsRef} />
 
-      <Bounds fit clip margin={1.5}>
-        <FitOnLevelChange />
-        <FloorGroup />
-      </Bounds>
+      <FloorGroup />
 
       <ClippingController />
 
