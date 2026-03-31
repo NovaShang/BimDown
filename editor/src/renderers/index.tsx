@@ -43,7 +43,7 @@ const RENDERERS: Record<string, ElementRenderFn> = {
   space: renderSpace,
   slab: renderSlab,
   structure_slab: renderSlab,
-  stair: renderSlab,
+  stair: renderWallFill,
   roof: renderSlab,
   ceiling: renderSlab,
   // Line / spatial_line elements

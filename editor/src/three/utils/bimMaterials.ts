@@ -2,13 +2,15 @@ import { MeshPhysicalMaterial, DoubleSide } from 'three';
 
 export type BimMaterial =
   | 'concrete' | 'concrete_precast' | 'steel' | 'aluminum' | 'glass'
-  | 'wood' | 'brick' | 'gypsum' | 'metal_panel' | 'insulation'
-  | 'stone' | 'ceramic' | 'copper' | 'pvc' | 'galvanized_steel' | 'default';
+  | 'wood' | 'clt' | 'brick' | 'gypsum' | 'metal_panel' | 'insulation'
+  | 'stone' | 'ceramic' | 'copper' | 'pvc' | 'galvanized_steel'
+  | 'fiber_cement' | 'composite' | 'default';
 
 export const BIM_MATERIAL_OPTIONS: BimMaterial[] = [
   'concrete', 'concrete_precast', 'steel', 'aluminum', 'glass',
-  'wood', 'brick', 'gypsum', 'metal_panel', 'insulation',
+  'wood', 'clt', 'brick', 'gypsum', 'metal_panel', 'insulation',
   'stone', 'ceramic', 'copper', 'pvc', 'galvanized_steel',
+  'fiber_cement', 'composite',
 ];
 
 interface MaterialDef {
@@ -26,6 +28,7 @@ const MATERIAL_DEFS: Record<BimMaterial, MaterialDef> = {
   aluminum:         { color: '#c0c4c8', roughness: 0.25, metalness: 0.85, clearcoat: 0.15, opacity: 1.0  },
   glass:            { color: '#e0f0f8', roughness: 0.0,  metalness: 0.3,  clearcoat: 1.0,  opacity: 0.2  },
   wood:             { color: '#a08060', roughness: 0.82, metalness: 0.0,  clearcoat: 0.03, opacity: 1.0  },
+  clt:              { color: '#b89870', roughness: 0.80, metalness: 0.0,  clearcoat: 0.02, opacity: 1.0  },
   brick:            { color: '#9e7057', roughness: 0.92, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
   gypsum:           { color: '#e8e4e0', roughness: 0.95, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
   metal_panel:      { color: '#a8acb0', roughness: 0.4,  metalness: 0.6,  clearcoat: 0.05, opacity: 1.0  },
@@ -35,6 +38,8 @@ const MATERIAL_DEFS: Record<BimMaterial, MaterialDef> = {
   copper:           { color: '#b87333', roughness: 0.35, metalness: 0.85, clearcoat: 0.1,  opacity: 1.0  },
   pvc:              { color: '#d8d8d8', roughness: 0.6,  metalness: 0.0,  clearcoat: 0.1,  opacity: 1.0  },
   galvanized_steel: { color: '#a4a8b0', roughness: 0.4,  metalness: 0.7,  clearcoat: 0.08, opacity: 1.0  },
+  fiber_cement:     { color: '#c4c0b8', roughness: 0.90, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
+  composite:        { color: '#b0b4b8', roughness: 0.70, metalness: 0.1,  clearcoat: 0.05, opacity: 1.0  },
   default:          { color: '#b8b8b8', roughness: 0.75, metalness: 0.0,  clearcoat: 0.05, opacity: 1.0  },
 };
 
@@ -65,6 +70,9 @@ const KEYWORD_MAP: [string[], BimMaterial][] = [
   [['ceramic', 'tile', 'porcelain'], 'ceramic'],
   [['pvc', 'plastic'],            'pvc'],
   [['insulation'],                 'insulation'],
+  [['fiber_cement', 'fibre_cement', 'fibro'], 'fiber_cement'],
+  [['composite'],                  'composite'],
+  [['clt', 'cross_laminated'],     'clt'],
   [['metal', 'panel'],            'metal_panel'],
   [['paint'],                      'gypsum'], // painted surfaces → gypsum-like finish
 ];

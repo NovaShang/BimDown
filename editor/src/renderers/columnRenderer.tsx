@@ -2,7 +2,7 @@ import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import { getBlockSvg } from './blockLoader.ts';
 
 const BLOCK_MAP: Record<string, string> = {
-  rectangular: 'column_rectangular',
+  rect: 'column_rectangular',
   round: 'column_round',
 };
 
@@ -11,7 +11,7 @@ export function renderColumn(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'point') return null;
   const { position, width, height, id, attrs } = el as PointElement;
 
-  const shape = attrs.shape || 'rectangular';
+  const shape = attrs.shape || 'rect';
   const blockName = BLOCK_MAP[shape] ?? 'column_rectangular';
   const svg = getBlockSvg(blockName);
   if (!svg) return null;

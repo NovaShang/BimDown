@@ -139,11 +139,7 @@ function polygonToExtrude(
   const baseY = levelElevation + baseOffset;
   let height: number;
 
-  if (el.tableName === 'stair') {
-    const startZ = parseFloat(el.attrs.start_z) || 0;
-    const endZ = parseFloat(el.attrs.end_z) || 0;
-    height = Math.abs(endZ - startZ) || DEFAULT_WALL_HEIGHT;
-  } else if (['slab', 'structure_slab'].includes(el.tableName)) {
+  if (['slab', 'structure_slab'].includes(el.tableName)) {
     height = parseFloat(el.attrs.thickness) || DEFAULT_SLAB_THICKNESS;
   } else {
     // Space: use next level height or default

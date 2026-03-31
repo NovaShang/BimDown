@@ -16,10 +16,10 @@ for (const t of [
   'door', 'window', 'column', 'structure_column',
   'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',
   'equipment', 'terminal', 'mep_node',
-  'ramp', 'railing',
+  'ramp', 'railing', 'stair',
 ])
   registerRenderer(t, { component: BoxInstances, groupByMaterial: true });
 
-// Polygon extrusions — slabs, stairs, foundations (raft subtype)
-for (const t of ['slab', 'structure_slab', 'stair', 'foundation'])
+// Polygon extrusions — slabs, foundations (raft subtype)
+for (const t of ['slab', 'structure_slab', 'foundation'])
   registerRenderer(t, { component: PolygonExtrusions });

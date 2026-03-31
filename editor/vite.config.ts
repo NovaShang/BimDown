@@ -98,7 +98,10 @@ export default defineConfig({
             res.setHeader('Content-Type', contentType)
             fs.createReadStream(filePath).pipe(res)
           } else {
-            next()
+            // Return 404 for missing sample_data files instead of falling through
+            // to Vite's SPA fallback (which would serve index.html as 200)
+            res.writeHead(404)
+            res.end()
           }
         })
       },

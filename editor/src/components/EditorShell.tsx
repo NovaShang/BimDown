@@ -161,7 +161,11 @@ export default function EditorShell() {
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
     [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline],
   );
-  const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel, state.document, state.documentVersion]);
+  // viewBox only recomputes on level change / project load — not on every edit.
+  // This keeps the canvas coordinate space stable during drawing; SVG overflow:visible
+  // ensures elements beyond the viewBox are still rendered.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel]);
   const layerGroups = useMemo(() => getLayerGroups(state), [state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline]);
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
   const activeDiscipline = state.activeDiscipline;

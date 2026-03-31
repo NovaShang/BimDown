@@ -280,7 +280,7 @@ export default function LeftPanel({
   return (
     <div className="absolute left-3 top-16 bottom-[52px] z-30 flex w-52 flex-col gap-2 select-none">
       {/* Floor Switcher */}
-      <div className="glass-panel shrink-0 overflow-y-auto rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)] p-2">
+      <div className="glass-panel shrink-0 max-h-[40%] overflow-y-auto rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)] p-2">
         <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {t('panel.floors')}

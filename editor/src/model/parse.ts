@@ -52,31 +52,16 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
   switch (geoType) {
     case 'line':
     case 'spatial_line': {
-      // v3: query <path> elements; fall back to <line> for v2 compatibility
       const paths = g.querySelectorAll('path');
-      if (paths.length > 0) {
-        for (const path of paths) {
-          const id = path.getAttribute('id') || '';
-          if (!id) continue;
-          const csv = csvRows.get(id);
-          const el = geoType === 'spatial_line'
-            ? parseSpatialLineFromPath(id, path, layer, csv)
-            : parseLineFromPath(id, path, layer, csv);
-          if (hosted) applyHostFields(el, csv);
-          elements.push(el);
-        }
-      } else {
-        const lines = g.querySelectorAll('line');
-        for (const line of lines) {
-          const id = line.getAttribute('id') || '';
-          if (!id) continue;
-          const csv = csvRows.get(id);
-          const el = geoType === 'spatial_line'
-            ? parseSpatialLineElement(id, line, layer, csv)
-            : parseLineElement(id, line, layer, csv);
-          if (hosted) applyHostFields(el, csv);
-          elements.push(el);
-        }
+      for (const path of paths) {
+        const id = path.getAttribute('id') || '';
+        if (!id) continue;
+        const csv = csvRows.get(id);
+        const el = geoType === 'spatial_line'
+          ? parseSpatialLineFromPath(id, path, layer, csv)
+          : parseLineFromPath(id, path, layer, csv);
+        if (hosted) applyHostFields(el, csv);
+        elements.push(el);
       }
       break;
     }
@@ -332,51 +317,6 @@ function parseSpatialLineFromPath(
   };
 }
 
-/** v2 backward compatibility: parse from <line> elements */
-function parseLineElement(
-  id: string, line: SVGLineElement, layer: LayerData, csv?: CsvRow
-): LineElement {
-  return {
-    geometry: 'line',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    start: {
-      x: parseFloat(line.getAttribute('x1') || '0'),
-      y: parseFloat(line.getAttribute('y1') || '0'),
-    },
-    end: {
-      x: parseFloat(line.getAttribute('x2') || '0'),
-      y: parseFloat(line.getAttribute('y2') || '0'),
-    },
-    strokeWidth: parseFloat(csv?.thickness ?? line.getAttribute('stroke-width') ?? '0.1'),
-    attrs: csvToAttrs(csv, id),
-  };
-}
-
-/** v2 backward compatibility: parse from <line> elements */
-function parseSpatialLineElement(
-  id: string, line: SVGLineElement, layer: LayerData, csv?: CsvRow
-): SpatialLineElement {
-  return {
-    geometry: 'spatial_line',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    start: {
-      x: parseFloat(line.getAttribute('x1') || '0'),
-      y: parseFloat(line.getAttribute('y1') || '0'),
-    },
-    end: {
-      x: parseFloat(line.getAttribute('x2') || '0'),
-      y: parseFloat(line.getAttribute('y2') || '0'),
-    },
-    startZ: parseFloat(csv?.start_z ?? '0'),
-    endZ: parseFloat(csv?.end_z ?? '0'),
-    strokeWidth: parseFloat(csv?.thickness ?? line.getAttribute('stroke-width') ?? '0.1'),
-    attrs: csvToAttrs(csv, id),
-  };
-}
 
 function applyHostFields(el: CanonicalElement, csv?: CsvRow): void {
   if (!csv) return;

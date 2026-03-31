@@ -1,19 +1,20 @@
 import type { Level } from '../types.ts';
-import { BIM_MATERIAL_OPTIONS } from '../three/utils/bimMaterials.ts';
 import {
   TABLE_REGISTRY,
+  MATERIAL_OPTIONS,
   SHAPE_OPTIONS,
   SLAB_FUNCTION_OPTIONS,
   OPERATION_OPTIONS,
   HINGE_OPTIONS,
   SWING_SIDE_OPTIONS,
-  SYSTEM_TYPE_OPTIONS,
   ROOF_TYPE_OPTIONS,
+  EQUIPMENT_TYPE_OPTIONS,
+  TERMINAL_TYPE_OPTIONS,
 } from './tableRegistry.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export type PropertyGroup = 'identity' | 'geometry' | 'material' | 'relationships' | 'system' | 'curtain_wall' | 'stair' | 'roof' | 'mesh';
+export type PropertyGroup = 'identity' | 'geometry' | 'material' | 'relationships' | 'system' | 'curtain_wall' | 'roof' | 'mesh';
 
 export interface PropertyField {
   key: string;
@@ -26,13 +27,6 @@ export interface PropertyField {
   step?: number;
   group: PropertyGroup;
 }
-
-// ─── Shared material select options ──────────────────────────────────────────
-
-const BIM_MATERIAL_SELECT_OPTIONS = BIM_MATERIAL_OPTIONS.map(m => ({
-  value: m,
-  label: m.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
-}));
 
 // ─── Global property field definitions ───────────────────────────────────────
 
@@ -63,7 +57,7 @@ const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   y:               { key: 'y',              label: 'Y',               type: 'readonly', group: 'geometry' },
 
   // Material
-  material:        { key: 'material',        label: 'Material',        type: 'select', options: BIM_MATERIAL_SELECT_OPTIONS, group: 'material' },
+  material:        { key: 'material',        label: 'Material',        type: 'select', options: MATERIAL_OPTIONS, group: 'material' },
   function:        { key: 'function',        label: 'Function',        type: 'select', options: SLAB_FUNCTION_OPTIONS, group: 'material' },
 
   // Relationships
@@ -76,9 +70,9 @@ const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   operation:       { key: 'operation',       label: 'Operation',       type: 'select', options: OPERATION_OPTIONS, group: 'system' },
   hinge_position:  { key: 'hinge_position',  label: 'Hinge',           type: 'select', options: HINGE_OPTIONS, group: 'system' },
   swing_side:      { key: 'swing_side',      label: 'Swing',           type: 'select', options: SWING_SIDE_OPTIONS, group: 'system' },
-  system_type:     { key: 'system_type',     label: 'System Type',     type: 'select', options: SYSTEM_TYPE_OPTIONS, group: 'system' },
-  equipment_type:  { key: 'equipment_type',  label: 'Equipment Type',  type: 'text',   group: 'system' },
-  terminal_type:   { key: 'terminal_type',   label: 'Terminal Type',   type: 'text',   group: 'system' },
+  system_type:     { key: 'system_type',     label: 'System Type',     type: 'text',   group: 'system' },
+  equipment_type:  { key: 'equipment_type',  label: 'Equipment Type',  type: 'select', options: EQUIPMENT_TYPE_OPTIONS, group: 'system' },
+  terminal_type:   { key: 'terminal_type',   label: 'Terminal Type',   type: 'select', options: TERMINAL_TYPE_OPTIONS, group: 'system' },
 
   // Curtain wall
   u_grid_count:    { key: 'u_grid_count',    label: 'U Grids',         type: 'number', min: 0, step: 1, group: 'curtain_wall' },
@@ -93,8 +87,7 @@ const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   slope:           { key: 'slope',           label: 'Slope',           type: 'number', unit: '°', min: 0, max: 60, step: 5, group: 'roof' },
 
   // Stair
-  rise:            { key: 'rise',            label: 'Rise',            type: 'number', unit: 'm', min: 0.1, step: 0.01, group: 'stair' },
-  run:             { key: 'run',             label: 'Run',             type: 'number', unit: 'm', min: 0.1, step: 0.01, group: 'stair' },
+  step_count:      { key: 'step_count',      label: 'Steps',           type: 'number', min: 1, step: 1, group: 'geometry' },
 
   // Opening
   // shape is handled by the global def, but opening uses OPENING_SHAPE_OPTIONS — handled via drawingFields override
@@ -117,7 +110,6 @@ export const PROPERTY_GROUPS: { key: PropertyGroup; labelKey: string }[] = [
   { key: 'system',        labelKey: 'prop.System' },
   { key: 'curtain_wall',  labelKey: 'prop.CurtainWall' },
   { key: 'roof',          labelKey: 'prop.Roof' },
-  { key: 'stair',         labelKey: 'prop.Stair' },
   { key: 'mesh',          labelKey: 'prop.Mesh' },
 ];
 

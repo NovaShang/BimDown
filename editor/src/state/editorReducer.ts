@@ -62,7 +62,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const { model, project, grids } = action;
       let currentLevel = '';
       let visibleLayers = new Set<string>();
-      let activeDiscipline: string | null = null;
+      let activeDiscipline: string | null = 'architecture';
 
       if (project.floors.size > 0) {
         const firstLevel = project.levels.find(l => project.floors.has(l.id));
@@ -71,7 +71,6 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           const floor = project.floors.get(firstLevel.id);
           if (floor) {
             visibleLayers = new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`));
-            if (floor.layers.length > 0) activeDiscipline = floor.layers[0].discipline;
           }
         }
       } else if (project.levels.length > 0) {
@@ -122,17 +121,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Preserve grid visibility across levels
       if (state.visibleLayers.has('reference/grid')) visibleLayers.add('reference/grid');
 
-      let activeDiscipline = state.activeDiscipline;
-      if (floor && floor.layers.length > 0) {
-        const hasDiscipline = floor.layers.some(l => l.discipline === state.activeDiscipline);
-        if (!hasDiscipline) activeDiscipline = floor.layers[0].discipline;
-      }
-
       return {
         ...state,
         currentLevel: action.levelId,
         visibleLayers,
-        activeDiscipline,
         selectedIds: new Set(),
         hoveredId: null,
         activeFilter: null,

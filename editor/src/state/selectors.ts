@@ -55,7 +55,7 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
   }
 
   // Empty project fallback
-  return state.currentLevel ? { x: -50, y: -50, w: 100, h: 100 } : null;
+  return state.currentLevel ? { x: -15, y: -15, w: 30, h: 30 } : null;
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {

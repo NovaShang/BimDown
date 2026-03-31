@@ -9,15 +9,6 @@ export const REVERSE_PREFIX_MAP: Record<string, string> = (() => {
   for (const [name, def] of Object.entries(TABLE_REGISTRY)) {
     map[def.prefix] = name;
   }
-  // Legacy prefixes (editor used to use these, existing data may still have them)
-  map['wi'] = 'window';     // now 'wn'
-  map['te'] = 'terminal';   // now 'tm'
-  map['be'] = 'beam';       // now 'bm'
-  map['ssl'] = 'structure_slab'; // now 'ss'
-  map['mesh'] = 'mesh';          // now 'ms'
-  map['if'] = 'foundation';      // was isolated_foundation
-  map['sf'] = 'foundation';      // was strip_foundation
-  map['rf'] = 'foundation';      // was raft_foundation
   return map;
 })();
 

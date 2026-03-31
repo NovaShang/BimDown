@@ -10,7 +10,7 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
   try {
     const json = JSON.parse(text);
     return {
-      format_version: json.format_version ?? '2.0',
+      format_version: json.format_version ?? '3.0',
       project_name: json.project_name,
       units: json.units,
       source: json.source,
