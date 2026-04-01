@@ -10,7 +10,7 @@
  * 2. Register it in RENDERERS below
  */
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { renderWallFill } from './wallRenderer.tsx';
+import { renderWallHitArea, renderLineFill } from './wallRenderer.tsx';
 import { renderColumn } from './columnRenderer.tsx';
 import { renderDoor } from './doorRenderer.tsx';
 import { renderWindow } from './windowRenderer.tsx';
@@ -22,14 +22,14 @@ import { renderGrid } from './gridRenderer.tsx';
 export type ElementRenderFn = (el: CanonicalElement) => React.JSX.Element | null;
 
 const RENDERERS: Record<string, ElementRenderFn> = {
-  // Walls & MEP lines — fill only, outlines handled by WallOutlines
-  wall: renderWallFill,
-  curtain_wall: renderWallFill,
-  structure_wall: renderWallFill,
-  duct: renderWallFill,
-  pipe: renderWallFill,
-  conduit: renderWallFill,
-  cable_tray: renderWallFill,
+  // Walls & MEP lines — transparent hit area; visible fill by WallOutlines (miter-adjusted)
+  wall: renderWallHitArea,
+  curtain_wall: renderWallHitArea,
+  structure_wall: renderWallHitArea,
+  duct: renderWallHitArea,
+  pipe: renderWallHitArea,
+  conduit: renderWallHitArea,
+  cable_tray: renderWallHitArea,
   // Point elements
   column: renderColumn,
   structure_column: renderColumn,
@@ -43,15 +43,15 @@ const RENDERERS: Record<string, ElementRenderFn> = {
   space: renderSpace,
   slab: renderSlab,
   structure_slab: renderSlab,
-  stair: renderWallFill,
+  stair: renderLineFill,
   roof: renderSlab,
   ceiling: renderSlab,
-  // Line / spatial_line elements
-  beam: renderWallFill,
-  brace: renderWallFill,
-  ramp: renderWallFill,
-  railing: renderWallFill,
-  room_separator: renderWallFill,
+  // Line / spatial_line elements — visible fill (no miter)
+  beam: renderLineFill,
+  brace: renderLineFill,
+  ramp: renderLineFill,
+  railing: renderLineFill,
+  room_separator: renderLineFill,
   // Openings (dual-mode: wall openings are invisible, slab openings show outline)
   opening: renderOpening,
   // Reference elements
@@ -85,7 +85,7 @@ function renderOpening(el: CanonicalElement): React.JSX.Element | null {
 function renderFoundation(el: CanonicalElement): React.JSX.Element | null {
   switch (el.geometry) {
     case 'point': return renderEquipment(el);   // isolated foundation
-    case 'line': return renderWallFill(el);      // strip foundation
+    case 'line': return renderLineFill(el);       // strip foundation
     case 'polygon': return renderSlab(el);       // raft foundation
     default: return null;
   }

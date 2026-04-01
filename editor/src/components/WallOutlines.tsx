@@ -16,6 +16,13 @@ interface WallOutlinesProps {
 const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
 const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
 
+const MEP_FILL: Record<string, string> = {
+  duct: '#00b4d815',
+  pipe: '#06d6a015',
+  conduit: '#ffd16615',
+  cable_tray: '#ffd16615',
+};
+
 const OUTLINE_STYLES: Record<string, { color: string; width: number }> = {
   wall: { color: '#1a1a2e', width: 0.03 },
   curtain_wall: { color: '#7ec8e3', width: 0.02 },
@@ -49,9 +56,12 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
         const material = (line.attrs.material ?? '').toLowerCase();
         let fill = 'none';
         if (isWall) {
-          if (material.includes('concrete')) fill = '#d4d4d4';
+          if (el.tableName === 'curtain_wall') fill = '#d6eaf8';
+          else if (material.includes('concrete')) fill = '#d4d4d4';
           else if (material.includes('metal') || material.includes('steel')) fill = '#e8e8e8';
           else fill = '#f0f0f0';
+        } else if (isMep) {
+          fill = MEP_FILL[el.tableName] ?? 'none';
         }
 
         const seg: WallSegment = {
@@ -68,15 +78,22 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
     }
 
     const processGroup = (items: { seg: WallSegment; table: string }[]) => {
-      if (items.length === 0) return { edges: [] as [{ x: number; y: number }, { x: number; y: number }][], fills: [] as { points: string; fill: string }[], color: '#888', width: 0.02 };
+      const emptyResult = {
+        edges: [] as [{ x: number; y: number }, { x: number; y: number }][],
+        wallFills: [] as { points: string; fill: string }[],
+        junctionFills: [] as { points: string; fill: string }[],
+        color: '#888', width: 0.02,
+      };
+      if (items.length === 0) return emptyResult;
 
       const segs = items.map(i => i.seg);
       const miter = computeCornerAdjustments(segs);
       const adj = miter.adjustments;
       const style = OUTLINE_STYLES[items[0].table] ?? { color: '#888', width: 0.02 };
 
-      // Build per-wall polygons
+      // Build per-wall polygons (with miter-adjusted corners)
       const polygons: WallPolygon[] = [];
+      const wallFills: { points: string; fill: string }[] = [];
       for (const { seg } of items) {
         const dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1;
         const len = Math.sqrt(dx * dx + dy * dy);
@@ -95,6 +112,14 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
         if (ea) { p2 = ea.right; p3 = ea.left; }
 
         polygons.push({ id: seg.id, corners: [p1, p2, p3, p4], startKey: ptKey(seg.x1, seg.y1), endKey: ptKey(seg.x2, seg.y2) });
+
+        // Miter-adjusted fill polygon
+        if (seg.fill !== 'none') {
+          wallFills.push({
+            points: [p1, p2, p3, p4].map(p => `${p.x},${p.y}`).join(' '),
+            fill: seg.fill,
+          });
+        }
       }
 
       // Build junction set (endpoints shared by 2+ walls)
@@ -110,12 +135,12 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
       const outerEdges = computeOuterEdges(polygons, junctionKeys);
 
       // Junction fills (cover gaps between per-element fill polygons)
-      const fills = miter.junctionFills.map(jf => ({
+      const junctionFills = miter.junctionFills.map(jf => ({
         points: jf.points.map(p => `${p.x},${p.y}`).join(' '),
         fill: jf.fill,
       }));
 
-      return { edges: outerEdges, fills, color: style.color, width: style.width };
+      return { edges: outerEdges, wallFills, junctionFills, color: style.color, width: style.width };
     };
 
     const walls = processGroup(wallSegs);
@@ -124,16 +149,25 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
   }, [layers]);
 
   const { walls, mep } = data;
-  if (walls.edges.length === 0 && mep.edges.length === 0) return null;
+  if (walls.wallFills.length === 0 && walls.edges.length === 0 && mep.wallFills.length === 0 && mep.edges.length === 0) return null;
 
   return (
     <g className="wall-outlines" transform="scale(1,-1)" style={{ pointerEvents: 'none' }}>
-      {walls.fills.map((f, i) => (
-        <polygon key={`wf${i}`} points={f.points} fill={f.fill} stroke="none" />
+      {/* Miter-adjusted wall fills */}
+      {walls.wallFills.map((f, i) => (
+        <polygon key={`wpf${i}`} points={f.points} fill={f.fill} stroke="none" />
       ))}
-      {mep.fills.map((f, i) => (
-        <polygon key={`mf${i}`} points={f.points} fill={f.fill} stroke="none" />
+      {mep.wallFills.map((f, i) => (
+        <polygon key={`mpf${i}`} points={f.points} fill={f.fill} stroke="none" />
       ))}
+      {/* Junction gap fills */}
+      {walls.junctionFills.map((f, i) => (
+        <polygon key={`wjf${i}`} points={f.points} fill={f.fill} stroke="none" />
+      ))}
+      {mep.junctionFills.map((f, i) => (
+        <polygon key={`mjf${i}`} points={f.points} fill={f.fill} stroke="none" />
+      ))}
+      {/* Outer edge outlines */}
       {walls.edges.map(([a, b], i) => (
         <line key={`w${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
           stroke={walls.color} strokeWidth={walls.width} />
