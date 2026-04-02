@@ -69,14 +69,13 @@ const TOOLS_3D: { tool: Tool; labelKey: string; icon: IconName; shortcut: string
 /** Architecture tool groups — tools within each group share a toolbar slot */
 const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
   { tools: ['wall', 'curtain_wall'] },
-  { tools: ['door', 'window', 'opening'] },
   { tools: ['space', 'room_separator'] },
-  { tools: ['slab', 'roof', 'ceiling'] },
+  { tools: ['slab', 'ceiling'] },
   { tools: ['stair', 'ramp', 'railing'] },
 ];
 
 /** Tables that appear ungrouped in the architecture toolbar */
-const ARCH_UNGROUPED = new Set(['column']);
+const ARCH_UNGROUPED = new Set(['column', 'door', 'window', 'opening', 'roof']);
 
 function getDrawTool(tableName: string): Tool {
   const placement = placementTypeForTable(tableName);
@@ -253,18 +252,32 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   const canUndo = state.history.undoStack.length > 0;
   const canRedo = state.history.redoStack.length > 0;
 
-  // Build architecture toolbar items: groups + ungrouped
+  // Build architecture toolbar items as an ordered list of groups and singles
   const isArchitecture = activeDiscipline === 'architecture';
 
-  // For architecture, compute grouped and ungrouped items
-  const archGroups = isArchitecture
-    ? ARCH_TOOL_GROUPS
-        .map(g => ({ ...g, tools: g.tools.filter(t => disciplineTables.includes(t)) }))
-        .filter(g => g.tools.length > 0)
-    : [];
-  const archUngrouped = isArchitecture
-    ? disciplineTables.filter(t => ARCH_UNGROUPED.has(t))
-    : [];
+  // Build a lookup: table → group (filtered to available tables)
+  const archItems: ({ type: 'group'; tools: string[] } | { type: 'single'; table: string })[] = [];
+  if (isArchitecture) {
+    const groupForTable = new Map<string, string[]>();
+    const resolvedGroups: string[][] = [];
+    for (const g of ARCH_TOOL_GROUPS) {
+      const filtered = g.tools.filter(t => disciplineTables.includes(t));
+      if (filtered.length > 0) {
+        resolvedGroups.push(filtered);
+        for (const t of filtered) groupForTable.set(t, filtered);
+      }
+    }
+    const emitted = new Set<string[]>();
+    for (const table of disciplineTables) {
+      const group = groupForTable.get(table);
+      if (group && !emitted.has(group)) {
+        emitted.add(group);
+        archItems.push(group.length === 1 ? { type: 'single', table: group[0] } : { type: 'group', tools: group });
+      } else if (!group) {
+        archItems.push({ type: 'single', table });
+      }
+    }
+  }
 
   const activeTable = state.drawingTarget?.tableName ?? null;
 
@@ -334,41 +347,28 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         <div className="flex items-center gap-0.5">
           {isArchitecture ? (
             <>
-              {/* Grouped architecture tools */}
-              {archGroups.map((group, gi) => (
-                group.tools.length === 1 ? (
-                  // Single tool in group — render flat
-                  <SingleToolButton
-                    key={group.tools[0]}
-                    table={group.tools[0]}
-                    discipline={activeDiscipline!}
-                    disciplineColor={disciplineColor}
-                    isActive={activeTable === group.tools[0] && state.drawingTarget?.discipline === activeDiscipline}
-                    onClick={handleDrawToolClick}
-                  />
-                ) : (
+              {archItems.map((item, i) =>
+                item.type === 'group' ? (
                   <ToolGroupButton
-                    key={gi}
-                    tools={group.tools}
+                    key={i}
+                    tools={item.tools}
                     discipline={activeDiscipline!}
                     disciplineColor={disciplineColor}
                     activeTable={activeTable}
                     activeDiscipline={state.drawingTarget?.discipline ?? null}
                     onToolClick={handleDrawToolClick}
                   />
+                ) : (
+                  <SingleToolButton
+                    key={item.table}
+                    table={item.table}
+                    discipline={activeDiscipline!}
+                    disciplineColor={disciplineColor}
+                    isActive={activeTable === item.table && state.drawingTarget?.discipline === activeDiscipline}
+                    onClick={handleDrawToolClick}
+                  />
                 )
-              ))}
-              {/* Ungrouped architecture tools */}
-              {archUngrouped.map(table => (
-                <SingleToolButton
-                  key={table}
-                  table={table}
-                  discipline={activeDiscipline!}
-                  disciplineColor={disciplineColor}
-                  isActive={activeTable === table && state.drawingTarget?.discipline === activeDiscipline}
-                  onClick={handleDrawToolClick}
-                />
-              ))}
+              )}
             </>
           ) : (
             // Non-architecture: flat list
