@@ -37,11 +37,8 @@ interface UseInteraction3DOptions {
  * Left-click behavior:
  *
  * 1. Draw tool active → tool handles everything, no orbit
- * 2. Select tool + click on unselected element → select it, drag = orbit
- * 3. Select tool + click on selected element → drag = orbit (edit via resize handles only)
- * 4. Select tool + click on empty → clear selection (only on click, not drag)
- * 5. Select tool + drag on empty → orbit, preserves selection
- * 6. Resize handle drag → handled by ResizeHandles3D (skipped here)
+ * 2. Select tool active → selectTool handles everything (select, move, marquee), no orbit
+ * 3. Resize handle drag → handled by ResizeHandles3D (skipped here)
  *
  * Middle = pan, right = dolly, scroll = zoom (always via OrbitControls)
  */
@@ -55,10 +52,6 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
 
   // Track whether our tool system owns the current gesture
   const toolOwnsGestureRef = useRef(false);
-  // Track pointerdown position to distinguish click vs drag
-  const downPosRef = useRef({ x: 0, y: 0 });
-  // Whether pointerdown hit empty space (deferred clear on click-up)
-  const pendingClearRef = useRef(false);
 
   const toNDC = useCallback((clientX: number, clientY: number): Vector2 => {
     const rect = gl.domElement.getBoundingClientRect();
@@ -96,8 +89,8 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       const elementId = findHitElementId(ndc);
       hitElementIdRef.current = elementId;
 
-      if (isDrawTool) {
-        // Draw tools: always take over, disable orbit
+      if (isDrawTool || tool === 'select') {
+        // Draw tools and select tool: take over gesture, disable orbit
         toolOwnsGestureRef.current = true;
         if (controlsRef.current) controlsRef.current.enabled = false;
 
@@ -106,23 +99,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
         return;
       }
 
-      // Select tool
-      const alreadySelected = elementId ? stateRef.current.selectedIds.has(elementId) : false;
-
-      if (elementId && alreadySelected) {
-        // Clicked on an already-selected element: just orbit (move is via resize handles only)
-        toolOwnsGestureRef.current = false;
-      } else if (elementId && !alreadySelected) {
-        // Clicked on an unselected element: select it, let orbit handle drag
-        toolOwnsGestureRef.current = false;
-        toolCtx.dispatch({ type: 'SELECT', ids: [elementId] });
-        // Don't disable orbit — drag will orbit
-      } else {
-        // Clicked on empty space: defer clear to pointerup (only if no drag/orbit)
-        toolOwnsGestureRef.current = false;
-        pendingClearRef.current = true;
-        downPosRef.current = { x: e.clientX, y: e.clientY };
-      }
+      // pan/zoom tools: leave orbit enabled
     };
 
     const handlePointerMove = (e: PointerEvent) => {
@@ -153,16 +130,6 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
         const tool = stateRef.current.activeTool;
         const handler = getToolHandler(tool);
         handler.onPointerUp?.(toolCtx, e as unknown as React.PointerEvent);
-      }
-
-      // Deferred clear: only if it was a click (not an orbit drag)
-      if (pendingClearRef.current) {
-        const dx = e.clientX - downPosRef.current.x;
-        const dy = e.clientY - downPosRef.current.y;
-        if (Math.abs(dx) < 3 && Math.abs(dy) < 3) {
-          toolCtx.dispatch({ type: 'CLEAR_SELECTION' });
-        }
-        pendingClearRef.current = false;
       }
 
       toolOwnsGestureRef.current = false;
