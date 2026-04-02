@@ -230,5 +230,20 @@
   "error.tryAgain": "重试",
 
   "draw.tooltip": "绘制{{name}}",
-  "draw.gridTooltip": "绘制轴网 (G)"
+  "draw.gridTooltip": "绘制轴网 (G)",
+
+  "landing.subtitle": "开源 2D/3D 建筑模型编辑器",
+  "landing.new": "新建模型",
+  "landing.newDesc": "从空白建筑模型开始",
+  "landing.openFolder": "打开本地文件夹",
+  "landing.openFolderDesc": "适合与 AI 实时协作",
+  "landing.openZip": "打开本地 ZIP",
+  "landing.openZipDesc": "从本地 .zip 文件加载项目",
+  "landing.openUrl": "打开在线 ZIP",
+  "landing.openUrlDesc": "从 URL 加载 .zip 项目",
+  "landing.sample": "打开示例",
+  "landing.sampleDesc": "加载内置示例模型",
+  "landing.privacy": "此编辑器完全在浏览器本地运行，不会上传任何数据。",
+  "landing.urlPrompt": "请输入 .zip 文件的 URL：",
+  "landing.urlError": "加载 ZIP 失败"
 }

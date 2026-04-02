@@ -230,5 +230,20 @@
   "error.tryAgain": "Try Again",
 
   "draw.tooltip": "Draw {{name}}",
-  "draw.gridTooltip": "Draw Grid (G)"
+  "draw.gridTooltip": "Draw Grid (G)",
+
+  "landing.subtitle": "Open-source 2D/3D building model editor",
+  "landing.new": "Create New Model",
+  "landing.newDesc": "Start with an empty building model",
+  "landing.openFolder": "Open Local Folder",
+  "landing.openFolderDesc": "Great for real-time collaboration with AI",
+  "landing.openZip": "Open Local ZIP",
+  "landing.openZipDesc": "Load a .zip project from your computer",
+  "landing.openUrl": "Open Online ZIP",
+  "landing.openUrlDesc": "Load a .zip project from a URL",
+  "landing.sample": "Open Sample",
+  "landing.sampleDesc": "Load the bundled sample model",
+  "landing.privacy": "This editor runs entirely in your browser. No data is uploaded.",
+  "landing.urlPrompt": "Enter URL to a .zip file:",
+  "landing.urlError": "Failed to load ZIP"
 }

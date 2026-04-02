@@ -90,17 +90,26 @@ export default function EditorShell() {
     prevViewModeRef.current = state.viewMode;
   }, [state.viewMode]);
 
-  // Initialize document model when floor data loads or level changes
+  // Initialize document model when level changes or project first loads.
+  // We must NOT re-init when state.project changes due to UPDATE_LAYER from
+  // our own auto-persist cycle, as that would wipe undo history.
   const prevLevelRef = useRef('');
+  const projectLoadedRef = useRef(false);
   useEffect(() => {
-
     const isLevelChange = state.currentLevel !== prevLevelRef.current;
+    const isInitialLoad = !projectLoadedRef.current && state.project;
+
     if (isLevelChange) {
       // Sync previous document back to project before switching
       syncDocumentToProject.current();
       flushPendingSave.current();
       prevLevelRef.current = state.currentLevel;
     }
+
+    // Only re-initialize document on level change or first project load.
+    // Ignore state.project reference changes from UPDATE_LAYER.
+    if (!isLevelChange && !isInitialLoad) return;
+    if (isInitialLoad) projectLoadedRef.current = true;
 
     if (!state.currentLevel) return;
     const floor = state.project?.floors.get(state.currentLevel);
