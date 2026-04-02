@@ -17,6 +17,7 @@ import Minimap from './Minimap.tsx';
 import { pruneCache } from './ElementNode.tsx';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import CanvasContextMenu from './CanvasContextMenu.tsx';
+import CanvasOverlay from './CanvasOverlay.tsx';
 
 // Safari-only event for trackpad pinch gestures
 interface GestureEvent extends UIEvent {
@@ -30,6 +31,7 @@ interface CanvasProps {
   viewBox: { x: number; y: number; w: number; h: number } | null;
   activeFilter: string | null;
   activeDiscipline: string | null;
+  overlayItems?: import('../hooks/useOverlayItems.ts').OverlayItem[];
 }
 
 type CanvasAction = EditorAction | TransformAction;
@@ -39,7 +41,7 @@ export interface CanvasHandle {
   getScale: () => number;
 }
 
-export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, viewBox, activeFilter, activeDiscipline }, ref) {
+export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, viewBox, activeFilter, activeDiscipline, overlayItems }, ref) {
   const state = useCoreEditorState();
   const globalDispatch = useEditorDispatch();
   const containerRef = useRef<HTMLDivElement>(null);
@@ -344,6 +346,15 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
       </svg>
 
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
+
+      {overlayItems && overlayItems.length > 0 && (
+        <CanvasOverlay
+          items={overlayItems}
+          svgRef={svgRef}
+          containerRef={containerRef}
+          subscribeTransform={subscribeTransform}
+        />
+      )}
 
       {state.showMinimap && (
         <Minimap

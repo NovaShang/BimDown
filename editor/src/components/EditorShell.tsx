@@ -13,6 +13,8 @@ import type { CanvasHandle } from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
 import ViewToolbar from './ViewToolbar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
+import SelectionActions from './SelectionActions.tsx';
+import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
@@ -179,6 +181,19 @@ export default function EditorShell() {
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
   const activeDiscipline = state.activeDiscipline;
 
+  // Overlay items for selection action bar
+  const selectionContent = state.selectedIds.size > 0 && !state.readonly ? <SelectionActions /> : null;
+  const overlayItems = useOverlayItems(state.selectedIds, state.document, selectionContent);
+
+  // Current level elevation for 3D overlay projection
+  const currentElevation = useMemo(() => {
+    if (!state.project) return 0;
+    for (const l of state.project.levels) {
+      if (l.id === state.currentLevel) return l.elevation;
+    }
+    return 0;
+  }, [state.project, state.currentLevel]);
+
   // Canvas ref for view toolbar integration
   const canvasRef = useRef<CanvasHandle>(null);
   const [canvasScale, setCanvasScale] = useState(1);
@@ -207,7 +222,7 @@ export default function EditorShell() {
         />
         {state.viewMode === '3d' ? (
           <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">Loading 3D viewer...</p></div></div>}>
-            <Canvas3D />
+            <Canvas3D overlayItems={overlayItems} elevation={currentElevation} />
           </Suspense>
         ) : (
           <Canvas
@@ -216,6 +231,7 @@ export default function EditorShell() {
             viewBox={viewBox}
             activeFilter={state.activeFilter}
             activeDiscipline={activeDiscipline}
+            overlayItems={overlayItems}
           />
         )}
         {!state.readonly && <DrawingPropertiesBar />}

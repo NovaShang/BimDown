@@ -11,6 +11,7 @@ import { drawHostedTool } from './drawHostedTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   select: selectTool,
+  orbit: selectTool,
   pan: panTool,
   zoom: zoomTool,
   draw_line: drawLineTool,

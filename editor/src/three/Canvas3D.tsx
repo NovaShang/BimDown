@@ -1,10 +1,12 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useRef, useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useEditorState } from '../state/EditorContext.tsx';
 import SceneContent from './SceneContent.tsx';
 import MarqueeSelection from '../components/MarqueeSelection.tsx';
+import { CanvasOverlay3DContainer, CanvasOverlay3DInner } from './CanvasOverlay3D.tsx';
 import { parseLayer } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
+import type { OverlayItem } from '../hooks/useOverlayItems.ts';
 
 /** Derive initial camera position from element bounds so the camera
  *  starts roughly above the model center, even before Bounds.fit() runs. */
@@ -34,9 +36,21 @@ function useInitialCamera(): { position: [number, number, number]; far: number }
   }, [project, currentLevel]);
 }
 
-export default function Canvas3D() {
+interface Canvas3DProps {
+  overlayItems?: OverlayItem[];
+  elevation?: number;
+}
+
+export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps) {
   const { position, far } = useInitialCamera();
   const state = useEditorState();
+  const overlayContainerRef = useRef<HTMLDivElement>(null);
+  const [overlayEl, setOverlayEl] = useState<HTMLDivElement | null>(null);
+
+  // Capture the overlay container DOM element after mount
+  useEffect(() => {
+    setOverlayEl(overlayContainerRef.current);
+  }, []);
 
   // Read --bg-canvas CSS variable for theme-aware 3D background
   const [bgColor, setBgColor] = useState('#1a1d23');
@@ -51,6 +65,8 @@ export default function Canvas3D() {
     return () => observer.disconnect();
   }, []);
 
+  const hasOverlay = overlayItems && overlayItems.length > 0;
+
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
@@ -62,8 +78,20 @@ export default function Canvas3D() {
         <color attach="background" args={[bgColor]} />
         <fog attach="fog" args={[bgColor, far * 0.3, far * 0.9]} />
         <SceneContent />
+        {hasOverlay && overlayEl && (
+          <CanvasOverlay3DInner
+            items={overlayItems}
+            elevation={elevation}
+            containerEl={overlayEl}
+          />
+        )}
       </Canvas>
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
+      {hasOverlay && (
+        <CanvasOverlay3DContainer>
+          <div ref={overlayContainerRef} style={{ position: 'absolute', inset: 0 }} />
+        </CanvasOverlay3DContainer>
+      )}
     </div>
   );
 }

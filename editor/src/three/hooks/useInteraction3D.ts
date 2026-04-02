@@ -99,6 +99,17 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
         return;
       }
 
+      if (tool === 'orbit') {
+        // Orbit tool: only take gesture if clicking an element; otherwise let OrbitControls handle it
+        if (elementId) {
+          toolOwnsGestureRef.current = true;
+          if (controlsRef.current) controlsRef.current.enabled = false;
+          const handler = getToolHandler(tool);
+          handler.onPointerDown?.(toolCtx, e as unknown as React.PointerEvent);
+        }
+        return;
+      }
+
       // pan/zoom tools: leave orbit enabled
     };
 
@@ -161,6 +172,9 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       switch (e.key) {
         case 'v': case 'V':
           if (!e.ctrlKey && !e.metaKey) dispatch({ type: 'SET_TOOL', tool: 'select' });
+          break;
+        case 'o': case 'O':
+          if (!e.ctrlKey && !e.metaKey) dispatch({ type: 'SET_TOOL', tool: 'orbit' });
           break;
         case 'z': case 'Z':
           if (e.ctrlKey || e.metaKey) {
