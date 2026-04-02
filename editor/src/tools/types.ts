@@ -25,6 +25,9 @@ export interface ToolContext {
   findElementId: (target: EventTarget | null) => string | null;
   /** Set active snap result for visual feedback */
   setSnap: (snap: SnapResult | null) => void;
+  /** Optional: raycast screen point onto a wall's vertical plane, returns Y elevation.
+   *  Only available in 3D mode. */
+  screenToWallElevation?: (clientX: number, clientY: number, wallStart: { x: number; y: number }, wallEnd: { x: number; y: number }) => number | null;
   /** Optional: resolve marquee selection in 3D (projects elements to screen space).
    *  If not provided, falls back to SVG DOM-based marquee. */
   resolveMarquee?: (rect: { x: number; y: number; w: number; h: number }, containerRect: DOMRect) => string[];
@@ -40,6 +43,7 @@ export interface ToolStateSnapshot {
   document: DocumentState | null;
   project: ProjectData | null;
   grids: readonly GridData[];
+  currentLevel: string;
 }
 
 export interface ToolHandler {

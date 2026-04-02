@@ -19,6 +19,10 @@ const DOT_MATERIAL_FADED = new MeshBasicMaterial({ color: '#4fc3f7', transparent
 const PREVIEW_FILL = new MeshBasicMaterial({ color: '#4fc3f7', transparent: true, opacity: 0.15, depthWrite: false });
 const PREVIEW_WIREFRAME = new MeshBasicMaterial({ color: '#4fc3f7', transparent: true, opacity: 0.4, wireframe: true });
 
+// Hosted element preview: always visible (no depth test) so it shows through walls
+const HOSTED_PREVIEW_FILL = new MeshBasicMaterial({ color: '#4fc3f7', transparent: true, opacity: 0.25, depthWrite: false, depthTest: false });
+const HOSTED_PREVIEW_WIREFRAME = new MeshBasicMaterial({ color: '#4fc3f7', transparent: true, opacity: 0.6, wireframe: true, depthWrite: false, depthTest: false });
+
 // ─── Height fallback defaults (matching elementTo3D.ts) ─────────────────────
 const DEFAULT_WALL_HEIGHT = 3.0;
 const DEFAULT_COLUMN_HEIGHT = 3.0;
@@ -98,6 +102,24 @@ function BoxPreview({ position, rotation, args }: {
   );
 }
 
+/** Hosted element preview — always renders on top of walls (no depth test). */
+function HostedBoxPreview({ position, rotation, args }: {
+  position: [number, number, number];
+  rotation: [number, number, number];
+  args: [number, number, number];
+}) {
+  return (
+    <group position={position} rotation={rotation} renderOrder={999}>
+      <mesh material={HOSTED_PREVIEW_FILL}>
+        <boxGeometry args={args} />
+      </mesh>
+      <mesh material={HOSTED_PREVIEW_WIREFRAME}>
+        <boxGeometry args={args} />
+      </mesh>
+    </group>
+  );
+}
+
 // ─── Main component ──────────────────────────────────────────────────────────
 
 interface DrawingOverlay3DProps {
@@ -118,8 +140,51 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
   const { points, cursor } = drawingState;
   const tableName = drawingTarget?.tableName ?? null;
 
-  // ─── Line preview (draw_line & draw_hosted) ────────────────────────────────
-  if (activeTool === 'draw_line' || activeTool === 'draw_hosted') {
+  // ─── Hosted element preview (draw_hosted) ───────────────────────────────────
+  if (activeTool === 'draw_hosted') {
+    if (points.length === 1 && cursor) {
+      const dx = cursor.x - points[0].x;
+      const dy = cursor.y - points[0].y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const fallbackH = tableName ? resolveHeightFallback(tableName, drawingAttrs) : DEFAULT_WALL_HEIGHT;
+      const height = parseFloat(drawingAttrs.height) || fallbackH;
+      const hostedBaseOffset = drawingState.baseOffset ?? 0;
+      const baseY = elevation + hostedBaseOffset;
+      const cx = (points[0].x + cursor.x) / 2;
+      const cz = -(points[0].y + cursor.y) / 2;
+      const cy = baseY + height / 2;
+      const rotY = Math.atan2(dy, dx);
+      const thickness = 0.15; // visual thickness for preview
+
+      return (
+        <group>
+          {length > 0.001 && (
+            <HostedBoxPreview
+              position={[cx, cy, cz]}
+              rotation={[0, rotY, 0]}
+              args={[length, height, thickness]}
+            />
+          )}
+          <mesh position={toWorld(points[0].x, points[0].y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL} />
+          <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL} />
+        </group>
+      );
+    }
+
+    // No wall snap yet — show cursor dot
+    if (points.length === 0 && cursor) {
+      return (
+        <group>
+          <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL_FADED} />
+        </group>
+      );
+    }
+
+    return null;
+  }
+
+  // ─── Line preview (draw_line) ──────────────────────────────────────────────
+  if (activeTool === 'draw_line') {
     if (points.length === 1 && cursor) {
       const thickness = tableName ? (resolveLineStrokeWidth(tableName, drawingAttrs) ?? 0) : 0;
 
@@ -159,15 +224,6 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
           {/* Cursor dot */}
           <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL_FADED} />
           <LengthLabel3D from={points[0]} to={cursor} elevation={elevation} />
-        </group>
-      );
-    }
-
-    // draw_hosted: cursor-only mode (no points yet) — show cursor dot
-    if (activeTool === 'draw_hosted' && points.length === 0 && cursor) {
-      return (
-        <group>
-          <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL_FADED} />
         </group>
       );
     }

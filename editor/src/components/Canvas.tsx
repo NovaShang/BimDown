@@ -159,6 +159,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         document: s.document,
         project: s.project,
         grids: s.grids,
+        currentLevel: s.currentLevel,
       };
     },
     screenToSvg,

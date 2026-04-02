@@ -59,6 +59,30 @@ export function useToolContext3D(floorElevation: number) {
     return { x: intersection.x, y: -intersection.z };
   }, [camera, gl, floorPlane]);
 
+  // Raycast screen point onto a wall's vertical plane, returns Y elevation
+  const screenToWallElevation = useCallback((clientX: number, clientY: number, wallStart: { x: number; y: number }, wallEnd: { x: number; y: number }): number | null => {
+    const rect = gl.domElement.getBoundingClientRect();
+    const ndc = new Vector2(
+      ((clientX - rect.left) / rect.width) * 2 - 1,
+      -((clientY - rect.top) / rect.height) * 2 + 1,
+    );
+    raycasterRef.current.setFromCamera(ndc, camera);
+
+    // Wall direction in 3D XZ plane: (dx, 0, -dy)
+    const wdx = wallEnd.x - wallStart.x;
+    const wdy = wallEnd.y - wallStart.y;
+    // Plane normal = perpendicular to wall in XZ: (dy, 0, dx) in 3D
+    const normal = new Vector3(wdy, 0, wdx).normalize();
+    // A point on the wall plane
+    const coplanar = new Vector3(wallStart.x, 0, -wallStart.y);
+    const wallPlane = new Plane().setFromNormalAndCoplanarPoint(normal, coplanar);
+
+    const intersection = new Vector3();
+    const hit = raycasterRef.current.ray.intersectPlane(wallPlane, intersection);
+    if (!hit) return null;
+    return intersection.y;
+  }, [camera, gl]);
+
   // Find element ID — reads from the ref that useInteraction3D populates
   const findElementId = useCallback((_target: EventTarget | null): string | null => {
     return hitElementIdRef.current;
@@ -82,6 +106,7 @@ export function useToolContext3D(floorElevation: number) {
       document: s.document,
       project: s.project,
       grids: s.grids,
+      currentLevel: s.currentLevel,
     };
   }, []);
 
@@ -138,7 +163,8 @@ export function useToolContext3D(floorElevation: number) {
     findElementId,
     setSnap: setActiveSnap,
     resolveMarquee,
-  }), [dispatch, getState, screenToSvg, findElementId, resolveMarquee]);
+    screenToWallElevation,
+  }), [dispatch, getState, screenToSvg, findElementId, resolveMarquee, screenToWallElevation]);
 
   // Flag for ResizeHandles3D to signal that it's handling a drag,
   // so the interaction layer should skip its own handling.

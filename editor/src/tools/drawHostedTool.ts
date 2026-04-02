@@ -1,4 +1,4 @@
-import type { ToolHandler, ToolContext } from './types.ts';
+import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { hostTablesFor, widthAttrFor, isHostedTable } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
@@ -51,6 +51,35 @@ function findNearestHost(
   return best;
 }
 
+/** Get the current level's elevation from project data. */
+function getLevelElevation(state: ToolStateSnapshot): number {
+  if (!state.project) return 0;
+  const level = state.project.levels.find(l => l.id === state.currentLevel);
+  return level?.elevation ?? 0;
+}
+
+/** Compute base_offset from wall elevation raycast. Doors lock to 0. */
+function computeBaseOffset(
+  ctx: ToolContext,
+  e: React.PointerEvent,
+  wall: LineElement,
+  tableName: string,
+  elementHeight: number,
+  levelElevation: number,
+): number {
+  // Doors always sit on the floor
+  if (tableName === 'door') return 0;
+
+  if (!ctx.screenToWallElevation) return 0;
+
+  const elevation = ctx.screenToWallElevation(e.clientX, e.clientY, wall.start, wall.end);
+  if (elevation == null) return 0;
+
+  // base_offset = cursor elevation - level elevation - half element height (center cursor on element)
+  const raw = elevation - levelElevation - elementHeight / 2;
+  // Clamp: at least 0, at most wallHeight - elementHeight (approximate)
+  return Math.max(0, Math.round(raw * 100) / 100);
+}
 
 export const drawHostedTool: ToolHandler = {
   cursor: 'crosshair',
@@ -84,7 +113,13 @@ export const drawHostedTool: ToolHandler = {
 
     const position = hit.t.toFixed(4);
     const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: hit.wall.id, position };
+
+    // Compute base_offset from cursor elevation
+    const levelElevation = getLevelElevation(state);
+    const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
+    const baseOffset = computeBaseOffset(ctx, e, hit.wall, target.tableName, elementHeight, levelElevation);
+
+    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: hit.wall.id, position, base_offset: String(baseOffset) };
 
     const element: LineElement = {
       id,
@@ -124,10 +159,16 @@ export const drawHostedTool: ToolHandler = {
       const da = state.drawingAttrs;
       const width = parseFloat(da[wAttr] || '0.9');
       const { start, end } = resolveHostedGeometry(hit.wall, hit.t, width);
-      // Store preview span as points[0] = start, cursor = end
+
+      // Compute base_offset from cursor elevation
+      const levelElevation = getLevelElevation(state);
+      const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
+      const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
+      const baseOffset = computeBaseOffset(ctx, e, hit.wall, target.tableName, elementHeight, levelElevation);
+
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { points: [start], cursor: end },
+        state: { points: [start], cursor: end, baseOffset },
       });
     } else {
       ctx.dispatch({
