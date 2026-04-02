@@ -3,6 +3,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, P
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId } from '../model/ids.ts';
+import { resolveHostedGeometry } from '../model/hosted.ts';
 
 export const initialState: EditorState = {
   modelName: '',
@@ -52,8 +53,13 @@ function collectMutationKeys(...maps: Map<string, CanonicalElement | null>[]): s
 
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
   switch (action.type) {
-    case 'SET_VIEW_MODE':
-      return { ...state, viewMode: action.mode };
+    case 'SET_VIEW_MODE': {
+      let tool = state.activeTool;
+      // Auto-switch between select ↔ orbit when toggling 2D/3D
+      if (action.mode === '3d' && tool === 'select') tool = 'orbit';
+      if (action.mode === '2d' && tool === 'orbit') tool = 'select';
+      return { ...state, viewMode: action.mode, activeTool: tool };
+    }
 
     case 'SET_FLOOR_3D_MODE':
       return { ...state, floor3DMode: action.mode };
@@ -372,11 +378,33 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const resized = applyResize(el, action.changes);
       const next = new Map(state.document.elements);
       next.set(action.id, resized);
+
+      // Re-resolve hosted elements when their host wall is resized
+      if (resized.geometry === 'line' || resized.geometry === 'spatial_line') {
+        const wall = resized as LineElement;
+        for (const [id, hosted] of next) {
+          if (hosted.hostId === action.id && hosted.geometry === 'line' && hosted.locationParam != null) {
+            const width = parseFloat(hosted.attrs.width ?? '0.9');
+            const { start, end } = resolveHostedGeometry(wall, hosted.locationParam, width);
+            next.set(id, { ...hosted, start, end } as LineElement);
+          }
+        }
+      }
+
       if (action.preview) {
         return { ...state, document: { ...state.document, elements: next } };
       }
-      const before = new Map<string, CanonicalElement | null>([[action.id, el]]);
-      const after = new Map<string, CanonicalElement | null>([[action.id, resized]]);
+      const before = new Map<string, CanonicalElement | null>();
+      const after = new Map<string, CanonicalElement | null>();
+      before.set(action.id, el);
+      after.set(action.id, resized);
+      // Include re-resolved hosted elements in undo history
+      for (const [id, hosted] of next) {
+        if (id !== action.id && hosted.hostId === action.id) {
+          before.set(id, state.document.elements.get(id) ?? null);
+          after.set(id, hosted);
+        }
+      }
       return {
         ...state,
         document: { ...state.document, elements: next },
