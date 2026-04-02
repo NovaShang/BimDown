@@ -1,6 +1,6 @@
 import { useRef, useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
-import { Billboard, Html } from '@react-three/drei';
+import { Billboard, Html, Line } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { CanonicalElement, Point } from '../../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../../state/EditorContext.tsx';
@@ -114,16 +114,31 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   const y = elevation + 0.05;
 
   if (element.geometry === 'line' || element.geometry === 'spatial_line') {
+    const startPos: [number, number, number] = [element.start.x, y, -element.start.y];
+    const endPos: [number, number, number] = [element.end.x, y, -element.end.y];
+
     return (
       <group>
+        {/* Centerline */}
+        <Line
+          points={[startPos, endPos]}
+          color={HANDLE_COLOR}
+          lineWidth={2}
+          dashed
+          dashSize={0.2}
+          gapSize={0.1}
+          depthTest={false}
+          renderOrder={998}
+        />
+        {/* Endpoint handles */}
         <HandleSphere
-          position={[element.start.x, y, -element.start.y]}
+          position={startPos}
           onPointerDown={handleDrag((x, yy) => {
             dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { start: { x, y: yy } } });
           })}
         />
         <HandleSphere
-          position={[element.end.x, y, -element.end.y]}
+          position={endPos}
           onPointerDown={handleDrag((x, yy) => {
             dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { end: { x, y: yy } } });
           })}
@@ -143,9 +158,14 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
       { x: position.x + hw, y: position.y + hh },
       { x: position.x - hw, y: position.y + hh },
     ];
+    const outlinePoints: [number, number, number][] = [
+      ...corners.map(c => [c.x, y, -c.y] as [number, number, number]),
+      [corners[0].x, y, -corners[0].y],
+    ];
 
     return (
       <group>
+        <Line points={outlinePoints} color={HANDLE_COLOR} lineWidth={2} depthTest={false} renderOrder={998} />
         {corners.map((c, i) => (
           <HandleSphere
             key={i}
@@ -168,8 +188,15 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   }
 
   if (element.geometry === 'polygon') {
+    const outlinePoints: [number, number, number][] = element.vertices.length > 0
+      ? [...element.vertices.map(v => [v.x, y, -v.y] as [number, number, number]), [element.vertices[0].x, y, -element.vertices[0].y]]
+      : [];
+
     return (
       <group>
+        {outlinePoints.length > 1 && (
+          <Line points={outlinePoints} color={HANDLE_COLOR} lineWidth={2} depthTest={false} renderOrder={998} />
+        )}
         {element.vertices.map((v, i) => (
           <HandleSphere
             key={i}

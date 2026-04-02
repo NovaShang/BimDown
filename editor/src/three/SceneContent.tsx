@@ -187,8 +187,10 @@ function InteractionLayer({ controlsRef }: { controlsRef: React.RefObject<OrbitC
   const state = useEditorState();
   const selectedElement = useMemo(() => {
     if (state.selectedIds.size !== 1 || !state.document) return null;
-    const id = state.selectedIds.values().next().value;
-    return state.document.elements.get(id!) ?? null;
+    const id = state.selectedIds.values().next().value!;
+    // 3D element IDs are prefixed with "levelId:" by FloorGroup — strip prefix for document lookup
+    const rawId = id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+    return state.document.elements.get(rawId) ?? null;
   }, [state.selectedIds, state.document, state.documentVersion]);
 
   return (
