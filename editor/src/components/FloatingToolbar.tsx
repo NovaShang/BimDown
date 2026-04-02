@@ -150,8 +150,8 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
 
   return (
     <div ref={containerRef} className="relative flex">
-      {/* Main tool button */}
-      <Tooltip>
+      {/* Main tool button — suppress tooltip while dropdown is open */}
+      <Tooltip open={open ? false : undefined}>
         <TooltipTrigger
           className={cn(
             'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
