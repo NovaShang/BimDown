@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { ViewMode, Floor3DMode } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 
@@ -99,56 +99,27 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
   );
 }
 
+const FLOOR_3D_OPTIONS: { mode: Floor3DMode; labelKey: string }[] = [
+  { mode: 'current', labelKey: 'view.floor.current' },
+  { mode: 'current+below', labelKey: 'view.floor.below' },
+  { mode: 'all', labelKey: 'view.floor.all' },
+];
+
 function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode; onChange: (mode: Floor3DMode) => void }) {
   const { t } = useTranslation();
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    window.addEventListener('mousedown', handle);
-    return () => window.removeEventListener('mousedown', handle);
-  }, [open]);
-
-  const FLOOR_3D_OPTIONS: { mode: Floor3DMode; labelKey: string; titleKey: string }[] = [
-    { mode: 'current', labelKey: 'view.floor.current', titleKey: 'view.floor.currentTitle' },
-    { mode: 'current+below', labelKey: 'view.floor.below', titleKey: 'view.floor.belowTitle' },
-    { mode: 'all', labelKey: 'view.floor.all', titleKey: 'view.floor.allTitle' },
-  ];
-
-  const current = FLOOR_3D_OPTIONS.find(o => o.mode === floor3DMode)!;
 
   return (
-    <div ref={ref} className="relative">
-      <button
-        className="flex h-7 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] font-medium text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
-        onClick={() => setOpen(!open)}
-      >
-        {t(current.labelKey)}
-        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-          <path d="M3 4l2 2 2-2" />
-        </svg>
-      </button>
-      {open && (
-        <div className="glass-panel absolute left-0 top-full mt-1 min-w-[140px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100">
-          {FLOOR_3D_OPTIONS.map(({ mode, labelKey, titleKey }) => (
-            <button
-              key={mode}
-              className={cn(
-                'flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-accent',
-                floor3DMode === mode ? 'text-[var(--color-accent)]' : 'text-foreground'
-              )}
-              onClick={() => { onChange(mode); setOpen(false); }}
-              title={t(titleKey)}
-            >
-              {t(labelKey)}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
+    <Select value={floor3DMode} onValueChange={(v) => onChange(v as Floor3DMode)}>
+      <SelectTrigger size="sm" className="h-7 border-none bg-transparent px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground">
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent side="top" sideOffset={8} alignItemWithTrigger={false}>
+        {FLOOR_3D_OPTIONS.map(({ mode, labelKey }) => (
+          <SelectItem key={mode} value={mode} className="text-[11px]">
+            {t(labelKey)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
   );
 }

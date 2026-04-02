@@ -52,7 +52,7 @@
   --text-dim: #737373;
   --text-bright: #171717;
   --shadow-panel: 0 4px 24px rgba(0,0,0,0.08);
-  --glass-bg: rgba(255, 255, 255, 0.72);
+  --glass-bg: rgba(255, 255, 255, 0.88);
   --dropdown-bg: #ffffff;
 }
 
@@ -98,7 +98,7 @@
   --text-dim: #555;
   --text-bright: #ddd;
   --shadow-panel: 0 4px 24px rgba(0,0,0,0.4);
-  --glass-bg: rgba(30, 30, 30, 0.75);
+  --glass-bg: rgba(30, 30, 30, 0.9);
   --dropdown-bg: #222;
 }
 
@@ -150,8 +150,6 @@
 /* ─── Glass Panel ────────────────────────────── */
 .glass-panel {
   background: var(--glass-bg);
-  backdrop-filter: blur(20px) saturate(1.5);
-  -webkit-backdrop-filter: blur(20px) saturate(1.5);
 }
 
 /* ─── Canvas ─────────────────────────────────── */
@@ -179,11 +177,9 @@
 /* ─── Layer Dimming ──────────────────────────── */
 .data-layer.dimmed {
   opacity: 0.12;
-  transition: opacity 200ms ease;
 }
 
 .data-layer {
-  transition: opacity 200ms ease;
 }
 
 /* ─── Hover Highlight ────────────────────────── */

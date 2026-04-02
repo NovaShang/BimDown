@@ -70,11 +70,7 @@ export const selectTool: ToolHandler = {
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
     if (!gesture.isDragging) {
       // Hover detection
-      const elementId = ctx.findElementId(e.target);
-      const state = ctx.getState();
-      if (elementId !== state.hoveredId) {
-        ctx.dispatch({ type: 'SET_HOVER', id: elementId });
-      }
+      // TODO: hover temporarily disabled for performance testing
       return;
     }
 

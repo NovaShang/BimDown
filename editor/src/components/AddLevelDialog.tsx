@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../lib/utils';
+import { Input } from './ui/input';
 
 interface AddLevelDialogProps {
   open: boolean;
@@ -49,17 +50,17 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
         <div className="mb-3 text-[12px] font-semibold text-foreground">{dialogTitle}</div>
 
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('dialog.name')}</label>
-        <input
+        <Input
           ref={nameRef}
-          className="mb-3 block w-full rounded border border-border bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-[var(--color-accent)]"
+          className="mb-3 h-7 text-[12px]"
           value={name}
           onChange={e => setName(e.target.value)}
           autoFocus
         />
 
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t('dialog.elevation')}</label>
-        <input
-          className="mb-4 block w-full rounded border border-border bg-background px-2 py-1.5 text-[12px] text-foreground outline-none focus:border-[var(--color-accent)]"
+        <Input
+          className="mb-4 h-7 text-[12px]"
           type="number"
           step="any"
           value={elevation}

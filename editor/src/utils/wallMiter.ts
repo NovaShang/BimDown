@@ -104,7 +104,17 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
     }
   }
 
-  for (const seg of walls) {
+  // Pre-compute wall AABBs (expanded by halfWidth) for fast rejection
+  const wallBounds = walls.map(seg => {
+    const hw = seg.halfWidth * 1.1;
+    return {
+      minX: Math.min(seg.x1, seg.x2) - hw, minY: Math.min(seg.y1, seg.y2) - hw,
+      maxX: Math.max(seg.x1, seg.x2) + hw, maxY: Math.max(seg.y1, seg.y2) + hw,
+    };
+  });
+
+  for (let si = 0; si < walls.length; si++) {
+    const seg = walls[si];
     const endpoints: [Pt, 'start' | 'end'][] = [
       [{ x: seg.x1, y: seg.y1 }, 'start'],
       [{ x: seg.x2, y: seg.y2 }, 'end'],
@@ -113,8 +123,12 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
       const k = ptKey(ep.x, ep.y);
       if ((epCount.get(k) ?? 0) >= 2) continue; // already a regular junction
 
-      for (const other of walls) {
-        if (other.id === seg.id) continue;
+      for (let oi = 0; oi < walls.length; oi++) {
+        if (oi === si) continue;
+        // AABB early-out: skip walls whose expanded bounds don't contain the endpoint
+        const ob = wallBounds[oi];
+        if (ep.x < ob.minX || ep.x > ob.maxX || ep.y < ob.minY || ep.y > ob.maxY) continue;
+        const other = walls[oi];
         const A = { x: other.x1, y: other.y1 };
         const B = { x: other.x2, y: other.y2 };
         const { dist, t } = pointToSegDist(ep, A, B);
@@ -333,10 +347,36 @@ export interface WallPolygon {
   endKey: string;
 }
 
+/** Axis-aligned bounding box */
+interface AABB { minX: number; minY: number; maxX: number; maxY: number }
+
+function polyAABB(corners: Pt[]): AABB {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of corners) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function segAABB(a: Pt, b: Pt): AABB {
+  return {
+    minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y),
+    maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y),
+  };
+}
+
+function aabbOverlap(a: AABB, b: AABB): boolean {
+  return a.minX <= b.maxX && a.maxX >= b.minX && a.minY <= b.maxY && a.maxY >= b.minY;
+}
+
 /**
  * Given wall polygons, compute only the outer edge segments.
  * Only the two SIDE edges (p1→p2 and p4→p3) are clipped against other polygons.
  * End caps (p1↔p4 and p2↔p3) are only drawn at free endpoints.
+ * Uses AABB pre-filtering to skip non-overlapping polygons (avoids O(N²) worst case).
  */
 export function computeOuterEdges(
   polygons: WallPolygon[],
@@ -345,16 +385,22 @@ export function computeOuterEdges(
 ): [Pt, Pt][] {
   const result: [Pt, Pt][] = [];
 
+  // Pre-compute AABBs for all polygons
+  const polyBounds = polygons.map(p => polyAABB(p.corners as unknown as Pt[]));
+
   for (let wi = 0; wi < polygons.length; wi++) {
     const { corners: [p1, p2, p3, p4], startKey, endKey } = polygons[wi];
-    // Only the two side edges — NOT the end-cap diagonals
     const sideEdges: [Pt, Pt][] = [[p1, p2], [p4, p3]];
 
     for (const [eA, eB] of sideEdges) {
       let segments: [Pt, Pt][] = [[eA, eB]];
+      const edgeBounds = segAABB(eA, eB);
 
       for (let wj = 0; wj < polygons.length; wj++) {
         if (wj === wi) continue;
+        // AABB early-out: skip polygons that can't overlap this edge
+        if (!aabbOverlap(edgeBounds, polyBounds[wj])) continue;
+
         const otherPoly = polygons[wj].corners as unknown as Pt[];
         const next: [Pt, Pt][] = [];
         for (const seg of segments) {
@@ -367,7 +413,6 @@ export function computeOuterEdges(
       result.push(...segments);
     }
 
-    // End caps at free endpoints only
     if (!junctionKeys.has(startKey)) {
       result.push([p1, p4]);
     }

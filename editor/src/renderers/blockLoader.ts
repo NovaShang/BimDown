@@ -12,13 +12,18 @@ for (const path in svgModules) {
   if (name) blockMap[name] = svgModules[path] as string;
 }
 
+/** Cache for parsed SVG inner content — avoid re-running regex on every render. */
+const parsedCache = new Map<string, string | null>();
+
 /** Get raw SVG inner content (strip the outer <svg> tag) for embedding. */
 export function getBlockSvg(name: string): string | null {
+  if (parsedCache.has(name)) return parsedCache.get(name)!;
   const raw = blockMap[name];
-  if (!raw) return null;
-  // Extract content between <svg ...> and </svg>
+  if (!raw) { parsedCache.set(name, null); return null; }
   const match = raw.match(/<svg[^>]*>([\s\S]*?)<\/svg>/);
-  return match?.[1]?.trim() ?? null;
+  const result = match?.[1]?.trim() ?? null;
+  parsedCache.set(name, result);
+  return result;
 }
 
 /** List all available block names. */

@@ -1,0 +1,71 @@
+/* ─── Glass Panel ────────────────────────────── */
+.glass-panel {
+  background: var(--glass-bg);
+}
+
+/* ─── Canvas ─────────────────────────────────── */
+.canvas {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-canvas);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+}
+
+.canvas.cursor-default { cursor: default; }
+.canvas.cursor-grab { cursor: grab; }
+.canvas.cursor-grab:active { cursor: grabbing; }
+.canvas.cursor-zoom { cursor: zoom-in; }
+.canvas.cursor-crosshair { cursor: crosshair; }
+
+.canvas-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ─── Layer Dimming ──────────────────────────── */
+.data-layer.dimmed {
+  opacity: 0.12;
+}
+
+/* ─── Hover Highlight ────────────────────────── */
+.hover-highlight {
+  filter: drop-shadow(0 0 calc(0.24px / var(--canvas-scale, 1)) var(--color-accent)) drop-shadow(0 0 calc(0.45px / var(--canvas-scale, 1)) var(--color-accent));
+  cursor: pointer;
+}
+
+/* ─── Selection Overlay ──────────────────────── */
+.selection-overlay rect {
+  pointer-events: none;
+}
+
+/* ─── Icon wrappers ──────────────────────────── */
+.icon-wrapper svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: var(--icon-stroke-width, 1.4);
+}
+
+/* ─── Scrollbar ──────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Animations ─────────────────────────────── */
+@keyframes toolbar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes props-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}

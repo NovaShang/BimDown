@@ -1,3 +1,4 @@
+import React from 'react';
 import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 
@@ -7,7 +8,7 @@ interface SelectionOverlayProps {
   scale: number;
 }
 
-export default function SelectionOverlay({ document, selectedIds, scale }: SelectionOverlayProps) {
+export default React.memo(function SelectionOverlay({ document, selectedIds, scale }: SelectionOverlayProps) {
   if (!document || selectedIds.size === 0) return null;
 
   const selectedElements: CanonicalElement[] = [];
@@ -57,4 +58,4 @@ export default function SelectionOverlay({ document, selectedIds, scale }: Selec
       })}
     </g>
   );
-}
+});
