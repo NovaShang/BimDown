@@ -1,12 +1,12 @@
 import React from 'react';
 
-export type IconName = 
-  | 'select' | 'pan' | 'zoom' | 'undo' | 'redo'
+export type IconName =
+  | 'select' | 'orbit' | 'pan' | 'zoom' | 'undo' | 'redo'
   | 'eye-visible' | 'eye-hidden'
   | 'wall' | 'curtain_wall' | 'structure_wall' | 'column' | 'structure_column' | 'window'
-  | 'door' | 'space' | 'slab' | 'structure_slab' | 'stair'
-  | 'duct' | 'pipe' | 'equipment' | 'terminal' | 'conduit' | 'cable_tray'
-  | 'beam' | 'brace' | 'grid';
+  | 'door' | 'room' | 'room_separator' | 'slab' | 'roof' | 'ceiling' | 'structure_slab' | 'stair' | 'ramp' | 'railing' | 'opening'
+  | 'duct' | 'pipe' | 'equipment' | 'terminal' | 'conduit' | 'cable_tray' | 'mep_node'
+  | 'beam' | 'brace' | 'foundation' | 'grid';
 
 // Dynamically load all SVG files as raw strings
 const svgModules = import.meta.glob('../assets/icons/*.svg', { eager: true, query: '?raw', import: 'default' });

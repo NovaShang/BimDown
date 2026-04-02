@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { LAYER_STYLES, DISCIPLINE_TABLES, DISCIPLINE_COLORS } from '../types.ts';
@@ -13,6 +14,14 @@ interface FloatingToolbarProps {
   activeDiscipline: string | null;
 }
 
+/** Map table names to icon names (handles space→room rename) */
+const ICON_FOR_TABLE: Record<string, IconName> = {
+  space: 'room',
+};
+function iconForTable(table: string): IconName {
+  return ICON_FOR_TABLE[table] || (table as IconName);
+}
+
 const SHORT_LABEL_KEYS: Record<string, string> = {
   wall: 'layer.wall',
   curtain_wall: 'layer.curtain_wall',
@@ -22,11 +31,18 @@ const SHORT_LABEL_KEYS: Record<string, string> = {
   space: 'layer.space',
   slab: 'layer.slab',
   stair: 'layer.stair',
+  roof: 'layer.roof',
+  ceiling: 'layer.ceiling',
+  opening: 'layer.opening',
+  room_separator: 'layer.room_separator',
+  ramp: 'layer.ramp',
+  railing: 'layer.railing',
   structure_wall: 'layer.structure_wall',
   structure_column: 'layer.structure_column',
   structure_slab: 'layer.structure_slab',
   beam: 'layer.beam',
   brace: 'layer.brace',
+  foundation: 'layer.foundation',
   isolated_foundation: 'layer.isolated_foundation',
   strip_foundation: 'layer.strip_foundation',
   raft_foundation: 'layer.raft_foundation',
@@ -36,13 +52,31 @@ const SHORT_LABEL_KEYS: Record<string, string> = {
   cable_tray: 'layer.cable_tray',
   equipment: 'layer.equipment',
   terminal: 'layer.terminal',
+  mep_node: 'layer.mep_node',
   grid: 'layer.grid',
 };
 
-const TOOLS: { tool: Tool; labelKey: string; icon: IconName; shortcut: string }[] = [
+const TOOLS_2D: { tool: Tool; labelKey: string; icon: IconName; shortcut: string }[] = [
   { tool: 'select', labelKey: 'tool.select', icon: 'select', shortcut: 'V' },
   { tool: 'pan', labelKey: 'tool.pan', icon: 'pan', shortcut: 'H' },
 ];
+
+const TOOLS_3D: { tool: Tool; labelKey: string; icon: IconName; shortcut: string }[] = [
+  { tool: 'select', labelKey: 'tool.select', icon: 'select', shortcut: 'V' },
+  { tool: 'orbit', labelKey: 'tool.orbit', icon: 'orbit', shortcut: 'O' },
+];
+
+/** Architecture tool groups — tools within each group share a toolbar slot */
+const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
+  { tools: ['wall', 'curtain_wall'] },
+  { tools: ['door', 'window', 'opening'] },
+  { tools: ['space', 'room_separator'] },
+  { tools: ['slab', 'roof', 'ceiling'] },
+  { tools: ['stair', 'ramp', 'railing'] },
+];
+
+/** Tables that appear ungrouped in the architecture toolbar */
+const ARCH_UNGROUPED = new Set(['column']);
 
 function getDrawTool(tableName: string): Tool {
   const placement = placementTypeForTable(tableName);
@@ -56,10 +90,144 @@ function getDrawTool(tableName: string): Tool {
   }
 }
 
+// ─── ToolGroupButton ─────────────────────────────────────────────────────────
+
+interface ToolGroupButtonProps {
+  tools: string[];
+  discipline: string;
+  disciplineColor: string;
+  activeTable: string | null;
+  activeDiscipline: string | null;
+  onToolClick: (table: string, discipline: string) => void;
+}
+
+function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, activeDiscipline, onToolClick }: ToolGroupButtonProps) {
+  const { t } = useTranslation();
+  const [selectedIndex, setSelectedIndex] = useState(0);
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  // If the active tool is in this group, show it
+  const activeIdx = activeTable && activeDiscipline === discipline
+    ? tools.indexOf(activeTable)
+    : -1;
+  const displayIdx = activeIdx >= 0 ? activeIdx : selectedIndex;
+  const displayTable = tools[displayIdx];
+  const isActive = activeIdx >= 0;
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  const handleMainClick = useCallback(() => {
+    onToolClick(displayTable, discipline);
+  }, [displayTable, discipline, onToolClick]);
+
+  const handleExpandClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setOpen(prev => !prev);
+  }, []);
+
+  const handleContextMenu = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setOpen(prev => !prev);
+  }, []);
+
+  const handleSelect = useCallback((table: string, idx: number) => {
+    setSelectedIndex(idx);
+    setOpen(false);
+    onToolClick(table, discipline);
+  }, [discipline, onToolClick]);
+
+  const style = LAYER_STYLES[displayTable];
+
+  return (
+    <div ref={containerRef} className="relative flex">
+      {/* Main tool button */}
+      <Tooltip>
+        <TooltipTrigger
+          className={cn(
+            'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+            isActive
+              ? 'text-[var(--tool-color)]'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+          style={{
+            '--tool-color': disciplineColor,
+            background: isActive ? `color-mix(in srgb, ${disciplineColor} 20%, transparent)` : undefined,
+          } as React.CSSProperties}
+          onClick={handleMainClick}
+          onContextMenu={handleContextMenu}
+        >
+          <span className="text-base leading-none"><Icon name={iconForTable(displayTable)} /></span>
+          <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[displayTable] || `layer.${displayTable}`)}</span>
+        </TooltipTrigger>
+        <TooltipContent side="top">
+          {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : displayTable}
+        </TooltipContent>
+      </Tooltip>
+      {/* Expand arrow — separate right-side strip with upward chevron */}
+      <button
+        className={cn(
+          'flex w-3.5 cursor-pointer items-center justify-center self-stretch rounded-r-lg border-none transition-all',
+          open
+            ? 'bg-accent text-foreground'
+            : 'bg-transparent text-muted-foreground/50 hover:bg-accent hover:text-foreground'
+        )}
+        onClick={handleExpandClick}
+        tabIndex={-1}
+      >
+        <svg width="8" height="5" viewBox="0 0 8 5">
+          <path d="M0 4.5 L4 0.5 L8 4.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      {/* Dropdown */}
+      {open && (
+        <div className="absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 glass-panel rounded-lg border border-border py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-1 duration-150"
+          style={{ minWidth: '7rem' }}
+        >
+          {tools.map((table, idx) => {
+            const isItemActive = activeTable === table && activeDiscipline === discipline;
+            return (
+              <button
+                key={table}
+                className={cn(
+                  'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors',
+                  isItemActive
+                    ? 'text-[var(--tool-color)]'
+                    : 'text-foreground hover:bg-accent'
+                )}
+                style={{ '--tool-color': disciplineColor } as React.CSSProperties}
+                onClick={() => handleSelect(table, idx)}
+              >
+                <Icon name={iconForTable(table)} width={16} height={16} />
+                <span>{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── FloatingToolbar ─────────────────────────────────────────────────────────
+
 export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarProps) {
   const { t } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
+
+  const tools = state.viewMode === '3d' ? TOOLS_3D : TOOLS_2D;
 
   // Grid has its own standalone button, skip it from discipline tools
   const disciplineTables = activeDiscipline
@@ -67,7 +235,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
     : [];
   const disciplineColor = activeDiscipline ? (DISCIPLINE_COLORS[activeDiscipline] || '#888') : '#888';
 
-  const handleDrawToolClick = (tableName: string, discipline: string) => {
+  const handleDrawToolClick = useCallback((tableName: string, discipline: string) => {
     const currentTarget = state.drawingTarget;
     if (currentTarget?.tableName === tableName && currentTarget?.discipline === discipline) {
       dispatch({ type: 'SET_TOOL', tool: 'select' });
@@ -80,16 +248,31 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
     dispatch({ type: 'SET_TOOL', tool: drawTool });
     dispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline } });
     dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
-  };
+  }, [state.drawingTarget, dispatch]);
 
   const canUndo = state.history.undoStack.length > 0;
   const canRedo = state.history.redoStack.length > 0;
+
+  // Build architecture toolbar items: groups + ungrouped
+  const isArchitecture = activeDiscipline === 'architecture';
+
+  // For architecture, compute grouped and ungrouped items
+  const archGroups = isArchitecture
+    ? ARCH_TOOL_GROUPS
+        .map(g => ({ ...g, tools: g.tools.filter(t => disciplineTables.includes(t)) }))
+        .filter(g => g.tools.length > 0)
+    : [];
+  const archUngrouped = isArchitecture
+    ? disciplineTables.filter(t => ARCH_UNGROUPED.has(t))
+    : [];
+
+  const activeTable = state.drawingTarget?.tableName ?? null;
 
   return (
     <div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
-        {TOOLS.map(tool => (
+        {tools.map(tool => (
           <Tooltip key={tool.tool}>
             <TooltipTrigger
               className={cn(
@@ -149,33 +332,61 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
       {/* Discipline drawing tools */}
       {disciplineTables.length > 0 && (
         <div className="flex items-center gap-0.5">
-          {disciplineTables.map(table => {
-            const style = LAYER_STYLES[table];
-            if (!style) return null;
-            const isActive = state.drawingTarget?.tableName === table &&
-              state.drawingTarget?.discipline === activeDiscipline;
-            return (
-              <Tooltip key={table}>
-                <TooltipTrigger
-                  className={cn(
-                    'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
-                    isActive
-                      ? 'text-[var(--tool-color)]'
-                      : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-                  )}
-                  style={{
-                    '--tool-color': disciplineColor,
-                    background: isActive ? `color-mix(in srgb, ${disciplineColor} 20%, transparent)` : undefined,
-                  } as React.CSSProperties}
-                  onClick={() => handleDrawToolClick(table, activeDiscipline!)}
-                >
-                  <span className="text-base leading-none"><Icon name={table} /></span>
-                  <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
-                </TooltipTrigger>
-                <TooltipContent side="top">{t('draw.tooltip', { name: t(`display.${style.displayName}`) })}</TooltipContent>
-              </Tooltip>
-            );
-          })}
+          {isArchitecture ? (
+            <>
+              {/* Grouped architecture tools */}
+              {archGroups.map((group, gi) => (
+                group.tools.length === 1 ? (
+                  // Single tool in group — render flat
+                  <SingleToolButton
+                    key={group.tools[0]}
+                    table={group.tools[0]}
+                    discipline={activeDiscipline!}
+                    disciplineColor={disciplineColor}
+                    isActive={activeTable === group.tools[0] && state.drawingTarget?.discipline === activeDiscipline}
+                    onClick={handleDrawToolClick}
+                  />
+                ) : (
+                  <ToolGroupButton
+                    key={gi}
+                    tools={group.tools}
+                    discipline={activeDiscipline!}
+                    disciplineColor={disciplineColor}
+                    activeTable={activeTable}
+                    activeDiscipline={state.drawingTarget?.discipline ?? null}
+                    onToolClick={handleDrawToolClick}
+                  />
+                )
+              ))}
+              {/* Ungrouped architecture tools */}
+              {archUngrouped.map(table => (
+                <SingleToolButton
+                  key={table}
+                  table={table}
+                  discipline={activeDiscipline!}
+                  disciplineColor={disciplineColor}
+                  isActive={activeTable === table && state.drawingTarget?.discipline === activeDiscipline}
+                  onClick={handleDrawToolClick}
+                />
+              ))}
+            </>
+          ) : (
+            // Non-architecture: flat list
+            disciplineTables.map(table => {
+              const style = LAYER_STYLES[table];
+              if (!style) return null;
+              return (
+                <SingleToolButton
+                  key={table}
+                  table={table}
+                  discipline={activeDiscipline!}
+                  disciplineColor={disciplineColor}
+                  isActive={activeTable === table && state.drawingTarget?.discipline === activeDiscipline}
+                  onClick={handleDrawToolClick}
+                />
+              );
+            })
+          )}
         </div>
       )}
 
@@ -214,5 +425,42 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         </Tooltip>
       </div>
     </div>
+  );
+}
+
+// ─── SingleToolButton ────────────────────────────────────────────────────────
+
+function SingleToolButton({ table, discipline, disciplineColor, isActive, onClick }: {
+  table: string;
+  discipline: string;
+  disciplineColor: string;
+  isActive: boolean;
+  onClick: (table: string, discipline: string) => void;
+}) {
+  const { t } = useTranslation();
+  const style = LAYER_STYLES[table];
+
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className={cn(
+          'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+          isActive
+            ? 'text-[var(--tool-color)]'
+            : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+        )}
+        style={{
+          '--tool-color': disciplineColor,
+          background: isActive ? `color-mix(in srgb, ${disciplineColor} 20%, transparent)` : undefined,
+        } as React.CSSProperties}
+        onClick={() => onClick(table, discipline)}
+      >
+        <span className="text-base leading-none"><Icon name={iconForTable(table)} /></span>
+        <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
+      </TooltipTrigger>
+      <TooltipContent side="top">
+        {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : table}
+      </TooltipContent>
+    </Tooltip>
   );
 }
