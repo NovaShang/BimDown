@@ -17,7 +17,7 @@ export default function TopBar() {
           <span className="size-2 shrink-0 rounded-full" style={{ background: activeDiscipline ? DISCIPLINE_COLORS[activeDiscipline] : '#888' }} />
           <span>{activeDiscipline ? activeDiscipline.charAt(0).toUpperCase() + activeDiscipline.slice(1) : ''}</span>
         </SelectTrigger>
-        <SelectContent>
+        <SelectContent side="bottom" sideOffset={8} alignItemWithTrigger={false}>
           {DISCIPLINES.map(d => (
             <SelectItem key={d} value={d} className="text-[11px]">
               <span className="size-2 shrink-0 rounded-full" style={{ background: DISCIPLINE_COLORS[d] }} />
