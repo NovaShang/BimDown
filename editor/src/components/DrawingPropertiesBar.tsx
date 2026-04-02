@@ -47,6 +47,7 @@ export default function DrawingPropertiesBar() {
             <LevelSelect
               value={attrs[f.key] ?? ''}
               onValueChange={(v) => handleChange(f.key, v)}
+              size="sm"
               triggerClassName={`${fieldInputClass} min-w-16 gap-1`}
             />
           ) : f.type === 'select' && f.options ? (
