@@ -79,6 +79,29 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     return null;
   }
 
+  if (activeTool === 'relocate_hosted') {
+    // Show hosted span preview (start → cursor)
+    if (points.length === 1 && cursor) {
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <line
+            x1={points[0].x} y1={points[0].y}
+            x2={cursor.x} y2={cursor.y}
+            stroke="#ffa726" strokeWidth={0.3 / scale} opacity="0.45"
+          />
+          <line
+            x1={points[0].x} y1={points[0].y}
+            x2={cursor.x} y2={cursor.y}
+            stroke="#ffa726" strokeWidth={0.08 / scale}
+          />
+          <circle cx={points[0].x} cy={points[0].y} r={0.3 / scale} fill="#ffa726" opacity="0.7" />
+          <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#ffa726" opacity="0.7" />
+        </g>
+      );
+    }
+    return null;
+  }
+
   if (activeTool === 'relocate') {
     if (points.length === 1 && cursor) {
       return (

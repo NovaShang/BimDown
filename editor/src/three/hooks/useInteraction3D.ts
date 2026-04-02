@@ -89,7 +89,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       const elementId = findHitElementId(ndc);
       hitElementIdRef.current = elementId;
 
-      if (isDrawTool || tool === 'select' || tool === 'relocate') {
+      if (isDrawTool || tool === 'select' || tool === 'relocate' || tool === 'relocate_hosted') {
         // Draw tools and select tool: take over gesture, disable orbit
         toolOwnsGestureRef.current = true;
         if (controlsRef.current) controlsRef.current.enabled = false;
