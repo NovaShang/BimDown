@@ -74,9 +74,6 @@ const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
   { tools: ['stair', 'ramp', 'railing'] },
 ];
 
-/** Tables that appear ungrouped in the architecture toolbar */
-const ARCH_UNGROUPED = new Set(['column', 'door', 'window', 'opening', 'roof']);
-
 function getDrawTool(tableName: string): Tool {
   const placement = placementTypeForTable(tableName);
   switch (placement) {
