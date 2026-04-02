@@ -12,6 +12,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { Button } from './ui/button';
 import { Icon } from './Icons.tsx';
+import { LevelSelect } from './LevelSelect.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
 
@@ -209,7 +210,13 @@ function PropertyRow({
         {label}
       </span>
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
-        {f.type === 'readonly' || !editable ? (
+        {(f.key === 'top_level_id' || f.key === 'level_id') ? (
+          <LevelSelect
+            value={value}
+            onValueChange={(v) => onChange(f.key, v)}
+            triggerClassName="h-[22px] min-w-0 flex-1 gap-0.5 rounded border-transparent bg-[var(--bg-input)] px-1.5 text-right text-[11px] tabular-nums hover:border-border focus-visible:border-[var(--color-accent)]"
+          />
+        ) : f.type === 'readonly' || !editable ? (
           <span className="truncate text-right text-[11px] tabular-nums text-foreground/70">{value}</span>
         ) : f.type === 'select' && f.options ? (
           <Select value={value} onValueChange={(v) => { if (v) onChange(f.key, v); }}>

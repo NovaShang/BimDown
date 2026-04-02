@@ -7,6 +7,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '.
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
+import { LevelSelect } from './LevelSelect.tsx';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
@@ -42,7 +43,13 @@ export default function DrawingPropertiesBar() {
       {fields.map(f => (
         <div key={f.key} className="flex items-center gap-1.5">
           <label className="text-[10px] text-muted-foreground">{t(`field.${f.label}`, f.label)}</label>
-          {f.type === 'select' && f.options ? (
+          {f.key === 'top_level_id' ? (
+            <LevelSelect
+              value={attrs[f.key] ?? ''}
+              onValueChange={(v) => handleChange(f.key, v)}
+              triggerClassName={`${fieldInputClass} min-w-16 gap-1`}
+            />
+          ) : f.type === 'select' && f.options ? (
             <Select
               value={attrs[f.key] ?? ''}
               onValueChange={(v) => { if (v) handleChange(f.key, v); }}
