@@ -1,4 +1,4 @@
-import { useRef, useCallback, useMemo, useState } from 'react';
+import { useRef, useCallback, useMemo, useState, useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Raycaster, Vector2, Vector3, Plane, type Object3D, type Intersection } from 'three';
 import type { ToolContext, ToolStateSnapshot, TransformAction } from '../../tools/types.ts';
@@ -44,6 +44,9 @@ export function useToolContext3D(floorElevation: number) {
   const hitElementIdRef = useRef<string | null>(null);
 
   const [activeSnap, setActiveSnap] = useState<SnapResult | null>(null);
+
+  // Clear snap when active tool changes (e.g., switching away from draw tool)
+  useEffect(() => { setActiveSnap(null); }, [state.activeTool]);
 
   const containerRef = useRef<HTMLDivElement | null>(null);
   // Keep containerRef pointed at the canvas parent div

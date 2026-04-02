@@ -194,7 +194,8 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
           }
           break;
         case 'Escape':
-          if (stRef.current.activeTool === 'relocate') {
+          toolCtx.setSnap(null);
+          if (stRef.current.activeTool === 'relocate' || stRef.current.activeTool === 'relocate_hosted') {
             dispatch({ type: 'SET_TOOL', tool: 'select' });
             dispatch({ type: 'SET_DRAWING_STATE', state: null });
             dispatch({ type: 'SET_DRAWING_TARGET', target: null });
