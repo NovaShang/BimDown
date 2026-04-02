@@ -12,12 +12,15 @@ export default function MarqueeSelection({ marquee }: MarqueeSelectionProps) {
 
   return (
     <div
-      className="marquee"
       style={{
+        position: 'absolute',
         left: x,
         top: y,
         width: w,
         height: h,
+        border: '1px solid var(--color-accent, #0891b2)',
+        background: 'var(--accent-dim, rgba(8,145,178,0.12))',
+        pointerEvents: 'none',
       }}
     />
   );

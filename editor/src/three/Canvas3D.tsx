@@ -2,6 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { Canvas } from '@react-three/fiber';
 import { useEditorState } from '../state/EditorContext.tsx';
 import SceneContent from './SceneContent.tsx';
+import MarqueeSelection from '../components/MarqueeSelection.tsx';
 import { parseLayer } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 
@@ -35,6 +36,7 @@ function useInitialCamera(): { position: [number, number, number]; far: number }
 
 export default function Canvas3D() {
   const { position, far } = useInitialCamera();
+  const state = useEditorState();
 
   // Read --bg-canvas CSS variable for theme-aware 3D background
   const [bgColor, setBgColor] = useState('#1a1d23');
@@ -50,7 +52,7 @@ export default function Canvas3D() {
   }, []);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
         shadows="soft"
         camera={{ position, fov: 50, near: 0.1, far }}
@@ -61,6 +63,7 @@ export default function Canvas3D() {
         <fog attach="fog" args={[bgColor, far * 0.3, far * 0.9]} />
         <SceneContent />
       </Canvas>
+      {state.marquee && <MarqueeSelection marquee={state.marquee} />}
     </div>
   );
 }
