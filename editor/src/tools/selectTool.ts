@@ -1,6 +1,7 @@
 import type { CanonicalElement } from '../model/elements.ts';
 import type { ToolHandler, ToolContext } from './types.ts';
 import { snapPoint } from '../utils/snap.ts';
+import { toSelectionId, toElementId } from '../model/ids.ts';
 
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
@@ -104,9 +105,9 @@ export const selectTool: ToolHandler = {
         // Snapshot elements before move starts (for single undo entry)
         const freshState = ctx.getState();
         gesture.beforeSnapshot = new Map();
-        for (const id of freshState.selectedIds) {
-          const el = freshState.document?.elements.get(id);
-          if (el) gesture.beforeSnapshot.set(id, el);
+        for (const sid of freshState.selectedIds) {
+          const el = freshState.document?.elements.get(toElementId(sid));
+          if (el) gesture.beforeSnapshot.set(el.id, el);
         }
         // Compute move anchor from the first selected element
         gesture.moveAnchor = getElementAnchor(gesture.beforeSnapshot);
@@ -260,8 +261,11 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
         elRect.y < marqueeRect.y + marqueeRect.h &&
         elRect.y + elRect.h > marqueeRect.y
       ) {
-        const id = el.getAttribute('data-id');
-        if (id) ids.add(id);
+        const rawId = el.getAttribute('data-id');
+        if (rawId) {
+          const state = ctx.getState();
+          ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);
+        }
       }
     } catch {
       // getBBox can throw for hidden elements

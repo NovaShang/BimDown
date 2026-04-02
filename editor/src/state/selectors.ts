@@ -119,10 +119,11 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
 
   // When document model exists, read from it (reflects edits)
   if (state.document) {
-    for (const id of state.selectedIds) {
-      const el = state.document.elements.get(id);
+    for (const sid of state.selectedIds) {
+      const rawId = sid.includes(':') ? sid.slice(sid.indexOf(':') + 1) : sid;
+      const el = state.document.elements.get(rawId);
       if (el) {
-        result.set(id, { tableName: el.tableName, discipline: el.discipline, csv: el.attrs });
+        result.set(sid, { tableName: el.tableName, discipline: el.discipline, csv: el.attrs });
       }
     }
     return result;
@@ -132,10 +133,11 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
   if (!floor) return result;
 
   for (const layer of floor.layers) {
-    for (const id of state.selectedIds) {
-      const csv = layer.csvRows.get(id);
+    for (const sid of state.selectedIds) {
+      const rawId = sid.includes(':') ? sid.slice(sid.indexOf(':') + 1) : sid;
+      const csv = layer.csvRows.get(rawId);
       if (csv) {
-        result.set(id, { tableName: layer.tableName, discipline: layer.discipline, csv });
+        result.set(sid, { tableName: layer.tableName, discipline: layer.discipline, csv });
       }
     }
   }

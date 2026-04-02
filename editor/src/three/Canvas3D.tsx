@@ -3,7 +3,7 @@ import { Canvas } from '@react-three/fiber';
 import { useEditorState } from '../state/EditorContext.tsx';
 import SceneContent from './SceneContent.tsx';
 import MarqueeSelection from '../components/MarqueeSelection.tsx';
-import { CanvasOverlay3DContainer, CanvasOverlay3DInner } from './CanvasOverlay3D.tsx';
+import { CanvasOverlay3DProjector, CanvasOverlay3DContainer } from './CanvasOverlay3D.tsx';
 import { parseLayer } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import type { OverlayItem } from '../hooks/useOverlayItems.ts';
@@ -44,13 +44,9 @@ interface Canvas3DProps {
 export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps) {
   const { position, far } = useInitialCamera();
   const state = useEditorState();
-  const overlayContainerRef = useRef<HTMLDivElement>(null);
-  const [overlayEl, setOverlayEl] = useState<HTMLDivElement | null>(null);
 
-  // Capture the overlay container DOM element after mount
-  useEffect(() => {
-    setOverlayEl(overlayContainerRef.current);
-  }, []);
+  // Track overlay item DOM elements via callback refs
+  const itemElsRef = useRef(new Map<string, HTMLDivElement>());
 
   // Read --bg-canvas CSS variable for theme-aware 3D background
   const [bgColor, setBgColor] = useState('#1a1d23');
@@ -65,7 +61,7 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
     return () => observer.disconnect();
   }, []);
 
-  const hasOverlay = overlayItems && overlayItems.length > 0;
+  const items = overlayItems ?? [];
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -78,20 +74,35 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
         <color attach="background" args={[bgColor]} />
         <fog attach="fog" args={[bgColor, far * 0.3, far * 0.9]} />
         <SceneContent />
-        {hasOverlay && overlayEl && (
-          <CanvasOverlay3DInner
-            items={overlayItems}
+        {items.length > 0 && (
+          <CanvasOverlay3DProjector
+            items={items}
             elevation={elevation}
-            containerEl={overlayEl}
+            itemEls={itemElsRef.current}
           />
         )}
       </Canvas>
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
-      {hasOverlay && (
-        <CanvasOverlay3DContainer>
-          <div ref={overlayContainerRef} style={{ position: 'absolute', inset: 0 }} />
-        </CanvasOverlay3DContainer>
-      )}
+      <CanvasOverlay3DContainer>
+        {items.map((item) => (
+          <div
+            key={item.id}
+            ref={(el) => {
+              if (el) itemElsRef.current.set(item.id, el);
+              else itemElsRef.current.delete(item.id);
+            }}
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              pointerEvents: 'auto',
+              willChange: 'transform',
+            }}
+          >
+            {item.content}
+          </div>
+        ))}
+      </CanvasOverlay3DContainer>
     </div>
   );
 }

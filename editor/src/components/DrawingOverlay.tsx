@@ -79,6 +79,24 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     return null;
   }
 
+  if (activeTool === 'relocate') {
+    if (points.length === 1 && cursor) {
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <line
+            x1={points[0].x} y1={points[0].y}
+            x2={cursor.x} y2={cursor.y}
+            stroke="#ffa726" strokeWidth={0.12 / scale} strokeDasharray={`${0.6 / scale},${0.3 / scale}`}
+          />
+          <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="#ffa726" />
+          <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#ffa726" opacity="0.6" />
+          <LengthLabel from={points[0]} to={cursor} scale={scale} />
+        </g>
+      );
+    }
+    return null;
+  }
+
   if (activeTool === 'draw_point') {
     if (cursor) {
       const w = parseFloat(drawingAttrs.size_x || '0.3');

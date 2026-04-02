@@ -89,7 +89,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       const elementId = findHitElementId(ndc);
       hitElementIdRef.current = elementId;
 
-      if (isDrawTool || tool === 'select') {
+      if (isDrawTool || tool === 'select' || tool === 'relocate') {
         // Draw tools and select tool: take over gesture, disable orbit
         toolOwnsGestureRef.current = true;
         if (controlsRef.current) controlsRef.current.enabled = false;
@@ -194,7 +194,11 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
           }
           break;
         case 'Escape':
-          if (stRef.current.drawingState?.points.length) {
+          if (stRef.current.activeTool === 'relocate') {
+            dispatch({ type: 'SET_TOOL', tool: 'select' });
+            dispatch({ type: 'SET_DRAWING_STATE', state: null });
+            dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          } else if (stRef.current.drawingState?.points.length) {
             dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
           } else if (stRef.current.activeTool.startsWith('draw_')) {
             dispatch({ type: 'SET_TOOL', tool: 'select' });
@@ -209,7 +213,9 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
             e.preventDefault();
             const s = stRef.current;
             if (s.document) {
-              const allIds = Array.from(s.document.elements.keys());
+              const allIds = Array.from(s.document.elements.keys()).map(id =>
+                s.document!.levelId ? `${s.document!.levelId}:${id}` : id
+              );
               dispatch({ type: 'SELECT', ids: allIds });
             }
           }

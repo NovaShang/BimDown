@@ -187,9 +187,8 @@ function InteractionLayer({ controlsRef }: { controlsRef: React.RefObject<OrbitC
   const state = useEditorState();
   const selectedElement = useMemo(() => {
     if (state.selectedIds.size !== 1 || !state.document) return null;
-    const id = state.selectedIds.values().next().value!;
-    // 3D element IDs are prefixed with "levelId:" by FloorGroup — strip prefix for document lookup
-    const rawId = id.includes(':') ? id.slice(id.indexOf(':') + 1) : id;
+    const sid = state.selectedIds.values().next().value!;
+    const rawId = sid.includes(':') ? sid.slice(sid.indexOf(':') + 1) : sid;
     return state.document.elements.get(rawId) ?? null;
   }, [state.selectedIds, state.document, state.documentVersion]);
 
@@ -197,7 +196,7 @@ function InteractionLayer({ controlsRef }: { controlsRef: React.RefObject<OrbitC
     <>
       <DrawingOverlay3D elevation={elevation} />
       <SnapOverlay3D snap={activeSnap} elevation={elevation} />
-      {selectedElement && (
+      {selectedElement && (state.activeTool === 'select' || state.activeTool === 'orbit') && (
         <ResizeHandles3D
           element={selectedElement}
           elevation={elevation}

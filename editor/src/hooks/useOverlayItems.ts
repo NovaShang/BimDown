@@ -1,6 +1,15 @@
 import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { DocumentState } from '../model/document.ts';
+import { toElementId } from '../model/ids.ts';
+
+/**
+ * Anchor point for positioning the overlay element relative to the computed screen position.
+ * 'center' centers both axes; 'top-center' centers X, anchors at top; etc.
+ */
+export type OverlayAnchor = 'top-left' | 'top-center' | 'top-right'
+  | 'center-left' | 'center' | 'center-right'
+  | 'bottom-left' | 'bottom-center' | 'bottom-right';
 
 export interface OverlayItem {
   id: string;
@@ -8,6 +17,8 @@ export interface OverlayItem {
   position: { x: number; y: number };
   /** Pixel offset from computed screen position */
   offset?: { x: number; y: number };
+  /** How to anchor the overlay element relative to the screen position. Default: 'top-left' */
+  anchor?: OverlayAnchor;
   /** React content to render at this anchor */
   content: ReactNode;
 }
@@ -23,7 +34,7 @@ export function getSelectionCenter(
   let found = false;
 
   for (const id of selectedIds) {
-    const el = document.elements.get(id);
+    const el = document.elements.get(toElementId(id));
     if (!el) continue;
     found = true;
 
@@ -53,8 +64,7 @@ export function getSelectionCenter(
   }
 
   if (!found) return null;
-  // Center-top: center X, min Y (top of bounding box in model coords where y increases downward)
-  return { x: (minX + maxX) / 2, y: minY };
+  return { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
 }
 
 /**
@@ -75,7 +85,8 @@ export function useOverlayItems(
     return [{
       id: 'selection-actions',
       position: center,
-      offset: { x: 0, y: -40 }, // 40px above the anchor
+      offset: { x: 0, y: -12 },
+      anchor: 'bottom-center',
       content,
     }];
   }, [selectedIds, document, content]);

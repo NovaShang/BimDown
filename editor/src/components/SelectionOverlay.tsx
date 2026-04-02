@@ -1,6 +1,7 @@
 import React from 'react';
 import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
+import { toElementId } from '../model/ids.ts';
 
 interface SelectionOverlayProps {
   document: DocumentState | null;
@@ -12,8 +13,8 @@ export default React.memo(function SelectionOverlay({ document, selectedIds, sca
   if (!document || selectedIds.size === 0) return null;
 
   const selectedElements: CanonicalElement[] = [];
-  for (const id of selectedIds) {
-    const el = document.elements.get(id);
+  for (const sid of selectedIds) {
+    const el = document.elements.get(toElementId(sid));
     if (el) selectedElements.push(el);
   }
 

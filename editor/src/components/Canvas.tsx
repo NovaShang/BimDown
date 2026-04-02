@@ -15,7 +15,7 @@ import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { pruneCache } from './ElementNode.tsx';
-import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
+import { REVERSE_PREFIX_MAP, toSelectionId, toElementId } from '../model/ids.ts';
 import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
 
@@ -127,11 +127,13 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     let el = target as Element | null;
     while (el && el !== svgRef.current) {
       const id = el.getAttribute('data-id') || el.getAttribute('id');
-      if (id && /^[a-z]+-\d+$/i.test(id)) return id;
+      if (id && /^[a-z]+-\d+$/i.test(id)) {
+        return state.currentLevel ? toSelectionId(state.currentLevel, id) : id;
+      }
       el = el.parentElement;
     }
     return null;
-  }, []);
+  }, [state.currentLevel]);
 
   const screenToSvg = useCallback((clientX: number, clientY: number): { x: number; y: number } | null => {
     const svg = svgRef.current;
@@ -326,13 +328,13 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         {/* Lightweight overlays — only re-render when scale or selection changes */}
         <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={scale} />
 
-        {state.document && (() => {
+        {state.document && (activeTool === 'select' || activeTool === 'orbit') && (() => {
           const handles = [];
-          for (const id of selectedIds) {
-            const el = state.document.elements.get(id);
+          for (const sid of selectedIds) {
+            const el = state.document.elements.get(toElementId(sid));
             if (!el) continue;
             if (el.geometry === 'point' || selectedIds.size === 1) {
-              handles.push(<ResizeHandles key={id} element={el} svgRef={svgRef} scale={scale} onSnap={setActiveSnap} />);
+              handles.push(<ResizeHandles key={sid} element={el} svgRef={svgRef} scale={scale} onSnap={setActiveSnap} />);
             }
           }
           return handles;

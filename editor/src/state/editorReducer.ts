@@ -2,7 +2,7 @@ import type { EditorState, EditorAction } from './editorTypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
-import { generateId } from '../model/ids.ts';
+import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry } from '../model/hosted.ts';
 
 export const initialState: EditorState = {
@@ -224,10 +224,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'MOVE_ELEMENTS': {
       if (!state.document) return state;
       const { ids, dx, dy, preview } = action;
+      const rawIds = ids.map(toElementId);
       const next = new Map(state.document.elements);
       // Collect hosted elements that should cascade with moved hosts
-      const movedSet = new Set(ids);
-      const allIds = [...ids];
+      const movedSet = new Set(rawIds);
+      const allIds = [...rawIds];
       for (const el of next.values()) {
         if (el.hostId && movedSet.has(el.hostId) && !movedSet.has(el.id)) {
           allIds.push(el.id);
@@ -286,12 +287,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'DELETE_ELEMENTS': {
       if (!state.document) return state;
+      const rawIds = action.ids.map(toElementId);
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
       const next = new Map(state.document.elements);
-      const deletedSet = new Set(action.ids);
+      const deletedRawSet = new Set(rawIds);
       // Delete requested elements
-      for (const id of action.ids) {
+      for (const id of rawIds) {
         const el = next.get(id);
         if (el) {
           before.set(id, el);
@@ -301,17 +303,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       // Cascade delete hosted elements whose host was deleted
       for (const [id, el] of next) {
-        if (el.hostId && deletedSet.has(el.hostId)) {
+        if (el.hostId && deletedRawSet.has(el.hostId)) {
           before.set(id, el);
           after.set(id, null);
           next.delete(id);
-          deletedSet.add(id);
+          deletedRawSet.add(id);
         }
       }
       if (before.size === 0) return state;
+      // Remove deleted IDs from selection (match both prefixed and raw)
       const nextSelected = new Set(state.selectedIds);
-      for (const id of deletedSet) nextSelected.delete(id);
-      
+      for (const sid of state.selectedIds) {
+        if (deletedRawSet.has(toElementId(sid))) nextSelected.delete(sid);
+      }
+
       return {
         ...state,
         document: { ...state.document, elements: next },
@@ -326,13 +331,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'DUPLICATE_ELEMENTS': {
       if (!state.document) return state;
       const { ids, offset } = action;
+      const rawIds = ids.map(toElementId);
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
       const next = new Map(state.document.elements);
       const existingIds = new Set(next.keys());
-      const newIds: string[] = [];
-      for (const id of ids) {
-        const el = next.get(id);
+      const newSelectionIds: string[] = [];
+      for (const rawId of rawIds) {
+        const el = next.get(rawId);
         if (!el) continue;
         const newId = generateId(el.tableName, existingIds);
         existingIds.add(newId);
@@ -340,28 +346,30 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         next.set(newId, cloned);
         before.set(newId, null);
         after.set(newId, cloned);
-        newIds.push(newId);
+        // Selection IDs keep the level prefix
+        newSelectionIds.push(state.currentLevel ? toSelectionId(state.currentLevel, newId) : newId);
       }
-      if (newIds.length === 0) return state;
+      if (newSelectionIds.length === 0) return state;
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Duplicate elements', before, after)),
         documentVersion: state.documentVersion + 1,
         lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(after) },
-        selectedIds: new Set(newIds),
+        selectedIds: new Set(newSelectionIds),
       };
     }
 
     case 'UPDATE_ATTRS': {
       if (!state.document) return state;
-      const el = state.document.elements.get(action.id);
+      const rawId = toElementId(action.id);
+      const el = state.document.elements.get(rawId);
       if (!el) return state;
-      const before = new Map<string, CanonicalElement | null>([[action.id, el]]);
+      const before = new Map<string, CanonicalElement | null>([[rawId, el]]);
       const updated = { ...el, attrs: { ...el.attrs, ...action.attrs } };
-      const after = new Map<string, CanonicalElement | null>([[action.id, updated]]);
+      const after = new Map<string, CanonicalElement | null>([[rawId, updated]]);
       const next = new Map(state.document.elements);
-      next.set(action.id, updated);
+      next.set(rawId, updated);
       return {
         ...state,
         document: { ...state.document, elements: next },
@@ -373,17 +381,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'RESIZE_ELEMENT': {
       if (!state.document) return state;
-      const el = state.document.elements.get(action.id);
+      const rawId = toElementId(action.id);
+      const el = state.document.elements.get(rawId);
       if (!el) return state;
       const resized = applyResize(el, action.changes);
       const next = new Map(state.document.elements);
-      next.set(action.id, resized);
+      next.set(rawId, resized);
 
       // Re-resolve hosted elements when their host wall is resized
       if (resized.geometry === 'line' || resized.geometry === 'spatial_line') {
         const wall = resized as LineElement;
         for (const [id, hosted] of next) {
-          if (hosted.hostId === action.id && hosted.geometry === 'line' && hosted.locationParam != null) {
+          if (hosted.hostId === rawId && hosted.geometry === 'line' && hosted.locationParam != null) {
             const width = parseFloat(hosted.attrs.width ?? '0.9');
             const { start, end } = resolveHostedGeometry(wall, hosted.locationParam, width);
             next.set(id, { ...hosted, start, end } as LineElement);
@@ -396,11 +405,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
-      before.set(action.id, el);
-      after.set(action.id, resized);
+      before.set(rawId, el);
+      after.set(rawId, resized);
       // Include re-resolved hosted elements in undo history
       for (const [id, hosted] of next) {
-        if (id !== action.id && hosted.hostId === action.id) {
+        if (id !== rawId && hosted.hostId === rawId) {
           before.set(id, state.document.elements.get(id) ?? null);
           after.set(id, hosted);
         }

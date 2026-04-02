@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import type { EditorState, EditorAction } from '../state/editorTypes.ts';
+import { toSelectionId } from '../model/ids.ts';
 
 interface UseCanvasKeyboardOptions {
   globalDispatch: React.Dispatch<EditorAction>;
@@ -59,7 +60,11 @@ export function useCanvasKeyboard({
           globalDispatch({ type: 'SET_SPACE_HELD', held: true });
           break;
         case 'Escape':
-          if (stateRef.current.drawingState?.points.length) {
+          if (stateRef.current.activeTool === 'relocate') {
+            globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          } else if (stateRef.current.drawingState?.points.length) {
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
           } else if (stateRef.current.activeTool.startsWith('draw_')) {
             globalDispatch({ type: 'SET_TOOL', tool: 'select' });
@@ -97,7 +102,7 @@ export function useCanvasKeyboard({
               for (const layer of floor.layers) {
                 if (s.visibleLayers.has(`${layer.discipline}/${layer.tableName}`)) {
                   for (const id of layer.csvRows.keys()) {
-                    allIds.push(id);
+                    allIds.push(s.currentLevel ? toSelectionId(s.currentLevel, id) : id);
                   }
                 }
               }

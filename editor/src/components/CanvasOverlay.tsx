@@ -1,5 +1,13 @@
 import { useRef, useEffect, useCallback } from 'react';
-import type { OverlayItem } from '../hooks/useOverlayItems.ts';
+import type { OverlayItem, OverlayAnchor } from '../hooks/useOverlayItems.ts';
+
+function anchorTranslate(anchor: OverlayAnchor | undefined): string {
+  const tx = !anchor || anchor.includes('left') ? '0%'
+    : anchor.includes('right') ? '-100%' : '-50%';
+  const ty = !anchor || anchor.includes('top') ? '0%'
+    : anchor.includes('bottom') ? '-100%' : '-50%';
+  return `translate(${tx}, ${ty})`;
+}
 
 interface CanvasOverlayProps {
   items: OverlayItem[];
@@ -35,7 +43,7 @@ export default function CanvasOverlay({ items, svgRef, containerRef, subscribeTr
       const screenX = mx * ctm.a + my * ctm.c + ctm.e - containerRect.left + (item.offset?.x ?? 0);
       const screenY = mx * ctm.b + my * ctm.d + ctm.f - containerRect.top + (item.offset?.y ?? 0);
 
-      el.style.transform = `translate(${screenX}px, ${screenY}px)`;
+      el.style.transform = `translate(${screenX}px, ${screenY}px) ${anchorTranslate(item.anchor)}`;
     }
   }, [items, svgRef, containerRef]);
 

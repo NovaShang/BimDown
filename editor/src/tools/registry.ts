@@ -8,10 +8,12 @@ import { drawPointTool } from './drawPointTool.ts';
 import { drawPolygonTool } from './drawPolygonTool.ts';
 import { drawGridTool } from './drawGridTool.ts';
 import { drawHostedTool } from './drawHostedTool.ts';
+import { relocateTool } from './relocateTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   select: selectTool,
   orbit: selectTool,
+  relocate: relocateTool,
   pan: panTool,
   zoom: zoomTool,
   draw_line: drawLineTool,
