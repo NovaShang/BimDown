@@ -90,7 +90,7 @@ function lineToBox(
   // SVG Y is flipped relative to 3D Z
   const cz = -(el.start.y + el.end.y) / 2;
   const cy = baseY + height / 2;
-  const rotY = -Math.atan2(dy, dx);
+  const rotY = Math.atan2(dy, dx);
 
   return {
     kind: 'box',
@@ -170,7 +170,7 @@ function spatialLineToBox(el: SpatialLineElement): BoxParams | null {
   const cx = (el.start.x + el.end.x) / 2;
   const cz = -(el.start.y + el.end.y) / 2;
   const cy = baseY + sizeY / 2;
-  const rotY = -Math.atan2(dy, dx);
+  const rotY = Math.atan2(dy, dx);
 
   return {
     kind: 'box',

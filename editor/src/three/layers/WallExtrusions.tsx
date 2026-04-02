@@ -111,6 +111,11 @@ function subtractOpenings(
     const cx = (h.start.x + h.end.x) / 2;
     const cy = (h.start.y + h.end.y) / 2;
 
+    // Actual span along wall (resolved from hosted geometry)
+    const spanDx = h.end.x - h.start.x;
+    const spanDy = h.end.y - h.start.y;
+    const spanLen = Math.sqrt(spanDx * spanDx + spanDy * spanDy);
+
     // 3D position: x = worldX, y = baseY + openingBaseOffset + openingHeight/2, z = -worldY
     const baseY = levelElevation + baseOffset;
     const boxY = baseY + openingBaseOffset + openingHeight / 2;
@@ -121,8 +126,8 @@ function subtractOpenings(
     const thickness = wall.strokeWidth * 2;
 
     // Box aligned to wall direction
-    const boxGeo = new BoxGeometry(openingWidth, openingHeight, thickness);
-    const angle = -Math.atan2(wallDy, wallDx);
+    const boxGeo = new BoxGeometry(spanLen > 0.001 ? spanLen : openingWidth, openingHeight, thickness);
+    const angle = Math.atan2(wallDy, wallDx);
     const mat = new Matrix4()
       .makeRotationY(angle)
       .setPosition(boxX, boxY, boxZ);
