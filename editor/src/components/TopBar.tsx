@@ -1,5 +1,5 @@
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import { DISCIPLINES, DISCIPLINE_COLORS } from '../model/tableRegistry.ts';
+import { DISCIPLINES } from '../model/tableRegistry.ts';
 import type { ViewMode } from '../state/editorTypes.ts';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
@@ -14,13 +14,11 @@ export default function TopBar() {
       {/* Discipline selector */}
       <Select value={activeDiscipline ?? DISCIPLINES[0]} onValueChange={(v) => { if (v) dispatch({ type: 'SET_DISCIPLINE', discipline: v }); }}>
         <SelectTrigger className="h-8 gap-1.5 border-none bg-transparent px-2.5 text-[11px] font-medium shadow-none hover:bg-accent">
-          <span className="size-2 shrink-0 rounded-full" style={{ background: activeDiscipline ? DISCIPLINE_COLORS[activeDiscipline] : '#888' }} />
           <span>{activeDiscipline ? activeDiscipline.charAt(0).toUpperCase() + activeDiscipline.slice(1) : ''}</span>
         </SelectTrigger>
         <SelectContent side="bottom" sideOffset={8} alignItemWithTrigger={false}>
           {DISCIPLINES.map(d => (
             <SelectItem key={d} value={d} className="text-[11px]">
-              <span className="size-2 shrink-0 rounded-full" style={{ background: DISCIPLINE_COLORS[d] }} />
               {d.charAt(0).toUpperCase() + d.slice(1)}
             </SelectItem>
           ))}
