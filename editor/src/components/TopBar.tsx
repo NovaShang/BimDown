@@ -1,43 +1,33 @@
-import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { DISCIPLINES, DISCIPLINE_COLORS } from '../model/tableRegistry.ts';
 import type { ViewMode } from '../state/editorTypes.ts';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 
 export default function TopBar() {
-  const { t } = useTranslation();
   const { viewMode, activeDiscipline } = useEditorState();
   const dispatch = useEditorDispatch();
 
   return (
     <div className="absolute top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none animate-in fade-in slide-in-from-top-2 duration-200">
-      {/* Discipline tabs */}
-      <div className="flex items-center gap-0.5">
-        {DISCIPLINES.map(d => (
-          <button
-            key={d}
-            className={cn(
-              'flex cursor-pointer items-center gap-1.5 rounded-lg border-none px-2.5 py-1.5 text-[11px] font-medium transition-all',
-              activeDiscipline === d
-                ? 'bg-[var(--accent-dim)] text-foreground'
-                : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-            style={activeDiscipline === d ? {
-              '--accent-dim': `color-mix(in srgb, ${DISCIPLINE_COLORS[d]} 15%, transparent)`,
-            } as React.CSSProperties : undefined}
-            onClick={() => dispatch({ type: 'SET_DISCIPLINE', discipline: d })}
-          >
-            <span
-              className="size-2 shrink-0 rounded-full"
-              style={{ background: DISCIPLINE_COLORS[d] }}
-            />
-            {d.charAt(0).toUpperCase() + d.slice(1)}
-          </button>
-        ))}
-      </div>
+      {/* Discipline selector */}
+      <Select value={activeDiscipline ?? DISCIPLINES[0]} onValueChange={(v) => { if (v) dispatch({ type: 'SET_DISCIPLINE', discipline: v }); }}>
+        <SelectTrigger className="h-8 gap-1.5 border-none bg-transparent px-2.5 text-[11px] font-medium shadow-none hover:bg-accent">
+          <span className="size-2 shrink-0 rounded-full" style={{ background: activeDiscipline ? DISCIPLINE_COLORS[activeDiscipline] : '#888' }} />
+          <span>{activeDiscipline ? activeDiscipline.charAt(0).toUpperCase() + activeDiscipline.slice(1) : ''}</span>
+        </SelectTrigger>
+        <SelectContent>
+          {DISCIPLINES.map(d => (
+            <SelectItem key={d} value={d} className="text-[11px]">
+              <span className="size-2 shrink-0 rounded-full" style={{ background: DISCIPLINE_COLORS[d] }} />
+              {d.charAt(0).toUpperCase() + d.slice(1)}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
 
-      <Separator orientation="vertical" className="mx-1 self-stretch" />
+      <Separator orientation="vertical" className="mx-0.5 self-stretch" />
 
       {/* 2D / 3D toggle */}
       <div className="flex items-center gap-0.5">
