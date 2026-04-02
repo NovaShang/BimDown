@@ -133,7 +133,7 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
       const cx = (points[0].x + cursor.x) / 2;
       const cz = -(points[0].y + cursor.y) / 2;
       const cy = baseY + height / 2;
-      const rotY = -Math.atan2(dy, dx);
+      const rotY = Math.atan2(dy, dx);
 
       return (
         <group>
