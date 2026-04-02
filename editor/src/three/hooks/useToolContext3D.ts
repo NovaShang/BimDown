@@ -1,10 +1,25 @@
 import { useRef, useCallback, useMemo, useState } from 'react';
 import { useThree } from '@react-three/fiber';
-import { Raycaster, Vector2, Vector3, Plane } from 'three';
+import { Raycaster, Vector2, Vector3, Plane, type Object3D, type Intersection } from 'three';
 import type { ToolContext, ToolStateSnapshot, TransformAction } from '../../tools/types.ts';
 import type { EditorAction } from '../../state/editorTypes.ts';
 import type { SnapResult } from '../../utils/snap.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
+
+/** Resolve element ID from a raycast intersection (walks up object tree). */
+function resolveElementId(intersection: Intersection): string | null {
+  let obj: Object3D | null = intersection.object;
+  while (obj) {
+    if (obj.userData.indexToId && intersection.instanceId !== undefined) {
+      return obj.userData.indexToId[intersection.instanceId] ?? null;
+    }
+    if (obj.userData.elementId) {
+      return obj.userData.elementId as string;
+    }
+    obj = obj.parent;
+  }
+  return null;
+}
 
 type ToolDispatchAction = EditorAction | TransformAction;
 
@@ -19,7 +34,7 @@ function isTransformAction(action: ToolDispatchAction): action is TransformActio
  * conversion layer differs.
  */
 export function useToolContext3D(floorElevation: number) {
-  const { camera, gl } = useThree();
+  const { camera, gl, scene } = useThree();
   const state = useEditorState();
   const globalDispatch = useEditorDispatch();
   const stateRef = useRef(state);
@@ -59,29 +74,24 @@ export function useToolContext3D(floorElevation: number) {
     return { x: intersection.x, y: -intersection.z };
   }, [camera, gl, floorPlane]);
 
-  // Raycast screen point onto a wall's vertical plane, returns Y elevation
-  const screenToWallElevation = useCallback((clientX: number, clientY: number, wallStart: { x: number; y: number }, wallEnd: { x: number; y: number }): number | null => {
+  // Raycast screen point against scene meshes, returns element ID + model coords + elevation
+  const screenToScenePoint = useCallback((clientX: number, clientY: number): { elementId: string; x: number; y: number; elevation: number } | null => {
     const rect = gl.domElement.getBoundingClientRect();
     const ndc = new Vector2(
       ((clientX - rect.left) / rect.width) * 2 - 1,
       -((clientY - rect.top) / rect.height) * 2 + 1,
     );
     raycasterRef.current.setFromCamera(ndc, camera);
-
-    // Wall direction in 3D XZ plane: (dx, 0, -dy)
-    const wdx = wallEnd.x - wallStart.x;
-    const wdy = wallEnd.y - wallStart.y;
-    // Plane normal = perpendicular to wall in XZ: (dy, 0, dx) in 3D
-    const normal = new Vector3(wdy, 0, wdx).normalize();
-    // A point on the wall plane
-    const coplanar = new Vector3(wallStart.x, 0, -wallStart.y);
-    const wallPlane = new Plane().setFromNormalAndCoplanarPoint(normal, coplanar);
-
-    const intersection = new Vector3();
-    const hit = raycasterRef.current.ray.intersectPlane(wallPlane, intersection);
-    if (!hit) return null;
-    return intersection.y;
-  }, [camera, gl]);
+    const intersections = raycasterRef.current.intersectObjects(scene.children, true);
+    for (const hit of intersections) {
+      const id = resolveElementId(hit);
+      if (id) {
+        // 3D (x, y, z) → model (x, -z) + elevation y
+        return { elementId: id, x: hit.point.x, y: -hit.point.z, elevation: hit.point.y };
+      }
+    }
+    return null;
+  }, [camera, gl, scene]);
 
   // Find element ID — reads from the ref that useInteraction3D populates
   const findElementId = useCallback((_target: EventTarget | null): string | null => {
@@ -163,8 +173,8 @@ export function useToolContext3D(floorElevation: number) {
     findElementId,
     setSnap: setActiveSnap,
     resolveMarquee,
-    screenToWallElevation,
-  }), [dispatch, getState, screenToSvg, findElementId, resolveMarquee, screenToWallElevation]);
+    screenToScenePoint,
+  }), [dispatch, getState, screenToSvg, findElementId, resolveMarquee, screenToScenePoint]);
 
   // Flag for ResizeHandles3D to signal that it's handling a drag,
   // so the interaction layer should skip its own handling.

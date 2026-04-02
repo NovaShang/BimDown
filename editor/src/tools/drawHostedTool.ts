@@ -5,26 +5,23 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
-import { resolveHostedGeometry } from '../model/hosted.ts';
+import { resolveHostedGeometry, computeHostedPosition } from '../model/hosted.ts';
 
 const HOST_SNAP_THRESHOLD = 1; // metres — max distance from cursor to wall centerline
 
 interface HostHit {
   wall: LineElement;
-  /** Projected point on wall centerline */
-  projected: Point;
-  /** Distance from cursor to projected point */
-  dist: number;
   /** Parameter along wall (0 = start, 1 = end) */
   t: number;
 }
 
+/** Find the nearest host wall to a 2D cursor point (floor-plane fallback). */
 function findNearestHost(
   cursor: Point,
   elements: ReadonlyMap<string, CanonicalElement>,
   hostTables: Set<string>,
 ): HostHit | null {
-  let best: HostHit | null = null;
+  let best: { wall: LineElement; t: number; dist: number } | null = null;
 
   for (const el of elements.values()) {
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
@@ -37,7 +34,6 @@ function findNearestHost(
     const lenSq = dx * dx + dy * dy;
     if (lenSq < 1e-10) continue;
 
-    // Parameter along wall segment (clamped 0–1)
     const t = Math.max(0, Math.min(1, ((cursor.x - start.x) * dx + (cursor.y - start.y) * dy) / lenSq));
     const projected = nearestPointOnSegment(cursor, start, end);
     const ddx = cursor.x - projected.x;
@@ -45,10 +41,25 @@ function findNearestHost(
     const dist = Math.sqrt(ddx * ddx + ddy * ddy);
 
     if (dist < HOST_SNAP_THRESHOLD && (!best || dist < best.dist)) {
-      best = { wall, projected, dist, t };
+      best = { wall, t, dist };
     }
   }
   return best;
+}
+
+/** Find a host wall by element ID (for 3D scene raycast results). */
+function findHostById(
+  elementId: string,
+  elements: ReadonlyMap<string, CanonicalElement>,
+  hostTables: Set<string>,
+): LineElement | null {
+  // Element IDs from 3D scene are prefixed with "levelId:" — strip prefix
+  const rawId = elementId.includes(':') ? elementId.slice(elementId.indexOf(':') + 1) : elementId;
+  const el = elements.get(rawId);
+  if (!el) return null;
+  if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
+  if (!hostTables.has(el.tableName)) return null;
+  return el as LineElement;
 }
 
 /** Get the current level's elevation from project data. */
@@ -58,27 +69,61 @@ function getLevelElevation(state: ToolStateSnapshot): number {
   return level?.elevation ?? 0;
 }
 
-/** Compute base_offset from wall elevation raycast. Doors lock to 0. */
-function computeBaseOffset(
+interface HostedPlacement {
+  start: Point;
+  end: Point;
+  t: number;
+  baseOffset: number;
+  wall: LineElement;
+}
+
+/**
+ * Resolve hosted element placement from screen position.
+ * Strategy:
+ * 1. Try 3D scene raycast (screenToScenePoint) — directly hits wall mesh, gives exact position + elevation
+ * 2. Fall back to floor-plane raycast (screenToSvg + findNearestHost) for 2D mode
+ */
+function resolveHostedPlacement(
   ctx: ToolContext,
   e: React.PointerEvent,
-  wall: LineElement,
+  state: ToolStateSnapshot,
+  hostTables: Set<string>,
   tableName: string,
+  width: number,
   elementHeight: number,
   levelElevation: number,
-): number {
-  // Doors always sit on the floor
-  if (tableName === 'door') return 0;
+): HostedPlacement | null {
+  const elements = state.document?.elements;
+  if (!elements) return null;
 
-  if (!ctx.screenToWallElevation) return 0;
+  // Try 3D scene raycast first — directly hit a wall mesh
+  const sceneHit = ctx.screenToScenePoint?.(e.clientX, e.clientY);
+  if (sceneHit) {
+    const wall = findHostById(sceneHit.elementId, elements, hostTables);
+    if (wall) {
+      const cursorOnWall: Point = { x: sceneHit.x, y: sceneHit.y };
+      const t = computeHostedPosition(wall, cursorOnWall);
+      const { start, end } = resolveHostedGeometry(wall, t, width);
 
-  const elevation = ctx.screenToWallElevation(e.clientX, e.clientY, wall.start, wall.end);
-  if (elevation == null) return 0;
+      let baseOffset = 0;
+      if (tableName !== 'door') {
+        const raw = sceneHit.elevation - levelElevation - elementHeight / 2;
+        baseOffset = Math.max(0, Math.round(raw * 100) / 100);
+      }
 
-  // base_offset = cursor elevation - level elevation - half element height (center cursor on element)
-  const raw = elevation - levelElevation - elementHeight / 2;
-  // Clamp: at least 0, at most wallHeight - elementHeight (approximate)
-  return Math.max(0, Math.round(raw * 100) / 100);
+      return { start, end, t, baseOffset, wall };
+    }
+  }
+
+  // Fallback: floor-plane raycast (2D mode or no wall hit in 3D)
+  const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
+  if (!svgPt) return null;
+
+  const hit = findNearestHost(svgPt, elements, hostTables);
+  if (!hit) return null;
+
+  const { start, end } = resolveHostedGeometry(hit.wall, hit.t, width);
+  return { start, end, t: hit.t, baseOffset: 0, wall: hit.wall };
 }
 
 export const drawHostedTool: ToolHandler = {
@@ -87,9 +132,6 @@ export const drawHostedTool: ToolHandler = {
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
 
-    const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    if (!svgPt) return;
-
     const state = ctx.getState();
     const target = state.drawingTarget;
     if (!target) return;
@@ -98,40 +140,35 @@ export const drawHostedTool: ToolHandler = {
     const tables = hostTablesFor(target.tableName);
     const wAttr = widthAttrFor(target.tableName);
 
+    const da = state.drawingAttrs;
+    const width = parseFloat(da[wAttr] || '0.9');
+    const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
+    const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
+    const levelElevation = getLevelElevation(state);
+
+    const placement = resolveHostedPlacement(ctx, e, state, tables, target.tableName, width, elementHeight, levelElevation);
+    if (!placement) return;
+
     const elements = state.document?.elements;
     if (!elements) return;
 
-    const hit = findNearestHost(svgPt, elements, tables);
-    if (!hit) return;
-
-    const da = state.drawingAttrs;
-    const width = parseFloat(da[wAttr] || '0.9');
-    const { start, end } = resolveHostedGeometry(hit.wall, hit.t, width);
-
     const existingIds = new Set(elements.keys());
     const id = generateId(target.tableName, existingIds);
+    const position = placement.t.toFixed(4);
 
-    const position = hit.t.toFixed(4);
-    const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-
-    // Compute base_offset from cursor elevation
-    const levelElevation = getLevelElevation(state);
-    const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
-    const baseOffset = computeBaseOffset(ctx, e, hit.wall, target.tableName, elementHeight, levelElevation);
-
-    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: hit.wall.id, position, base_offset: String(baseOffset) };
+    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: placement.wall.id, position, base_offset: String(placement.baseOffset) };
 
     const element: LineElement = {
       id,
       tableName: target.tableName,
       discipline: target.discipline,
       geometry: 'line',
-      start,
-      end,
+      start: placement.start,
+      end: placement.end,
       strokeWidth: 0.1,
       attrs: mergedAttrs,
-      hostId: hit.wall.id,
-      locationParam: hit.t,
+      hostId: placement.wall.id,
+      locationParam: placement.t,
     };
 
     ctx.dispatch({ type: 'CREATE_ELEMENT', element });
@@ -139,9 +176,6 @@ export const drawHostedTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
-    const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    if (!svgPt) return;
-
     const state = ctx.getState();
     const target = state.drawingTarget;
     if (!target) return;
@@ -150,30 +184,24 @@ export const drawHostedTool: ToolHandler = {
     const tables = hostTablesFor(target.tableName);
     const wAttr = widthAttrFor(target.tableName);
 
-    const elements = state.document?.elements;
-    if (!elements) return;
+    const da = state.drawingAttrs;
+    const width = parseFloat(da[wAttr] || '0.9');
+    const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
+    const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
+    const levelElevation = getLevelElevation(state);
 
-    const hit = findNearestHost(svgPt, elements, tables);
+    const placement = resolveHostedPlacement(ctx, e, state, tables, target.tableName, width, elementHeight, levelElevation);
 
-    if (hit) {
-      const da = state.drawingAttrs;
-      const width = parseFloat(da[wAttr] || '0.9');
-      const { start, end } = resolveHostedGeometry(hit.wall, hit.t, width);
-
-      // Compute base_offset from cursor elevation
-      const levelElevation = getLevelElevation(state);
-      const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-      const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
-      const baseOffset = computeBaseOffset(ctx, e, hit.wall, target.tableName, elementHeight, levelElevation);
-
+    if (placement) {
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { points: [start], cursor: end, baseOffset },
+        state: { points: [placement.start], cursor: placement.end, baseOffset: placement.baseOffset },
       });
     } else {
+      const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { points: [], cursor: svgPt },
+        state: { points: [], cursor: svgPt ?? { x: 0, y: 0 } },
       });
     }
   },
