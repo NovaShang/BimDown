@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Level, CsvRow } from '../types.ts';
-import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
-import { DISCIPLINES } from '../model/tableRegistry.ts';
+import { LAYER_STYLES } from '../types.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getPropertyFields, PROPERTY_GROUPS, type PropertyField } from '../model/propertyFields.ts';
 import type { LayerGroup } from '../state/editorTypes.ts';
@@ -64,24 +63,6 @@ function LevelContextMenu({
   );
 }
 
-function DisciplineSelect({ value, onChange }: { value: string | null; onChange: (d: string) => void }) {
-  return (
-    <Select value={value ?? DISCIPLINES[0]} onValueChange={(v) => { if (v) onChange(v) }}>
-      <SelectTrigger className="h-5 min-w-0 gap-1 border-none bg-transparent px-1 py-0 text-[10px] shadow-none">
-        <span className="size-1.5 shrink-0 rounded-full" style={{ background: value ? DISCIPLINE_COLORS[value] : '#888' }} />
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent className="min-w-[130px]">
-        {DISCIPLINES.map(d => (
-          <SelectItem key={d} value={d} className="text-[11px]">
-            <span className="size-1.5 shrink-0 rounded-full" style={{ background: DISCIPLINE_COLORS[d] }} />
-            {d.charAt(0).toUpperCase() + d.slice(1)}
-          </SelectItem>
-        ))}
-      </SelectContent>
-    </Select>
-  );
-}
 
 // ─── Inline Properties Panel ─────────────────────────────────────────────────
 
@@ -338,10 +319,6 @@ export default function LeftPanel({
           <ScrollArea className="h-full p-2">
             <div className="flex items-center justify-between px-2 pb-1 pt-0.5">
               <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
-              <DisciplineSelect
-                value={activeDiscipline}
-                onChange={(d) => dispatch({ type: 'SET_DISCIPLINE', discipline: d })}
-              />
             </div>
 
             <div className="mb-1">

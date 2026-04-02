@@ -1,6 +1,6 @@
 import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import type { ViewMode, Floor3DMode } from '../state/editorTypes.ts';
+import type { Floor3DMode } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
@@ -18,28 +18,9 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
 
   return (
     <div className="absolute bottom-3 left-3 z-30 flex items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none">
-      {/* 2D / 3D toggle */}
-      {(['2d', '3d'] as const).map((mode: ViewMode) => (
-        <Tooltip key={mode}>
-          <TooltipTrigger
-            className={cn(
-              'flex size-8 cursor-pointer items-center justify-center rounded-lg border-none text-[11px] font-semibold uppercase transition-all',
-              viewMode === mode
-                ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
-                : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-            onClick={() => dispatch({ type: 'SET_VIEW_MODE', mode })}
-          >
-            {mode}
-          </TooltipTrigger>
-          <TooltipContent side="top">{mode === '2d' ? t('view.2d') : t('view.3d')}</TooltipContent>
-        </Tooltip>
-      ))}
-
       {/* Zoom to fit (both 2D and 3D) */}
       {onZoomToFit && (
         <>
-          <Separator orientation="vertical" className="mx-0.5 self-stretch" />
 
           <Tooltip>
             <TooltipTrigger

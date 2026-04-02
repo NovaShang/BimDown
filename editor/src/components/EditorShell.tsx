@@ -12,6 +12,7 @@ import Canvas from './Canvas.tsx';
 import type { CanvasHandle } from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
 import ViewToolbar from './ViewToolbar.tsx';
+import TopBar from './TopBar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
 import SelectionActions from './SelectionActions.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
@@ -182,7 +183,8 @@ export default function EditorShell() {
   const activeDiscipline = state.activeDiscipline;
 
   // Overlay items for selection action bar
-  const selectionContent = state.selectedIds.size > 0 && !state.readonly ? <SelectionActions /> : null;
+  const showSelectionActions = state.selectedIds.size > 0 && !state.readonly && state.activeTool !== 'relocate';
+  const selectionContent = showSelectionActions ? <SelectionActions /> : null;
   const overlayItems = useOverlayItems(state.selectedIds, state.document, selectionContent);
 
   // Current level elevation for 3D overlay projection
@@ -234,6 +236,7 @@ export default function EditorShell() {
             overlayItems={overlayItems}
           />
         )}
+        <TopBar />
         {!state.readonly && <DrawingPropertiesBar />}
         {!state.readonly && <FloatingToolbar activeDiscipline={activeDiscipline} />}
         <ViewToolbar
