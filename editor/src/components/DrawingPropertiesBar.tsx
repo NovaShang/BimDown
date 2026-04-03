@@ -8,6 +8,7 @@ import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
 import { LevelSelect } from './LevelSelect.tsx';
+import { NumberInput } from './NumberInput.tsx';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
@@ -66,15 +67,13 @@ export default function DrawingPropertiesBar() {
             </Select>
           ) : f.type === 'number' ? (
             <div className="flex items-center gap-1">
-              <Input
+              <NumberInput
                 className={`${fieldInputClass} w-[60px] text-right`}
-                type="text"
-                inputMode="decimal"
                 value={attrs[f.key] ?? ''}
-                onChange={e => {
-                  const v = e.target.value;
-                  if (v === '' || v === '-' || !isNaN(Number(v))) handleChange(f.key, v);
-                }}
+                onChange={v => handleChange(f.key, v)}
+                step={f.step}
+                min={f.min}
+                max={f.max}
               />
               {f.unit && <span className="text-[9px] text-muted-foreground select-none">{f.unit}</span>}
             </div>

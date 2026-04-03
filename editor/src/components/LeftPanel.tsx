@@ -12,6 +12,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collap
 import { Button } from './ui/button';
 import { Icon } from './Icons.tsx';
 import { LevelSelect } from './LevelSelect.tsx';
+import { NumberInput } from './NumberInput.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
 
@@ -215,15 +216,13 @@ function PropertyRow({
           </Select>
         ) : f.type === 'number' ? (
           <>
-            <Input
-              className="h-[22px] min-w-0 flex-1 rounded border-transparent bg-transparent px-1.5 text-right text-[11px] tabular-nums hover:bg-[var(--bg-input)] focus-visible:border-[var(--color-accent)] focus-visible:bg-[var(--bg-input)]"
-              type="text"
-              inputMode="decimal"
+            <NumberInput
+              className="h-[22px] min-w-0 flex-1 rounded border-transparent bg-transparent px-1.5 text-right text-[11px] hover:bg-[var(--bg-input)] focus-visible:border-[var(--color-accent)] focus-visible:bg-[var(--bg-input)]"
               value={value}
-              onChange={e => {
-                const v = e.target.value;
-                if (v === '' || v === '-' || !isNaN(Number(v))) onChange(f.key, v);
-              }}
+              onChange={v => onChange(f.key, v)}
+              step={f.step}
+              min={f.min}
+              max={f.max}
             />
             {f.unit && <span className="shrink-0 text-[9px] text-muted-foreground/60 select-none">{f.unit}</span>}
           </>
