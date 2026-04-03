@@ -230,6 +230,8 @@
   "error.title": "Something went wrong",
   "error.tryAgain": "Try Again",
 
+  "input.scrollToAdjust": "Scroll to adjust",
+
   "draw.tooltip": "Draw {{name}}",
   "draw.gridTooltip": "Draw Grid (G)",
 

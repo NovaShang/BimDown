@@ -230,6 +230,8 @@
   "error.title": "出了点问题",
   "error.tryAgain": "重试",
 
+  "input.scrollToAdjust": "滚动调整",
+
   "draw.tooltip": "绘制{{name}}",
   "draw.gridTooltip": "绘制轴网 (G)",
 

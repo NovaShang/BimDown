@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Input } from './ui/input';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { cn } from '../lib/utils';
@@ -13,6 +14,7 @@ interface NumberInputProps {
 }
 
 export function NumberInput({ value, onChange, step = 1, min, max, className }: NumberInputProps) {
+  const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
 
   const nudge = useCallback((delta: number) => {
@@ -55,7 +57,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
           onKeyDown={handleKeyDown}
         />
       </TooltipTrigger>
-      <TooltipContent side="top">滚动调整</TooltipContent>
+      <TooltipContent side="top">{t('input.scrollToAdjust')}</TooltipContent>
     </Tooltip>
   );
 }
