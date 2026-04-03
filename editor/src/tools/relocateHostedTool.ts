@@ -25,7 +25,8 @@ function findNearestHost(
       const dx = wall.end.x - wall.start.x;
       const dy = wall.end.y - wall.start.y;
       const lenSq = dx * dx + dy * dy;
-      const t = lenSq > 1e-10 ? Math.max(0, Math.min(1, ((cursor.x - wall.start.x) * dx + (cursor.y - wall.start.y) * dy) / lenSq)) : 0.5;
+      const wallLen = Math.sqrt(lenSq);
+      const t = lenSq > 1e-10 ? Math.max(0, Math.min(wallLen, ((cursor.x - wall.start.x) * dx + (cursor.y - wall.start.y) * dy) / lenSq * wallLen)) : 0;
       best = { wall, t, dist };
     }
   }

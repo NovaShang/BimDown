@@ -367,6 +367,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!el) return state;
       const before = new Map<string, CanonicalElement | null>([[rawId, el]]);
       const updated = { ...el, attrs: { ...el.attrs, ...action.attrs } };
+
+      // Re-resolve hosted geometry when position, width, or host_id changes
+      if (updated.hostId && updated.geometry === 'line' && ('position' in action.attrs || 'width' in action.attrs || 'host_id' in action.attrs)) {
+        const hostWall = state.document.elements.get(action.attrs.host_id ?? updated.hostId ?? '');
+        if (hostWall && (hostWall.geometry === 'line' || hostWall.geometry === 'spatial_line')) {
+          const pos = parseFloat(updated.attrs.position ?? '0.5');
+          const width = parseFloat(updated.attrs.width ?? '0.9');
+          const { start, end } = resolveHostedGeometry(hostWall as LineElement, pos, width);
+          (updated as LineElement).start = start;
+          (updated as LineElement).end = end;
+          (updated as LineElement).locationParam = pos;
+        }
+      }
+
       const after = new Map<string, CanonicalElement | null>([[rawId, updated]]);
       const next = new Map(state.document.elements);
       next.set(rawId, updated);

@@ -34,14 +34,15 @@ function findNearestHost(
     const lenSq = dx * dx + dy * dy;
     if (lenSq < 1e-10) continue;
 
-    const t = Math.max(0, Math.min(1, ((cursor.x - start.x) * dx + (cursor.y - start.y) * dy) / lenSq));
+    const wallLen = Math.sqrt(lenSq);
+    const tMeters = Math.max(0, Math.min(wallLen, ((cursor.x - start.x) * dx + (cursor.y - start.y) * dy) / lenSq * wallLen));
     const projected = nearestPointOnSegment(cursor, start, end);
     const ddx = cursor.x - projected.x;
     const ddy = cursor.y - projected.y;
     const dist = Math.sqrt(ddx * ddx + ddy * ddy);
 
     if (dist < HOST_SNAP_THRESHOLD && (!best || dist < best.dist)) {
-      best = { wall, t, dist };
+      best = { wall, t: tMeters, dist };
     }
   }
   return best;
@@ -154,7 +155,7 @@ export const drawHostedTool: ToolHandler = {
 
     const existingIds = new Set(elements.keys());
     const id = generateId(target.tableName, existingIds);
-    const position = placement.t.toFixed(4);
+    const position = placement.t.toFixed(3);
 
     const mergedAttrs = { ...baseAttrs, ...da, id, host_id: placement.wall.id, position, base_offset: String(placement.baseOffset) };
 

@@ -46,7 +46,7 @@ const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   size_y:          { key: 'size_y',          label: 'Size Y',          type: 'number', unit: 'm', min: 0.01, step: 0.05, group: 'geometry' },
   start_z:         { key: 'start_z',         label: 'Start Z',         type: 'number', unit: 'm', step: 0.1, group: 'geometry' },
   end_z:           { key: 'end_z',           label: 'End Z',           type: 'number', unit: 'm', step: 0.1, group: 'geometry' },
-  position:        { key: 'position',        label: 'Position',        type: 'number', min: 0, max: 1, step: 0.01, group: 'geometry' },
+  position:        { key: 'position',        label: 'Position',        type: 'number', unit: 'm', min: 0, step: 0.05, group: 'geometry' },
   shape:           { key: 'shape',           label: 'Shape',           type: 'select', options: SHAPE_OPTIONS, group: 'geometry' },
   height_offset:   { key: 'height_offset',   label: 'Drop',            type: 'number', unit: 'm', step: 0.05, group: 'geometry' },
 
