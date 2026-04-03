@@ -1,13 +1,18 @@
 import { registerRenderer } from './index.ts';
 import WallExtrusions from '../layers/WallExtrusions.tsx';
+import CurtainWallExtrusions from '../layers/CurtainWallExtrusions.tsx';
 import SpaceWireframes from '../layers/SpaceWireframes.tsx';
 import BoxInstances from '../layers/BoxInstances.tsx';
 import PolygonExtrusions from '../layers/PolygonExtrusions.tsx';
+import RoofExtrusions from '../layers/RoofExtrusions.tsx';
 
 
 // Walls — miter-joined extrusions
-for (const t of ['wall', 'curtain_wall', 'structure_wall'])
+for (const t of ['wall', 'structure_wall'])
   registerRenderer(t, { component: WallExtrusions });
+
+// Curtain wall — UV grid with mullions + glass panels
+registerRenderer('curtain_wall', { component: CurtainWallExtrusions });
 
 // Space — wireframe only
 registerRenderer('space', { component: SpaceWireframes });
@@ -24,3 +29,6 @@ for (const t of [
 // Polygon extrusions — slabs, foundations (raft subtype)
 for (const t of ['slab', 'structure_slab', 'foundation'])
   registerRenderer(t, { component: PolygonExtrusions });
+
+// Roof — polygon extrusion with slope support
+registerRenderer('roof', { component: RoofExtrusions });
