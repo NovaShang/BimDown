@@ -14,7 +14,9 @@ import FloatingToolbar from './FloatingToolbar.tsx';
 import ViewToolbar from './ViewToolbar.tsx';
 import TopBar from './TopBar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
+import DrawingHints from './DrawingHints.tsx';
 import SelectionActions from './SelectionActions.tsx';
+import OnboardingTour from './OnboardingTour.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 
 
@@ -243,6 +245,8 @@ export default function EditorShell() {
           onZoomToFit={handleZoomToFit}
           scale={state.viewMode === '2d' ? canvasScale : undefined}
         />
+        <DrawingHints />
+        <OnboardingTour />
       </div>
     </div>
   );

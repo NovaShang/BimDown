@@ -235,6 +235,23 @@
   "draw.tooltip": "Draw {{name}}",
   "draw.gridTooltip": "Draw Grid (G)",
 
+  "hint.line": "Click start point → Click end point · Esc cancel",
+  "hint.point": "Click to place · Esc cancel",
+  "hint.polygon": "Click to add vertices · Right-click to close · Esc cancel",
+  "hint.polygonClose": "Click to add more · Right-click or Enter to close · Esc cancel",
+  "hint.hosted": "Click on a wall to place · Esc cancel",
+  "hint.relocate": "Click to place · Esc cancel",
+  "hint.relocateHosted": "Click on a wall to relocate · Esc cancel",
+  "hint.rotate": "Click to set rotation · Esc cancel",
+
+  "tour.step1": "Switch disciplines (Architecture / Structure / MEP) and toggle 2D / 3D view.",
+  "tour.step2": "Pick a drawing tool to start modeling. Shortcut keys are shown on each button.",
+  "tour.step3": "Manage your building floors. Click to switch levels.",
+  "tour.step4": "Zoom to fit, toggle minimap, and control floor visibility in 3D.",
+  "tour.next": "Next",
+  "tour.skip": "Skip",
+  "tour.done": "Done",
+
   "landing.subtitle": "Open-source 2D/3D building model editor",
   "landing.new": "Create New Model",
   "landing.newDesc": "Start with an empty building model",

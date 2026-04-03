@@ -17,7 +17,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
   const dispatch = useEditorDispatch();
 
   return (
-    <div className="absolute bottom-3 left-3 z-30 flex items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none">
+    <div data-tour="viewbar" className="absolute bottom-3 left-3 z-30 flex items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none">
       {/* Zoom to fit (both 2D and 3D) */}
       {onZoomToFit && (
         <>

@@ -1,6 +1,14 @@
 import { useEffect } from 'react';
-import type { EditorState, EditorAction } from '../state/editorTypes.ts';
+import type { EditorState, EditorAction, Tool } from '../state/editorTypes.ts';
 import { toSelectionId } from '../model/ids.ts';
+import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
+import { TABLE_REGISTRY } from '../model/tableRegistry.ts';
+import { placementTypeForTable } from '../model/elements.ts';
+
+const PLACEMENT_TO_TOOL: Record<string, Tool> = {
+  hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
+  free_point: 'draw_point', free_polygon: 'draw_polygon', grid: 'draw_grid',
+};
 
 interface UseCanvasKeyboardOptions {
   globalDispatch: React.Dispatch<EditorAction>;
@@ -110,6 +118,22 @@ export function useCanvasKeyboard({
             globalDispatch({ type: 'SELECT', ids: allIds });
           }
           break;
+      }
+
+      // Drawing tool shortcuts (W, D, N, C, R, F, T, E, P, U)
+      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tableName = DRAW_TOOL_SHORTCUTS[e.key.toUpperCase()];
+        if (tableName) {
+          const def = TABLE_REGISTRY[tableName];
+          if (def && def.discipline === activeDiscipline) {
+            const tool = PLACEMENT_TO_TOOL[placementTypeForTable(tableName)];
+            if (tool) {
+              globalDispatch({ type: 'SET_TOOL', tool });
+              globalDispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline: def.discipline } });
+              globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+            }
+          }
+        }
       }
     };
 

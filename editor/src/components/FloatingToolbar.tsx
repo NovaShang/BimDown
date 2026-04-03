@@ -66,6 +66,26 @@ const TOOLS_3D: { tool: Tool; labelKey: string; icon: IconName; shortcut: string
   { tool: 'orbit', labelKey: 'tool.orbit', icon: 'orbit', shortcut: 'O' },
 ];
 
+/** Keyboard shortcuts for drawing tools (key → tableName).
+ *  Exported for use by useCanvasKeyboard. */
+export const DRAW_TOOL_SHORTCUTS: Record<string, string> = {
+  W: 'wall',
+  D: 'door',
+  N: 'window',
+  C: 'column',
+  R: 'space',
+  F: 'slab',
+  T: 'stair',
+  E: 'equipment',
+  P: 'pipe',
+  U: 'duct',
+};
+
+/** Reverse lookup: tableName → shortcut key */
+const TABLE_SHORTCUT: Record<string, string> = Object.fromEntries(
+  Object.entries(DRAW_TOOL_SHORTCUTS).map(([k, v]) => [v, k]),
+);
+
 /** Architecture tool groups — tools within each group share a toolbar slot */
 const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
   { tools: ['wall', 'curtain_wall'] },
@@ -163,11 +183,14 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
           onClick={handleMainClick}
           onContextMenu={handleContextMenu}
         >
-          <span className="text-base leading-none"><Icon name={iconForTable(displayTable)} /></span>
+          <span className="relative text-base leading-none">
+            <Icon name={iconForTable(displayTable)} />
+            {TABLE_SHORTCUT[displayTable] && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{TABLE_SHORTCUT[displayTable]}</kbd>}
+          </span>
           <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[displayTable] || `layer.${displayTable}`)}</span>
         </TooltipTrigger>
         <TooltipContent side="top">
-          {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : displayTable}
+          {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : displayTable}{TABLE_SHORTCUT[displayTable] ? ` (${TABLE_SHORTCUT[displayTable]})` : ''}
         </TooltipContent>
       </Tooltip>
       {/* Expand arrow — separate right-side strip with upward chevron */}
@@ -279,7 +302,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   const activeTable = state.drawingTarget?.tableName ?? null;
 
   return (
-    <div className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div data-tour="toolbar" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
         {tools.map(tool => (
@@ -297,7 +320,10 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
                 dispatch({ type: 'SET_DRAWING_STATE', state: null });
               }}
             >
-              <span className="text-base leading-none"><Icon name={tool.icon} /></span>
+              <span className="relative text-base leading-none">
+                <Icon name={tool.icon} />
+                <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{tool.shortcut}</kbd>
+              </span>
               <span className="whitespace-nowrap text-[9px] leading-none">{t(tool.labelKey)}</span>
             </TooltipTrigger>
             <TooltipContent side="top">{t(tool.labelKey)} ({tool.shortcut})</TooltipContent>
@@ -328,7 +354,10 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
               }
             }}
           >
-            <span className="text-base leading-none"><Icon name="grid" /></span>
+            <span className="relative text-base leading-none">
+              <Icon name="grid" />
+              <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">G</kbd>
+            </span>
             <span className="whitespace-nowrap text-[9px] leading-none">{t('tool.grid')}</span>
           </TooltipTrigger>
           <TooltipContent side="top">{t('draw.gridTooltip')}</TooltipContent>
@@ -401,7 +430,10 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
             )}
             onClick={() => canUndo && dispatch({ type: 'UNDO' })}
           >
-            <span className="text-base leading-none"><Icon name="undo" /></span>
+            <span className="relative text-base leading-none">
+              <Icon name="undo" />
+              <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">⌘Z</kbd>
+            </span>
             <span className="whitespace-nowrap text-[9px] leading-none">{t('tool.undo')}</span>
           </TooltipTrigger>
           <TooltipContent side="top">{t('tool.undo')} (Ctrl+Z)</TooltipContent>
@@ -415,7 +447,10 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
             )}
             onClick={() => canRedo && dispatch({ type: 'REDO' })}
           >
-            <span className="text-base leading-none"><Icon name="redo" /></span>
+            <span className="relative text-base leading-none">
+              <Icon name="redo" />
+              <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">⌘Y</kbd>
+            </span>
             <span className="whitespace-nowrap text-[9px] leading-none">{t('tool.redo')}</span>
           </TooltipTrigger>
           <TooltipContent side="top">{t('tool.redo')} (Ctrl+Y)</TooltipContent>
@@ -452,11 +487,14 @@ function SingleToolButton({ table, discipline, disciplineColor, isActive, onClic
         } as React.CSSProperties}
         onClick={() => onClick(table, discipline)}
       >
-        <span className="text-base leading-none"><Icon name={iconForTable(table)} /></span>
+        <span className="relative text-base leading-none">
+          <Icon name={iconForTable(table)} />
+          {TABLE_SHORTCUT[table] && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{TABLE_SHORTCUT[table]}</kbd>}
+        </span>
         <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
       </TooltipTrigger>
       <TooltipContent side="top">
-        {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : table}
+        {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : table}{TABLE_SHORTCUT[table] ? ` (${TABLE_SHORTCUT[table]})` : ''}
       </TooltipContent>
     </Tooltip>
   );

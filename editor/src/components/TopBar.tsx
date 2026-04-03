@@ -10,7 +10,7 @@ export default function TopBar() {
   const dispatch = useEditorDispatch();
 
   return (
-    <div className="absolute top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none animate-in fade-in slide-in-from-top-2 duration-200">
+    <div data-tour="topbar" className="absolute top-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none animate-in fade-in slide-in-from-top-2 duration-200">
       {/* Discipline selector */}
       <Select value={activeDiscipline ?? DISCIPLINES[0]} onValueChange={(v) => { if (v) dispatch({ type: 'SET_DISCIPLINE', discipline: v }); }}>
         <SelectTrigger className="h-8 gap-1.5 border-none bg-transparent px-2.5 text-[11px] font-medium shadow-none hover:bg-accent">
