@@ -78,19 +78,21 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
 
   return (
     <Tooltip open={focused}>
-      <TooltipTrigger asChild>
-        <Input
-          ref={ref}
-          className={cn('tabular-nums', className)}
-          type="text"
-          inputMode="decimal"
-          value={displayValue}
-          onChange={handleChange}
-          onKeyDown={handleKeyDown}
-          onFocus={() => setFocused(true)}
-          onBlur={() => setFocused(false)}
-        />
-      </TooltipTrigger>
+      <TooltipTrigger
+        render={
+          <Input
+            ref={ref}
+            className={cn('tabular-nums', className)}
+            type="text"
+            inputMode="decimal"
+            value={displayValue}
+            onChange={handleChange}
+            onKeyDown={handleKeyDown}
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
+          />
+        }
+      />
       <TooltipContent side="top">{t('input.scrollToAdjust')}</TooltipContent>
     </Tooltip>
   );
