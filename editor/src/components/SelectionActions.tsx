@@ -90,14 +90,15 @@ export default function SelectionActions() {
       )}
 
       {/* Point element rotation */}
-      {isPoint && el && singleId && el.attrs.size_x && el.attrs.size_y && (
+      {isPoint && singleId && (
         <>
           <div className="mx-0.5 h-4 w-px bg-[var(--panel-border)]" />
-          <button className={btnClass} title={t('ctx.rotate', 'Rotate 90°')}
+          <button className={btnClass} title={t('ctx.rotate', 'Rotate')}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              dispatch({ type: 'UPDATE_ATTRS', id: singleId, attrs: { size_x: el.attrs.size_y, size_y: el.attrs.size_x } });
+              dispatch({ type: 'SET_TOOL', tool: 'rotate' });
+              dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
             }}
           >
             <RotateCw size={14} />

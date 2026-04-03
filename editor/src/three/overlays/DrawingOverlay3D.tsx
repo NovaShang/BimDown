@@ -140,6 +140,50 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
   const { points, cursor } = drawingState;
   const tableName = drawingTarget?.tableName ?? null;
 
+  // ─── Rotate preview ────────────────────────────────────────────────────────
+  if (activeTool === 'rotate') {
+    if (points.length === 1 && cursor) {
+      const center = points[0];
+      const dx = cursor.x - center.x;
+      const dy = cursor.y - center.y;
+      const rawAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const angleDeg = Math.round(rawAngle / 15) * 15;
+      const rad = angleDeg * Math.PI / 180;
+      const r = 0.8;
+      const ex = center.x + r * Math.cos(rad);
+      const ey = center.y + r * Math.sin(rad);
+      return (
+        <group>
+          {/* Guide circle */}
+          <Line
+            points={Array.from({ length: 49 }, (_, i) => {
+              const a = (i / 48) * Math.PI * 2;
+              return [center.x + r * Math.cos(a), elevation + 0.05, -(center.y + r * Math.sin(a))] as [number, number, number];
+            })}
+            color="#4fc3f7" lineWidth={1} transparent opacity={0.4}
+          />
+          {/* Angle line */}
+          <Line
+            points={[
+              [center.x, elevation + 0.05, -center.y],
+              [ex, elevation + 0.05, -ey],
+            ]}
+            color="#4fc3f7" lineWidth={2}
+          />
+          {/* Center dot */}
+          <mesh position={[center.x, elevation + 0.05, -center.y]} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL} />
+          {/* Endpoint dot */}
+          <mesh position={[ex, elevation + 0.05, -ey]} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL_FADED} />
+          {/* Angle label */}
+          <Html position={[center.x, elevation + 0.5, -center.y]} center style={{ pointerEvents: 'none' }}>
+            <span style={{ color: '#4fc3f7', fontSize: 12, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>{angleDeg}°</span>
+          </Html>
+        </group>
+      );
+    }
+    return null;
+  }
+
   // ─── Hosted element preview (draw_hosted) ───────────────────────────────────
   if (activeTool === 'draw_hosted') {
     if (points.length === 1 && cursor) {

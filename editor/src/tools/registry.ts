@@ -10,12 +10,14 @@ import { drawGridTool } from './drawGridTool.ts';
 import { drawHostedTool } from './drawHostedTool.ts';
 import { relocateTool } from './relocateTool.ts';
 import { relocateHostedTool } from './relocateHostedTool.ts';
+import { rotateTool } from './rotateTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   select: selectTool,
   orbit: selectTool,
   relocate: relocateTool,
   relocate_hosted: relocateHostedTool,
+  rotate: rotateTool,
   pan: panTool,
   zoom: zoomTool,
   draw_line: drawLineTool,

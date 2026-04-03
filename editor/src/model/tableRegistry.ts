@@ -189,8 +189,8 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
   column: {
     name: 'column', prefix: 'c', discipline: 'architecture', geometry: 'point',
     hasVerticalSpan: true,
-    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y'],
-    defaults: { base_offset: '0', top_level_id: '', top_offset: '0', material: 'concrete', shape: 'rect', size_x: '0.3', size_y: '0.3' },
+    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y', 'rotation'],
+    defaults: { base_offset: '0', top_level_id: '', top_offset: '0', material: 'concrete', shape: 'rect', size_x: '0.3', size_y: '0.3', rotation: '0' },
     drawingFields: [
       { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
       { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
@@ -339,8 +339,8 @@ export const TABLE_REGISTRY: Record<string, TableDef> = {
   structure_column: {
     name: 'structure_column', prefix: 'sc', discipline: 'structure', geometry: 'point',
     hasVerticalSpan: true,
-    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y'],
-    defaults: { base_offset: '0', top_level_id: '', top_offset: '0', material: 'steel', shape: 'rect', size_x: '0.3', size_y: '0.3' },
+    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y', 'rotation'],
+    defaults: { base_offset: '0', top_level_id: '', top_offset: '0', material: 'steel', shape: 'rect', size_x: '0.3', size_y: '0.3', rotation: '0' },
     drawingFields: [
       { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
       { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },

@@ -159,15 +159,27 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   }
 
   if (element.geometry === 'point') {
-    const { position, width, height } = element;
+    const { position, width, height, attrs } = element;
     const hw = width / 2;
     const hh = height / 2;
-    const corners = [
-      { x: position.x - hw, y: position.y - hh, cursor: 'nesw-resize' },
-      { x: position.x + hw, y: position.y - hh, cursor: 'nwse-resize' },
-      { x: position.x + hw, y: position.y + hh, cursor: 'nesw-resize' },
-      { x: position.x - hw, y: position.y + hh, cursor: 'nwse-resize' },
+    const rotDeg = parseFloat(attrs.rotation || '0');
+    const rotRad = rotDeg * Math.PI / 180;
+    const cos = Math.cos(rotRad);
+    const sin = Math.sin(rotRad);
+
+    // Rotate a local offset around the element center
+    const rotateCorner = (lx: number, ly: number) => ({
+      x: position.x + lx * cos - ly * sin,
+      y: position.y + lx * sin + ly * cos,
+    });
+
+    const localCorners = [
+      { lx: -hw, ly: -hh },
+      { lx: hw, ly: -hh },
+      { lx: hw, ly: hh },
+      { lx: -hw, ly: hh },
     ];
+    const corners = localCorners.map(c => rotateCorner(c.lx, c.ly));
 
     return (
       <g className="resize-handles" transform="scale(1,-1)">
@@ -177,9 +189,9 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             cx={c.x} cy={c.y}
             r={r}
             fill="#06b6d4" stroke="white" strokeWidth={sw}
-            cursor={c.cursor}
+            cursor="move"
             onPointerDown={handleDrag((x, y) => {
-              // Compute new position (center) and size based on which corner is dragged
+              // Project dragged point back to local space to compute new size
               const opposite = corners[(i + 2) % 4];
               const newW = Math.max(Math.abs(x - opposite.x), 0.05);
               const newH = Math.max(Math.abs(y - opposite.y), 0.05);

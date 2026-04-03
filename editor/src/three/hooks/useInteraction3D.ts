@@ -89,7 +89,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       const elementId = findHitElementId(ndc);
       hitElementIdRef.current = elementId;
 
-      if (isDrawTool || tool === 'select' || tool === 'relocate' || tool === 'relocate_hosted') {
+      if (isDrawTool || tool === 'select' || tool === 'relocate' || tool === 'relocate_hosted' || tool === 'rotate') {
         // Draw tools and select tool: take over gesture, disable orbit
         toolOwnsGestureRef.current = true;
         if (controlsRef.current) controlsRef.current.enabled = false;
@@ -195,7 +195,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
           break;
         case 'Escape':
           toolCtx.setSnap(null);
-          if (stRef.current.activeTool === 'relocate' || stRef.current.activeTool === 'relocate_hosted') {
+          if (stRef.current.activeTool === 'relocate' || stRef.current.activeTool === 'relocate_hosted' || stRef.current.activeTool === 'rotate') {
             dispatch({ type: 'SET_TOOL', tool: 'select' });
             dispatch({ type: 'SET_DRAWING_STATE', state: null });
             dispatch({ type: 'SET_DRAWING_TARGET', target: null });

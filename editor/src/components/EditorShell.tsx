@@ -183,7 +183,7 @@ export default function EditorShell() {
   const activeDiscipline = state.activeDiscipline;
 
   // Overlay items for selection action bar
-  const showSelectionActions = state.selectedIds.size > 0 && !state.readonly && !state.activeTool.startsWith('relocate');
+  const showSelectionActions = state.selectedIds.size > 0 && !state.readonly && !state.activeTool.startsWith('relocate') && state.activeTool !== 'rotate';
   const selectionContent = showSelectionActions ? <SelectionActions /> : null;
   const overlayItems = useOverlayItems(state.selectedIds, state.document, selectionContent);
 

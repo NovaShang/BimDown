@@ -16,13 +16,12 @@ export function renderColumn(el: CanonicalElement): React.JSX.Element | null {
   const svg = getBlockSvg(blockName);
   if (!svg) return null;
 
-  // Block SVG is 1×1: scale to actual width/height, translate to top-left corner
-  const x = position.x - width / 2;
-  const y = position.y - height / 2;
+  // Block SVG is 1×1: scale to actual width/height, rotate around center
+  const rotation = parseFloat(attrs.rotation || '0');
 
   return (
     <g data-id={id}
-      transform={`translate(${x},${y}) scale(${width},${height})`}
+      transform={`translate(${position.x},${position.y}) rotate(${rotation}) translate(${-width / 2},${-height / 2}) scale(${width},${height})`}
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );

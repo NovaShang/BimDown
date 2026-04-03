@@ -149,14 +149,24 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   }
 
   if (element.geometry === 'point') {
-    const { position, width, height } = element;
+    const { position, width, height, attrs } = element;
     const hw = width / 2;
     const hh = height / 2;
+    const rotDeg = parseFloat(attrs.rotation || '0');
+    const rotRad = -rotDeg * Math.PI / 180; // negate: model Y maps to -Z in Three.js
+    const cos = Math.cos(rotRad);
+    const sin = Math.sin(rotRad);
+
+    const rotateCorner = (lx: number, ly: number) => ({
+      x: position.x + lx * cos - ly * sin,
+      y: position.y + lx * sin + ly * cos,
+    });
+
     const corners = [
-      { x: position.x - hw, y: position.y - hh },
-      { x: position.x + hw, y: position.y - hh },
-      { x: position.x + hw, y: position.y + hh },
-      { x: position.x - hw, y: position.y + hh },
+      rotateCorner(-hw, -hh),
+      rotateCorner(hw, -hh),
+      rotateCorner(hw, hh),
+      rotateCorner(-hw, hh),
     ];
     const outlinePoints: [number, number, number][] = [
       ...corners.map(c => [c.x, y, -c.y] as [number, number, number]),

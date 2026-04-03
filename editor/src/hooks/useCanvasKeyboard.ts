@@ -60,7 +60,7 @@ export function useCanvasKeyboard({
           globalDispatch({ type: 'SET_SPACE_HELD', held: true });
           break;
         case 'Escape':
-          if (stateRef.current.activeTool === 'relocate' || stateRef.current.activeTool === 'relocate_hosted') {
+          if (stateRef.current.activeTool === 'relocate' || stateRef.current.activeTool === 'relocate_hosted' || stateRef.current.activeTool === 'rotate') {
             globalDispatch({ type: 'SET_TOOL', tool: 'select' });
             globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
             globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });

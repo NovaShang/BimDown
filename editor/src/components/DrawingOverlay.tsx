@@ -79,6 +79,39 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     return null;
   }
 
+  if (activeTool === 'rotate') {
+    if (points.length === 1 && cursor) {
+      const center = points[0];
+      const dx = cursor.x - center.x;
+      const dy = cursor.y - center.y;
+      const rawAngle = Math.atan2(dy, dx) * 180 / Math.PI;
+      const angleDeg = Math.round(rawAngle / 15) * 15;
+      // Radius of the guide circle
+      const r = 0.8 / scale;
+      // Endpoint on guide circle for angle indicator
+      const rad = angleDeg * Math.PI / 180;
+      const ex = center.x + r * Math.cos(rad);
+      const ey = center.y + r * Math.sin(rad);
+      const fontSize = 0.9 / scale;
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <circle cx={center.x} cy={center.y} r={r} fill="none" stroke="#4fc3f7" strokeWidth={0.06 / scale} strokeDasharray={`${0.3 / scale},${0.15 / scale}`} opacity="0.5" />
+          <line x1={center.x} y1={center.y} x2={ex} y2={ey} stroke="#4fc3f7" strokeWidth={0.1 / scale} />
+          <circle cx={center.x} cy={center.y} r={0.15 / scale} fill="#4fc3f7" />
+          <circle cx={ex} cy={ey} r={0.2 / scale} fill="#4fc3f7" opacity="0.7" />
+          <text
+            x={center.x} y={-(center.y + r + 0.4 / scale)}
+            fill="#4fc3f7" fontSize={fontSize} fontFamily="monospace"
+            textAnchor="middle" transform="scale(1,-1)" opacity="0.9"
+          >
+            {angleDeg}°
+          </text>
+        </g>
+      );
+    }
+    return null;
+  }
+
   if (activeTool === 'relocate_hosted') {
     // Show hosted span preview (start → cursor)
     if (points.length === 1 && cursor) {
