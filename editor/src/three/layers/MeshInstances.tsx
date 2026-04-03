@@ -1,4 +1,4 @@
-import { Suspense, useMemo, Component, type ReactNode } from 'react';
+import { Suspense, useMemo, useState, useEffect, Component, type ReactNode } from 'react';
 import { useLoader } from '@react-three/fiber';
 import { MeshBasicMaterial, BoxGeometry } from 'three';
 import { GLTFLoader, OBJLoader } from 'three-stdlib';
@@ -28,8 +28,8 @@ function ObjMesh({ url }: { url: string }) {
   return <primitive object={cloned} />;
 }
 
-function LoadedMesh({ url }: { url: string }) {
-  const ext = url.split('.').pop()?.toLowerCase();
+function LoadedMesh({ url, originalPath }: { url: string; originalPath: string }) {
+  const ext = originalPath.split('.').pop()?.toLowerCase();
   if (ext === 'obj') return <ObjMesh url={url} />;
   return <GltfMesh url={url} />;
 }
@@ -44,27 +44,42 @@ class MeshErrorBoundary extends Component<{ children: ReactNode; fallback: React
   render() { return this.state.hasError ? this.props.fallback : this.props.children; }
 }
 
-function MeshWithFallback({ url, position }: { url: string; position?: [number, number, number] }) {
-  if (!url) return <PlaceholderMesh position={position} />;
+/** Resolves a mesh file path to a loadable URL via DataSource, then renders. */
+function MeshElement({ meshFile, position }: { meshFile: string; position?: [number, number, number] }) {
+  const ds = useDataSource();
+  const [url, setUrl] = useState<string | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    if (!meshFile) { setFailed(true); return; }
+    let revoked = false;
+    ds.resolveUrl(meshFile).then(u => {
+      if (revoked) return;
+      if (!u) { setFailed(true); return; }
+      setUrl(u);
+    }).catch(() => { if (!revoked) setFailed(true); });
+    return () => { revoked = true; };
+  }, [meshFile, ds]);
+
+  if (failed || !meshFile) return <PlaceholderMesh position={position} />;
+  if (!url) return null; // loading URL
+
   return (
     <Suspense fallback={<PlaceholderMesh position={position} />}>
       <MeshErrorBoundary fallback={<PlaceholderMesh position={position} />}>
-        <LoadedMesh url={url} />
+        <LoadedMesh url={url} originalPath={meshFile} />
       </MeshErrorBoundary>
     </Suspense>
   );
 }
 
 export default function MeshInstances({ elements, levelElevation }: MeshInstancesProps) {
-  const ds = useDataSource();
-
   const meshItems = useMemo(() => {
     return elements.map(el => {
       const meshFile = el.attrs.mesh_file ?? '';
-      const url = meshFile ? ds.resolveUrl(meshFile) : '';
 
-      // For mesh table elements: use explicit x/y/z/rotation for positioning
-      // For other types (wall, railing, etc.): mesh file assumed to contain world coordinates
+      // For mesh table elements: use explicit x/y/z for positioning
+      // For other types (wall, railing, etc.): mesh assumed to contain world coordinates
       let position: [number, number, number] | undefined;
       if (el.tableName === 'mesh' && el.geometry === 'point') {
         const x = parseFloat(el.attrs.x ?? '0') || el.position.x;
@@ -73,16 +88,16 @@ export default function MeshInstances({ elements, levelElevation }: MeshInstance
         position = [x, levelElevation + z, -y];
       }
 
-      return { id: el.id, url, position };
+      return { id: el.id, meshFile, position };
     });
-  }, [elements, levelElevation, ds]);
+  }, [elements, levelElevation]);
 
   if (meshItems.length === 0) return null;
 
   return (
     <group>
       {meshItems.map(item => (
-        <MeshWithFallback key={item.id} url={item.url} position={item.position} />
+        <MeshElement key={item.id} meshFile={item.meshFile} position={item.position} />
       ))}
     </group>
   );

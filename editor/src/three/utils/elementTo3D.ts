@@ -12,6 +12,8 @@ export interface ExtrudeParams {
   vertices: { x: number; y: number }[]; // 2D footprint (XZ plane in 3D)
   baseY: number;                         // bottom Y
   height: number;                        // extrusion height
+  roofType?: string;                     // 'flat' | 'gable' | 'hip' | 'shed' | 'mansard'
+  slopeDeg?: number;                     // slope angle in degrees
 }
 
 export type Mesh3DParams = BoxParams | ExtrudeParams;
@@ -139,7 +141,7 @@ function polygonToExtrude(
   const baseY = levelElevation + baseOffset;
   let height: number;
 
-  if (['slab', 'structure_slab'].includes(el.tableName)) {
+  if (['slab', 'structure_slab', 'roof'].includes(el.tableName)) {
     height = parseFloat(el.attrs.thickness) || DEFAULT_SLAB_THICKNESS;
   } else {
     // Space: use next level height or default
@@ -147,7 +149,7 @@ function polygonToExtrude(
     height = resolved.height;
   }
 
-  return {
+  const result: ExtrudeParams = {
     kind: 'extrude',
     // SVG Y → 3D Z (negated)
     // shape(sx, sy) → rotateX(-PI/2) → (sx, 0, -sy). Need z = -svgY, so sy = svgY.
@@ -155,6 +157,13 @@ function polygonToExtrude(
     baseY,
     height,
   };
+
+  if (el.tableName === 'roof') {
+    result.roofType = el.attrs.roof_type || 'flat';
+    result.slopeDeg = parseFloat(el.attrs.slope) || 0;
+  }
+
+  return result;
 }
 
 /** Convert a SPATIAL_LINE element (MEP/structural with z) to a 3D box */

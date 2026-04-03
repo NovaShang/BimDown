@@ -71,7 +71,7 @@ const KEYWORD_MAP: [string[], BimMaterial][] = [
   [['pvc', 'plastic'],            'pvc'],
   [['insulation'],                 'insulation'],
   [['fiber_cement', 'fibre_cement', 'fibro'], 'fiber_cement'],
-  [['composite'],                  'composite'],
+  // 'composite' is not a visual material — skip so it falls through to table default
   [['clt', 'cross_laminated'],     'clt'],
   [['metal', 'panel'],            'metal_panel'],
   [['paint'],                      'gypsum'], // painted surfaces → gypsum-like finish
