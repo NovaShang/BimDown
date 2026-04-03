@@ -1,4 +1,4 @@
-import { useCallback, useRef } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from './ui/input';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
@@ -13,20 +13,37 @@ interface NumberInputProps {
   className?: string;
 }
 
+function clampAndRound(val: number, step: number, min?: number, max?: number) {
+  const decimals = (step.toString().split('.')[1] || '').length;
+  let v = parseFloat(val.toFixed(decimals));
+  if (min != null && v < min) v = min;
+  if (max != null && v > max) v = max;
+  return v;
+}
+
 export function NumberInput({ value, onChange, step = 1, min, max, className }: NumberInputProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
+  const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [pendingValue, setPendingValue] = useState<string | null>(null);
 
   const nudge = useCallback((delta: number) => {
-    const current = parseFloat(value) || 0;
-    let next = current + delta * step;
-    // Round to avoid floating point drift
-    const decimals = (step.toString().split('.')[1] || '').length;
-    next = parseFloat(next.toFixed(decimals));
-    if (min != null && next < min) next = min;
-    if (max != null && next > max) next = max;
-    onChange(String(next));
-  }, [value, onChange, step, min, max]);
+    // Read from pending (local) value if mid-scroll, otherwise from prop
+    const base = pendingValue != null ? pendingValue : value;
+    const current = parseFloat(base) || 0;
+    const next = clampAndRound(current + delta * step, step, min, max);
+    const nextStr = String(next);
+
+    // Update local display immediately
+    setPendingValue(nextStr);
+
+    // Debounce the expensive upstream onChange
+    clearTimeout(debounceTimer.current);
+    debounceTimer.current = setTimeout(() => {
+      onChange(nextStr);
+      setPendingValue(null);
+    }, 150);
+  }, [pendingValue, value, onChange, step, min, max]);
 
   const handleWheel = useCallback((e: React.WheelEvent) => {
     e.preventDefault();
@@ -43,6 +60,8 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
     if (v === '' || v === '-' || !isNaN(Number(v))) onChange(v);
   }, [onChange]);
 
+  const displayValue = pendingValue ?? value;
+
   return (
     <Tooltip>
       <TooltipTrigger asChild>
@@ -51,7 +70,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
           className={cn('cursor-ns-resize tabular-nums focus:cursor-text', className)}
           type="text"
           inputMode="decimal"
-          value={value}
+          value={displayValue}
           onChange={handleChange}
           onWheel={handleWheel}
           onKeyDown={handleKeyDown}
