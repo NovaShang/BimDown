@@ -6,7 +6,7 @@ import { resolveHostedGeometry } from './hosted.ts';
 const parser = new DOMParser();
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh']);
 
 /** Tables with mixed geometry (different SVG element types in the same layer). */
 const MIXED_GEOMETRY_TABLES = new Set(['foundation']);
@@ -239,8 +239,8 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
     if (!id) continue;
     const attrs = csvToAttrs(csv, id);
 
-    if (layer.tableName === 'space') {
-      // Space: point from CSV x, y
+    if (layer.tableName === 'space' || layer.tableName === 'mesh') {
+      // Space / mesh: point from CSV x, y
       const el: PointElement = {
         geometry: 'point',
         id,
