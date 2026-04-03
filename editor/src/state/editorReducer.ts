@@ -93,6 +93,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       // Always show grids by default
       if (grids.length > 0) visibleLayers.add('reference/grid');
+      // Include global layers (mesh, global railing, etc.)
+      for (const gl of project.globalLayers) visibleLayers.add(`${gl.discipline}/${gl.tableName}`);
 
       return { ...state, modelName: model, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
     }
@@ -132,8 +134,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const visibleLayers = floor
         ? new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`))
         : new Set<string>();
-      // Preserve grid visibility across levels
+      // Preserve grid and global layer visibility across levels
       if (state.visibleLayers.has('reference/grid')) visibleLayers.add('reference/grid');
+      if (state.project) {
+        for (const gl of state.project.globalLayers) visibleLayers.add(`${gl.discipline}/${gl.tableName}`);
+      }
 
       return {
         ...state,
