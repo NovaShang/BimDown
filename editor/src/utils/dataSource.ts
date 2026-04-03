@@ -10,6 +10,8 @@ export interface DataSource {
   saveFile(path: string, content: string): Promise<void>;
   /** Subscribe to file changes. Returns unsubscribe function. */
   watchChanges(onFileChanged: (path: string) => void): () => void;
+  /** Resolve a project-relative path to a full URL for direct loading (e.g. by Three.js loaders) */
+  resolveUrl(path: string): string;
 }
 
 /**
@@ -37,6 +39,10 @@ export function createLocalDataSource(model: string): DataSource {
         body: JSON.stringify({ model, files: [{ path, content }] }),
       });
       if (!resp.ok) throw new Error(`Save failed: ${resp.status}`);
+    },
+
+    resolveUrl(path: string): string {
+      return `${base}/${path}`;
     },
 
     watchChanges(onFileChanged: (path: string) => void): () => void {

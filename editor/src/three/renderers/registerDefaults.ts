@@ -3,6 +3,7 @@ import WallExtrusions from '../layers/WallExtrusions.tsx';
 import SpaceWireframes from '../layers/SpaceWireframes.tsx';
 import BoxInstances from '../layers/BoxInstances.tsx';
 import PolygonExtrusions from '../layers/PolygonExtrusions.tsx';
+import MeshInstances from '../layers/MeshInstances.tsx';
 
 // Walls — miter-joined extrusions
 for (const t of ['wall', 'curtain_wall', 'structure_wall'])
@@ -23,3 +24,6 @@ for (const t of [
 // Polygon extrusions — slabs, foundations (raft subtype)
 for (const t of ['slab', 'structure_slab', 'foundation'])
   registerRenderer(t, { component: PolygonExtrusions });
+
+// Mesh — external 3D models (GLTF/OBJ)
+registerRenderer('mesh', { component: MeshInstances });
