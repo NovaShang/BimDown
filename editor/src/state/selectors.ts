@@ -104,9 +104,12 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
       if (colonIdx === -1) continue;
       const levelId = prefixedId.slice(0, colonIdx);
       const rawId = prefixedId.slice(colonIdx + 1);
-      const floor = state.project.floors.get(levelId);
-      if (!floor) continue;
-      for (const layer of floor.layers) {
+      // Check floor layers or global layers depending on prefix
+      const layers = levelId === 'global'
+        ? state.project.globalLayers
+        : state.project.floors.get(levelId)?.layers;
+      if (!layers) continue;
+      for (const layer of layers) {
         const csv = layer.csvRows.get(rawId);
         if (csv) {
           result.set(prefixedId, { tableName: layer.tableName, discipline: layer.discipline, csv });

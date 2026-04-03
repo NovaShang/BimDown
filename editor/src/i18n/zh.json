@@ -244,6 +244,8 @@
   "hint.relocateHosted": "点击墙体重新定位 · Esc 取消",
   "hint.rotate": "点击设置旋转角度 · Esc 取消",
 
+  "prop.meshFallback": "网格体回退",
+
   "tour.step1": "切换专业（建筑/结构/MEP）和 2D/3D 视图。",
   "tour.step2": "选择绘图工具开始建模，快捷键显示在按钮上。",
   "tour.step3": "管理楼层，点击切换当前层。",

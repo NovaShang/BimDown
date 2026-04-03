@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useMemo, Suspense } from 'react';
 import { useEditorState } from '../state/EditorContext.tsx';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { resolveBimMaterial } from './utils/bimMaterials.ts';
 import { getRenderer } from './renderers/index.ts';
+import MeshInstances from './layers/MeshInstances.tsx';
 import './renderers/registerDefaults.ts';
 
 interface FloorRenderData {
@@ -52,6 +53,18 @@ function useAllFloorsElements(): FloorRenderData[] {
         result.push({ levelId, elevation, elements: prefixed });
       }
     }
+    // Global layers (e.g. mesh) — not tied to a specific floor, always visible
+    if (project.globalLayers.length > 0) {
+      const globalParsed = parseFloorLayers(project.globalLayers);
+      const globalFiltered = globalParsed.filter(el =>
+        visibleLayers.has(`${el.discipline}/${el.tableName}`),
+      );
+      if (globalFiltered.length > 0) {
+        const prefixed = globalFiltered.map(el => ({ ...el, id: `global:${el.id}` }));
+        result.push({ levelId: '__global__', elevation: 0, elements: prefixed });
+      }
+    }
+
     return result;
   }, [project, visibleLayers, activeDiscipline, doc, documentVersion, currentLevel]);
 }
@@ -92,7 +105,7 @@ export default function FloorGroup() {
   return (
     <group>
       {allFloors.map(({ levelId, elevation, elements }) => {
-        const isVisible = visibleLevels.has(levelId);
+        const isVisible = levelId === '__global__' || visibleLevels.has(levelId);
 
         return (
           <group key={levelId} visible={isVisible}>
@@ -120,19 +133,26 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
     return map;
   }, [elements]);
 
-  const grouped = useMemo(() => {
-    const map = new Map<string, CanonicalElement[]>();
+  // Split elements: mesh_file → MeshInstances, rest → parametric renderers
+  const { meshElements, parametricGroups } = useMemo(() => {
+    const meshEls: CanonicalElement[] = [];
+    const paramGroups = new Map<string, CanonicalElement[]>();
     for (const el of elements) {
-      const list = map.get(el.tableName) ?? [];
-      list.push(el);
-      map.set(el.tableName, list);
+      if (el.attrs.mesh_file) {
+        meshEls.push(el);
+      } else {
+        const list = paramGroups.get(el.tableName) ?? [];
+        list.push(el);
+        paramGroups.set(el.tableName, list);
+      }
     }
-    return map;
+    return { meshElements: meshEls, parametricGroups: paramGroups };
   }, [elements]);
 
   return (
     <>
-      {[...grouped.entries()].map(([tableName, els]) => {
+      {/* Parametric renderers */}
+      {[...parametricGroups.entries()].map(([tableName, els]) => {
         const config = getRenderer(tableName);
         if (!config) return null;
         const Component = config.component;
@@ -156,6 +176,13 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
           tableName={tableName} levelElevation={levelElevation}
           levelElevations={levelElevations} ghost={ghost} allElements={allElements} />;
       })}
+      {/* Mesh fallback — elements with mesh_file bypass parametric rendering */}
+      {meshElements.length > 0 && (
+        <Suspense fallback={null}>
+          <MeshInstances elements={meshElements} tableName="__mesh__"
+            levelElevation={levelElevation} levelElevations={levelElevations} ghost={ghost} />
+        </Suspense>
+      )}
     </>
   );
 }

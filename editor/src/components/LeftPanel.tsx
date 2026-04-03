@@ -109,9 +109,9 @@ function InlineProperties({ selectedData, levels }: { selectedData: Map<string, 
   };
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       {/* Header */}
-      <div className="relative border-b border-border/50 px-3 pb-2 pt-2.5">
+      <div className="shrink-0 relative border-b border-border/50 px-3 pb-2 pt-2.5">
         <div className="flex items-center gap-1.5">
           <span style={{ color: style?.color }}>
             <Icon name={firstData.tableName} width={16} height={16} />
@@ -134,8 +134,16 @@ function InlineProperties({ selectedData, levels }: { selectedData: Map<string, 
         )}
       </div>
 
+      {/* Mesh fallback indicator */}
+      {csv.mesh_file && (
+        <div className="shrink-0 mx-3 my-1.5 flex items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1">
+          <span className="text-[10px] text-amber-600 dark:text-amber-400">{t('prop.meshFallback')}</span>
+          <span className="ml-auto text-[9px] text-muted-foreground truncate max-w-[120px]" title={csv.mesh_file}>{csv.mesh_file}</span>
+        </div>
+      )}
+
       {/* Property groups */}
-      <ScrollArea className="flex-1">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         <div className="py-0.5">
           {grouped.map((group, gi) => {
             const isCollapsed = collapsed.has(group.labelKey);
@@ -166,8 +174,8 @@ function InlineProperties({ selectedData, levels }: { selectedData: Map<string, 
             );
           })}
         </div>
-      </ScrollArea>
-    </>
+      </div>
+    </div>
   );
 }
 
@@ -311,7 +319,7 @@ export default function LeftPanel({
       </div>
 
       {/* Layers / Properties — switches when element selected */}
-      <div className="glass-panel flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+      <div className="glass-panel flex min-h-0 flex-1 shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
         {hasSelection ? (
           <InlineProperties selectedData={selectedData} levels={levels} />
         ) : (

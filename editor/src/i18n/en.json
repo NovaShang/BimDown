@@ -244,6 +244,8 @@
   "hint.relocateHosted": "Click on a wall to relocate · Esc cancel",
   "hint.rotate": "Click to set rotation · Esc cancel",
 
+  "prop.meshFallback": "Mesh Fallback",
+
   "tour.step1": "Switch disciplines (Architecture / Structure / MEP) and toggle 2D / 3D view.",
   "tour.step2": "Pick a drawing tool to start modeling. Shortcut keys are shown on each button.",
   "tour.step3": "Manage your building floors. Click to switch levels.",

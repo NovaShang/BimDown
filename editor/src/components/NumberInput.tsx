@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from './ui/input';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
@@ -26,6 +26,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
   const ref = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [pendingValue, setPendingValue] = useState<string | null>(null);
+  const [focused, setFocused] = useState(false);
 
   const nudge = useCallback((delta: number) => {
     // Read from pending (local) value if mid-scroll, otherwise from prop
@@ -45,10 +46,23 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
     }, 150);
   }, [pendingValue, value, onChange, step, min, max]);
 
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    nudge(e.deltaY < 0 ? 1 : -1);
-  }, [nudge]);
+  // Stable ref for nudge to avoid re-attaching wheel listener
+  const nudgeRef = useRef(nudge);
+  nudgeRef.current = nudge;
+
+  // Native wheel listener with { passive: false } so preventDefault works
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const handler = (e: WheelEvent) => {
+      if (document.activeElement !== el) return;
+      e.preventDefault();
+      e.stopPropagation();
+      nudgeRef.current(e.deltaY < 0 ? 1 : -1);
+    };
+    el.addEventListener('wheel', handler, { passive: false });
+    return () => el.removeEventListener('wheel', handler);
+  }, []);
 
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
     if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
@@ -63,17 +77,18 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
   const displayValue = pendingValue ?? value;
 
   return (
-    <Tooltip>
+    <Tooltip open={focused}>
       <TooltipTrigger asChild>
         <Input
           ref={ref}
-          className={cn('cursor-ns-resize tabular-nums focus:cursor-text', className)}
+          className={cn('tabular-nums', className)}
           type="text"
           inputMode="decimal"
           value={displayValue}
           onChange={handleChange}
-          onWheel={handleWheel}
           onKeyDown={handleKeyDown}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
         />
       </TooltipTrigger>
       <TooltipContent side="top">{t('input.scrollToAdjust')}</TooltipContent>
