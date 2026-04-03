@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 import { Input } from './ui/input';
+import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { cn } from '../lib/utils';
 
 interface NumberInputProps {
@@ -41,15 +42,20 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
   }, [onChange]);
 
   return (
-    <Input
-      ref={ref}
-      className={cn('cursor-ns-resize tabular-nums focus:cursor-text', className)}
-      type="text"
-      inputMode="decimal"
-      value={value}
-      onChange={handleChange}
-      onWheel={handleWheel}
-      onKeyDown={handleKeyDown}
-    />
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Input
+          ref={ref}
+          className={cn('cursor-ns-resize tabular-nums focus:cursor-text', className)}
+          type="text"
+          inputMode="decimal"
+          value={value}
+          onChange={handleChange}
+          onWheel={handleWheel}
+          onKeyDown={handleKeyDown}
+        />
+      </TooltipTrigger>
+      <TooltipContent side="top">滚动调整</TooltipContent>
+    </Tooltip>
   );
 }
