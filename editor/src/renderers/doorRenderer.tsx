@@ -30,8 +30,8 @@ export function renderDoor(el: CanonicalElement): React.JSX.Element | null {
 
   const sx = hingeEnd ? -1 : 1;
   const sy = swingRight ? -1 : 1;
-  // When flipping X, shift origin so the block stays aligned to the door line
-  const tx = hingeEnd ? -1 : 0;
+  // When flipping X, shift origin so the block stays within start→end
+  const tx = hingeEnd ? 1 : 0;
 
   return (
     <g data-id={id}
