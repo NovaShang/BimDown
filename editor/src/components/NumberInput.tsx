@@ -43,7 +43,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
   return (
     <Input
       ref={ref}
-      className={cn('tabular-nums', className)}
+      className={cn('cursor-ns-resize tabular-nums focus:cursor-text', className)}
       type="text"
       inputMode="decimal"
       value={value}
