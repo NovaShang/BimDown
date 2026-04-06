@@ -551,6 +551,10 @@ const VERTICAL_SPAN_TABLES = new Set(
   Object.entries(TABLE_REGISTRY).filter(([, d]) => d.hasVerticalSpan).map(([n]) => n)
 );
 
+export function isVerticalSpanTable(name: string): boolean {
+  return VERTICAL_SPAN_TABLES.has(name);
+}
+
 export function drawingFieldsForTable(name: string, levels?: Level[]): DrawingField[] {
   const def = TABLE_REGISTRY[name];
   if (!def) return [];

@@ -27,7 +27,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
     (a, b) => getRenderZIndex(a.tableName) - getRenderZIndex(b.tableName)
   );
 
-  return orderedLayers
+  const result = orderedLayers
     .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architecture' || l.discipline === 'reference') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
@@ -35,6 +35,9 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
       discipline: l.discipline,
       elements: parseLayer(l),
     }));
+
+  appendGlobalLayers(state, result);
+  return result;
 }
 
 export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
@@ -177,7 +180,29 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     });
   }
 
+  appendGlobalLayers(state, result);
   return result;
+}
+
+/**
+ * Append globalLayers (cross-level elements stored in global/ directory) to the result.
+ * Elements get "global:" ID prefix for consistency with 3D FloorGroup.
+ * Result is re-sorted by render z-index after merging.
+ */
+function appendGlobalLayers(state: EditorState, result: ProcessedLayer[]): void {
+  const globalLayers = state.project?.globalLayers;
+  if (!globalLayers || globalLayers.length === 0) return;
+
+  for (const gl of globalLayers) {
+    const key = `${gl.discipline}/${gl.tableName}`;
+    if (!state.visibleLayers.has(key)) continue;
+    if (gl.discipline !== state.activeDiscipline && gl.discipline !== 'architecture' && gl.discipline !== 'reference') continue;
+    const elements = parseLayer(gl).map(el => ({ ...el, id: `global:${el.id}` }));
+    if (elements.length === 0) continue;
+    result.push({ key, tableName: gl.tableName, discipline: gl.discipline, elements });
+  }
+
+  result.sort((a, b) => getRenderZIndex(a.tableName) - getRenderZIndex(b.tableName));
 }
 
 export function getActiveDiscipline(state: EditorState): string | null {

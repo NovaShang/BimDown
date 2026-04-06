@@ -4,6 +4,9 @@ import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry } from '../model/hosted.ts';
+import { isVerticalSpanTable } from '../model/tableRegistry.ts';
+import { serializeToSvg } from '../model/serialize.ts';
+import type { LayerData } from '../types.ts';
 
 export const initialState: EditorState = {
   modelName: '',
@@ -389,6 +392,24 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const after = new Map<string, CanonicalElement | null>([[rawId, updated]]);
       const next = new Map(state.document.elements);
       next.set(rawId, updated);
+
+      // Auto-migrate to globalLayers when top_level_id skips levels
+      if ('top_level_id' in action.attrs && isVerticalSpanTable(updated.tableName) && state.project) {
+        const migrated = maybeMigrateToGlobal(updated, state);
+        if (migrated) {
+          next.delete(rawId);
+          return {
+            ...state,
+            document: { ...state.document, elements: next },
+            project: migrated,
+            history: pushCommand(state.history, createCommand('Migrate to global', before, new Map([[rawId, null]]))),
+            documentVersion: state.documentVersion + 1,
+            lastMutation: { version: state.documentVersion + 1, keys: [`${updated.discipline}/${updated.tableName}`] },
+            selectedIds: new Set(),
+          };
+        }
+      }
+
       return {
         ...state,
         document: { ...state.document, elements: next },
@@ -580,6 +601,62 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
         vertices: el.vertices.map(v => ({ x: v.x + dx, y: v.y + dy })),
       };
   }
+}
+
+/**
+ * Check if an element's top_level_id skips levels (not same or adjacent-above).
+ * If so, migrate it to globalLayers and return updated ProjectData.
+ * Returns null if no migration needed.
+ */
+function maybeMigrateToGlobal(element: CanonicalElement, state: EditorState): import('../types.ts').ProjectData | null {
+  const project = state.project;
+  if (!project) return null;
+
+  const topLevelId = element.attrs.top_level_id;
+  if (!topLevelId) return null;
+
+  const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
+  const currentIdx = sorted.findIndex(l => l.id === state.currentLevel);
+  const topIdx = sorted.findIndex(l => l.id === topLevelId);
+
+  // No migration needed: same level, next level up, or unresolvable
+  if (currentIdx < 0 || topIdx < 0) return null;
+  if (topIdx <= currentIdx + 1) return null;
+
+  // Skips at least one level → migrate to globalLayers
+  const svgContent = serializeToSvg([element]);
+  const csvRows = new Map<string, Record<string, string>>([[element.id, element.attrs]]);
+
+  const globalLayers = [...project.globalLayers];
+  const existingIdx = globalLayers.findIndex(
+    l => l.tableName === element.tableName && l.discipline === element.discipline
+  );
+
+  if (existingIdx >= 0) {
+    // Append to existing global layer
+    const existing = globalLayers[existingIdx];
+    const newCsvRows = new Map(existing.csvRows);
+    newCsvRows.set(element.id, element.attrs);
+    // Append SVG content (simple concatenation within the SVG structure)
+    const newSvg = existing.svgContent
+      ? existing.svgContent + '\n' + svgContent
+      : svgContent;
+    globalLayers[existingIdx] = { ...existing, svgContent: newSvg, csvRows: newCsvRows };
+  } else {
+    // Create new global layer
+    globalLayers.push({
+      tableName: element.tableName,
+      discipline: element.discipline,
+      svgContent,
+      csvRows,
+    } as LayerData);
+  }
+
+  // Ensure global layer visibility
+  const visibleLayers = new Set(state.visibleLayers);
+  visibleLayers.add(`${element.discipline}/${element.tableName}`);
+
+  return { ...project, globalLayers };
 }
 
 function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): CanonicalElement {
