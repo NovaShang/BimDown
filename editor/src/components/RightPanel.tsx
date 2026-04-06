@@ -25,8 +25,8 @@ export default function RightPanel({ selectedData, levels, offsetRight = 0 }: Ri
 
   return (
     <div
-      className="absolute top-16 bottom-[52px] z-30 w-52 animate-in fade-in slide-in-from-right-2 duration-200"
-      style={{ right: offsetRight + 12 }}
+      className="absolute top-16 bottom-[52px] z-30 w-52 animate-in fade-in slide-in-from-left-2 duration-200"
+      style={{ left: 12 + 208 + 8 }}
     >
       <div className="glass-panel flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
         <PropertiesContent selectedData={selectedData} levels={levels} />
