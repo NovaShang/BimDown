@@ -1,7 +1,9 @@
 import { Shape, ExtrudeGeometry, type BufferGeometry } from 'three';
 import type { ExtrudeParams } from './elementTo3D.ts';
 
-/** Create an extruded 3D geometry from a 2D polygon footprint + height. */
+/** Create an extruded 3D geometry from a 2D polygon footprint + height.
+ *  Kept as a standalone util because roofGeometry.ts (flat-roof case) and
+ *  DrawingOverlay3D (polygon preview) depend on it. */
 export function createExtrudeGeometry(params: ExtrudeParams): BufferGeometry | null {
   if (params.vertices.length < 3) return null;
 

@@ -1,34 +1,30 @@
 import { registerRenderer } from './index.ts';
-import WallExtrusions from '../layers/WallExtrusions.tsx';
-import CurtainWallExtrusions from '../layers/CurtainWallExtrusions.tsx';
-import SpaceWireframes from '../layers/SpaceWireframes.tsx';
-import BoxInstances from '../layers/BoxInstances.tsx';
-import PolygonExtrusions from '../layers/PolygonExtrusions.tsx';
-import RoofExtrusions from '../layers/RoofExtrusions.tsx';
+import SurfaceRenderer from '../layers/SurfaceRenderer.tsx';
+import PathRenderer from '../layers/PathRenderer.tsx';
+import InstanceRenderer from '../layers/InstanceRenderer.tsx';
+import UnifiedRenderer from '../layers/UnifiedRenderer.tsx';
 
 
-// Walls — miter-joined extrusions
-for (const t of ['wall', 'structure_wall'])
-  registerRenderer(t, { component: WallExtrusions });
+// Composite-producing tables — use unified renderer (handles mixed primitive kinds)
+for (const t of ['curtain_wall', 'stair', 'railing'])
+  registerRenderer(t, { component: UnifiedRenderer });
 
-// Curtain wall — UV grid with mullions + glass panels
-registerRenderer('curtain_wall', { component: CurtainWallExtrusions });
-
-// Space — wireframe only
-registerRenderer('space', { component: SpaceWireframes });
-
-// Box elements — instanced meshes, grouped by material
+// Surface primitives — walls, slabs, foundations, ceiling, roof, space
 for (const t of [
-  'door', 'window', 'column', 'structure_column',
-  'duct', 'pipe', 'conduit', 'cable_tray', 'beam', 'brace',
-  'equipment', 'terminal', 'mep_node',
-  'ramp', 'railing', 'stair',
+  'wall', 'structure_wall',
+  'slab', 'structure_slab', 'foundation', 'ceiling', 'roof', 'space',
 ])
-  registerRenderer(t, { component: BoxInstances, groupByMaterial: true });
+  registerRenderer(t, { component: SurfaceRenderer });
 
-// Polygon extrusions — slabs, foundations (raft subtype)
-for (const t of ['slab', 'structure_slab', 'foundation'])
-  registerRenderer(t, { component: PolygonExtrusions });
+// Path primitives — beams, braces, MEP runs (profile-aware sweeps)
+for (const t of ['beam', 'brace', 'pipe', 'duct', 'conduit', 'cable_tray'])
+  registerRenderer(t, { component: PathRenderer });
 
-// Roof — polygon extrusion with slope support
-registerRenderer('roof', { component: RoofExtrusions });
+// Instance primitives — columns, doors, windows, equipment, terminals, ramps
+for (const t of [
+  'column', 'structure_column',
+  'door', 'window',
+  'equipment', 'terminal', 'mep_node',
+  'ramp',
+])
+  registerRenderer(t, { component: InstanceRenderer });
