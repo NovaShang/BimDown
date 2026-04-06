@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
+import { TABLE_REGISTRY } from '../model/tableRegistry.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getPropertyFields, PROPERTY_GROUPS, type PropertyField } from '../model/propertyFields.ts';
 import type { LayerGroup } from '../state/editorTypes.ts';
@@ -247,6 +248,50 @@ function PropertyRow({
   );
 }
 
+// ─── Element List (expandable per layer) ─────────────────────────────────────
+
+/** Fields to skip in the compact element list */
+const SKIP_FIELDS = new Set(['number', 'base_offset', 'top_level_id', 'top_offset', 'host_id']);
+
+function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
+  tableName: string;
+  csvRows: Map<string, CsvRow>;
+  selectedIds: Set<string>;
+  onSelect: (id: string) => void;
+}) {
+  const def = TABLE_REGISTRY[tableName];
+  // Pick first 2 meaningful headers for compact display
+  const displayHeaders = def
+    ? def.csvHeaders.filter(h => !SKIP_FIELDS.has(h)).slice(0, 2)
+    : [];
+
+  return (
+    <div className="ml-6 border-l border-border pl-2 py-0.5">
+      {Array.from(csvRows.entries()).map(([id, row]) => {
+        const isSelected = selectedIds.has(id);
+        return (
+          <button
+            key={id}
+            className={cn(
+              'flex w-full items-center gap-2 rounded px-2 py-[3px] text-[10px] transition-all',
+              'border-none cursor-pointer text-left',
+              isSelected
+                ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
+            onClick={() => onSelect(id)}
+          >
+            <span className="shrink-0 tabular-nums font-medium">{row.number || id}</span>
+            {displayHeaders.map(h => (
+              <span key={h} className="truncate text-muted-foreground/70">{row[h] || '–'}</span>
+            ))}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ─── Main LeftPanel ──────────────────────────────────────────────────────────
 
 export default function LeftPanel({
@@ -258,8 +303,9 @@ export default function LeftPanel({
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
-  const { activeDiscipline } = useEditorState();
+  const { activeDiscipline, selectedIds } = useEditorState();
   const [showAddLevel, setShowAddLevel] = useState(false);
+  const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Level | null>(null);
 
@@ -333,24 +379,38 @@ export default function LeftPanel({
                 const key = `${layer.discipline}/${layer.tableName}`;
                 const style = LAYER_STYLES[layer.tableName];
                 const isVisible = visibleLayers.has(key);
+                const isExpanded = expandedLayer === key;
                 return (
-                  <button
-                    key={key}
-                    className={cn(
-                      'flex w-full items-center gap-1.5 rounded px-2 py-1 pl-6 text-[11px] transition-all hover:bg-accent',
-                      'border-none cursor-pointer text-left',
-                      isVisible ? 'text-muted-foreground' : 'text-muted-foreground opacity-35'
+                  <div key={key}>
+                    <button
+                      className={cn(
+                        'flex w-full items-center gap-1.5 rounded px-2 py-1 pl-6 text-[11px] transition-all hover:bg-accent',
+                        'border-none cursor-pointer text-left',
+                        isVisible ? 'text-muted-foreground' : 'text-muted-foreground opacity-35',
+                        isExpanded && 'bg-accent/50'
+                      )}
+                      onClick={() => setExpandedLayer(isExpanded ? null : key)}
+                    >
+                      <span className="size-1.5 shrink-0 rounded-sm" style={{ background: style?.color || '#888' }} />
+                      <span className="w-4.5 shrink-0 text-center"><Icon name={layer.tableName} width={16} height={16} /></span>
+                      <span className="flex-1">{style ? t(`display.${style.displayName}`) : layer.tableName}</span>
+                      <span className="text-[9px] text-muted-foreground tabular-nums">{layer.csvRows.size}</span>
+                      <span
+                        className={cn('hover:opacity-100', isVisible ? 'text-[var(--color-accent)]' : 'text-muted-foreground')}
+                        onClick={(e) => { e.stopPropagation(); dispatch({ type: 'TOGGLE_LAYER', key }); }}
+                      >
+                        <Icon name={isVisible ? 'eye-visible' : 'eye-hidden'} width={18} height={18} />
+                      </span>
+                    </button>
+                    {isExpanded && layer.csvRows.size > 0 && (
+                      <ElementList
+                        tableName={layer.tableName}
+                        csvRows={layer.csvRows}
+                        selectedIds={selectedIds}
+                        onSelect={(id) => dispatch({ type: 'SELECT', ids: [id] })}
+                      />
                     )}
-                    onClick={() => dispatch({ type: 'TOGGLE_LAYER', key })}
-                  >
-                    <span className="size-1.5 shrink-0 rounded-sm" style={{ background: style?.color || '#888' }} />
-                    <span className="w-4.5 shrink-0 text-center"><Icon name={layer.tableName} width={16} height={16} /></span>
-                    <span className="flex-1">{style ? t(`display.${style.displayName}`) : layer.tableName}</span>
-                    <span className="text-[9px] text-muted-foreground tabular-nums">{layer.csvRows.size}</span>
-                    <span className={isVisible ? 'text-[var(--color-accent)]' : 'text-muted-foreground'}>
-                      <Icon name={isVisible ? 'eye-visible' : 'eye-hidden'} width={18} height={18} />
-                    </span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
