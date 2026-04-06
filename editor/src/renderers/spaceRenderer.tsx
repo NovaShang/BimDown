@@ -1,4 +1,5 @@
 import type { CanonicalElement, PointElement, PolygonElement } from '../model/elements.ts';
+import { formatPolygonPoints } from './wallRenderer.tsx';
 
 /** Space: render a seed point marker. */
 export function renderSpace(el: CanonicalElement): React.JSX.Element | null {
@@ -11,7 +12,7 @@ export function renderSpace(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry === 'polygon') {
     const { vertices, id } = el as PolygonElement;
     if (vertices.length < 3) return null;
-    const pts = vertices.map(v => `${v.x},${v.y}`).join(' ');
+    const pts = formatPolygonPoints(vertices);
     return (
       <polygon points={pts} fill="rgba(58,134,255,0.06)" stroke="#3a86ff"
         strokeWidth={0.03} strokeDasharray="0.15,0.08" data-id={id} />

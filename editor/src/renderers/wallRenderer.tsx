@@ -1,15 +1,35 @@
-import type { CanonicalElement, LineElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 
-const FILL_FN: Record<string, (m: string) => string> = {
-  stair: () => '#e0d8cf',
-  beam: (m) => m.includes('concrete') ? '#d4d4d4' : '#e8e8e8',
-  brace: (m) => m.includes('concrete') ? '#d4d4d4' : '#e8e8e8',
-  ramp: () => '#e8e8e8',
-  railing: () => '#cccccc',
-  room_separator: () => '#ddd',
-};
+// ─── Shared 2D helpers ──────────────────────────────────────────────
 
-function renderLinePolygon(el: LineElement, fill: string): React.JSX.Element | null {
+/** Format polygon vertices as an SVG points attribute string. */
+export function formatPolygonPoints(vertices: Point[]): string {
+  return vertices.map(v => `${v.x},${v.y}`).join(' ');
+}
+
+/** Resolve a fill color from table name + material string (used by wall fills & line fills). */
+export function getMaterialFill(tableName: string, material: string): string {
+  const m = material.toLowerCase();
+  switch (tableName) {
+    case 'curtain_wall': return '#d6eaf8';
+    case 'wall':
+    case 'structure_wall':
+      if (m.includes('concrete')) return '#d4d4d4';
+      if (m.includes('metal') || m.includes('steel')) return '#e8e8e8';
+      return '#f0f0f0';
+    case 'stair': return '#e0d8cf';
+    case 'beam':
+    case 'brace':
+      return m.includes('concrete') ? '#d4d4d4' : '#e8e8e8';
+    case 'ramp': return '#e8e8e8';
+    case 'railing': return '#cccccc';
+    case 'room_separator': return '#ddd';
+    default: return '#eee';
+  }
+}
+
+/** Render a line element as a filled polygon (4-corner quad from line thickness). */
+export function renderLinePolygon(el: LineElement, fill: string): React.JSX.Element | null {
   const { start, end, strokeWidth, id } = el;
   const dx = end.x - start.x, dy = end.y - start.y;
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -40,7 +60,7 @@ export function renderWallHitArea(el: CanonicalElement): React.JSX.Element | nul
  */
 export function renderLineFill(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
-  const material = ((el as LineElement).attrs.material ?? '').toLowerCase();
-  const fill = (FILL_FN[el.tableName] ?? (() => '#eee'))(material);
-  return renderLinePolygon(el as LineElement, fill);
+  const line = el as LineElement;
+  const fill = getMaterialFill(el.tableName, line.attrs.material ?? '');
+  return renderLinePolygon(line, fill);
 }

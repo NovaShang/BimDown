@@ -10,7 +10,7 @@
  * 2. Register it in RENDERERS below
  */
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { renderWallHitArea, renderLineFill } from './wallRenderer.tsx';
+import { renderWallHitArea, renderLineFill, formatPolygonPoints } from './wallRenderer.tsx';
 import { renderColumn } from './columnRenderer.tsx';
 import { renderDoor } from './doorRenderer.tsx';
 import { renderWindow } from './windowRenderer.tsx';
@@ -64,7 +64,7 @@ function renderOpening(el: CanonicalElement): React.JSX.Element | null {
   if (el.geometry === 'polygon') {
     const { vertices, id } = el as PolygonElement;
     if (vertices.length < 3) return null;
-    const pts = vertices.map(v => `${v.x},${v.y}`).join(' ');
+    const pts = formatPolygonPoints(vertices);
     return (
       <polygon
         key={id}

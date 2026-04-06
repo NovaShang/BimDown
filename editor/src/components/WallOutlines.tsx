@@ -8,6 +8,7 @@ import {
   type WallSegment,
   type WallPolygon,
 } from '../utils/wallMiter.ts';
+import { getMaterialFill } from '../renderers/wallRenderer.tsx';
 
 interface WallOutlinesProps {
   layers: ProcessedLayer[];
@@ -53,13 +54,9 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
         if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
         const line = el as LineElement;
 
-        const material = (line.attrs.material ?? '').toLowerCase();
         let fill = 'none';
         if (isWall) {
-          if (el.tableName === 'curtain_wall') fill = '#d6eaf8';
-          else if (material.includes('concrete')) fill = '#d4d4d4';
-          else if (material.includes('metal') || material.includes('steel')) fill = '#e8e8e8';
-          else fill = '#f0f0f0';
+          fill = getMaterialFill(el.tableName, line.attrs.material ?? '');
         } else if (isMep) {
           fill = MEP_FILL[el.tableName] ?? 'none';
         }
