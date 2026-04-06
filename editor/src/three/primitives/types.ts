@@ -42,6 +42,7 @@ export interface MiterMeta {
   endX: number;
   endY: number;
   halfWidth: number;
+  arc?: import('../../utils/arcMath.ts').ArcParams;
 }
 
 export type OpeningDecl = ParametricOpening | PolygonOpening;

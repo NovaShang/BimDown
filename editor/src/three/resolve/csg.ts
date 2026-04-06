@@ -1,6 +1,7 @@
 import { Shape, ExtrudeGeometry, BoxGeometry, CylinderGeometry, Matrix4, type BufferGeometry } from 'three';
 import { SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
 import type { SurfacePrimitive, OpeningDecl } from '../primitives/types.ts';
+import { pointOnArc, arcLength } from '../../utils/arcMath.ts';
 
 const csgEvaluator = new Evaluator();
 
@@ -79,27 +80,36 @@ function buildParametricBrush(
   prim: SurfacePrimitive,
 ): Brush | null {
   const meta = prim.miterMeta!;
-  const dx = meta.endX - meta.startX;
-  const dy = meta.endY - meta.startY;
-  const wallLen = Math.sqrt(dx * dx + dy * dy);
-  if (wallLen < 0.001) return null;
-
-  const ux = dx / wallLen;
-  const uy = dy / wallLen;
-
-  // Opening center along wall
-  const tCenter = op.position + op.width / 2;
-  const cx = meta.startX + ux * tCenter;
-  const cy = meta.startY + uy * tCenter;
-
-  // 3D center: SVG y → world z (negated)
-  const worldX = cx;
-  const worldZ = -cy;
-  const worldY = prim.origin.y + op.sillHeight + op.height / 2;
-
-  // 2x wall thickness to ensure full cut-through
   const thickness = meta.halfWidth * 4;
-  const angle = Math.atan2(dy, dx);
+
+  let worldX: number, worldZ: number, angle: number;
+  const tCenter = op.position + op.width / 2;
+
+  if (meta.arc) {
+    // Arc wall: compute opening position along the arc curve
+    const start = { x: meta.startX, y: meta.startY };
+    const end = { x: meta.endX, y: meta.endY };
+    const wallLen = arcLength(start, end, meta.arc);
+    if (wallLen < 0.001) return null;
+    const t = Math.max(0, Math.min(1, tCenter / wallLen));
+    const { point, tangent } = pointOnArc(start, end, meta.arc, t);
+    worldX = point.x;
+    worldZ = -point.y;
+    angle = Math.atan2(tangent.y, tangent.x);
+  } else {
+    // Straight wall: linear interpolation
+    const dx = meta.endX - meta.startX;
+    const dy = meta.endY - meta.startY;
+    const wallLen = Math.sqrt(dx * dx + dy * dy);
+    if (wallLen < 0.001) return null;
+    const ux = dx / wallLen;
+    const uy = dy / wallLen;
+    worldX = meta.startX + ux * tCenter;
+    worldZ = -(meta.startY + uy * tCenter);
+    angle = Math.atan2(dy, dx);
+  }
+
+  const worldY = prim.origin.y + op.sillHeight + op.height / 2;
 
   let cutGeo: BufferGeometry;
   switch (op.shape) {

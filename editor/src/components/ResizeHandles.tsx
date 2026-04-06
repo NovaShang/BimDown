@@ -35,6 +35,7 @@ function LengthLabel({ from, to, scale, length }: { from: Point; to: Point; scal
       textAnchor="middle"
       transform="scale(1,-1)"
       opacity={0.9}
+      pointerEvents="none"
     >
       {formatLength(len)}
     </text>

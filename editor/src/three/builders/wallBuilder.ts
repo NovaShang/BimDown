@@ -71,10 +71,11 @@ export function buildWallPrimitive(
     origin: { x: 0, y: baseY, z: 0 },
     material,
     miterGroup: el.arc ? undefined : el.tableName,
-    miterMeta: el.arc ? undefined : {
+    miterMeta: {
       startX: el.start.x, startY: el.start.y,
       endX: el.end.x, endY: el.end.y,
       halfWidth,
+      arc: el.arc,
     },
     openings: openings.length > 0 ? openings : undefined,
   };

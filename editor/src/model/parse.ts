@@ -222,7 +222,7 @@ function parseDualModeLayer(layer: LayerData): CanonicalElement[] {
       attrs,
     };
     el.hostId = csv.host_id ?? '';
-    el.locationParam = parseFloat(csv.position ?? '0.5');
+    el.locationParam = parseFloat(csv.position || '0.5') || 0;
     elements.push(el);
   }
 
@@ -268,7 +268,7 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
         attrs,
       };
       el.hostId = csv.host_id ?? '';
-      el.locationParam = parseFloat(csv.position ?? '0.5');
+      el.locationParam = parseFloat(csv.position || '0.5') || 0;
       elements.push(el);
     }
   }
@@ -339,7 +339,7 @@ function parseSpatialLineFromPath(
 function applyHostFields(el: CanonicalElement, csv?: CsvRow): void {
   if (!csv) return;
   if (csv.host_id) el.hostId = csv.host_id;
-  if (csv.position) el.locationParam = parseFloat(csv.position);
+  if (csv.position) el.locationParam = parseFloat(csv.position) || 0;
 }
 
 function parsePointElement(
