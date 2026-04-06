@@ -292,39 +292,28 @@ function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
   selectedIds: Set<string>;
   onSelect: (id: string) => void;
 }) {
-  const { t } = useTranslation();
   const columns = getColumns(tableName);
 
   return (
-    <div className="mb-1 ml-4 mr-1 overflow-hidden rounded-lg border border-border/50 bg-background/30">
-      {/* Column header */}
-      <div className="flex items-center gap-1 border-b border-border/30 px-2 py-[3px] text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
-        <span className="w-10 shrink-0">#</span>
-        {columns.map(col => (
-          <span key={col.key} className="flex-1 truncate">{t(`field.${col.label}`, col.label)}</span>
-        ))}
-      </div>
-      {/* Element rows */}
+    <div className="mb-0.5 py-0.5 pl-7">
       {Array.from(csvRows.entries()).map(([id, row]) => {
         const isSelected = selectedIds.has(id);
         return (
           <button
             key={id}
             className={cn(
-              'flex w-full items-center gap-1 border-none px-2 py-[3px] text-[10px] transition-colors',
-              'cursor-pointer text-left',
+              'flex w-full items-center gap-1.5 rounded px-2 py-[3px] text-[10px] transition-colors',
+              'border-none cursor-pointer text-left',
               isSelected
                 ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
-                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
             )}
             onClick={() => onSelect(id)}
           >
-            <span className="w-10 shrink-0 tabular-nums font-medium">{row.number || id}</span>
-            {columns.map(col => (
-              <span key={col.key} className="flex-1 truncate tabular-nums">
-                {formatCellValue(row[col.key], col.unit)}
-              </span>
-            ))}
+            <span className="shrink-0 tabular-nums font-medium">{row.number || id}</span>
+            <span className="flex-1 truncate text-muted-foreground/60 tabular-nums">
+              {columns.map(col => formatCellValue(row[col.key], col.unit)).join(' · ')}
+            </span>
           </button>
         );
       })}
