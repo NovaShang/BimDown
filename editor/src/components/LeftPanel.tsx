@@ -62,8 +62,6 @@ function LevelContextMenu({
 
 // ─── Element List (expandable per layer) ─────────────────────────────────────
 
-import { PROPERTY_FIELD_DEFS } from '../model/propertyFields.ts';
-
 /** Fields not useful in the compact element list */
 const SKIP_FIELDS = new Set([
   'number', 'base_offset', 'top_level_id', 'top_offset', 'host_id',
