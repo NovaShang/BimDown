@@ -6,6 +6,7 @@ import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry } from '../model/hosted.ts';
 import { isVerticalSpanTable } from '../model/tableRegistry.ts';
 import { serializeToSvg } from '../model/serialize.ts';
+import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 
 export const initialState: EditorState = {
@@ -404,7 +405,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
             project: migrated,
             history: pushCommand(state.history, createCommand('Migrate to global', before, new Map([[rawId, null]]))),
             documentVersion: state.documentVersion + 1,
-            lastMutation: { version: state.documentVersion + 1, keys: [`${updated.discipline}/${updated.tableName}`] },
+            lastMutation: { version: state.documentVersion + 1, keys: [`${updated.discipline}/${updated.tableName}`, `__global__/${updated.tableName}`] },
             selectedIds: new Set(),
           };
         }
@@ -624,37 +625,32 @@ function maybeMigrateToGlobal(element: CanonicalElement, state: EditorState): im
   if (topIdx <= currentIdx + 1) return null;
 
   // Skips at least one level → migrate to globalLayers
-  const svgContent = serializeToSvg([element]);
-  const csvRows = new Map<string, Record<string, string>>([[element.id, element.attrs]]);
-
   const globalLayers = [...project.globalLayers];
   const existingIdx = globalLayers.findIndex(
     l => l.tableName === element.tableName && l.discipline === element.discipline
   );
 
   if (existingIdx >= 0) {
-    // Append to existing global layer
+    // Parse existing elements, add the new one, re-serialize SVG
     const existing = globalLayers[existingIdx];
+    const existingElements = parseLayer(existing);
+    const allElements = [...existingElements, element];
     const newCsvRows = new Map(existing.csvRows);
     newCsvRows.set(element.id, element.attrs);
-    // Append SVG content (simple concatenation within the SVG structure)
-    const newSvg = existing.svgContent
-      ? existing.svgContent + '\n' + svgContent
-      : svgContent;
-    globalLayers[existingIdx] = { ...existing, svgContent: newSvg, csvRows: newCsvRows };
+    globalLayers[existingIdx] = {
+      ...existing,
+      svgContent: serializeToSvg(allElements),
+      csvRows: newCsvRows,
+    };
   } else {
     // Create new global layer
     globalLayers.push({
       tableName: element.tableName,
       discipline: element.discipline,
-      svgContent,
-      csvRows,
+      svgContent: serializeToSvg([element]),
+      csvRows: new Map([[element.id, element.attrs]]),
     } as LayerData);
   }
-
-  // Ensure global layer visibility
-  const visibleLayers = new Set(state.visibleLayers);
-  visibleLayers.add(`${element.discipline}/${element.tableName}`);
 
   return { ...project, globalLayers };
 }

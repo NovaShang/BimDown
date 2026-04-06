@@ -43,6 +43,35 @@ export async function persistLevels(levels: Level[], ds: DataSource): Promise<vo
   await ds.saveFile('global/level.csv', [header, ...rows].join('\n') + '\n');
 }
 
+/**
+ * Persist a global layer (cross-level elements) to global/{tableName}.svg + .csv.
+ */
+export async function persistGlobalLayer(
+  layer: { tableName: string; svgContent: string; csvRows: Map<string, Record<string, string>> },
+  ds: DataSource,
+): Promise<void> {
+  const elements = parseLayerToElements(layer);
+  const saves: Promise<void>[] = [];
+
+  if (!isCsvOnlyTable(layer.tableName)) {
+    saves.push(ds.saveFile(`global/${layer.tableName}.svg`, layer.svgContent));
+  }
+
+  const csvContent = serializeToCsv(elements, layer.tableName);
+  saves.push(ds.saveFile(`global/${layer.tableName}.csv`, csvContent));
+
+  await Promise.all(saves);
+}
+
+/** Reconstruct minimal CanonicalElements from LayerData for CSV serialization. */
+function parseLayerToElements(layer: { tableName: string; csvRows: Map<string, Record<string, string>> }) {
+  const elements: Array<{ id: string; tableName: string; discipline: string; attrs: Record<string, string> }> = [];
+  for (const [id, attrs] of layer.csvRows) {
+    elements.push({ id, tableName: layer.tableName, discipline: '', attrs });
+  }
+  return elements as import('../model/elements.ts').CanonicalElement[];
+}
+
 export async function persistGrids(grids: GridData[], ds: DataSource): Promise<void> {
   const header = 'id,number,start_x,start_y,end_x,end_y';
   const rows = grids.map(g => `${g.id},${g.number},${g.x1},${g.y1},${g.x2},${g.y2}`);

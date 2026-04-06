@@ -3,7 +3,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument, persistLevels, persistGrids } from '../utils/persist.ts';
+import { persistDocument, persistLevels, persistGrids, persistGlobalLayer } from '../utils/persist.ts';
 import { groupByLayer, serializeToSvg } from '../model/serialize.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
@@ -55,6 +55,13 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         await persistGrids(grids, dsRef.current);
         // Sync grids back to state for cross-level consistency
         dispatch({ type: 'UPDATE_GRIDS', grids });
+      }
+      // Persist migrated global layers
+      for (const key of changedKeys) {
+        if (!key.startsWith('__global__/')) continue;
+        const tableName = key.slice('__global__/'.length);
+        const gl = currentState.project?.globalLayers.find(l => l.tableName === tableName);
+        if (gl) await persistGlobalLayer(gl, dsRef.current);
       }
     } catch (err) {
       console.error('Flush persist failed:', err);
