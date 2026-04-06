@@ -2,9 +2,10 @@ import { useRef, useCallback } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Billboard, Html, Line } from '@react-three/drei';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import type { CanonicalElement, Point } from '../../model/elements.ts';
+import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../../state/EditorContext.tsx';
 import { snapPoint } from '../../utils/snap.ts';
+import { arcFromMidpoint, arcMidpoint, tessellateArc } from '../../utils/arcMath.ts';
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
@@ -114,35 +115,33 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   const y = elevation + 0.05;
 
   if (element.geometry === 'line' || element.geometry === 'spatial_line') {
+    const lineEl = element as LineElement | SpatialLineElement;
     const startPos: [number, number, number] = [element.start.x, y, -element.start.y];
     const endPos: [number, number, number] = [element.end.x, y, -element.end.y];
 
+    const centerlinePoints: [number, number, number][] = lineEl.arc
+      ? tessellateArc(lineEl.start, lineEl.end, lineEl.arc, 0.2).map(p => [p.x, y, -p.y] as [number, number, number])
+      : [startPos, endPos];
+
+    const mid = lineEl.arc
+      ? arcMidpoint(lineEl.start, lineEl.end, lineEl.arc)
+      : { x: (lineEl.start.x + lineEl.end.x) / 2, y: (lineEl.start.y + lineEl.end.y) / 2 };
+    const midPos: [number, number, number] = [mid.x, y, -mid.y];
+
     return (
       <group>
-        {/* Centerline */}
-        <Line
-          points={[startPos, endPos]}
-          color={HANDLE_COLOR}
-          lineWidth={2}
-          dashed
-          dashSize={0.2}
-          gapSize={0.1}
-          depthTest={false}
-          renderOrder={998}
-        />
-        {/* Endpoint handles */}
-        <HandleSphere
-          position={startPos}
+        <Line points={centerlinePoints} color={HANDLE_COLOR} lineWidth={2} dashed dashSize={0.2} gapSize={0.1} depthTest={false} renderOrder={998} />
+        <HandleSphere position={startPos} onPointerDown={handleDrag((x, yy) => {
+          dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { start: { x, y: yy } } });
+        })} />
+        <HandleSphere position={endPos} onPointerDown={handleDrag((x, yy) => {
+          dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { end: { x, y: yy } } });
+        })} />
+        <HandleSphere position={midPos} color={lineEl.arc ? '#f59e0b' : HANDLE_COLOR} size={HANDLE_SIZE * 0.75}
           onPointerDown={handleDrag((x, yy) => {
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { start: { x, y: yy } } });
-          })}
-        />
-        <HandleSphere
-          position={endPos}
-          onPointerDown={handleDrag((x, yy) => {
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { end: { x, y: yy } } });
-          })}
-        />
+            const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y: yy });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
+          })} />
         <LengthLabel3D from={element.start} to={element.end} elevation={elevation} />
       </group>
     );
@@ -225,18 +224,22 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   return null;
 }
 
-function HandleSphere({ position, onPointerDown }: {
+function HandleSphere({ position, onPointerDown, color, size }: {
   position: [number, number, number];
   onPointerDown: (e: React.PointerEvent) => void;
+  color?: string;
+  size?: number;
 }) {
+  const s = size ?? HANDLE_SIZE;
+  const c = color ?? HANDLE_COLOR;
   return (
     <Billboard position={position} renderOrder={999}>
       <mesh onPointerDown={onPointerDown} raycast={undefined}>
-        <circleGeometry args={[HANDLE_SIZE, 16]} />
-        <meshBasicMaterial color={HANDLE_COLOR} depthTest={false} />
+        <circleGeometry args={[s, 16]} />
+        <meshBasicMaterial color={c} depthTest={false} />
       </mesh>
       <mesh raycast={undefined}>
-        <ringGeometry args={[HANDLE_SIZE, HANDLE_SIZE + 0.03, 16]} />
+        <ringGeometry args={[s, s + 0.03, 16]} />
         <meshBasicMaterial color="white" depthTest={false} />
       </mesh>
     </Billboard>

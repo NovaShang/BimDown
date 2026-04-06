@@ -78,13 +78,19 @@ export function serializeToSvg(elements: CanonicalElement[]): string {
   return `<?xml version="1.0" encoding="utf-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vb}">\n  <g transform="scale(1,-1)">\n${innerElements.map(s => '    ' + s).join('\n')}\n  </g>\n</svg>`;
 }
 
+function serializePathD(start: { x: number; y: number }, end: { x: number; y: number }, arc?: import('../utils/arcMath.ts').ArcParams): string {
+  if (arc) {
+    return `M ${r(start.x)},${r(start.y)} A ${r(arc.rx)},${r(arc.ry)} ${r(arc.rotation)} ${arc.largeArc ? 1 : 0} ${arc.sweep ? 1 : 0} ${r(end.x)},${r(end.y)}`;
+  }
+  return `M ${r(start.x)},${r(start.y)} L ${r(end.x)},${r(end.y)}`;
+}
+
 function serializeLine(el: LineElement): string {
-  return `<path id="${el.id}" d="M ${r(el.start.x)},${r(el.start.y)} L ${r(el.end.x)},${r(el.end.y)}" />`;
+  return `<path id="${el.id}" d="${serializePathD(el.start, el.end, el.arc)}" />`;
 }
 
 function serializeSpatialLine(el: SpatialLineElement): string {
-  // SVG is 2D projection — same as line, z lives in CSV only
-  return `<path id="${el.id}" d="M ${r(el.start.x)},${r(el.start.y)} L ${r(el.end.x)},${r(el.end.y)}" />`;
+  return `<path id="${el.id}" d="${serializePathD(el.start, el.end, el.arc)}" />`;
 }
 
 function serializePoint(el: PointElement): string {

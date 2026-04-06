@@ -1,4 +1,5 @@
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
+import { tessellateArc, pointOnArc } from '../utils/arcMath.ts';
 
 // ─── Shared 2D helpers ──────────────────────────────────────────────
 
@@ -30,19 +31,33 @@ export function getMaterialFill(tableName: string, material: string): string {
 
 /** Render a line element as a filled polygon (4-corner quad from line thickness). */
 export function renderLinePolygon(el: LineElement, fill: string): React.JSX.Element | null {
-  const { start, end, strokeWidth, id } = el;
+  const { start, end, strokeWidth, id, arc } = el;
+  const hw = strokeWidth / 2;
+
+  if (arc) {
+    const pts = tessellateArc(start, end, arc, 0.1);
+    const leftSide: string[] = [];
+    const rightSide: string[] = [];
+    const n = pts.length;
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const { tangent } = pointOnArc(start, end, arc, t);
+      const nx = -tangent.y, ny = tangent.x;
+      leftSide.push(`${pts[i].x + nx * hw},${pts[i].y + ny * hw}`);
+      rightSide.push(`${pts[i].x - nx * hw},${pts[i].y - ny * hw}`);
+    }
+    const points = [...leftSide, ...rightSide.reverse()].join(' ');
+    return <polygon points={points} fill={fill} stroke="none" data-id={id} />;
+  }
+
   const dx = end.x - start.x, dy = end.y - start.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 0.001) return null;
-
   const nx = -dy / len, ny = dx / len;
-  const hw = strokeWidth / 2;
-
   const p1 = `${start.x + nx * hw},${start.y + ny * hw}`;
   const p2 = `${end.x + nx * hw},${end.y + ny * hw}`;
   const p3 = `${end.x - nx * hw},${end.y - ny * hw}`;
   const p4 = `${start.x - nx * hw},${start.y - ny * hw}`;
-
   return <polygon points={`${p1} ${p2} ${p3} ${p4}`} fill={fill} stroke="none" data-id={id} />;
 }
 

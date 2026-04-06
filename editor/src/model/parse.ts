@@ -1,5 +1,5 @@
 import type { LayerData, CsvRow } from '../types.ts';
-import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point } from './elements.ts';
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point, ArcParams } from './elements.ts';
 import { geometryTypeForTable, isHostedTable } from './elements.ts';
 import { resolveHostedGeometry } from './hosted.ts';
 
@@ -276,18 +276,32 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
   return elements;
 }
 
-/** Parse M x1,y1 L x2,y2 from a path d attribute. */
-function parseDAttribute(d: string): { x1: number; y1: number; x2: number; y2: number } {
-  const m = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)\s*L\s*([-\d.]+)[,\s]+([-\d.]+)/);
-  if (!m) return { x1: 0, y1: 0, x2: 0, y2: 0 };
-  return { x1: parseFloat(m[1]), y1: parseFloat(m[2]), x2: parseFloat(m[3]), y2: parseFloat(m[4]) };
+/** Parse M x1,y1 L/A ... from a path d attribute. Supports straight lines and arcs. */
+function parseDAttribute(d: string): { x1: number; y1: number; x2: number; y2: number; arc?: ArcParams } {
+  const mL = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)\s*L\s*([-\d.]+)[,\s]+([-\d.]+)/);
+  if (mL) return { x1: parseFloat(mL[1]), y1: parseFloat(mL[2]), x2: parseFloat(mL[3]), y2: parseFloat(mL[4]) };
+
+  const mA = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)\s*A\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+)[,\s]+([01])[,\s]+([01])[,\s]+([-\d.]+)[,\s]+([-\d.]+)/);
+  if (mA) {
+    return {
+      x1: parseFloat(mA[1]), y1: parseFloat(mA[2]),
+      x2: parseFloat(mA[8]), y2: parseFloat(mA[9]),
+      arc: {
+        rx: parseFloat(mA[3]), ry: parseFloat(mA[4]),
+        rotation: parseFloat(mA[5]),
+        largeArc: mA[6] === '1', sweep: mA[7] === '1',
+      },
+    };
+  }
+
+  return { x1: 0, y1: 0, x2: 0, y2: 0 };
 }
 
 function parseLineFromPath(
   id: string, path: Element, layer: LayerData, csv?: CsvRow
 ): LineElement {
-  const { x1, y1, x2, y2 } = parseDAttribute(path.getAttribute('d') || '');
-  return {
+  const { x1, y1, x2, y2, arc } = parseDAttribute(path.getAttribute('d') || '');
+  const el: LineElement = {
     geometry: 'line',
     id,
     tableName: layer.tableName,
@@ -297,13 +311,15 @@ function parseLineFromPath(
     strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
     attrs: csvToAttrs(csv, id),
   };
+  if (arc) el.arc = arc;
+  return el;
 }
 
 function parseSpatialLineFromPath(
   id: string, path: Element, layer: LayerData, csv?: CsvRow
 ): SpatialLineElement {
-  const { x1, y1, x2, y2 } = parseDAttribute(path.getAttribute('d') || '');
-  return {
+  const { x1, y1, x2, y2, arc } = parseDAttribute(path.getAttribute('d') || '');
+  const el: SpatialLineElement = {
     geometry: 'spatial_line',
     id,
     tableName: layer.tableName,
@@ -315,6 +331,8 @@ function parseSpatialLineFromPath(
     strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
     attrs: csvToAttrs(csv, id),
   };
+  if (arc) el.arc = arc;
+  return el;
 }
 
 

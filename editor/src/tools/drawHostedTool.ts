@@ -6,6 +6,7 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { resolveHostedGeometry, computeHostedPosition } from '../model/hosted.ts';
+import { nearestPointOnArc, arcLength } from '../utils/arcMath.ts';
 
 const HOST_SNAP_THRESHOLD = 1; // metres — max distance from cursor to wall centerline
 
@@ -29,17 +30,27 @@ function findNearestHost(
     const wall = el as LineElement;
     const { start, end } = wall;
 
-    const dx = end.x - start.x;
-    const dy = end.y - start.y;
-    const lenSq = dx * dx + dy * dy;
-    if (lenSq < 1e-10) continue;
+    let tMeters: number;
+    let dist: number;
 
-    const wallLen = Math.sqrt(lenSq);
-    const tMeters = Math.max(0, Math.min(wallLen, ((cursor.x - start.x) * dx + (cursor.y - start.y) * dy) / lenSq * wallLen));
-    const projected = nearestPointOnSegment(cursor, start, end);
-    const ddx = cursor.x - projected.x;
-    const ddy = cursor.y - projected.y;
-    const dist = Math.sqrt(ddx * ddx + ddy * ddy);
+    if (wall.arc) {
+      const wallLen = arcLength(start, end, wall.arc);
+      if (wallLen < 1e-6) continue;
+      const near = nearestPointOnArc(cursor, start, end, wall.arc);
+      tMeters = near.t * wallLen;
+      dist = near.distance;
+    } else {
+      const dx = end.x - start.x;
+      const dy = end.y - start.y;
+      const lenSq = dx * dx + dy * dy;
+      if (lenSq < 1e-10) continue;
+      const wallLen = Math.sqrt(lenSq);
+      tMeters = Math.max(0, Math.min(wallLen, ((cursor.x - start.x) * dx + (cursor.y - start.y) * dy) / lenSq * wallLen));
+      const projected = nearestPointOnSegment(cursor, start, end);
+      const ddx = cursor.x - projected.x;
+      const ddy = cursor.y - projected.y;
+      dist = Math.sqrt(ddx * ddx + ddy * ddy);
+    }
 
     if (dist < HOST_SNAP_THRESHOLD && (!best || dist < best.dist)) {
       best = { wall, t: tMeters, dist };

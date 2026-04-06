@@ -9,6 +9,7 @@ import {
   type WallPolygon,
 } from '../utils/wallMiter.ts';
 import { getMaterialFill } from '../renderers/wallRenderer.tsx';
+import { tessellateArc, pointOnArc } from '../utils/arcMath.ts';
 
 interface WallOutlinesProps {
   layers: ProcessedLayer[];
@@ -67,6 +68,7 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
           x2: line.end.x, y2: line.end.y,
           halfWidth: line.strokeWidth / 2,
           fill,
+          arc: line.arc,
         };
 
         if (isWall) wallSegs.push({ seg, table: el.tableName });
@@ -92,30 +94,48 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
       const polygons: WallPolygon[] = [];
       const wallFills: { points: string; fill: string }[] = [];
       for (const { seg } of items) {
-        const dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len < 0.001) continue;
-        const nx = -dy / len, ny = dx / len;
         const hw = seg.halfWidth;
-
-        let p1 = { x: seg.x1 + nx * hw, y: seg.y1 + ny * hw };
-        let p2 = { x: seg.x2 + nx * hw, y: seg.y2 + ny * hw };
-        let p3 = { x: seg.x2 - nx * hw, y: seg.y2 - ny * hw };
-        let p4 = { x: seg.x1 - nx * hw, y: seg.y1 - ny * hw };
-
+        const startKey = ptKey(seg.x1, seg.y1);
+        const endKey = ptKey(seg.x2, seg.y2);
         const sa = adj.get(`${seg.id}:start`);
-        if (sa) { p1 = sa.left; p4 = sa.right; }
         const ea = adj.get(`${seg.id}:end`);
-        if (ea) { p2 = ea.right; p3 = ea.left; }
 
-        polygons.push({ id: seg.id, corners: [p1, p2, p3, p4], startKey: ptKey(seg.x1, seg.y1), endKey: ptKey(seg.x2, seg.y2) });
-
-        // Miter-adjusted fill polygon
-        if (seg.fill !== 'none') {
-          wallFills.push({
-            points: [p1, p2, p3, p4].map(p => `${p.x},${p.y}`).join(' '),
-            fill: seg.fill,
-          });
+        if (seg.arc) {
+          const start = { x: seg.x1, y: seg.y1 };
+          const end = { x: seg.x2, y: seg.y2 };
+          const pts = tessellateArc(start, end, seg.arc, 0.15);
+          const n = pts.length;
+          const leftSide: { x: number; y: number }[] = [];
+          const rightSide: { x: number; y: number }[] = [];
+          for (let i = 0; i < n; i++) {
+            const t = i / (n - 1);
+            const { tangent } = pointOnArc(start, end, seg.arc, t);
+            const nx = -tangent.y, ny = tangent.x;
+            leftSide.push({ x: pts[i].x + nx * hw, y: pts[i].y + ny * hw });
+            rightSide.push({ x: pts[i].x - nx * hw, y: pts[i].y - ny * hw });
+          }
+          if (sa) { leftSide[0] = sa.left; rightSide[0] = sa.right; }
+          if (ea) { leftSide[n - 1] = ea.right; rightSide[n - 1] = ea.left; }
+          const corners = [...leftSide, ...rightSide.reverse()];
+          polygons.push({ id: seg.id, corners, sideLen: n, startKey, endKey });
+          if (seg.fill !== 'none') {
+            wallFills.push({ points: corners.map(p => `${p.x},${p.y}`).join(' '), fill: seg.fill });
+          }
+        } else {
+          const dx = seg.x2 - seg.x1, dy = seg.y2 - seg.y1;
+          const len = Math.sqrt(dx * dx + dy * dy);
+          if (len < 0.001) continue;
+          const nx = -dy / len, ny = dx / len;
+          let p1 = { x: seg.x1 + nx * hw, y: seg.y1 + ny * hw };
+          let p2 = { x: seg.x2 + nx * hw, y: seg.y2 + ny * hw };
+          let p3 = { x: seg.x2 - nx * hw, y: seg.y2 - ny * hw };
+          let p4 = { x: seg.x1 - nx * hw, y: seg.y1 - ny * hw };
+          if (sa) { p1 = sa.left; p4 = sa.right; }
+          if (ea) { p2 = ea.right; p3 = ea.left; }
+          polygons.push({ id: seg.id, corners: [p1, p2, p3, p4], sideLen: 2, startKey, endKey });
+          if (seg.fill !== 'none') {
+            wallFills.push({ points: [p1, p2, p3, p4].map(p => `${p.x},${p.y}`).join(' '), fill: seg.fill });
+          }
         }
       }
 

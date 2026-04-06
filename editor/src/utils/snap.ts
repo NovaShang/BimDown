@@ -1,5 +1,6 @@
-import type { CanonicalElement, Point } from '../model/elements.ts';
+import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
 import type { GridData } from '../types.ts';
+import { nearestPointOnArc, pointOnArc as arcPointOnArc } from './arcMath.ts';
 
 // ── Snap types ──
 
@@ -126,36 +127,37 @@ function extractSnapTargets(
     if (excludeIds.has(id)) continue;
 
     if (el.geometry === 'line' || el.geometry === 'spatial_line') {
-      // Priority 1: centerline endpoints
+      const lineEl = el as LineElement | SpatialLineElement;
       targets.push({ x: el.start.x, y: el.start.y, type: 'endpoint', priority: 1 });
       targets.push({ x: el.end.x, y: el.end.y, type: 'endpoint', priority: 1 });
 
-      // Priority 2: outer edges (offset by strokeWidth/2)
-      const hw = el.strokeWidth / 2;
-      if (hw > 0) {
-        const off = perpendicularOffset(el.start, el.end, hw);
-        // 4 corners of the wall rectangle
-        const c0: Point = { x: el.start.x + off.dx, y: el.start.y + off.dy };
-        const c1: Point = { x: el.end.x + off.dx, y: el.end.y + off.dy };
-        const c2: Point = { x: el.end.x - off.dx, y: el.end.y - off.dy };
-        const c3: Point = { x: el.start.x - off.dx, y: el.start.y - off.dy };
-        // Project cursor onto each of the 4 edge segments
-        const edges: [Point, Point][] = [[c0, c1], [c1, c2], [c2, c3], [c3, c0]];
-        for (const [a, b] of edges) {
-          const np = nearestPointOnSegment(cursor, a, b);
-          targets.push({
-            x: np.x, y: np.y, type: 'edge', priority: 2,
-            edgeFrom: a, edgeTo: b,
-          });
+      if (lineEl.arc) {
+        const hw = el.strokeWidth / 2;
+        if (hw > 0) {
+          const nearest = nearestPointOnArc(cursor, el.start, el.end, lineEl.arc);
+          const { tangent } = arcPointOnArc(el.start, el.end, lineEl.arc, nearest.t);
+          const nx = -tangent.y, ny = tangent.x;
+          targets.push({ x: nearest.point.x + nx * hw, y: nearest.point.y + ny * hw, type: 'edge', priority: 2 });
+          targets.push({ x: nearest.point.x - nx * hw, y: nearest.point.y - ny * hw, type: 'edge', priority: 2 });
         }
+        const mid = arcPointOnArc(el.start, el.end, lineEl.arc, 0.5).point;
+        targets.push({ x: mid.x, y: mid.y, type: 'midpoint', priority: 3 });
+      } else {
+        const hw = el.strokeWidth / 2;
+        if (hw > 0) {
+          const off = perpendicularOffset(el.start, el.end, hw);
+          const c0: Point = { x: el.start.x + off.dx, y: el.start.y + off.dy };
+          const c1: Point = { x: el.end.x + off.dx, y: el.end.y + off.dy };
+          const c2: Point = { x: el.end.x - off.dx, y: el.end.y - off.dy };
+          const c3: Point = { x: el.start.x - off.dx, y: el.start.y - off.dy };
+          const edges: [Point, Point][] = [[c0, c1], [c1, c2], [c2, c3], [c3, c0]];
+          for (const [a, b] of edges) {
+            const np = nearestPointOnSegment(cursor, a, b);
+            targets.push({ x: np.x, y: np.y, type: 'edge', priority: 2, edgeFrom: a, edgeTo: b });
+          }
+        }
+        targets.push({ x: (el.start.x + el.end.x) / 2, y: (el.start.y + el.end.y) / 2, type: 'midpoint', priority: 3 });
       }
-
-      // Priority 3: centerline midpoint
-      targets.push({
-        x: (el.start.x + el.end.x) / 2,
-        y: (el.start.y + el.end.y) / 2,
-        type: 'midpoint', priority: 3,
-      });
     } else if (el.geometry === 'point') {
       // Priority 1: center (location point)
       targets.push({ x: el.position.x, y: el.position.y, type: 'center', priority: 1 });

@@ -4,6 +4,7 @@ import { hostTablesFor, widthAttrFor } from '../model/elements.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
 import { resolveHostedGeometry, computeHostedPosition } from '../model/hosted.ts';
 import { toElementId } from '../model/ids.ts';
+import { nearestPointOnArc, arcLength } from '../utils/arcMath.ts';
 
 const HOST_SNAP_THRESHOLD = 1;
 
@@ -17,17 +18,30 @@ function findNearestHost(
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
     if (!hostTables.has(el.tableName)) continue;
     const wall = el as LineElement;
-    const projected = nearestPointOnSegment(cursor, wall.start, wall.end);
-    const ddx = cursor.x - projected.x;
-    const ddy = cursor.y - projected.y;
-    const dist = Math.sqrt(ddx * ddx + ddy * ddy);
-    if (dist < HOST_SNAP_THRESHOLD && (!best || dist < best.dist)) {
+
+    let tMeters: number;
+    let dist: number;
+
+    if (wall.arc) {
+      const wallLen = arcLength(wall.start, wall.end, wall.arc);
+      if (wallLen < 1e-6) continue;
+      const near = nearestPointOnArc(cursor, wall.start, wall.end, wall.arc);
+      tMeters = near.t * wallLen;
+      dist = near.distance;
+    } else {
+      const projected = nearestPointOnSegment(cursor, wall.start, wall.end);
+      const ddx = cursor.x - projected.x;
+      const ddy = cursor.y - projected.y;
+      dist = Math.sqrt(ddx * ddx + ddy * ddy);
       const dx = wall.end.x - wall.start.x;
       const dy = wall.end.y - wall.start.y;
       const lenSq = dx * dx + dy * dy;
       const wallLen = Math.sqrt(lenSq);
-      const t = lenSq > 1e-10 ? Math.max(0, Math.min(wallLen, ((cursor.x - wall.start.x) * dx + (cursor.y - wall.start.y) * dy) / lenSq * wallLen)) : 0;
-      best = { wall, t, dist };
+      tMeters = lenSq > 1e-10 ? Math.max(0, Math.min(wallLen, ((cursor.x - wall.start.x) * dx + (cursor.y - wall.start.y) * dy) / lenSq * wallLen)) : 0;
+    }
+
+    if (dist < HOST_SNAP_THRESHOLD && (!best || dist < best.dist)) {
+      best = { wall, t: tMeters, dist };
     }
   }
   return best;

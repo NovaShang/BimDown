@@ -584,20 +584,26 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
 
 function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): CanonicalElement {
   switch (el.geometry) {
-    case 'line':
+    case 'line': {
+      const lc = changes as Partial<LineElement>;
       return {
         ...el,
-        start: 'start' in changes ? (changes as Partial<LineElement>).start! : el.start,
-        end: 'end' in changes ? (changes as Partial<LineElement>).end! : el.end,
-        strokeWidth: 'strokeWidth' in changes ? (changes as Partial<LineElement>).strokeWidth! : el.strokeWidth,
+        start: 'start' in lc ? lc.start! : el.start,
+        end: 'end' in lc ? lc.end! : el.end,
+        strokeWidth: 'strokeWidth' in lc ? lc.strokeWidth! : el.strokeWidth,
+        arc: 'arc' in lc ? lc.arc : el.arc,
       };
-    case 'spatial_line':
+    }
+    case 'spatial_line': {
+      const sc = changes as Partial<SpatialLineElement>;
       return {
         ...el,
-        start: 'start' in changes ? (changes as Partial<SpatialLineElement>).start! : el.start,
-        end: 'end' in changes ? (changes as Partial<SpatialLineElement>).end! : el.end,
-        strokeWidth: 'strokeWidth' in changes ? (changes as Partial<SpatialLineElement>).strokeWidth! : el.strokeWidth,
+        start: 'start' in sc ? sc.start! : el.start,
+        end: 'end' in sc ? sc.end! : el.end,
+        strokeWidth: 'strokeWidth' in sc ? sc.strokeWidth! : el.strokeWidth,
+        arc: 'arc' in sc ? sc.arc : el.arc,
       };
+    }
     case 'point':
       return {
         ...el,

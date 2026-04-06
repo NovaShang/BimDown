@@ -6,6 +6,9 @@ export {
   widthAttrFor,
 } from './tableRegistry.ts';
 export type { GeometryType, PlacementType } from './tableRegistry.ts';
+export type { ArcParams } from '../utils/arcMath.ts';
+
+import { arcBounds, type ArcParams } from '../utils/arcMath.ts';
 
 export type Point = { x: number; y: number };
 
@@ -23,6 +26,7 @@ export interface LineElement extends BaseElement {
   start: Point;
   end: Point;
   strokeWidth: number;
+  arc?: ArcParams;
 }
 
 export interface SpatialLineElement extends BaseElement {
@@ -32,6 +36,7 @@ export interface SpatialLineElement extends BaseElement {
   startZ: number;
   endZ: number;
   strokeWidth: number;
+  arc?: ArcParams;
 }
 
 export interface PointElement extends BaseElement {
@@ -57,10 +62,18 @@ export function computeBounds(elements: CanonicalElement[]): { x: number; y: num
       case 'line':
       case 'spatial_line': {
         const hw = el.strokeWidth / 2;
-        minX = Math.min(minX, el.start.x - hw, el.end.x - hw);
-        minY = Math.min(minY, el.start.y - hw, el.end.y - hw);
-        maxX = Math.max(maxX, el.start.x + hw, el.end.x + hw);
-        maxY = Math.max(maxY, el.start.y + hw, el.end.y + hw);
+        if (el.arc) {
+          const b = arcBounds(el.start, el.end, el.arc);
+          minX = Math.min(minX, b.minX - hw);
+          minY = Math.min(minY, b.minY - hw);
+          maxX = Math.max(maxX, b.maxX + hw);
+          maxY = Math.max(maxY, b.maxY + hw);
+        } else {
+          minX = Math.min(minX, el.start.x - hw, el.end.x - hw);
+          minY = Math.min(minY, el.start.y - hw, el.end.y - hw);
+          maxX = Math.max(maxX, el.start.x + hw, el.end.x + hw);
+          maxY = Math.max(maxY, el.start.y + hw, el.end.y + hw);
+        }
         break;
       }
       case 'point': {

@@ -1,23 +1,25 @@
 import { useCallback, useRef } from 'react';
-import type { CanonicalElement, Point } from '../model/elements.ts';
+import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
+import { arcFromMidpoint, arcMidpoint, arcLength } from '../utils/arcMath.ts';
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
   return `${meters.toFixed(3)} m`;
 }
 
-function LengthLabel({ from, to, scale }: { from: Point; to: Point; scale: number }) {
+function LengthLabel({ from, to, scale, length }: { from: Point; to: Point; scale: number; length?: number }) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
-  const len = Math.sqrt(dx * dx + dy * dy);
-  if (len < 1e-6) return null;
+  const chordLen = Math.sqrt(dx * dx + dy * dy);
+  const len = length ?? chordLen;
+  if (chordLen < 1e-6) return null;
 
   const mx = (from.x + to.x) / 2;
   const my = (from.y + to.y) / 2;
-  const nx = -dy / len;
-  const ny = dx / len;
+  const nx = -dy / chordLen;
+  const ny = dx / chordLen;
   const offset = 0.8 / scale;
   const fontSize = 1.0 / scale;
 
@@ -121,39 +123,46 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   }, [snapSvgPoint, element.id, dispatch, onSnap]);
 
   if (element.geometry === 'line' || element.geometry === 'spatial_line') {
+    const lineEl = element as LineElement | SpatialLineElement;
+    const arcHandleMid = lineEl.arc
+      ? arcMidpoint(lineEl.start, lineEl.end, lineEl.arc)
+      : { x: (lineEl.start.x + lineEl.end.x) / 2, y: (lineEl.start.y + lineEl.end.y) / 2 };
+    const arcR = (HANDLE_RADIUS * 0.75) / scale;
+
+    const displayLen = lineEl.arc
+      ? arcLength(lineEl.start, lineEl.end, lineEl.arc)
+      : Math.sqrt((lineEl.end.x - lineEl.start.x) ** 2 + (lineEl.end.y - lineEl.start.y) ** 2);
+
     return (
       <g className="resize-handles" transform="scale(1,-1)">
-        {/* Start endpoint */}
         <circle
           cx={element.start.x} cy={element.start.y}
-          r={r}
-          fill="#06b6d4" stroke="white" strokeWidth={sw}
+          r={r} fill="#06b6d4" stroke="white" strokeWidth={sw}
           cursor="move"
           onPointerDown={handleDrag((x, y) => {
-            dispatch({
-              type: 'RESIZE_ELEMENT',
-              id: element.id,
-              preview: true,
-              changes: { start: { x, y } },
-            });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { start: { x, y } } });
           })}
         />
-        {/* End endpoint */}
         <circle
           cx={element.end.x} cy={element.end.y}
-          r={r}
-          fill="#06b6d4" stroke="white" strokeWidth={sw}
+          r={r} fill="#06b6d4" stroke="white" strokeWidth={sw}
           cursor="move"
           onPointerDown={handleDrag((x, y) => {
-            dispatch({
-              type: 'RESIZE_ELEMENT',
-              id: element.id,
-              preview: true,
-              changes: { end: { x, y } },
-            });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { end: { x, y } } });
           })}
         />
-        <LengthLabel from={element.start} to={element.end} scale={scale} />
+        {/* Arc midpoint handle */}
+        <circle
+          cx={arcHandleMid.x} cy={arcHandleMid.y}
+          r={arcR}
+          fill={lineEl.arc ? '#f59e0b' : '#06b6d4'} stroke="white" strokeWidth={sw}
+          cursor="crosshair" opacity={0.9}
+          onPointerDown={handleDrag((x, y) => {
+            const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
+          })}
+        />
+        <LengthLabel from={element.start} to={element.end} scale={scale} length={displayLen} />
       </g>
     );
   }

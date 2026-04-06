@@ -250,8 +250,41 @@ function PropertyRow({
 
 // ─── Element List (expandable per layer) ─────────────────────────────────────
 
-/** Fields to skip in the compact element list */
-const SKIP_FIELDS = new Set(['number', 'base_offset', 'top_level_id', 'top_offset', 'host_id']);
+import { PROPERTY_FIELD_DEFS } from '../model/propertyFields.ts';
+
+/** Fields not useful in the compact element list */
+const SKIP_FIELDS = new Set([
+  'number', 'base_offset', 'top_level_id', 'top_offset', 'host_id',
+  'x', 'y', 'position', 'start_z', 'end_z', 'start_node_id', 'end_node_id',
+]);
+
+interface ColumnDef {
+  key: string;
+  label: string;
+  unit?: string;
+}
+
+function getColumns(tableName: string): ColumnDef[] {
+  const def = TABLE_REGISTRY[tableName];
+  if (!def) return [];
+  return def.csvHeaders
+    .filter(h => !SKIP_FIELDS.has(h))
+    .slice(0, 2)
+    .map(h => {
+      const pf = PROPERTY_FIELD_DEFS[h];
+      return {
+        key: h,
+        label: pf?.label ?? h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        unit: pf?.unit,
+      };
+    });
+}
+
+function formatCellValue(val: string | undefined, unit?: string): string {
+  if (!val) return '–';
+  if (unit && !isNaN(Number(val))) return `${val}${unit}`;
+  return val;
+}
 
 function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
   tableName: string;
@@ -259,31 +292,38 @@ function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
   selectedIds: Set<string>;
   onSelect: (id: string) => void;
 }) {
-  const def = TABLE_REGISTRY[tableName];
-  // Pick first 2 meaningful headers for compact display
-  const displayHeaders = def
-    ? def.csvHeaders.filter(h => !SKIP_FIELDS.has(h)).slice(0, 2)
-    : [];
+  const { t } = useTranslation();
+  const columns = getColumns(tableName);
 
   return (
-    <div className="ml-6 border-l border-border pl-2 py-0.5">
+    <div className="mb-1 ml-4 mr-1 overflow-hidden rounded-lg border border-border/50 bg-background/30">
+      {/* Column header */}
+      <div className="flex items-center gap-1 border-b border-border/30 px-2 py-[3px] text-[9px] font-medium uppercase tracking-wider text-muted-foreground/50">
+        <span className="w-10 shrink-0">#</span>
+        {columns.map(col => (
+          <span key={col.key} className="flex-1 truncate">{t(`field.${col.label}`, col.label)}</span>
+        ))}
+      </div>
+      {/* Element rows */}
       {Array.from(csvRows.entries()).map(([id, row]) => {
         const isSelected = selectedIds.has(id);
         return (
           <button
             key={id}
             className={cn(
-              'flex w-full items-center gap-2 rounded px-2 py-[3px] text-[10px] transition-all',
-              'border-none cursor-pointer text-left',
+              'flex w-full items-center gap-1 border-none px-2 py-[3px] text-[10px] transition-colors',
+              'cursor-pointer text-left',
               isSelected
                 ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
-                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+                : 'text-muted-foreground hover:bg-accent/50 hover:text-foreground'
             )}
             onClick={() => onSelect(id)}
           >
-            <span className="shrink-0 tabular-nums font-medium">{row.number || id}</span>
-            {displayHeaders.map(h => (
-              <span key={h} className="truncate text-muted-foreground/70">{row[h] || '–'}</span>
+            <span className="w-10 shrink-0 tabular-nums font-medium">{row.number || id}</span>
+            {columns.map(col => (
+              <span key={col.key} className="flex-1 truncate tabular-nums">
+                {formatCellValue(row[col.key], col.unit)}
+              </span>
             ))}
           </button>
         );
@@ -384,14 +424,19 @@ export default function LeftPanel({
                   <div key={key}>
                     <button
                       className={cn(
-                        'flex w-full items-center gap-1.5 rounded px-2 py-1 pl-6 text-[11px] transition-all hover:bg-accent',
+                        'flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] transition-all hover:bg-accent',
                         'border-none cursor-pointer text-left',
                         isVisible ? 'text-muted-foreground' : 'text-muted-foreground opacity-35',
                         isExpanded && 'bg-accent/50'
                       )}
                       onClick={() => setExpandedLayer(isExpanded ? null : key)}
                     >
-                      <span className="size-1.5 shrink-0 rounded-sm" style={{ background: style?.color || '#888' }} />
+                      <svg
+                        width="10" height="10" viewBox="0 0 10 10"
+                        className={cn('shrink-0 transition-transform duration-150', isExpanded && 'rotate-90')}
+                      >
+                        <path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
                       <span className="w-4.5 shrink-0 text-center"><Icon name={layer.tableName} width={16} height={16} /></span>
                       <span className="flex-1">{style ? t(`display.${style.displayName}`) : layer.tableName}</span>
                       <span className="text-[9px] text-muted-foreground tabular-nums">{layer.csvRows.size}</span>

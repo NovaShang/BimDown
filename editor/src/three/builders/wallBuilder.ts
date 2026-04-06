@@ -2,6 +2,7 @@ import type { CanonicalElement, LineElement } from '../../model/elements.ts';
 import type { SurfacePrimitive, ParametricOpening } from '../primitives/types.ts';
 import { resolveBimMaterial } from '../utils/bimMaterials.ts';
 import { resolveHeight } from '../utils/elementTo3D.ts';
+import { tessellateArc, pointOnArc, nearestPointOnArc, arcLength } from '../../utils/arcMath.ts';
 
 const DEFAULT_WALL_HEIGHT = 3.0;
 
@@ -29,17 +30,32 @@ export function buildWallPrimitive(
   const { height, baseOffset } = resolveHeight(el.attrs, levelElevation, levelElevations, DEFAULT_WALL_HEIGHT);
   const baseY = levelElevation + baseOffset;
 
-  // Normal (perpendicular to wall direction)
-  const nx = -dy / len;
-  const ny = dx / len;
+  let footprint: { x: number; y: number }[];
 
-  // Initial 4 corners (CCW around the wall quad)
-  const footprint = [
-    { x: el.start.x + nx * halfWidth, y: el.start.y + ny * halfWidth }, // p1
-    { x: el.end.x + nx * halfWidth,   y: el.end.y + ny * halfWidth },   // p2
-    { x: el.end.x - nx * halfWidth,   y: el.end.y - ny * halfWidth },   // p3
-    { x: el.start.x - nx * halfWidth, y: el.start.y - ny * halfWidth }, // p4
-  ];
+  if (el.arc) {
+    // Arc wall: tessellate and compute offset polygon
+    const pts = tessellateArc(el.start, el.end, el.arc, 0.2);
+    const n = pts.length;
+    const leftSide: { x: number; y: number }[] = [];
+    const rightSide: { x: number; y: number }[] = [];
+    for (let i = 0; i < n; i++) {
+      const t = i / (n - 1);
+      const { tangent } = pointOnArc(el.start, el.end, el.arc, t);
+      const nx = -tangent.y, ny = tangent.x;
+      leftSide.push({ x: pts[i].x + nx * halfWidth, y: pts[i].y + ny * halfWidth });
+      rightSide.push({ x: pts[i].x - nx * halfWidth, y: pts[i].y - ny * halfWidth });
+    }
+    footprint = [...leftSide, ...rightSide.reverse()];
+  } else {
+    const nx = -dy / len;
+    const ny = dx / len;
+    footprint = [
+      { x: el.start.x + nx * halfWidth, y: el.start.y + ny * halfWidth },
+      { x: el.end.x + nx * halfWidth, y: el.end.y + ny * halfWidth },
+      { x: el.end.x - nx * halfWidth, y: el.end.y - ny * halfWidth },
+      { x: el.start.x - nx * halfWidth, y: el.start.y - ny * halfWidth },
+    ];
+  }
 
   const openings = collectParametricOpenings(el, allElements, wallsOnLevel);
   const material = resolveBimMaterial(el.attrs.material, el.tableName);
@@ -54,8 +70,8 @@ export function buildWallPrimitive(
     height,
     origin: { x: 0, y: baseY, z: 0 },
     material,
-    miterGroup: el.tableName,
-    miterMeta: {
+    miterGroup: el.arc ? undefined : el.tableName,
+    miterMeta: el.arc ? undefined : {
       startX: el.start.x, startY: el.start.y,
       endX: el.end.x, endY: el.end.y,
       halfWidth,
@@ -83,6 +99,7 @@ function collectParametricOpenings(
   const dy = wall.end.y - wall.start.y;
   const len = Math.sqrt(dx * dx + dy * dy);
   if (len < 0.001) return [];
+  const isArc = !!wall.arc;
   const ux = dx / len, uy = dy / len;
 
   const result: ParametricOpening[] = [];
@@ -120,11 +137,22 @@ function collectParametricOpenings(
     // Compute position along wall (distance from wall.start to opening start, projected on wall dir)
     const hostedStart = hosted.start;
     const hostedEnd = hosted.end;
-    const tStart = ((hostedStart.x - wall.start.x) * ux + (hostedStart.y - wall.start.y) * uy);
-    const tEnd = ((hostedEnd.x - wall.start.x) * ux + (hostedEnd.y - wall.start.y) * uy);
-    const tMin = Math.min(tStart, tEnd);
-    const spanLen = Math.abs(tEnd - tStart);
-    const width = spanLen > 0.001 ? spanLen : (parseFloat(hosted.attrs.width) || 0.9);
+    let tMin: number;
+    let width: number;
+    if (isArc) {
+      const wallLen = arcLength(wall.start, wall.end, wall.arc!);
+      const hc = midpoint(hosted.start, hosted.end);
+      const { t: tParam } = nearestPointOnArc(hc, wall.start, wall.end, wall.arc!);
+      const center = tParam * wallLen;
+      width = parseFloat(hosted.attrs.width) || 0.9;
+      tMin = center - width / 2;
+    } else {
+      const tStart = ((hostedStart.x - wall.start.x) * ux + (hostedStart.y - wall.start.y) * uy);
+      const tEnd = ((hostedEnd.x - wall.start.x) * ux + (hostedEnd.y - wall.start.y) * uy);
+      tMin = Math.min(tStart, tEnd);
+      const spanLen = Math.abs(tEnd - tStart);
+      width = spanLen > 0.001 ? spanLen : (parseFloat(hosted.attrs.width) || 0.9);
+    }
     const height = parseFloat(hosted.attrs.height) || (hosted.tableName === 'window' ? 1.2 : 2.1);
     const sillHeight = parseFloat(hosted.attrs.base_offset) || 0;
     const shape = (hosted.attrs.shape || 'rect') as 'rect' | 'round' | 'arch';

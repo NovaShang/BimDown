@@ -30,7 +30,7 @@ export interface PropertyField {
 
 // ─── Global property field definitions ───────────────────────────────────────
 
-const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
+export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   // Identity
   id:              { key: 'id',              label: 'ID',              type: 'readonly', group: 'identity' },
   number:          { key: 'number',          label: 'Number',          type: 'text',     group: 'identity' },

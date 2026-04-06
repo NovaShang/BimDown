@@ -6,6 +6,8 @@
  * outlines identical to SVG stroke-linejoin="miter", but computed
  * per-junction to support different wall thicknesses.
  */
+import type { ArcParams } from '../model/elements.ts';
+import { pointOnArc } from './arcMath.ts';
 
 export interface WallSegment {
   id: string;
@@ -13,6 +15,7 @@ export interface WallSegment {
   x2: number; y2: number;
   halfWidth: number;
   fill: string;
+  arc?: ArcParams;
 }
 
 interface Pt { x: number; y: number }
@@ -84,8 +87,17 @@ interface TJunction {
 function buildJunctions(walls: WallSegment[]): JunctionMap {
   const map: JunctionMap = new Map();
   for (const seg of walls) {
-    addEndpoint(map, seg.x1, seg.y1, seg, 'start', seg.x2 - seg.x1, seg.y2 - seg.y1);
-    addEndpoint(map, seg.x2, seg.y2, seg, 'end', seg.x1 - seg.x2, seg.y1 - seg.y2);
+    if (seg.arc) {
+      const start = { x: seg.x1, y: seg.y1 };
+      const end = { x: seg.x2, y: seg.y2 };
+      const t0 = pointOnArc(start, end, seg.arc, 0).tangent;
+      const t1 = pointOnArc(start, end, seg.arc, 1).tangent;
+      addEndpoint(map, seg.x1, seg.y1, seg, 'start', t0.x, t0.y);
+      addEndpoint(map, seg.x2, seg.y2, seg, 'end', -t1.x, -t1.y);
+    } else {
+      addEndpoint(map, seg.x1, seg.y1, seg, 'start', seg.x2 - seg.x1, seg.y2 - seg.y1);
+      addEndpoint(map, seg.x2, seg.y2, seg, 'end', seg.x1 - seg.x2, seg.y1 - seg.y2);
+    }
   }
   return map;
 }
@@ -342,7 +354,8 @@ function clipSegOutside(A: Pt, B: Pt, poly: Pt[]): [Pt, Pt][] {
 
 export interface WallPolygon {
   id: string;
-  corners: [Pt, Pt, Pt, Pt]; // p1, p2, p3, p4
+  corners: Pt[];
+  sideLen: number;
   startKey: string;
   endKey: string;
 }
@@ -380,28 +393,30 @@ function aabbOverlap(a: AABB, b: AABB): boolean {
  */
 export function computeOuterEdges(
   polygons: WallPolygon[],
-  /** Endpoint keys with 2+ walls (junctions). Free endpoints get end caps. */
   junctionKeys: Set<string>,
 ): [Pt, Pt][] {
   const result: [Pt, Pt][] = [];
-
-  // Pre-compute AABBs for all polygons
-  const polyBounds = polygons.map(p => polyAABB(p.corners as unknown as Pt[]));
+  const polyBounds = polygons.map(p => polyAABB(p.corners));
 
   for (let wi = 0; wi < polygons.length; wi++) {
-    const { corners: [p1, p2, p3, p4], startKey, endKey } = polygons[wi];
-    const sideEdges: [Pt, Pt][] = [[p1, p2], [p4, p3]];
+    const { corners, sideLen, startKey, endKey } = polygons[wi];
+    const leftEdges: [Pt, Pt][] = [];
+    const rightEdges: [Pt, Pt][] = [];
+    for (let i = 0; i < sideLen - 1; i++) {
+      leftEdges.push([corners[i], corners[i + 1]]);
+      rightEdges.push([corners[sideLen + i], corners[sideLen + i + 1]]);
+    }
+    const allSideEdges = [...leftEdges, ...rightEdges];
 
-    for (const [eA, eB] of sideEdges) {
+    for (const [eA, eB] of allSideEdges) {
       let segments: [Pt, Pt][] = [[eA, eB]];
       const edgeBounds = segAABB(eA, eB);
 
       for (let wj = 0; wj < polygons.length; wj++) {
         if (wj === wi) continue;
-        // AABB early-out: skip polygons that can't overlap this edge
         if (!aabbOverlap(edgeBounds, polyBounds[wj])) continue;
-
-        const otherPoly = polygons[wj].corners as unknown as Pt[];
+        if (polygons[wj].sideLen !== 2) continue;
+        const otherPoly = polygons[wj].corners;
         const next: [Pt, Pt][] = [];
         for (const seg of segments) {
           next.push(...clipSegOutside(seg[0], seg[1], otherPoly));
@@ -409,18 +424,16 @@ export function computeOuterEdges(
         segments = next;
         if (segments.length === 0) break;
       }
-
       result.push(...segments);
     }
 
     if (!junctionKeys.has(startKey)) {
-      result.push([p1, p4]);
+      result.push([corners[0], corners[2 * sideLen - 1]]);
     }
     if (!junctionKeys.has(endKey)) {
-      result.push([p2, p3]);
+      result.push([corners[sideLen - 1], corners[sideLen]]);
     }
   }
-
   return result;
 }
 
