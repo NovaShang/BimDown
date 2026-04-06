@@ -14,6 +14,7 @@ import FloatingToolbar from './FloatingToolbar.tsx';
 import ViewToolbar from './ViewToolbar.tsx';
 import TopBar from './TopBar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
+import RightPanel from './RightPanel.tsx';
 import DrawingHints from './DrawingHints.tsx';
 import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
@@ -22,7 +23,7 @@ import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
 
-export default function EditorShell() {
+export default function EditorShell({ paddingRight = 0 }: { paddingRight?: number }) {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const ds = useDataSource();
@@ -222,7 +223,6 @@ export default function EditorShell() {
           currentLevel={state.currentLevel}
           layerGroups={layerGroups}
           visibleLayers={state.visibleLayers}
-          selectedData={selectedData}
         />
         {state.viewMode === '3d' ? (
           <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">Loading 3D viewer...</p></div></div>}>
@@ -244,6 +244,11 @@ export default function EditorShell() {
         <ViewToolbar
           onZoomToFit={handleZoomToFit}
           scale={state.viewMode === '2d' ? canvasScale : undefined}
+        />
+        <RightPanel
+          selectedData={selectedData}
+          levels={state.project?.levels ?? []}
+          offsetRight={paddingRight}
         />
         <DrawingHints />
         <OnboardingTour />
