@@ -41,6 +41,20 @@ export function resolveHeight(
     return { height: Math.max(height, 0.01), baseOffset };
   }
 
+  // No top_level_id: find next level above (at least 3m higher) to avoid partial mezzanine issues
+  const baseElev = levelElevation + baseOffset;
+  const MIN_SPAN = 3.0;
+  let bestTopElev = Infinity;
+  for (const elev of levelElevations.values()) {
+    if (elev >= baseElev + MIN_SPAN && elev < bestTopElev) {
+      bestTopElev = elev;
+    }
+  }
+  if (bestTopElev < Infinity) {
+    const height = bestTopElev - baseElev;
+    return { height: Math.max(height, 0.01), baseOffset };
+  }
+
   if (attrs.height) {
     const h = parseFloat(attrs.height);
     if (h > 0) return { height: h, baseOffset };
