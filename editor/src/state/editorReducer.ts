@@ -21,7 +21,7 @@ export const initialState: EditorState = {
   currentLevel: '',
 
   viewMode: '2d',
-  floor3DMode: 'current',
+  floor3DMode: 'all',
 
   readonly: false,
   visibleLayers: new Set(),
@@ -177,10 +177,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'TOGGLE_MINIMAP':
       return { ...state, showMinimap: !state.showMinimap };
 
-    case 'SET_TOOL':
+    case 'SET_TOOL': {
+      // In 3D mode, 'select' should become 'orbit' (the 3D equivalent default tool)
+      let tool = action.tool;
+      if (state.viewMode === '3d' && tool === 'select') tool = 'orbit';
       return {
         ...state,
-        activeTool: action.tool,
+        activeTool: tool,
         previousTool: state.activeTool,
       };
 
