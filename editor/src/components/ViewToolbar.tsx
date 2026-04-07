@@ -2,7 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { Floor3DMode } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 
@@ -92,7 +92,7 @@ function FloorModeDropdown({ floor3DMode, onChange }: { floor3DMode: Floor3DMode
   return (
     <Select value={floor3DMode} onValueChange={(v) => onChange(v as Floor3DMode)}>
       <SelectTrigger size="sm" className="h-7 border-none bg-transparent px-2 text-[10px] font-medium text-muted-foreground shadow-none hover:bg-accent hover:text-foreground">
-        <SelectValue />
+        <span className="truncate">{t(FLOOR_3D_OPTIONS.find(o => o.mode === floor3DMode)?.labelKey ?? '')}</span>
       </SelectTrigger>
       <SelectContent side="top" sideOffset={8} alignItemWithTrigger={false}>
         {FLOOR_3D_OPTIONS.map(({ mode, labelKey }) => (

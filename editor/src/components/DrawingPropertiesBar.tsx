@@ -3,7 +3,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getDrawingFields } from '../model/drawingSchema.ts';
 import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
 import { Input } from './ui/input';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
@@ -57,7 +57,7 @@ export default function DrawingPropertiesBar() {
               onValueChange={(v) => { if (v) handleChange(f.key, v); }}
             >
               <SelectTrigger size="sm" className={`${fieldInputClass} min-w-16 gap-1`}>
-                <SelectValue />
+                <span className="truncate">{(() => { const o = f.options!.find(o => o.value === (attrs[f.key] ?? '')); return o ? t(`option.${o.label}`, o.label) : attrs[f.key] ?? ''; })()}</span>
               </SelectTrigger>
               <SelectContent>
                 {f.options.map(o => (

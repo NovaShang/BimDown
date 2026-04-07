@@ -5,7 +5,7 @@ import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch } from '../state/EditorContext.tsx';
 import { getPropertyFields, PROPERTY_GROUPS, type PropertyField } from '../model/propertyFields.ts';
 import { Input } from './ui/input';
-import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/select';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { Button } from './ui/button';
 import { Icon } from './Icons.tsx';
@@ -182,7 +182,7 @@ function PropertyRow({
         ) : f.type === 'select' && f.options ? (
           <Select value={value} onValueChange={(v) => { if (v) onChange(f.key, v); }}>
             <SelectTrigger className="h-[22px] min-w-0 flex-1 gap-0.5 rounded border-transparent bg-[var(--bg-input)] px-1.5 text-right text-[11px] tabular-nums hover:border-border focus-visible:border-[var(--color-accent)]">
-              <SelectValue />
+              <span className="truncate">{(() => { const o = f.options!.find(o => o.value === value); return o ? t(`option.${o.label}`, o.label) : value; })()}</span>
             </SelectTrigger>
             <SelectContent>
               {!f.options.some(o => o.value === value) && value && (
