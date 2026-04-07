@@ -141,7 +141,7 @@ export default function LeftPanel({
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
-  const { activeDiscipline, selectedIds } = useEditorState();
+  const { activeDiscipline, selectedIds, readonly } = useEditorState();
   const [showAddLevel, setShowAddLevel] = useState(false);
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
@@ -162,13 +162,15 @@ export default function LeftPanel({
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {t('panel.floors')}
           </span>
-          <button
-            className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            onClick={() => setShowAddLevel(true)}
-            title={t('panel.addLevel')}
-          >
-            +
-          </button>
+          {!readonly && (
+            <button
+              className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              onClick={() => setShowAddLevel(true)}
+              title={t('panel.addLevel')}
+            >
+              +
+            </button>
+          )}
         </div>
         <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2">
           {levels.map(level => (
@@ -184,7 +186,7 @@ export default function LeftPanel({
               onClick={() => dispatch({ type: 'SET_LEVEL', levelId: level.id })}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setContextMenu({ x: e.clientX, y: e.clientY, level });
+                if (!readonly) setContextMenu({ x: e.clientX, y: e.clientY, level });
               }}
               title={`${level.name} (${level.elevation}m)`}
             >

@@ -49,6 +49,10 @@ interface GestureEvent extends UIEvent {
   clientY: number;
 }
 
+type Pt = { x: number; y: number };
+const touchDist = (a: Pt, b: Pt) => Math.hypot(a.x - b.x, a.y - b.y);
+const touchMid = (a: Pt, b: Pt): Pt => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+
 interface CanvasProps {
   layers: ProcessedLayer[];
   viewBox: { x: number; y: number; w: number; h: number } | null;
@@ -142,8 +146,17 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   stateRef.current = state;
 
   const lastGestureScale = useRef(1);
+  const gestureActive = useRef(false);
   const middlePanning = useRef(false);
   const middleLastPos = useRef({ x: 0, y: 0 });
+
+  // ────── TOUCH GESTURE STATE ──────
+  const touchPointers = useRef(new Map<number, { x: number; y: number }>());
+  const touchMode = useRef<'none' | 'pan' | 'pinch'>('none');
+  const touchStartTime = useRef(0);
+  const touchStartPos = useRef({ x: 0, y: 0 });
+  const touchPrevDist = useRef(0);
+  const touchPrevMid = useRef({ x: 0, y: 0 });
 
   // ────── SVG HELPERS ──────
   const findElementId = useCallback((target: EventTarget | null): string | null => {
@@ -231,7 +244,12 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
 
     const onGestureStart = (e: Event) => {
       e.preventDefault();
+      gestureActive.current = true;
       lastGestureScale.current = (e as GestureEvent).scale;
+    };
+    const onGestureEnd = (e: Event) => {
+      e.preventDefault();
+      gestureActive.current = false;
     };
     const onGestureChange = (e: Event) => {
       e.preventDefault();
@@ -245,16 +263,39 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     el.addEventListener('wheel', onWheel, { passive: false });
     el.addEventListener('gesturestart', onGestureStart, { passive: false });
     el.addEventListener('gesturechange', onGestureChange, { passive: false });
+    el.addEventListener('gestureend', onGestureEnd, { passive: false });
     return () => {
       el.removeEventListener('wheel', onWheel);
       el.removeEventListener('gesturestart', onGestureStart);
       el.removeEventListener('gesturechange', onGestureChange);
+      el.removeEventListener('gestureend', onGestureEnd);
     };
   }, [applyZoomBy, updateTransform, hasViewBox]);
 
   // ────── POINTER HANDLERS ──────
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     setContextMenu(null);
+
+    // ── Touch input ──
+    if (e.pointerType === 'touch') {
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      touchPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (touchPointers.current.size === 1) {
+        // Start single-finger pan
+        touchMode.current = 'pan';
+        touchStartTime.current = Date.now();
+        touchStartPos.current = { x: e.clientX, y: e.clientY };
+      } else if (touchPointers.current.size >= 2) {
+        // Switch to pinch mode
+        touchMode.current = 'pinch';
+        const pts = Array.from(touchPointers.current.values());
+        touchPrevDist.current = touchDist(pts[0], pts[1]);
+        touchPrevMid.current = touchMid(pts[0], pts[1]);
+      }
+      return;
+    }
+
     if (e.button === 1) {
       middlePanning.current = true;
       middleLastPos.current = { x: e.clientX, y: e.clientY };
@@ -266,6 +307,41 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   }, [toolCtx]);
 
   const handlePointerMove = useCallback((e: React.PointerEvent) => {
+    // ── Touch input ──
+    if (e.pointerType === 'touch') {
+      const prev = touchPointers.current.get(e.pointerId);
+      if (!prev) return;
+      touchPointers.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+
+      if (touchMode.current === 'pan' && touchPointers.current.size === 1) {
+        const dx = e.clientX - prev.x;
+        const dy = e.clientY - prev.y;
+        updateTransform(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+      } else if (touchMode.current === 'pinch' && touchPointers.current.size >= 2 && !gestureActive.current) {
+        const pts = Array.from(touchPointers.current.values());
+        const dist = touchDist(pts[0], pts[1]);
+        const mid = touchMid(pts[0], pts[1]);
+
+        // Pinch zoom
+        if (touchPrevDist.current > 0) {
+          const delta = dist / touchPrevDist.current;
+          const rect = containerRef.current?.getBoundingClientRect();
+          if (rect) {
+            applyZoomBy(delta, mid.x - rect.left, mid.y - rect.top);
+          }
+        }
+
+        // Two-finger pan
+        const dx = mid.x - touchPrevMid.current.x;
+        const dy = mid.y - touchPrevMid.current.y;
+        updateTransform(p => ({ ...p, x: p.x + dx, y: p.y + dy }));
+
+        touchPrevDist.current = dist;
+        touchPrevMid.current = mid;
+      }
+      return;
+    }
+
     if (middlePanning.current) {
       const dx = e.clientX - middleLastPos.current.x;
       const dy = e.clientY - middleLastPos.current.y;
@@ -275,16 +351,47 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     }
     const handler = getToolHandler(stateRef.current.activeTool);
     handler.onPointerMove?.(toolCtx, e);
-  }, [toolCtx, updateTransform]);
+  }, [toolCtx, updateTransform, applyZoomBy]);
 
   const handlePointerUp = useCallback((e: React.PointerEvent) => {
+    // ── Touch input ──
+    if (e.pointerType === 'touch') {
+      const wasPointerCount = touchPointers.current.size;
+      touchPointers.current.delete(e.pointerId);
+
+      // Detect tap: single finger, short duration, minimal movement
+      if (wasPointerCount === 1 && touchPointers.current.size === 0 && touchMode.current === 'pan') {
+        const dt = Date.now() - touchStartTime.current;
+        const dx = Math.abs(e.clientX - touchStartPos.current.x);
+        const dy = Math.abs(e.clientY - touchStartPos.current.y);
+        if (dt < 300 && dx < 10 && dy < 10) {
+          // Tap → select element under finger
+          const targetId = findElementId(e.target);
+          if (targetId) {
+            globalDispatch({ type: 'SELECT', ids: [targetId] });
+          } else {
+            globalDispatch({ type: 'CLEAR_SELECTION' });
+          }
+        }
+      }
+
+      // Reset mode when all fingers lifted
+      if (touchPointers.current.size === 0) {
+        touchMode.current = 'none';
+      } else if (touchPointers.current.size === 1) {
+        // Went from 2 fingers to 1: switch to pan
+        touchMode.current = 'pan';
+      }
+      return;
+    }
+
     if (middlePanning.current) {
       middlePanning.current = false;
       return;
     }
     const handler = getToolHandler(stateRef.current.activeTool);
     handler.onPointerUp?.(toolCtx, e);
-  }, [toolCtx]);
+  }, [toolCtx, findElementId, globalDispatch]);
 
   // ────── RENDER ──────
   const handler = getToolHandler(activeTool);
@@ -316,6 +423,15 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
       onPointerLeave={handlePointerUp}
       onContextMenu={(e) => {
         e.preventDefault();
+        if (stateRef.current.readonly) {
+          // In readonly mode, only show view-related context menu
+          const targetId = findElementId(e.target);
+          if (targetId && !stateRef.current.selectedIds.has(targetId)) {
+            globalDispatch({ type: 'SELECT', ids: [targetId] });
+          }
+          setContextMenu({ x: e.clientX, y: e.clientY, targetId });
+          return;
+        }
         if (stateRef.current.activeTool.startsWith('draw_')) {
           if (stateRef.current.drawingState?.points.length) {
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
@@ -333,6 +449,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         setContextMenu({ x: e.clientX, y: e.clientY, targetId });
       }}
       onDoubleClick={(e) => {
+        if (state.readonly) return;
         const elementId = findElementId(e.target);
         if (elementId && selectedIds.has(elementId)) {
           globalDispatch({ type: 'SET_EDIT_MODE', active: !state.editMode });
@@ -356,7 +473,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         {/* Lightweight overlays — only re-render when scale or selection changes */}
         <SelectionOverlay document={state.document} project={state.project} selectedIds={selectedIds} scale={scale} />
 
-        {(activeTool === 'select' || activeTool === 'orbit') && (() => {
+        {!state.readonly && (activeTool === 'select' || activeTool === 'orbit') && (() => {
           const handles = [];
           for (const sid of selectedIds) {
             const el = findCanonicalElement(sid, state.document, state.project);
@@ -406,6 +523,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           dispatch={globalDispatch}
           canvasDispatch={dispatch as (action: { type: string; [k: string]: unknown }) => void}
           onClose={() => setContextMenu(null)}
+          readonly={state.readonly}
         />
       )}
 

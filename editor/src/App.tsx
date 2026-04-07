@@ -43,6 +43,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
 const params = new URLSearchParams(window.location.search);
 const model = params.get('model') || 'merged';
 const projectId = params.get('project');
+const readonly = params.get('readonly') === 'true';
 
 function AppInner() {
   const dispatch = useEditorDispatch();
@@ -110,7 +111,7 @@ export default function App() {
     <ErrorBoundary>
       <TooltipProvider>
         <DataSourceProvider ds={ds}>
-          <EditorProvider>
+          <EditorProvider readonly={readonly}>
             <AppInner />
           </EditorProvider>
         </DataSourceProvider>

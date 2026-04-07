@@ -18,9 +18,10 @@ interface RightPanelProps {
   selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>;
   levels: Level[];
   offsetRight?: number;
+  readonly?: boolean;
 }
 
-export default function RightPanel({ selectedData, levels, offsetRight: _ }: RightPanelProps) {
+export default function RightPanel({ selectedData, levels, offsetRight: _, readonly }: RightPanelProps) {
   if (selectedData.size === 0) return null;
 
   return (
@@ -29,7 +30,7 @@ export default function RightPanel({ selectedData, levels, offsetRight: _ }: Rig
       style={{ left: 12 + 208 + 8 }}
     >
       <div className="glass-panel flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
-        <PropertiesContent selectedData={selectedData} levels={levels} />
+        <PropertiesContent selectedData={selectedData} levels={levels} readonly={readonly} />
       </div>
     </div>
   );
@@ -37,7 +38,7 @@ export default function RightPanel({ selectedData, levels, offsetRight: _ }: Rig
 
 // ─── Properties Content ──────────────────────────────────────────────────────
 
-function PropertiesContent({ selectedData, levels }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>; levels: Level[] }) {
+function PropertiesContent({ selectedData, levels, readonly }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>; levels: Level[]; readonly?: boolean }) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -132,7 +133,7 @@ function PropertiesContent({ selectedData, levels }: { selectedData: Map<string,
                         key={f.key}
                         field={f}
                         value={csv[f.key] ?? ''}
-                        editable={isSingleSelection && f.type !== 'readonly'}
+                        editable={!readonly && isSingleSelection && f.type !== 'readonly'}
                         onChange={handleChange}
                         t={(key: string, fallback?: string) => t(key, { defaultValue: fallback }) as string}
                       />

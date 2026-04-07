@@ -18,6 +18,7 @@ interface CanvasContextMenuProps {
   dispatch: React.Dispatch<EditorAction>;
   canvasDispatch: (action: { type: string; [k: string]: unknown }) => void;
   onClose: () => void;
+  readonly?: boolean;
 }
 
 function getTableName(id: string): string | null {
@@ -52,7 +53,7 @@ function Item({
 }
 
 export default function CanvasContextMenu({
-  menu, selectedIds, document, visibleLayers, dispatch, canvasDispatch, onClose,
+  menu, selectedIds, document, visibleLayers, dispatch, canvasDispatch, onClose, readonly,
 }: CanvasContextMenuProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -158,9 +159,13 @@ export default function CanvasContextMenu({
             <Sep />
           </>
         )}
-        <Item label={`${t('ctx.delete')}${label}`} shortcut="Del" danger onClick={act(() => dispatch({ type: 'DELETE_ELEMENTS', ids: [...selectedIds] }))} />
-        <Item label={`${t('ctx.duplicate')}${label}`} onClick={act(() => dispatch({ type: 'DUPLICATE_ELEMENTS', ids: [...selectedIds], offset: { dx: 0.5, dy: 0.5 } }))} />
-        <Sep />
+        {!readonly && (
+          <>
+            <Item label={`${t('ctx.delete')}${label}`} shortcut="Del" danger onClick={act(() => dispatch({ type: 'DELETE_ELEMENTS', ids: [...selectedIds] }))} />
+            <Item label={`${t('ctx.duplicate')}${label}`} onClick={act(() => dispatch({ type: 'DUPLICATE_ELEMENTS', ids: [...selectedIds], offset: { dx: 0.5, dy: 0.5 } }))} />
+            <Sep />
+          </>
+        )}
         <Item label={t('ctx.selectSimilar')} onClick={act(selectSimilar)} />
         <Item label={t('ctx.hideLayer')} onClick={act(() => {
           const keys = getSelectedLayerKeys();

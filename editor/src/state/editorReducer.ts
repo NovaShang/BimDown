@@ -58,7 +58,23 @@ function collectMutationKeys(...maps: Map<string, CanonicalElement | null>[]): s
   return Array.from(keys);
 }
 
+/** Actions that mutate the document — blocked in readonly mode. */
+const MUTATION_ACTIONS: Set<string> = new Set([
+  'CREATE_ELEMENT', 'DELETE_ELEMENTS', 'MOVE_ELEMENTS', 'RESIZE_ELEMENT',
+  'UPDATE_ATTRS', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS',
+  'UNDO', 'REDO', 'ADD_LEVEL', 'REMOVE_LEVEL', 'RENAME_LEVEL',
+]);
+
+/** Tools allowed in readonly mode — everything else is blocked. */
+const READONLY_TOOLS: Set<string> = new Set(['select', 'orbit', 'pan', 'zoom']);
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  // Readonly guard: silently reject all mutation actions
+  if (state.readonly && MUTATION_ACTIONS.has(action.type)) return state;
+
+  // Readonly guard: only allow view/navigation tools
+  if (state.readonly && action.type === 'SET_TOOL' && !READONLY_TOOLS.has(action.tool)) return state;
+
   switch (action.type) {
     case 'SET_VIEW_MODE': {
       let tool = state.activeTool;
@@ -186,6 +202,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         activeTool: tool,
         previousTool: state.activeTool,
       };
+    }
 
     case 'SET_SPACE_HELD':
       if (action.held && !state.spaceHeld) {

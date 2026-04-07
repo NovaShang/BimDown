@@ -13,8 +13,8 @@ const CoreStateContext = createContext<EditorState>(initialState);
 const SelectionContext = createContext<SelectionState>({ selectedIds: new Set(), hoveredId: null });
 const DispatchContext = createContext<Dispatch<EditorAction>>(() => {});
 
-export function EditorProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(editorReducer, initialState);
+export function EditorProvider({ children, readonly }: { children: ReactNode; readonly?: boolean }) {
+  const [state, dispatch] = useReducer(editorReducer, { ...initialState, readonly: readonly ?? false });
 
   // Stable selection reference — only changes when selectedIds/hoveredId actually change
   const selection = useMemo<SelectionState>(

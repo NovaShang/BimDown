@@ -11,6 +11,7 @@
   position: relative;
   overflow: hidden;
   user-select: none;
+  touch-action: none;
 }
 
 .canvas.cursor-default { cursor: default; }
@@ -68,4 +69,16 @@
 @keyframes tooltip-in {
   from { opacity: 0; transform: translateX(-50%) translateY(4px); }
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ─── Touch Device Adaptations ──────────────── */
+@media (pointer: coarse) {
+  button { min-height: 40px; min-width: 40px; }
+  .glass-panel button { min-height: 32px; min-width: 32px; }
+}
+
+/* ─── Mobile Layout ─────────────────────────── */
+@media (max-width: 768px) {
+  /* Safe area for notched devices */
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
 }

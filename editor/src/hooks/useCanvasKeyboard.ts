@@ -35,6 +35,7 @@ export function useCanvasKeyboard({
           break;
         case 'z': case 'Z':
           if (e.ctrlKey || e.metaKey) {
+            if (stateRef.current.readonly) break;
             e.preventDefault();
             if (e.shiftKey) {
               globalDispatch({ type: 'REDO' });
@@ -47,11 +48,13 @@ export function useCanvasKeyboard({
           break;
         case 'y': case 'Y':
           if (e.ctrlKey || e.metaKey) {
+            if (stateRef.current.readonly) break;
             e.preventDefault();
             globalDispatch({ type: 'REDO' });
           }
           break;
         case 'g': case 'G':
+          if (stateRef.current.readonly) break;
           if (!e.ctrlKey && !e.metaKey && activeDiscipline === 'reference') {
             globalDispatch({ type: 'SET_TOOL', tool: 'draw_grid' });
             globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
@@ -59,6 +62,7 @@ export function useCanvasKeyboard({
           }
           break;
         case 'Delete': case 'Backspace':
+          if (stateRef.current.readonly) break;
           if (stateRef.current.selectedIds.size > 0) {
             globalDispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stateRef.current.selectedIds) });
           }
@@ -121,7 +125,7 @@ export function useCanvasKeyboard({
       }
 
       // Drawing tool shortcuts (W, D, N, C, R, F, T, E, P, U)
-      if (!e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const tableName = DRAW_TOOL_SHORTCUTS[e.key.toUpperCase()];
         if (tableName) {
           const def = TABLE_REGISTRY[tableName];

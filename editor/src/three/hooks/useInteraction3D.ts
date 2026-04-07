@@ -178,17 +178,20 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
           break;
         case 'z': case 'Z':
           if (e.ctrlKey || e.metaKey) {
+            if (stRef.current.readonly) break;
             e.preventDefault();
             dispatch(e.shiftKey ? { type: 'REDO' } : { type: 'UNDO' });
           }
           break;
         case 'y': case 'Y':
           if (e.ctrlKey || e.metaKey) {
+            if (stRef.current.readonly) break;
             e.preventDefault();
             dispatch({ type: 'REDO' });
           }
           break;
         case 'Delete': case 'Backspace':
+          if (stRef.current.readonly) break;
           if (stRef.current.selectedIds.size > 0) {
             dispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stRef.current.selectedIds) });
           }
