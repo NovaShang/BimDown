@@ -157,8 +157,8 @@ export default function LeftPanel({
   return (
     <div className="absolute left-3 top-16 bottom-[52px] z-30 flex w-52 flex-col gap-2 select-none">
       {/* Floor Switcher */}
-      <div data-tour="floors" className="glass-panel shrink-0 max-h-[40%] overflow-y-auto rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)] p-2">
-        <div className="flex items-center justify-between px-2 pb-1.5 pt-1">
+      <div data-tour="floors" className="glass-panel flex shrink-0 max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+        <div className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
             {t('panel.floors')}
           </span>
@@ -170,7 +170,7 @@ export default function LeftPanel({
             +
           </button>
         </div>
-        <div className="flex flex-col gap-px">
+        <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2">
           {levels.map(level => (
             <button
               key={level.id}
@@ -202,11 +202,10 @@ export default function LeftPanel({
 
       {/* Layers */}
       <div className="glass-panel flex min-h-0 flex-1 shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
-        <ScrollArea className="h-full p-2">
-          <div className="flex items-center justify-between px-2 pb-1 pt-0.5">
-            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
-          </div>
-
+        <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
+        </div>
+        <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
           <div className="mb-1">
             {currentGroupLayers.map(layer => {
               const key = `${layer.discipline}/${layer.tableName}`;
