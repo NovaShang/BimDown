@@ -19,6 +19,29 @@ import { REVERSE_PREFIX_MAP, toSelectionId, toElementId } from '../model/ids.ts'
 import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
 
+import type { ProjectData } from '../types.ts';
+import type { DocumentState } from '../model/document.ts';
+import type { CanonicalElement } from '../model/elements.ts';
+import { parseLayer } from '../model/parse.ts';
+
+/** Look up an element by selection ID, checking document first, then globalLayers. */
+function findCanonicalElement(
+  sid: string,
+  document: DocumentState | null,
+  project: ProjectData | null,
+): CanonicalElement | undefined {
+  if (sid.startsWith('global:') && project) {
+    const rawId = sid.slice('global:'.length);
+    for (const gl of project.globalLayers) {
+      const parsed = parseLayer(gl);
+      const el = parsed.find(e => e.id === rawId);
+      if (el) return el;
+    }
+    return undefined;
+  }
+  return document?.elements.get(toElementId(sid));
+}
+
 // Safari-only event for trackpad pinch gestures
 interface GestureEvent extends UIEvent {
   scale: number;
@@ -127,8 +150,13 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     let el = target as Element | null;
     while (el && el !== svgRef.current) {
       const id = el.getAttribute('data-id') || el.getAttribute('id');
-      if (id && /^[a-z]+-\d+$/i.test(id)) {
-        return state.currentLevel ? toSelectionId(state.currentLevel, id) : id;
+      if (id) {
+        // Global-prefixed IDs (from globalLayers) are already fully qualified
+        if (id.startsWith('global:')) return id;
+        // Regular element IDs: prefix with current level
+        if (/^[a-z]+-\d+$/i.test(id)) {
+          return state.currentLevel ? toSelectionId(state.currentLevel, id) : id;
+        }
       }
       el = el.parentElement;
     }
@@ -326,12 +354,12 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <SVGLayers layers={layers} activeFilter={activeFilter} activeDiscipline={activeDiscipline} />
 
         {/* Lightweight overlays — only re-render when scale or selection changes */}
-        <SelectionOverlay document={state.document} selectedIds={selectedIds} scale={scale} />
+        <SelectionOverlay document={state.document} project={state.project} selectedIds={selectedIds} scale={scale} />
 
-        {state.document && (activeTool === 'select' || activeTool === 'orbit') && (() => {
+        {(activeTool === 'select' || activeTool === 'orbit') && (() => {
           const handles = [];
           for (const sid of selectedIds) {
-            const el = state.document.elements.get(toElementId(sid));
+            const el = findCanonicalElement(sid, state.document, state.project);
             if (!el) continue;
             if (el.geometry === 'point' || selectedIds.size === 1) {
               handles.push(<ResizeHandles key={sid} element={el} svgRef={svgRef} scale={scale} onSnap={setActiveSnap} />);

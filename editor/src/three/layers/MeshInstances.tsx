@@ -45,7 +45,7 @@ class MeshErrorBoundary extends Component<{ children: ReactNode; fallback: React
 }
 
 /** Resolves a mesh file path to a loadable URL via DataSource, then renders. */
-function MeshElement({ meshFile, position }: { meshFile: string; position?: [number, number, number] }) {
+function MeshElement({ meshFile, position, rotationY }: { meshFile: string; position?: [number, number, number]; rotationY?: number }) {
   const ds = useDataSource();
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
@@ -65,11 +65,13 @@ function MeshElement({ meshFile, position }: { meshFile: string; position?: [num
   if (!url) return null; // loading URL
 
   return (
-    <Suspense fallback={<PlaceholderMesh position={position} />}>
-      <MeshErrorBoundary fallback={<PlaceholderMesh position={position} />}>
-        <LoadedMesh url={url} originalPath={meshFile} />
-      </MeshErrorBoundary>
-    </Suspense>
+    <group position={position} rotation={rotationY ? [0, rotationY, 0] : undefined}>
+      <Suspense fallback={<PlaceholderMesh />}>
+        <MeshErrorBoundary fallback={<PlaceholderMesh />}>
+          <LoadedMesh url={url} originalPath={meshFile} />
+        </MeshErrorBoundary>
+      </Suspense>
+    </group>
   );
 }
 
@@ -88,7 +90,11 @@ export default function MeshInstances({ elements, levelElevation }: MeshInstance
         position = [x, levelElevation + z, -y];
       }
 
-      return { id: el.id, meshFile, position };
+      const rotationY = el.tableName === 'mesh'
+        ? -(parseFloat(el.attrs.rotation ?? '0') * Math.PI / 180)
+        : undefined;
+
+      return { id: el.id, meshFile, position, rotationY };
     });
   }, [elements, levelElevation]);
 
@@ -97,7 +103,7 @@ export default function MeshInstances({ elements, levelElevation }: MeshInstance
   return (
     <group>
       {meshItems.map(item => (
-        <MeshElement key={item.id} meshFile={item.meshFile} position={item.position} />
+        <MeshElement key={item.id} meshFile={item.meshFile} position={item.position} rotationY={item.rotationY} />
       ))}
     </group>
   );

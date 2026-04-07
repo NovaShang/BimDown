@@ -9,7 +9,7 @@
  * 1. Create a renderer function in this directory
  * 2. Register it in RENDERERS below
  */
-import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
+import type { CanonicalElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { renderWallHitArea, renderLineFill, formatPolygonPoints } from './wallRenderer.tsx';
 import { renderColumn } from './columnRenderer.tsx';
 import { renderDoor } from './doorRenderer.tsx';
@@ -54,9 +54,26 @@ const RENDERERS: Record<string, ElementRenderFn> = {
   room_separator: renderLineFill,
   // Openings (dual-mode: wall openings are invisible, slab openings show outline)
   opening: renderOpening,
+  // Mesh elements — oriented bounding box
+  mesh: renderMesh,
   // Reference elements
   grid: renderGrid,
 };
+
+/** Mesh: oriented bounding box with rotation. */
+function renderMesh(el: CanonicalElement): React.JSX.Element | null {
+  if (el.geometry !== 'point') return null;
+  const pt = el as PointElement;
+  const rotation = parseFloat(pt.attrs.rotation || '0');
+
+  return (
+    <g data-id={pt.id} transform={`translate(${pt.position.x},${pt.position.y}) rotate(${rotation})`}>
+      <rect x={-pt.width / 2} y={-pt.height / 2} width={pt.width} height={pt.height}
+        fill="rgba(100,100,200,0.08)" stroke="#7c8aad" strokeWidth={0.02}
+        strokeDasharray="0.1 0.06" />
+    </g>
+  );
+}
 
 /** Opening renderer: wall openings have no 2D representation (implicit in wall cutout),
  *  slab openings render as dashed polygon outlines. */

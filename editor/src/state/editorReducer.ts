@@ -9,6 +9,9 @@ import { serializeToSvg } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 
+/** Tables hidden by default (user can toggle on via layer panel). */
+const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
+
 export const initialState: EditorState = {
   modelName: '',
   project: null,
@@ -88,7 +91,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           currentLevel = firstLevel.id;
           const floor = project.floors.get(firstLevel.id);
           if (floor) {
-            visibleLayers = new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`));
+            visibleLayers = new Set(floor.layers
+              .filter(l => !HIDDEN_BY_DEFAULT.has(l.tableName))
+              .map(l => `${l.discipline}/${l.tableName}`));
           }
         }
       } else if (project.levels.length > 0) {
@@ -136,7 +141,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_LEVEL': {
       const floor = state.project?.floors.get(action.levelId);
       const visibleLayers = floor
-        ? new Set(floor.layers.map(l => `${l.discipline}/${l.tableName}`))
+        ? new Set(floor.layers
+            .filter(l => !HIDDEN_BY_DEFAULT.has(l.tableName))
+            .map(l => `${l.discipline}/${l.tableName}`))
         : new Set<string>();
       // Preserve grid and global layer visibility across levels
       if (state.visibleLayers.has('reference/grid')) visibleLayers.add('reference/grid');

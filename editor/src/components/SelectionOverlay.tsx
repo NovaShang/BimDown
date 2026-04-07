@@ -1,21 +1,34 @@
 import React from 'react';
 import type { DocumentState } from '../model/document.ts';
+import type { ProjectData } from '../types.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement } from '../model/elements.ts';
 import { toElementId } from '../model/ids.ts';
+import { parseLayer } from '../model/parse.ts';
 
 interface SelectionOverlayProps {
   document: DocumentState | null;
+  project: ProjectData | null;
   selectedIds: Set<string>;
   scale: number;
 }
 
-export default React.memo(function SelectionOverlay({ document, selectedIds, scale }: SelectionOverlayProps) {
-  if (!document || selectedIds.size === 0) return null;
+export default React.memo(function SelectionOverlay({ document, project, selectedIds, scale }: SelectionOverlayProps) {
+  if (selectedIds.size === 0) return null;
 
   const selectedElements: CanonicalElement[] = [];
   for (const sid of selectedIds) {
-    const el = document.elements.get(toElementId(sid));
-    if (el) selectedElements.push(el);
+    if (sid.startsWith('global:') && project) {
+      // Look up in globalLayers
+      const rawId = sid.slice('global:'.length);
+      for (const gl of project.globalLayers) {
+        const parsed = parseLayer(gl);
+        const el = parsed.find(e => e.id === rawId);
+        if (el) { selectedElements.push(el); break; }
+      }
+    } else if (document) {
+      const el = document.elements.get(toElementId(sid));
+      if (el) selectedElements.push(el);
+    }
   }
 
   if (selectedElements.length === 0) return null;
