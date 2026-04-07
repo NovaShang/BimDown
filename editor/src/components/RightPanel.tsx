@@ -20,7 +20,7 @@ interface RightPanelProps {
   offsetRight?: number;
 }
 
-export default function RightPanel({ selectedData, levels, offsetRight = 0 }: RightPanelProps) {
+export default function RightPanel({ selectedData, levels, offsetRight: _ }: RightPanelProps) {
   if (selectedData.size === 0) return null;
 
   return (
