@@ -148,8 +148,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       floors.set(levelId, { ...floor, layers: newLayers });
 
+      // Auto-show new layers (unless hidden by default)
+      const layerKey = `${layer.discipline}/${layer.tableName}`;
+      const isNew = !floor.layers.some(
+        l => l.discipline === layer.discipline && l.tableName === layer.tableName
+      );
+      const visibleLayers = isNew && !HIDDEN_BY_DEFAULT.has(layer.tableName)
+        ? new Set([...state.visibleLayers, layerKey])
+        : state.visibleLayers;
+
       return {
         ...state,
+        visibleLayers,
         project: { ...state.project, floors },
       };
     }
