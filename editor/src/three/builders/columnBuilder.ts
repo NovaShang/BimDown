@@ -19,7 +19,7 @@ export function buildColumnPrimitive(
   const el = element as PointElement;
 
   const sizeX = parseFloat(el.attrs.size_x) || el.width || 0.3;
-  const sizeY = parseFloat(el.attrs.size_y) || el.height || 0.3;
+  const sizeY = parseFloat(el.attrs.size_y) || el.height || sizeX;
   const shape = el.attrs.shape || 'rect';
   const profile = shapeFromAttrs(shape, sizeX, sizeY);
   const material = resolveBimMaterial(el.attrs.material, el.tableName);

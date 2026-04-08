@@ -347,8 +347,14 @@ function parsePointElement(
 ): PointElement {
   const x = parseFloat(rect.getAttribute('x') || '0');
   const y = parseFloat(rect.getAttribute('y') || '0');
-  const w = parseFloat(rect.getAttribute('width') || '0.3');
-  const h = parseFloat(rect.getAttribute('height') || '0.3');
+  const rawW = parseFloat(rect.getAttribute('width') || '0');
+  const rawH = parseFloat(rect.getAttribute('height') || '0');
+  const attrs = csvToAttrs(csv, id);
+  // Prefer CSV size_x/size_y over SVG rect dimensions (SVG may have 0 for point elements)
+  const csvSizeX = parseFloat(attrs.size_x);
+  const csvSizeY = parseFloat(attrs.size_y);
+  const w = rawW || csvSizeX || 0.3;
+  const h = rawH || csvSizeY || csvSizeX || 0.3;
   return {
     geometry: 'point',
     id,
@@ -357,7 +363,7 @@ function parsePointElement(
     position: { x: x + w / 2, y: y + h / 2 },
     width: w,
     height: h,
-    attrs: csvToAttrs(csv, id),
+    attrs,
   };
 }
 

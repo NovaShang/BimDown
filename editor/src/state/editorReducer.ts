@@ -404,6 +404,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const before = new Map<string, CanonicalElement | null>([[rawId, el]]);
       const updated = { ...el, attrs: { ...el.attrs, ...action.attrs } };
 
+      // Sync size_x/size_y attrs → PointElement width/height
+      if (updated.geometry === 'point') {
+        const pt = updated as PointElement;
+        if ('size_x' in action.attrs) pt.width = parseFloat(action.attrs.size_x) || pt.width;
+        if ('size_y' in action.attrs) pt.height = parseFloat(action.attrs.size_y) || pt.height;
+      }
+
       // Re-resolve hosted geometry when position, width, or host_id changes
       if (updated.hostId && updated.geometry === 'line' && ('position' in action.attrs || 'width' in action.attrs || 'host_id' in action.attrs)) {
         const hostWall = state.document.elements.get(action.attrs.host_id ?? updated.hostId ?? '');
@@ -704,13 +711,21 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
         arc: 'arc' in sc ? sc.arc : el.arc,
       };
     }
-    case 'point':
+    case 'point': {
+      const newW = 'width' in changes ? (changes as Partial<PointElement>).width! : el.width;
+      const newH = 'height' in changes ? (changes as Partial<PointElement>).height! : el.height;
+      // Sync size_x/size_y attrs so property panel and CSV stay in sync with SVG geometry
+      const pointAttrs = { ...el.attrs };
+      if ('width' in changes && 'size_x' in pointAttrs) pointAttrs.size_x = String(newW);
+      if ('height' in changes && 'size_y' in pointAttrs) pointAttrs.size_y = String(newH);
       return {
         ...el,
         position: 'position' in changes ? (changes as Partial<PointElement>).position! : el.position,
-        width: 'width' in changes ? (changes as Partial<PointElement>).width! : el.width,
-        height: 'height' in changes ? (changes as Partial<PointElement>).height! : el.height,
+        width: newW,
+        height: newH,
+        attrs: pointAttrs,
       };
+    }
     case 'polygon':
       return {
         ...el,
