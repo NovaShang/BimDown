@@ -566,6 +566,36 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       };
     }
 
+    case 'EXTERNAL_LAYER_UPDATE': {
+      if (!state.document) return state;
+      // Only merge into document if the update is for the currently viewed level
+      if (action.levelId !== state.document.levelId) return state;
+
+      const incomingById = new Map(action.elements.map(el => [el.id, el]));
+      // Determine which layers are being updated (by discipline/tableName)
+      const incomingLayerKeys = new Set(action.elements.map(el => `${el.discipline}/${el.tableName}`));
+
+      const next = new Map(state.document.elements);
+      // Remove elements from the affected layers that are no longer present
+      for (const [id, el] of next) {
+        const key = `${el.discipline}/${el.tableName}`;
+        if (incomingLayerKeys.has(key) && !incomingById.has(id)) {
+          next.delete(id);
+        }
+      }
+      // Add/replace with incoming elements
+      for (const el of action.elements) {
+        next.set(el.id, el);
+      }
+
+      return {
+        ...state,
+        document: { ...state.document, elements: next },
+        documentVersion: state.documentVersion + 1,
+        // Don't set lastMutation — this is not a user edit, should not trigger auto-persist
+      };
+    }
+
     case 'ADD_LEVEL': {
       if (!state.project) return state;
       const levels = [...state.project.levels, action.level];

@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
+import crypto from 'crypto'
 import path from 'path'
 import fs from 'fs'
 
@@ -14,21 +15,23 @@ export default defineConfig({
         // Track SSE clients for file watch notifications
         const watchClients = new Set<import('http').ServerResponse>()
 
-        // Watch sample_data for external changes
-        let selfWritePaths = new Map<string, number>()
+        // Watch sample_data for external changes (content-hash based self-write suppression)
+        const selfWriteHashes = new Map<string, string>()
         fs.watch(sampleDataDir, { recursive: true }, (_event, filename) => {
           if (!filename) return
           const normalized = filename.replace(/\\/g, '/')
-          // TODO(Collaborative): This time-based debounce (2s) prevents fs.watch double-fires on Windows
-          // from causing infinite reloads and destroying the local Undo history. 
-          // However, if an AI or external agent modifies the file within 2s of the user's manual save, 
-          // their changes will be incorrectly ignored, leading to data divergence.
-          // Future SaaS architectures must move to CRDTs (like Yjs) or Content Hashing instead of fs.watch.
-          // Skip changes we made ourselves (via /api/save) within the last 2 seconds
-          if (selfWritePaths.has(normalized)) {
-            const time = selfWritePaths.get(normalized)!
-            if (Date.now() - time < 2000) return
-          }
+          // Read the file and compare its content hash to what we last wrote.
+          // If identical, this is our own write echoing back — suppress it.
+          const absPath = path.join(sampleDataDir, normalized)
+          try {
+            if (!fs.existsSync(absPath) || !fs.statSync(absPath).isFile()) return
+          } catch { return }
+          let content: string
+          try { content = fs.readFileSync(absPath, 'utf-8') } catch { return }
+          const hash = crypto.createHash('md5').update(content).digest('hex')
+          if (selfWriteHashes.get(normalized) === hash) return
+          // Clean up stale hash entry (file was externally modified)
+          selfWriteHashes.delete(normalized)
           const data = JSON.stringify({ type: 'change', path: normalized })
           for (const client of watchClients) {
             client.write(`data: ${data}\n\n`)
@@ -50,9 +53,9 @@ export default defineConfig({
                   const filePath = path.join(modelDir, file.path)
                   // Ensure no path traversal
                   if (!filePath.startsWith(sampleDataDir)) continue
-                  // Track as self-write to suppress watch events (path relative to sampleDataDir)
+                  // Track content hash to suppress our own write from fs.watch
                   const relPath = model ? `${model}/${file.path}` : file.path
-                  selfWritePaths.set(relPath.replace(/\\/g, '/'), Date.now())
+                  selfWriteHashes.set(relPath.replace(/\\/g, '/'), crypto.createHash('md5').update(file.content).digest('hex'))
                   // Ensure directory exists
                   const dir = path.dirname(filePath)
                   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true })

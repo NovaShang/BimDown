@@ -1,7 +1,10 @@
-import { Component, useEffect, useMemo } from 'react';
+import { Component, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { EditorProvider, useEditorDispatch } from './state/EditorContext.tsx';
+import { EditorProvider, useEditorDispatch, useEditorState } from './state/EditorContext.tsx';
 import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
+import { parseLayer } from './model/parse.ts';
+import { resolveHostedGeometry } from './model/hosted.ts';
+import type { LineElement } from './model/elements.ts';
 import { createLocalDataSource } from './utils/dataSource.ts';
 import { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 import { TooltipProvider } from './components/ui/tooltip';
@@ -47,7 +50,12 @@ const readonly = params.get('readonly') === 'true';
 
 function AppInner() {
   const dispatch = useEditorDispatch();
+  const state = useEditorState();
   const ds = useDataSource();
+
+  // Ref to access current document elements without adding effect dependencies
+  const stateRef = useRef(state);
+  stateRef.current = state;
 
   useEffect(() => {
     let active = true;
@@ -89,6 +97,37 @@ function AppInner() {
         const layer = await loadLayer(ds, levelId, tableName);
         if (layer && active) {
           dispatch({ type: 'UPDATE_LAYER', levelId, layer });
+
+          // Parse and merge into the active document for immediate rendering (skip if different level)
+          const doc = stateRef.current.document;
+          if (doc && doc.levelId === levelId) {
+            const parsed = parseLayer(layer);
+            // Resolve hosted elements (doors/windows) using walls from current document
+            const wallMap = new Map<string, LineElement>();
+            for (const el of doc.elements.values()) {
+              if (el.geometry === 'line' && (el.tableName === 'wall' || el.tableName === 'structure_wall' || el.tableName === 'curtain_wall')) {
+                wallMap.set(el.id, el as LineElement);
+              }
+            }
+            for (const el of parsed) {
+              if (el.geometry === 'line' && (el.tableName === 'wall' || el.tableName === 'structure_wall' || el.tableName === 'curtain_wall')) {
+                wallMap.set(el.id, el as LineElement);
+              }
+            }
+            for (const el of parsed) {
+              if (el.geometry !== 'line') continue;
+              const line = el as LineElement;
+              if (!line.hostId) continue;
+              const hostWall = wallMap.get(line.hostId);
+              if (!hostWall) continue;
+              const position = line.locationParam ?? 0.5;
+              const width = parseFloat(line.attrs.width ?? '0.9');
+              const resolved = resolveHostedGeometry(hostWall, position, width);
+              line.start = resolved.start;
+              line.end = resolved.end;
+            }
+            dispatch({ type: 'EXTERNAL_LAYER_UPDATE', levelId, elements: parsed });
+          }
         }
       }
     });
