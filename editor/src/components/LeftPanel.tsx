@@ -147,12 +147,20 @@ export default function LeftPanel({
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Level | null>(null);
 
-  const currentGroup = layerGroups.find(g => g.discipline === activeDiscipline);
-  const currentGroupLayers = currentGroup ? [...currentGroup.layers].sort((a, b) => {
-    const oa = LAYER_STYLES[a.tableName]?.order ?? 99;
-    const ob = LAYER_STYLES[b.tableName]?.order ?? 99;
-    return oa - ob;
-  }) : [];
+  const currentGroupLayers = (() => {
+    let layers: typeof layerGroups[0]['layers'];
+    if (activeDiscipline === 'all') {
+      layers = layerGroups.flatMap(g => g.layers);
+    } else {
+      const group = layerGroups.find(g => g.discipline === activeDiscipline);
+      layers = group ? group.layers : [];
+    }
+    return [...layers].sort((a, b) => {
+      const oa = LAYER_STYLES[a.tableName]?.order ?? 99;
+      const ob = LAYER_STYLES[b.tableName]?.order ?? 99;
+      return oa - ob;
+    });
+  })();
 
   return (
     <div className="absolute left-3 top-16 bottom-[52px] z-30 flex w-52 flex-col gap-2 select-none">

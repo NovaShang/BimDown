@@ -1,5 +1,6 @@
 import { useMemo, Suspense } from 'react';
 import { useEditorState } from '../state/EditorContext.tsx';
+import { isDisciplineVisible } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { resolveBimMaterial } from './utils/bimMaterials.ts';
@@ -16,11 +17,15 @@ interface FloorRenderData {
 /** Parse all floors once, filter by discipline + layer visibility.
  *  For the current level, use the live document model so 3D reflects edits immediately. */
 function useAllFloorsElements(): FloorRenderData[] {
-  const { project, visibleLayers, activeDiscipline, document: doc, documentVersion, currentLevel } = useEditorState();
+  const state = useEditorState();
+  const { project, visibleLayers, document: doc, documentVersion, currentLevel } = state;
 
   return useMemo(() => {
     if (!project) return [];
     const result: FloorRenderData[] = [];
+
+    const isVisible = (el: CanonicalElement) =>
+      isDisciplineVisible(el.discipline, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
 
     // Collect all level IDs (from floors + current level if it has a document)
     const levelIds = new Set(project.floors.keys());
@@ -39,15 +44,7 @@ function useAllFloorsElements(): FloorRenderData[] {
         parsed = parseFloorLayers(floor.layers);
       }
 
-      const filtered = parsed.filter(el => {
-        // Discipline filter: active discipline + architecture as context
-        if (activeDiscipline !== 'architecture') {
-          if (el.discipline !== activeDiscipline && el.discipline !== 'architecture') return false;
-        } else {
-          if (el.discipline !== 'architecture') return false;
-        }
-        return visibleLayers.has(`${el.discipline}/${el.tableName}`);
-      });
+      const filtered = parsed.filter(isVisible);
       if (filtered.length > 0) {
         const prefixed = filtered.map(el => ({ ...el, id: `${levelId}:${el.id}` }));
         result.push({ levelId, elevation, elements: prefixed });
@@ -56,9 +53,7 @@ function useAllFloorsElements(): FloorRenderData[] {
     // Global layers (e.g. mesh) — not tied to a specific floor, always visible
     if (project.globalLayers.length > 0) {
       const globalParsed = parseFloorLayers(project.globalLayers);
-      const globalFiltered = globalParsed.filter(el =>
-        visibleLayers.has(`${el.discipline}/${el.tableName}`),
-      );
+      const globalFiltered = globalParsed.filter(isVisible);
       if (globalFiltered.length > 0) {
         const prefixed = globalFiltered.map(el => ({ ...el, id: `global:${el.id}` }));
         result.push({ levelId: '__global__', elevation: 0, elements: prefixed });
@@ -66,7 +61,8 @@ function useAllFloorsElements(): FloorRenderData[] {
     }
 
     return result;
-  }, [project, visibleLayers, activeDiscipline, doc, documentVersion, currentLevel]);
+  // state includes activeDiscipline + showArchContext used by isDisciplineVisible
+  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, doc, documentVersion, currentLevel]);
 }
 
 /** Compute which levels are visible based on floor3DMode. */

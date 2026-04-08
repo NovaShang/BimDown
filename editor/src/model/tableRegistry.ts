@@ -610,4 +610,4 @@ export const DISCIPLINE_COLORS: Record<string, string> = {
   reference:     '#ef476f',
 };
 
-export const DISCIPLINES = Object.keys(DISCIPLINE_COLORS);
+export const DISCIPLINES = ['all', ...Object.keys(DISCIPLINE_COLORS)];

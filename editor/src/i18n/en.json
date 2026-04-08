@@ -6,6 +6,14 @@
   "tool.orbit": "Orbit",
   "tool.grid": "Grid",
 
+  "discipline.all": "All",
+  "discipline.architecture": "Architecture",
+  "discipline.structure": "Structure",
+  "discipline.mep": "MEP",
+  "discipline.reference": "Reference",
+  "topbar.archContext": "Show architecture as context",
+  "topbar.archContextShort": "Arch",
+
   "layer.wall": "Wall",
   "layer.curtain_wall": "CW",
   "layer.column": "Column",

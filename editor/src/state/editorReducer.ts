@@ -12,6 +12,17 @@ import type { LayerData } from '../types.ts';
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
 
+/** Add all non-hidden layer keys from every floor to a visibleLayers set. */
+function addAllFloorLayers(visibleLayers: Set<string>, floors: Map<string, import('../types.ts').FloorData>): void {
+  for (const [, f] of floors) {
+    for (const l of f.layers) {
+      if (!HIDDEN_BY_DEFAULT.has(l.tableName)) {
+        visibleLayers.add(`${l.discipline}/${l.tableName}`);
+      }
+    }
+  }
+}
+
 export const initialState: EditorState = {
   modelName: '',
   project: null,
@@ -32,6 +43,7 @@ export const initialState: EditorState = {
   previousTool: 'select',
   activeFilter: null,
   activeDiscipline: null,
+  showArchContext: true,
   spaceHeld: false,
 
   selectedIds: new Set(),
@@ -84,8 +96,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return { ...state, viewMode: action.mode, activeTool: tool };
     }
 
-    case 'SET_FLOOR_3D_MODE':
-      return { ...state, floor3DMode: action.mode };
+    case 'SET_FLOOR_3D_MODE': {
+      let visibleLayers = state.visibleLayers;
+      // When switching to all-floors mode, include layers from every floor
+      if (action.mode === 'all' && state.project) {
+        visibleLayers = new Set(visibleLayers);
+        addAllFloorLayers(visibleLayers, state.project.floors);
+      }
+      return { ...state, floor3DMode: action.mode, visibleLayers };
+    }
 
     case 'SET_PROJECT': {
       const { model, project, grids } = action;
@@ -120,6 +139,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (grids.length > 0) visibleLayers.add('reference/grid');
       // Include global layers (mesh, global railing, etc.)
       for (const gl of project.globalLayers) visibleLayers.add(`${gl.discipline}/${gl.tableName}`);
+      // In all-floors 3D mode, include layers from every floor
+      if (state.floor3DMode === 'all') addAllFloorLayers(visibleLayers, project.floors);
 
       return { ...state, modelName: model, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
     }
@@ -175,6 +196,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (state.visibleLayers.has('reference/grid')) visibleLayers.add('reference/grid');
       if (state.project) {
         for (const gl of state.project.globalLayers) visibleLayers.add(`${gl.discipline}/${gl.tableName}`);
+        // In 3D all-floors mode, include layers from all floors so other levels render fully
+        if (state.viewMode === '3d' && state.floor3DMode === 'all') {
+          addAllFloorLayers(visibleLayers, state.project.floors);
+        }
       }
 
       return {
@@ -240,6 +265,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'SET_DISCIPLINE':
       return { ...state, activeDiscipline: action.discipline };
+
+    case 'TOGGLE_ARCH_CONTEXT':
+      return { ...state, showArchContext: !state.showArchContext };
 
     case 'SELECT': {
       if (action.additive) {

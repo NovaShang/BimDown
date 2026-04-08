@@ -34,6 +34,7 @@ export interface EditorState {
   previousTool: Tool;
   activeFilter: string | null;
   activeDiscipline: string | null;
+  showArchContext: boolean;
   spaceHeld: boolean;
 
   selectedIds: Set<string>;
@@ -72,6 +73,7 @@ export type EditorAction =
   | { type: 'SET_SPACE_HELD'; held: boolean }
   | { type: 'SET_FILTER'; filter: string | null }
   | { type: 'SET_DISCIPLINE'; discipline: string | null }
+  | { type: 'TOGGLE_ARCH_CONTEXT' }
   | { type: 'SELECT'; ids: string[]; additive?: boolean }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SET_HOVER'; id: string | null }

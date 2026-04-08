@@ -6,6 +6,15 @@ import { parseLayer } from '../model/parse.ts';
 import { renderZIndexForTable } from '../model/tableRegistry.ts';
 import { computeBounds } from '../model/elements.ts';
 
+/** Check if a discipline should be visible given current discipline filter settings. */
+export function isDisciplineVisible(discipline: string, state: EditorState): boolean {
+  if (state.activeDiscipline === 'all') return true;
+  if (discipline === state.activeDiscipline) return true;
+  if (discipline === 'reference') return true;
+  if (discipline === 'architecture' && state.showArchContext && state.activeDiscipline !== 'architecture') return true;
+  return false;
+}
+
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
 }
@@ -28,7 +37,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   const result = orderedLayers
-    .filter(l => (l.discipline === state.activeDiscipline || l.discipline === 'architecture' || l.discipline === 'reference') && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => isDisciplineVisible(l.discipline, state) && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
@@ -171,7 +180,7 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
-    if (discipline !== state.activeDiscipline && discipline !== 'architecture' && discipline !== 'reference') continue;
+    if (!isDisciplineVisible(discipline, state)) continue;
     result.push({
       key,
       tableName,
@@ -196,7 +205,7 @@ function appendGlobalLayers(state: EditorState, result: ProcessedLayer[]): void 
   for (const gl of globalLayers) {
     const key = `${gl.discipline}/${gl.tableName}`;
     if (!state.visibleLayers.has(key)) continue;
-    if (gl.discipline !== state.activeDiscipline && gl.discipline !== 'architecture' && gl.discipline !== 'reference') continue;
+    if (!isDisciplineVisible(gl.discipline, state)) continue;
     const elements = parseLayer(gl).map(el => ({ ...el, id: `global:${el.id}` }));
     if (elements.length === 0) continue;
     result.push({ key, tableName: gl.tableName, discipline: gl.discipline, elements });

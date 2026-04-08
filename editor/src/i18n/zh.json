@@ -6,6 +6,14 @@
   "tool.orbit": "旋转",
   "tool.grid": "轴网",
 
+  "discipline.all": "全部",
+  "discipline.architecture": "建筑",
+  "discipline.structure": "结构",
+  "discipline.mep": "机电",
+  "discipline.reference": "参照",
+  "topbar.archContext": "显示建筑专业作为参照",
+  "topbar.archContextShort": "建筑",
+
   "layer.wall": "墙",
   "layer.curtain_wall": "幕墙",
   "layer.column": "柱",
