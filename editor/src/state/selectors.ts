@@ -98,6 +98,15 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
     }
   }
 
+  // Add global layers (mesh, global railing, curtain_wall, etc.) so they appear in the layer panel
+  if (state.project?.globalLayers) {
+    for (const gl of state.project.globalLayers) {
+      if (gl.tableName === 'level' || gl.tableName === 'grid') continue; // already handled
+      if (!byDiscipline.has(gl.discipline)) byDiscipline.set(gl.discipline, []);
+      byDiscipline.get(gl.discipline)!.push(gl);
+    }
+  }
+
   return allDisciplines.map(discipline => ({
     discipline,
     layers: byDiscipline.get(discipline) ?? [],

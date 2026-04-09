@@ -1,8 +1,9 @@
-import { Suspense, useMemo, useState, useEffect, Component, type ReactNode } from 'react';
+import { Suspense, useMemo, useState, useEffect, useRef, Component, type ReactNode } from 'react';
 import { useLoader } from '@react-three/fiber';
-import { MeshBasicMaterial, BoxGeometry } from 'three';
+import { MeshBasicMaterial, MeshStandardMaterial, BoxGeometry, Color, type Group, type Mesh } from 'three';
 import { GLTFLoader, OBJLoader } from 'three-stdlib';
 import type { CanonicalElement } from '../../model/elements.ts';
+import { useSelectionState } from '../../state/EditorContext.tsx';
 import { useDataSource } from '../../utils/DataSourceContext.tsx';
 
 interface MeshInstancesProps {
@@ -44,11 +45,38 @@ class MeshErrorBoundary extends Component<{ children: ReactNode; fallback: React
   render() { return this.state.hasError ? this.props.fallback : this.props.children; }
 }
 
+const HIGHLIGHT_COLOR = new Color('#06b6d4');
+
+/** Apply or remove selection highlight on all meshes in a group. */
+function applyHighlight(group: Group, highlighted: boolean) {
+  group.traverse(obj => {
+    const mesh = obj as Mesh;
+    if (!mesh.isMesh) return;
+    const mat = mesh.material as MeshStandardMaterial;
+    if (!mat.emissive) return;
+    if (highlighted) {
+      mat.emissive.copy(HIGHLIGHT_COLOR);
+      mat.emissiveIntensity = 0.4;
+    } else {
+      mat.emissive.setScalar(0);
+      mat.emissiveIntensity = 0;
+    }
+  });
+}
+
 /** Resolves a mesh file path to a loadable URL via DataSource, then renders. */
-function MeshElement({ meshFile, position, rotationY }: { meshFile: string; position?: [number, number, number]; rotationY?: number }) {
+function MeshElement({ meshFile, position, rotationY, elementId }: {
+  meshFile: string;
+  position?: [number, number, number];
+  rotationY?: number;
+  elementId?: string;
+}) {
   const ds = useDataSource();
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
+  const groupRef = useRef<Group>(null);
+  const { selectedIds, hoveredId } = useSelectionState();
+  const prevHighlight = useRef(false);
 
   useEffect(() => {
     if (!meshFile) { setFailed(true); return; }
@@ -61,11 +89,21 @@ function MeshElement({ meshFile, position, rotationY }: { meshFile: string; posi
     return () => { revoked = true; };
   }, [meshFile, ds]);
 
+  // Selection/hover highlight
+  const isHighlighted = !!(elementId && (selectedIds.has(elementId) || hoveredId === elementId));
+  useEffect(() => {
+    if (prevHighlight.current === isHighlighted) return;
+    prevHighlight.current = isHighlighted;
+    if (groupRef.current) applyHighlight(groupRef.current, isHighlighted);
+  }, [isHighlighted]);
+
   if (failed || !meshFile) return <PlaceholderMesh position={position} />;
   if (!url) return null; // loading URL
 
   return (
-    <group position={position} rotation={rotationY ? [0, rotationY, 0] : undefined}>
+    <group ref={groupRef} position={position} rotation={[0, rotationY ?? 0, 0]}
+      userData={elementId ? { elementId } : undefined}
+    >
       <Suspense fallback={<PlaceholderMesh />}>
         <MeshErrorBoundary fallback={<PlaceholderMesh />}>
           <LoadedMesh url={url} originalPath={meshFile} />
@@ -75,24 +113,33 @@ function MeshElement({ meshFile, position, rotationY }: { meshFile: string; posi
   );
 }
 
+/**
+ * Renders elements that have a mesh_file attribute.
+ * GLB/OBJ meshes are in local coordinates (glTF Y-up: X=local right, Y=up, Z=local forward).
+ *
+ * Coordinate mapping:
+ *   GLB local Z = BimDown local Y (forward at rotation=0)
+ *   Editor scene Z = -BimDown Y
+ *   → at rotation=0 we need π (180°) base rotation around Y to flip Z direction
+ *   → CSV rotation is then added on top (negated for CW→CCW conversion)
+ *
+ * Position: Three.js [X, Y, Z] = [BimDown X, elevation + z, -BimDown Y]
+ */
 export default function MeshInstances({ elements, levelElevation }: MeshInstancesProps) {
   const meshItems = useMemo(() => {
     return elements.map(el => {
       const meshFile = el.attrs.mesh_file ?? '';
 
-      // For mesh table elements: use explicit x/y/z for positioning
-      // For other types (wall, railing, etc.): mesh assumed to contain world coordinates
-      let position: [number, number, number] | undefined;
-      if (el.tableName === 'mesh' && el.geometry === 'point') {
-        const x = parseFloat(el.attrs.x ?? '0') || el.position.x;
-        const y = parseFloat(el.attrs.y ?? '0') || el.position.y;
-        const z = parseFloat(el.attrs.z ?? '0');
-        position = [x, levelElevation + z, -y];
-      }
+      // Position from CSV attrs (mesh table) or element position (other tables)
+      const x = parseFloat(el.attrs.x ?? '') || (el.geometry === 'point' ? el.position.x : 0);
+      const y = parseFloat(el.attrs.y ?? '') || (el.geometry === 'point' ? el.position.y : 0);
+      const z = parseFloat(el.attrs.z ?? '0');
+      const position: [number, number, number] = [x, levelElevation + z, -y];
 
-      const rotationY = el.tableName === 'mesh'
-        ? -(parseFloat(el.attrs.rotation ?? '0') * Math.PI / 180)
-        : undefined;
+      // Base π rotation flips GLB +Z (BimDown forward) to editor -Z,
+      // then CSV rotation is subtracted (BimDown CW → Three.js CCW)
+      const csvRotDeg = parseFloat(el.attrs.rotation ?? '0');
+      const rotationY = Math.PI - csvRotDeg * Math.PI / 180;
 
       return { id: el.id, meshFile, position, rotationY };
     });
@@ -103,7 +150,7 @@ export default function MeshInstances({ elements, levelElevation }: MeshInstance
   return (
     <group>
       {meshItems.map(item => (
-        <MeshElement key={item.id} meshFile={item.meshFile} position={item.position} rotationY={item.rotationY} />
+        <MeshElement key={item.id} meshFile={item.meshFile} position={item.position} rotationY={item.rotationY} elementId={item.id} />
       ))}
     </group>
   );

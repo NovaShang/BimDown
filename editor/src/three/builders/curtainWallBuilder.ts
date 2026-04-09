@@ -23,14 +23,10 @@ export function buildCurtainWallPrimitive(
   const { height, baseOffset } = resolveHeight(el.attrs, levelElevation, levelElevations, DEFAULT_WALL_HEIGHT);
   const baseY = levelElevation + baseOffset;
 
-  const uSpacing = parseFloat(el.attrs.u_spacing) || 0;
-  const vSpacing = parseFloat(el.attrs.v_spacing) || 0;
-  const uGridCount = uSpacing > 0
-    ? Math.max(1, Math.floor(len / uSpacing))
-    : Math.max(1, parseInt(el.attrs.u_grid_count) || 3);
-  const vGridCount = vSpacing > 0
-    ? Math.max(1, Math.floor(height / vSpacing))
-    : Math.max(1, parseInt(el.attrs.v_grid_count) || 3);
+  // u_grid_count = vertical divisions (along wall height)
+  // v_grid_count = horizontal divisions (along wall length)
+  const uGridCount = Math.max(1, parseInt(el.attrs.v_grid_count) || 3);
+  const vGridCount = Math.max(1, parseInt(el.attrs.u_grid_count) || 3);
 
   // Frame defaults to aluminum even if material attr says glass (matches current behavior)
   const frameMatRaw = resolveBimMaterial(el.attrs.material, el.tableName);
