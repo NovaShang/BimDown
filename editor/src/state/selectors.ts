@@ -73,43 +73,64 @@ export function getComputedViewBox(state: EditorState): { x: number; y: number; 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
   const allDisciplines = Object.keys(DISCIPLINE_TABLES);
 
+  // Collect (layer, prefix) pairs. Prefix determines the selection-ID scope:
+  //   - floor layers → currentLevel
+  //   - global layers → "global"
+  type Entry = { layer: LayerData; prefix: string };
+  const byDiscipline = new Map<string, Entry[]>();
+  const push = (layer: LayerData, prefix: string) => {
+    if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, []);
+    byDiscipline.get(layer.discipline)!.push({ layer, prefix });
+  };
+
   const floor = getVisibleFloor(state);
-  const byDiscipline = new Map<string, LayerData[]>();
   if (floor) {
-    for (const layer of floor.layers) {
-      if (!byDiscipline.has(layer.discipline)) byDiscipline.set(layer.discipline, []);
-      byDiscipline.get(layer.discipline)!.push(layer);
-    }
+    for (const layer of floor.layers) push(layer, state.currentLevel);
   }
 
-  // Add grid layer from document elements (grids are global, not in floor.layers)
+  // Grid layer from document elements (grids are scoped to the current level)
   if (state.document) {
     const gridEls = Array.from(state.document.elements.values()).filter(e => e.tableName === 'grid');
     if (gridEls.length > 0) {
       const gridCsvRows = new Map<string, Record<string, string>>();
       for (const el of gridEls) gridCsvRows.set(el.id, el.attrs);
-      if (!byDiscipline.has('reference')) byDiscipline.set('reference', []);
-      byDiscipline.get('reference')!.push({
+      push({
         tableName: 'grid',
         discipline: 'reference',
         svgContent: '',
         csvRows: gridCsvRows,
-      });
+      }, state.currentLevel);
     }
   }
 
-  // Add global layers (mesh, global railing, curtain_wall, etc.) so they appear in the layer panel
+  // Global layers (mesh, global railing, curtain_wall, etc.)
   if (state.project?.globalLayers) {
     for (const gl of state.project.globalLayers) {
       if (gl.tableName === 'level' || gl.tableName === 'grid') continue; // already handled
-      if (!byDiscipline.has(gl.discipline)) byDiscipline.set(gl.discipline, []);
-      byDiscipline.get(gl.discipline)!.push(gl);
+      push(gl, 'global');
     }
+  }
+
+  // Rebuild per discipline: merge by tableName, rekey csvRows with selection-ID prefix.
+  // This dedupes floor + global entries for the same table and makes LeftPanel
+  // selection IDs match the rest of the app (Canvas/3D use prefixed IDs).
+  const result = new Map<string, LayerData[]>();
+  for (const [disc, entries] of byDiscipline) {
+    const merged = new Map<string, LayerData>();
+    for (const { layer, prefix } of entries) {
+      const existing = merged.get(layer.tableName);
+      const combined = new Map(existing?.csvRows ?? []);
+      for (const [rawId, row] of layer.csvRows) {
+        combined.set(`${prefix}:${rawId}`, row);
+      }
+      merged.set(layer.tableName, { ...(existing ?? layer), csvRows: combined });
+    }
+    result.set(disc, Array.from(merged.values()));
   }
 
   return allDisciplines.map(discipline => ({
     discipline,
-    layers: byDiscipline.get(discipline) ?? [],
+    layers: result.get(discipline) ?? [],
   }));
 }
 

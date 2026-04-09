@@ -108,6 +108,8 @@ function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
     <div className="mb-0.5 py-0.5 pl-7">
       {Array.from(csvRows.entries()).map(([id, row]) => {
         const isSelected = selectedIds.has(id);
+        const colonIdx = id.indexOf(':');
+        const rawId = colonIdx >= 0 ? id.slice(colonIdx + 1) : id;
         return (
           <button
             key={id}
@@ -120,7 +122,7 @@ function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
             )}
             onClick={() => onSelect(id)}
           >
-            <span className="shrink-0 tabular-nums font-medium">{row.number || id}</span>
+            <span className="shrink-0 tabular-nums font-medium">{row.number || rawId}</span>
             <span className="flex-1 truncate text-muted-foreground/60 tabular-nums">
               {columns.map(col => formatCellValue(row[col.key], col.unit)).join(' · ')}
             </span>
