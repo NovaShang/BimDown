@@ -114,34 +114,35 @@ function MeshElement({ meshFile, position, rotationY, elementId }: {
 }
 
 /**
- * Renders elements that have a mesh_file attribute.
- * GLB/OBJ meshes are in local coordinates (glTF Y-up: X=local right, Y=up, Z=local forward).
+ * Renders elements that have a mesh_file attribute. Two modes:
  *
- * Coordinate mapping:
- *   GLB local Z = BimDown local Y (forward at rotation=0)
- *   Editor scene Z = -BimDown Y
- *   → at rotation=0 we need π (180°) base rotation around Y to flip Z direction
- *   → CSV rotation is then added on top (negated for CW→CCW conversion)
+ * 1. mesh table: GLB in local coordinates, positioned by CSV x/y/z/rotation.
+ *    π base rotation flips GLB +Z (BimDown forward) to editor -Z.
  *
- * Position: Three.js [X, Y, Z] = [BimDown X, elevation + z, -BimDown Y]
+ * 2. Other tables (slab, roof, railing, etc.): GLB already in world coordinates
+ *    (glTF Y-up matching editor scene). No transform applied.
  */
 export default function MeshInstances({ elements, levelElevation }: MeshInstancesProps) {
   const meshItems = useMemo(() => {
     return elements.map(el => {
       const meshFile = el.attrs.mesh_file ?? '';
 
-      // Position from CSV attrs (mesh table) or element position (other tables)
-      const x = parseFloat(el.attrs.x ?? '') || (el.geometry === 'point' ? el.position.x : 0);
-      const y = parseFloat(el.attrs.y ?? '') || (el.geometry === 'point' ? el.position.y : 0);
-      const z = parseFloat(el.attrs.z ?? '0');
-      const position: [number, number, number] = [x, levelElevation + z, -y];
+      if (el.tableName === 'mesh') {
+        // Mesh table: local-coord GLB positioned by CSV
+        const x = parseFloat(el.attrs.x ?? '0');
+        const y = parseFloat(el.attrs.y ?? '0');
+        const z = parseFloat(el.attrs.z ?? '0');
+        const csvRotDeg = parseFloat(el.attrs.rotation ?? '0');
+        return {
+          id: el.id,
+          meshFile,
+          position: [x, levelElevation + z, -y] as [number, number, number],
+          rotationY: Math.PI - csvRotDeg * Math.PI / 180,
+        };
+      }
 
-      // Base π rotation flips GLB +Z (BimDown forward) to editor -Z,
-      // then CSV rotation is subtracted (BimDown CW → Three.js CCW)
-      const csvRotDeg = parseFloat(el.attrs.rotation ?? '0');
-      const rotationY = Math.PI - csvRotDeg * Math.PI / 180;
-
-      return { id: el.id, meshFile, position, rotationY };
+      // Other tables: world-coord GLB, no transform
+      return { id: el.id, meshFile, position: undefined, rotationY: 0 };
     });
   }, [elements, levelElevation]);
 

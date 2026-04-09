@@ -66,6 +66,14 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
     raycasterRef.current.params.Line = { threshold: 0.5 };
     const intersections = raycasterRef.current.intersectObjects(scene.children, true);
     for (const hit of intersections) {
+      // Skip hits on invisible objects (hidden floors in single-floor mode)
+      let obj: Object3D | null = hit.object;
+      let hidden = false;
+      while (obj) {
+        if (!obj.visible) { hidden = true; break; }
+        obj = obj.parent;
+      }
+      if (hidden) continue;
       const id = resolveElementId(hit);
       if (id) return id;
     }
