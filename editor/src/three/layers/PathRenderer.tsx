@@ -1,5 +1,5 @@
 import { useRef, useMemo, useEffect } from 'react';
-import { InstancedMesh, ExtrudeGeometry, Object3D, Color, type BufferGeometry } from 'three';
+import { InstancedMesh, ExtrudeGeometry, Object3D, Color, Vector3, Quaternion, type BufferGeometry } from 'three';
 import { useSelectionState } from '../../state/EditorContext.tsx';
 import type { Renderer3DProps } from '../renderers/index.ts';
 import { buildPrimitives } from '../builders/index.ts';
@@ -9,6 +9,9 @@ import { getBimMaterial, getGhostMaterial, type BimMaterial } from '../utils/bim
 import type { PathPrimitive } from '../primitives/types.ts';
 
 const tempObject = new Object3D();
+const tempDir = new Vector3();
+const tempQuat = new Quaternion();
+const X_AXIS = new Vector3(1, 0, 0);
 const HIGHLIGHT_COLOR = new Color('#06b6d4');
 
 interface PathGroup {
@@ -85,18 +88,25 @@ function PathGroupMesh({ group, ghost }: { group: PathGroup; ghost?: boolean }) 
       const a = prim.path[0];
       const b = prim.path[1];
       const dx = b.x - a.x;
+      const dy = b.y - a.y;
       const dz = b.z - a.z;
-      // Use horizontal length + horizontal angle (matches current beam/MEP rendering behavior)
-      const horLen = Math.sqrt(dx * dx + dz * dz);
-      const angle = horLen > 0.001 ? Math.atan2(-dz, dx) : 0;
-      // Place at midpoint of path (unit geometry is pre-centered on origin)
-      const midX = (a.x + b.x) / 2;
-      const midZ = (a.z + b.z) / 2;
-      const midY = Math.min(a.y, b.y);
+      const len = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-      tempObject.position.set(midX, midY, midZ);
-      tempObject.rotation.set(0, angle, 0);
-      tempObject.scale.set(horLen, 1, 1);
+      // Place at 3D midpoint of path (unit geometry is pre-centered on origin)
+      tempObject.position.set((a.x + b.x) / 2, (a.y + b.y) / 2, (a.z + b.z) / 2);
+
+      if (len < 0.001) {
+        // Zero-length segment: hide by collapsing sweep axis
+        tempObject.quaternion.identity();
+        tempObject.scale.set(0, 1, 1);
+      } else {
+        // Orient unit sweep (+X) to actual 3D direction. Handles horizontal,
+        // inclined, and fully vertical runs uniformly.
+        tempDir.set(dx / len, dy / len, dz / len);
+        tempQuat.setFromUnitVectors(X_AXIS, tempDir);
+        tempObject.quaternion.copy(tempQuat);
+        tempObject.scale.set(len, 1, 1);
+      }
       tempObject.updateMatrix();
       mesh.setMatrixAt(i, tempObject.matrix);
     }

@@ -47,10 +47,14 @@ export function elementToHorizontalPath(
     const el = element as SpatialLineElement;
     const dx = el.end.x - el.start.x;
     const dy = el.end.y - el.start.y;
-    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001) return null;
+    const dz = el.endZ - el.startZ;
+    // Include Z when checking for a degenerate segment — pure vertical risers
+    // have dx = dy = 0 but a non-zero Z span.
+    if (Math.abs(dx) < 0.001 && Math.abs(dy) < 0.001 && Math.abs(dz) < 0.001) return null;
+    // start_z / end_z are level-relative; add the floor elevation to get world Y.
     return [
-      { x: el.start.x, y: el.startZ, z: -el.start.y },
-      { x: el.end.x,   y: el.endZ,   z: -el.end.y },
+      { x: el.start.x, y: levelElevation + el.startZ, z: -el.start.y },
+      { x: el.end.x,   y: levelElevation + el.endZ,   z: -el.end.y },
     ];
   }
   if (element.geometry === 'line') {

@@ -102,7 +102,7 @@ export function buildPrimitives(
     case 'equipment':
     case 'terminal':
     case 'mep_node': {
-      const p = buildEquipmentPrimitive(element, levelElevation, levelElevations);
+      const p = buildEquipmentPrimitive(element, levelElevation);
       if (p) result.push(p);
       break;
     }

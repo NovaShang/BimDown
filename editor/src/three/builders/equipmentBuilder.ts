@@ -1,22 +1,24 @@
 import type { CanonicalElement, PointElement, SpatialLineElement } from '../../model/elements.ts';
 import type { InstancePrimitive } from '../primitives/types.ts';
 import { resolveBimMaterial } from '../utils/bimMaterials.ts';
-import { resolveHeight } from '../utils/elementTo3D.ts';
 
 const DEFAULT_POINT_HEIGHT = 0.5;
 
 /**
  * Build an InstancePrimitive (box) for point elements: equipment/terminal/mep_node.
+ * Unlike walls/columns, these don't span between levels — their height comes
+ * directly from the `height` attribute (or a small default), never from the
+ * next-level-above heuristic in resolveHeight.
  */
 export function buildEquipmentPrimitive(
   element: CanonicalElement,
   levelElevation: number,
-  levelElevations: Map<string, number>,
 ): InstancePrimitive | null {
   if (element.geometry !== 'point') return null;
   const el = element as PointElement;
 
-  const { height, baseOffset } = resolveHeight(el.attrs, levelElevation, levelElevations, DEFAULT_POINT_HEIGHT);
+  const baseOffset = parseFloat(el.attrs.base_offset) || 0;
+  const height = parseFloat(el.attrs.height) || DEFAULT_POINT_HEIGHT;
   const baseY = levelElevation + baseOffset;
   const rotationDeg = parseFloat(el.attrs.rotation || '0');
   const material = resolveBimMaterial(el.attrs.material, el.tableName);
