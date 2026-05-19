@@ -72,9 +72,12 @@ function parseCsvLine(line: string): string[] {
 
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const metadataPromise = loadProjectMetadata(ds);
+  const manifest = ds.listFiles ? new Set(await ds.listFiles()) : null;
+  const fetchIfPresent = (p: string) =>
+    manifest && !manifest.has(p) ? Promise.resolve(null) : ds.fetchText(p);
 
   let levels: Level[] = [];
-  const text = await ds.fetchText('global/level.csv');
+  const text = await fetchIfPresent('global/level.csv');
   if (text) {
     const rows = parseCsv(text);
     levels = rows.map(r => ({
@@ -93,6 +96,9 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
     for (const level of levels) {
       for (const tableName of tables) {
+        const svgPath = `${level.id}/${tableName}.svg`;
+        const csvPath = `${level.id}/${tableName}.csv`;
+        if (manifest && !manifest.has(svgPath) && !manifest.has(csvPath)) continue;
         fetchTasks.push({ disc, level, tableName });
       }
     }
@@ -101,8 +107,8 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const results = await Promise.all(
     fetchTasks.map(async ({ disc, level, tableName }) => {
       const [svgContent, csvContent] = await Promise.all([
-        ds.fetchText(`${level.id}/${tableName}.svg`),
-        ds.fetchText(`${level.id}/${tableName}.csv`),
+        fetchIfPresent(`${level.id}/${tableName}.svg`),
+        fetchIfPresent(`${level.id}/${tableName}.csv`),
       ]);
       return { disc, level, tableName, svgContent, csvContent };
     })
@@ -138,6 +144,9 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const globalFetchTasks: { disc: string; tableName: string }[] = [];
   for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
     for (const tableName of tables) {
+      const svgPath = `global/${tableName}.svg`;
+      const csvPath = `global/${tableName}.csv`;
+      if (manifest && !manifest.has(svgPath) && !manifest.has(csvPath)) continue;
       globalFetchTasks.push({ disc, tableName });
     }
   }
@@ -145,8 +154,8 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const globalResults = await Promise.all(
     globalFetchTasks.map(async ({ disc, tableName }) => {
       const [svgContent, csvContent] = await Promise.all([
-        ds.fetchText(`global/${tableName}.svg`),
-        ds.fetchText(`global/${tableName}.csv`),
+        fetchIfPresent(`global/${tableName}.svg`),
+        fetchIfPresent(`global/${tableName}.csv`),
       ]);
       return { disc, tableName, svgContent, csvContent };
     })

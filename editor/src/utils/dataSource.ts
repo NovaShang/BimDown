@@ -13,6 +13,9 @@ export interface DataSource {
   /** Resolve a project-relative path to a loadable URL (e.g. for Three.js loaders).
    *  May create a blob URL for backends that don't serve files directly. */
   resolveUrl(path: string): Promise<string>;
+  /** Optional: list all existing project files. When provided, the loader skips
+   *  probing paths that aren't present, avoiding 404 storms on sparse projects. */
+  listFiles?(): Promise<string[]>;
 }
 
 /**
