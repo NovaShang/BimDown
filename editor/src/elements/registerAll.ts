@@ -9,3 +9,8 @@ import './column.tsx';
 import './slab.tsx';
 import './space.tsx';
 import './beam.tsx';
+import './equipment.tsx';
+import './grid.tsx';
+import './room_separator.tsx';
+import './brace.tsx';
+import './ramp.tsx';
