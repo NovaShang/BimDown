@@ -5,7 +5,7 @@ import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry } from '../model/hosted.ts';
 import { isVerticalSpanTable } from '../model/tableRegistry.ts';
-import { serializeToSvg } from '../model/serialize.ts';
+import { serializeToGeoJson } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 
@@ -741,7 +741,7 @@ function maybeMigrateToGlobal(element: CanonicalElement, state: EditorState): im
     newCsvRows.set(element.id, element.attrs);
     globalLayers[existingIdx] = {
       ...existing,
-      svgContent: serializeToSvg(allElements),
+      geojsonContent: serializeToGeoJson(allElements),
       csvRows: newCsvRows,
     };
   } else {
@@ -749,7 +749,7 @@ function maybeMigrateToGlobal(element: CanonicalElement, state: EditorState): im
     globalLayers.push({
       tableName: element.tableName,
       discipline: element.discipline,
-      svgContent: serializeToSvg([element]),
+      geojsonContent: serializeToGeoJson([element]),
       csvRows: new Map([[element.id, element.attrs]]),
     } as LayerData);
   }

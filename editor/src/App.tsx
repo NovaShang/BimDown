@@ -71,7 +71,7 @@ function AppInner() {
 
     const disconnect = ds.watchChanges(async (path) => {
       // Ignore non-project files (e.g. .DS_Store)
-      if (!path.endsWith('.csv') && !path.endsWith('.svg') && !path.endsWith('.json')) return;
+      if (!path.endsWith('.csv') && !path.endsWith('.geojson') && !path.endsWith('.json')) return;
 
       const parts = path.split('/');
       if (parts.length < 2) { loadData(); return; }
@@ -91,7 +91,7 @@ function AppInner() {
 
       let tableName = '';
       if (fileName.endsWith('.csv')) tableName = fileName.slice(0, -4);
-      else if (fileName.endsWith('.svg')) tableName = fileName.slice(0, -4);
+      else if (fileName.endsWith('.geojson')) tableName = fileName.slice(0, -8);
 
       if (tableName) {
         const layer = await loadLayer(ds, levelId, tableName);

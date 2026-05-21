@@ -94,7 +94,8 @@ export default defineConfig({
 
           if (fs.existsSync(filePath) && fs.statSync(filePath).isFile()) {
             const ext = path.extname(filePath)
-            const contentType = ext === '.svg' ? 'image/svg+xml'
+            const contentType = ext === '.geojson' ? 'application/geo+json; charset=utf-8'
+              : ext === '.svg' ? 'image/svg+xml'
               : ext === '.csv' ? 'text/csv; charset=utf-8'
               : ext === '.json' ? 'application/json'
               : 'application/octet-stream'

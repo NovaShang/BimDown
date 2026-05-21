@@ -3,101 +3,112 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, P
 import { geometryTypeForTable, isHostedTable } from './elements.ts';
 import { resolveHostedGeometry } from './hosted.ts';
 
-const parser = new DOMParser();
-
-/** Tables that are CSV-only (no SVG geometry file). */
+/** Tables that are CSV-only (no geometry file). */
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh']);
 
-/** Tables with mixed geometry (different SVG element types in the same layer). */
+/** Tables with mixed geometry (different geometry types in the same layer). */
 const MIXED_GEOMETRY_TABLES = new Set(['foundation']);
 
 /**
  * Tables that support dual mode: some elements are CSV-only (wall-hosted),
- * others have SVG geometry (slab-hosted). Parsed per-element based on SVG presence.
+ * others have GeoJSON geometry (slab-hosted). Parsed per-element based on geometry presence.
  */
 const DUAL_MODE_TABLES = new Set(['opening']);
 
+/** Tables whose elements live in 3D space (LineString coordinates carry Z). */
+const SPATIAL_3D_TABLES = new Set([
+  'stair', 'ramp', 'railing',
+  'beam', 'brace',
+  'duct', 'pipe', 'cable_tray', 'conduit',
+  'equipment', 'terminal', 'mep_node',
+]);
+
+// ─── GeoJSON types (minimal local definitions) ────────────
+
+type Position2 = [number, number];
+type Position3 = [number, number, number];
+type Position = Position2 | Position3;
+
+interface PointGeom { type: 'Point'; coordinates: Position }
+interface LineStringGeom { type: 'LineString'; coordinates: Position[] }
+interface PolygonGeom { type: 'Polygon'; coordinates: Position[][] }
+type Geom = PointGeom | LineStringGeom | PolygonGeom;
+
+interface Feature {
+  type: 'Feature';
+  properties: { id?: string; arc?: ArcParams; rotation?: number; base_offset?: number; top_offset?: number; height_offset?: number; [k: string]: unknown };
+  geometry: Geom;
+}
+
+interface FeatureCollection {
+  type: 'FeatureCollection';
+  features: Feature[];
+}
+
+function parseFeatureCollection(text: string): FeatureCollection | null {
+  if (!text) return null;
+  try {
+    const data = JSON.parse(text);
+    if (data?.type !== 'FeatureCollection' || !Array.isArray(data.features)) return null;
+    return data as FeatureCollection;
+  } catch {
+    return null;
+  }
+}
+
 /**
- * Parse a LayerData (raw SVG + CSV) into CanonicalElement[].
+ * Parse a LayerData (raw GeoJSON + CSV) into CanonicalElement[].
  */
 export function parseLayer(layer: LayerData): CanonicalElement[] {
   const geoType = geometryTypeForTable(layer.tableName);
   if (!geoType) return [];
 
-  // CSV-only tables: parse directly from CSV rows
   if (CSV_ONLY_TABLES.has(layer.tableName)) {
     return parseCsvOnlyLayer({ ...layer, csvRows: validateCsvRows(layer.csvRows, layer.tableName) });
   }
 
-  // Mixed-geometry tables: parse all element types from SVG
   if (MIXED_GEOMETRY_TABLES.has(layer.tableName)) {
     return parseMixedGeometryLayer(layer);
   }
 
-  // Dual-mode tables (opening): some elements have SVG (slab openings), others are CSV-only (wall openings)
   if (DUAL_MODE_TABLES.has(layer.tableName)) {
     return parseDualModeLayer(layer);
   }
 
   const csvRows = validateCsvRows(layer.csvRows, layer.tableName);
-
-  const doc = parser.parseFromString(layer.svgContent, 'image/svg+xml');
-  const g = doc.querySelector('g');
-  if (!g) return [];
+  const fc = parseFeatureCollection(layer.geojsonContent);
+  if (!fc) return [];
 
   const elements: CanonicalElement[] = [];
-
   const hosted = isHostedTable(layer.tableName);
+  const isSpatial = SPATIAL_3D_TABLES.has(layer.tableName);
 
-  switch (geoType) {
-    case 'line':
-    case 'spatial_line': {
-      const paths = g.querySelectorAll('path');
-      for (const path of paths) {
-        const id = path.getAttribute('id') || '';
-        if (!id) continue;
-        const csv = csvRows.get(id);
-        const el = geoType === 'spatial_line'
-          ? parseSpatialLineFromPath(id, path, layer, csv)
-          : parseLineFromPath(id, path, layer, csv);
-        if (hosted) applyHostFields(el, csv);
-        elements.push(el);
-      }
-      break;
+  for (const feat of fc.features) {
+    const id = feat.properties?.id;
+    if (!id) continue;
+    const csv = csvRows.get(id);
+    let el: CanonicalElement | null = null;
+
+    switch (geoType) {
+      case 'line':
+      case 'spatial_line':
+        if (feat.geometry.type !== 'LineString') continue;
+        el = geoType === 'spatial_line'
+          ? buildSpatialLine(id, feat, layer, csv, isSpatial)
+          : buildLine(id, feat, layer, csv);
+        break;
+      case 'point':
+        if (feat.geometry.type !== 'Point') continue;
+        el = buildPoint(id, feat, layer, csv);
+        break;
+      case 'polygon':
+        if (feat.geometry.type !== 'Polygon') continue;
+        el = buildPolygon(id, feat, layer, csv);
+        break;
     }
-    case 'point': {
-      const rects = g.querySelectorAll('rect');
-      for (const rect of rects) {
-        const id = rect.getAttribute('id') || '';
-        if (!id) continue;
-        const csv = csvRows.get(id);
-        const el = parsePointElement(id, rect, layer, csv);
-        if (hosted) applyHostFields(el, csv);
-        elements.push(el);
-      }
-      const circles = g.querySelectorAll('circle');
-      for (const circle of circles) {
-        const id = circle.getAttribute('id') || '';
-        if (!id) continue;
-        const csv = csvRows.get(id);
-        const el = parsePointFromCircle(id, circle, layer, csv);
-        if (hosted) applyHostFields(el, csv);
-        elements.push(el);
-      }
-      break;
-    }
-    case 'polygon': {
-      const polys = g.querySelectorAll('polygon');
-      for (const poly of polys) {
-        const id = poly.getAttribute('id') || '';
-        if (!id) continue;
-        const csv = csvRows.get(id);
-        const el = parsePolygonElement(id, poly, layer, csv);
-        if (hosted) applyHostFields(el, csv);
-        elements.push(el);
-      }
-      break;
-    }
+    if (!el) continue;
+    if (hosted) applyHostFields(el, csv);
+    elements.push(el);
   }
 
   return elements;
@@ -105,121 +116,55 @@ export function parseLayer(layer: LayerData): CanonicalElement[] {
 
 /**
  * Parse a mixed-geometry layer (e.g. foundation) where elements may be
- * <rect>/<circle> (point), <path> (line), or <polygon> depending on subtype.
+ * Point, LineString, or Polygon depending on subtype.
  */
 function parseMixedGeometryLayer(layer: LayerData): CanonicalElement[] {
   const csvRows = validateCsvRows(layer.csvRows, layer.tableName);
-  const doc = parser.parseFromString(layer.svgContent, 'image/svg+xml');
-  const g = doc.querySelector('g');
-  if (!g) return [];
+  const fc = parseFeatureCollection(layer.geojsonContent);
+  if (!fc) return [];
 
   const elements: CanonicalElement[] = [];
-
-  // Point-like foundations (isolated): <rect> and <circle>
-  const rects = g.querySelectorAll('rect');
-  for (const rect of rects) {
-    const id = rect.getAttribute('id') || '';
+  for (const feat of fc.features) {
+    const id = feat.properties?.id;
     if (!id) continue;
-    elements.push(parsePointElement(id, rect, layer, csvRows.get(id)));
+    const csv = csvRows.get(id);
+    if (feat.geometry.type === 'Point') elements.push(buildPoint(id, feat, layer, csv));
+    else if (feat.geometry.type === 'LineString') elements.push(buildLine(id, feat, layer, csv));
+    else if (feat.geometry.type === 'Polygon') elements.push(buildPolygon(id, feat, layer, csv));
   }
-  const circles = g.querySelectorAll('circle');
-  for (const circle of circles) {
-    const id = circle.getAttribute('id') || '';
-    if (!id) continue;
-    elements.push(parsePointFromCircle(id, circle, layer, csvRows.get(id)));
-  }
-
-  // Line-like foundations (strip): <path>
-  const paths = g.querySelectorAll('path');
-  for (const path of paths) {
-    const id = path.getAttribute('id') || '';
-    if (!id) continue;
-    elements.push(parseLineFromPath(id, path, layer, csvRows.get(id)));
-  }
-
-  // Polygon-like foundations (raft): <polygon>
-  const polys = g.querySelectorAll('polygon');
-  for (const poly of polys) {
-    const id = poly.getAttribute('id') || '';
-    if (!id) continue;
-    elements.push(parsePolygonElement(id, poly, layer, csvRows.get(id)));
-  }
-
   return elements;
 }
 
 /**
- * Parse a dual-mode layer (opening): elements with SVG geometry are slab openings
- * (parsed as polygons from <rect>/<polygon>), elements without SVG are wall openings
- * (parsed as CSV-only hosted lines).
+ * Parse a dual-mode layer (opening): features in GeoJSON are slab openings (Polygon),
+ * CSV rows without a Feature are wall openings (hosted lines).
  */
 function parseDualModeLayer(layer: LayerData): CanonicalElement[] {
   const csvRows = validateCsvRows(layer.csvRows, layer.tableName);
   const elements: CanonicalElement[] = [];
+  const seen = new Set<string>();
 
-  // Track which IDs have SVG geometry
-  const svgIds = new Set<string>();
-
-  // Parse SVG geometry if present (slab openings)
-  if (layer.svgContent) {
-    const doc = parser.parseFromString(layer.svgContent, 'image/svg+xml');
-    const g = doc.querySelector('g');
-    if (g) {
-      // <rect> elements → polygon (4-vertex rectangle)
-      const rects = g.querySelectorAll('rect');
-      for (const rect of rects) {
-        const id = rect.getAttribute('id') || '';
-        if (!id) continue;
-        svgIds.add(id);
-        const csv = csvRows.get(id);
-        const x = parseFloat(rect.getAttribute('x') || '0');
-        const y = parseFloat(rect.getAttribute('y') || '0');
-        const w = parseFloat(rect.getAttribute('width') || '0');
-        const h = parseFloat(rect.getAttribute('height') || '0');
-        const el: PolygonElement = {
-          geometry: 'polygon',
-          id,
-          tableName: layer.tableName,
-          discipline: layer.discipline,
-          vertices: [
-            { x, y },
-            { x: x + w, y },
-            { x: x + w, y: y + h },
-            { x, y: y + h },
-          ],
-          attrs: csvToAttrs(csv, id),
-        };
-        if (csv?.host_id) el.hostId = csv.host_id;
-        elements.push(el);
-      }
-
-      // <polygon> elements → polygon
-      const polys = g.querySelectorAll('polygon');
-      for (const poly of polys) {
-        const id = poly.getAttribute('id') || '';
-        if (!id) continue;
-        svgIds.add(id);
-        const csv = csvRows.get(id);
-        const el = parsePolygonElement(id, poly, layer, csv);
-        if (csv?.host_id) el.hostId = csv.host_id;
-        elements.push(el);
-      }
+  const fc = parseFeatureCollection(layer.geojsonContent);
+  if (fc) {
+    for (const feat of fc.features) {
+      const id = feat.properties?.id;
+      if (!id || feat.geometry.type !== 'Polygon') continue;
+      seen.add(id);
+      const csv = csvRows.get(id);
+      const el = buildPolygon(id, feat, layer, csv);
+      if (csv?.host_id) el.hostId = csv.host_id;
+      elements.push(el);
     }
   }
 
-  // Remaining CSV rows without SVG → wall openings (CSV-only hosted lines)
   for (const [id, csv] of csvRows) {
-    if (svgIds.has(id)) continue;
+    if (seen.has(id)) continue;
     const attrs = csvToAttrs(csv, id);
     const el: LineElement = {
-      geometry: 'line',
-      id,
-      tableName: layer.tableName,
-      discipline: layer.discipline,
-      start: { x: 0, y: 0 },
-      end: { x: 0, y: 0 },
-      strokeWidth: 0.08,
-      attrs,
+      geometry: 'line', id,
+      tableName: layer.tableName, discipline: layer.discipline,
+      start: { x: 0, y: 0 }, end: { x: 0, y: 0 },
+      strokeWidth: 0.08, attrs,
     };
     el.hostId = csv.host_id ?? '';
     el.locationParam = parseFloat(csv.position || '0.5') || 0;
@@ -230,7 +175,7 @@ function parseDualModeLayer(layer: LayerData): CanonicalElement[] {
 }
 
 /**
- * Parse CSV-only layer (door, window, space) — no SVG geometry.
+ * Parse CSV-only layer (door, window, space, mesh) — no GeoJSON geometry file.
  */
 function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
   const elements: CanonicalElement[] = [];
@@ -240,32 +185,20 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
     const attrs = csvToAttrs(csv, id);
 
     if (layer.tableName === 'space' || layer.tableName === 'mesh') {
-      // Space / mesh: point from CSV x, y
       const el: PointElement = {
-        geometry: 'point',
-        id,
-        tableName: layer.tableName,
-        discipline: layer.discipline,
-        position: {
-          x: parseFloat(csv.x ?? '0'),
-          y: parseFloat(csv.y ?? '0'),
-        },
-        width: 0.3,
-        height: 0.3,
+        geometry: 'point', id,
+        tableName: layer.tableName, discipline: layer.discipline,
+        position: { x: parseFloat(csv.x ?? '0'), y: parseFloat(csv.y ?? '0') },
+        width: 0.3, height: 0.3,
         attrs,
       };
       elements.push(el);
     } else {
-      // Door/window: hosted line — start/end will be resolved later in parseFloorLayers
       const el: LineElement = {
-        geometry: 'line',
-        id,
-        tableName: layer.tableName,
-        discipline: layer.discipline,
-        start: { x: 0, y: 0 },
-        end: { x: 0, y: 0 },
-        strokeWidth: 0.08,
-        attrs,
+        geometry: 'line', id,
+        tableName: layer.tableName, discipline: layer.discipline,
+        start: { x: 0, y: 0 }, end: { x: 0, y: 0 },
+        strokeWidth: 0.08, attrs,
       };
       el.hostId = csv.host_id ?? '';
       el.locationParam = parseFloat(csv.position || '0.5') || 0;
@@ -276,129 +209,108 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
   return elements;
 }
 
-/** Parse M x1,y1 L/A ... from a path d attribute. Supports straight lines and arcs. */
-function parseDAttribute(d: string): { x1: number; y1: number; x2: number; y2: number; arc?: ArcParams } {
-  const mL = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)\s*L\s*([-\d.]+)[,\s]+([-\d.]+)/);
-  if (mL) return { x1: parseFloat(mL[1]), y1: parseFloat(mL[2]), x2: parseFloat(mL[3]), y2: parseFloat(mL[4]) };
+// ─── Per-geometry builders ────────────────────────────────
 
-  const mA = d.match(/M\s*([-\d.]+)[,\s]+([-\d.]+)\s*A\s*([-\d.]+)[,\s]+([-\d.]+)[,\s]+([-\d.]+)[,\s]+([01])[,\s]+([01])[,\s]+([-\d.]+)[,\s]+([-\d.]+)/);
-  if (mA) {
+function buildLine(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): LineElement {
+  const g = feat.geometry as LineStringGeom;
+  const a = g.coordinates[0] ?? [0, 0];
+  const b = g.coordinates[g.coordinates.length - 1] ?? [0, 0];
+  const el: LineElement = {
+    geometry: 'line', id,
+    tableName: layer.tableName, discipline: layer.discipline,
+    start: { x: a[0], y: a[1] },
+    end: { x: b[0], y: b[1] },
+    strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
+    attrs: csvToAttrs(csv, id),
+  };
+  const arc = feat.properties?.arc;
+  if (arc) el.arc = normalizeArc(arc);
+  return el;
+}
+
+function buildSpatialLine(id: string, feat: Feature, layer: LayerData, csv?: CsvRow, isSpatial = true): SpatialLineElement {
+  const g = feat.geometry as LineStringGeom;
+  const a = g.coordinates[0] ?? [0, 0, 0];
+  const b = g.coordinates[g.coordinates.length - 1] ?? [0, 0, 0];
+  const startZ = isSpatial && a.length === 3 ? (a as Position3)[2] : parseFloat(csv?.start_z ?? '0');
+  const endZ = isSpatial && b.length === 3 ? (b as Position3)[2] : parseFloat(csv?.end_z ?? '0');
+  const el: SpatialLineElement = {
+    geometry: 'spatial_line', id,
+    tableName: layer.tableName, discipline: layer.discipline,
+    start: { x: a[0], y: a[1] },
+    end: { x: b[0], y: b[1] },
+    startZ, endZ,
+    strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
+    attrs: csvToAttrs(csv, id),
+  };
+  const arc = feat.properties?.arc;
+  if (arc) el.arc = normalizeArc(arc);
+  return el;
+}
+
+function buildPoint(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): PointElement {
+  const g = feat.geometry as PointGeom;
+  const c = g.coordinates;
+  const attrs = csvToAttrs(csv, id);
+  const csvSizeX = parseFloat(attrs.size_x);
+  const csvSizeY = parseFloat(attrs.size_y);
+  const w = !isNaN(csvSizeX) ? csvSizeX : 0.3;
+  const h = !isNaN(csvSizeY) ? csvSizeY : (!isNaN(csvSizeX) ? csvSizeX : 0.3);
+  return {
+    geometry: 'point', id,
+    tableName: layer.tableName, discipline: layer.discipline,
+    position: { x: c[0], y: c[1] },
+    width: w, height: h,
+    attrs,
+  };
+}
+
+function buildPolygon(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): PolygonElement {
+  const g = feat.geometry as PolygonGeom;
+  const ring = g.coordinates[0] ?? [];
+  // Drop closing duplicate if present
+  let end = ring.length;
+  if (end >= 2) {
+    const first = ring[0];
+    const last = ring[ring.length - 1];
+    if (first[0] === last[0] && first[1] === last[1]) end -= 1;
+  }
+  const vertices: Point[] = [];
+  for (let i = 0; i < end; i++) {
+    vertices.push({ x: ring[i][0], y: ring[i][1] });
+  }
+  return {
+    geometry: 'polygon', id,
+    tableName: layer.tableName, discipline: layer.discipline,
+    vertices,
+    attrs: csvToAttrs(csv, id),
+  };
+}
+
+/**
+ * The bimdown spec stores arc params as {radius, large_arc, sweep}.
+ * Editor's internal ArcParams uses {rx, ry, rotation, largeArc, sweep}.
+ * Normalize the spec form into the editor form.
+ */
+function normalizeArc(
+  raw: ArcParams | { radius?: number; large_arc?: boolean; sweep?: boolean; rx?: number; ry?: number; rotation?: number; largeArc?: boolean },
+): ArcParams {
+  const r = (raw as any).radius;
+  if (typeof r === 'number') {
     return {
-      x1: parseFloat(mA[1]), y1: parseFloat(mA[2]),
-      x2: parseFloat(mA[8]), y2: parseFloat(mA[9]),
-      arc: {
-        rx: parseFloat(mA[3]), ry: parseFloat(mA[4]),
-        rotation: parseFloat(mA[5]),
-        largeArc: mA[6] === '1', sweep: mA[7] === '1',
-      },
+      rx: r, ry: r, rotation: 0,
+      largeArc: (raw as any).large_arc === true,
+      sweep: (raw as any).sweep === true,
     };
   }
-
-  return { x1: 0, y1: 0, x2: 0, y2: 0 };
+  // Already in editor form
+  return raw as ArcParams;
 }
-
-function parseLineFromPath(
-  id: string, path: Element, layer: LayerData, csv?: CsvRow
-): LineElement {
-  const { x1, y1, x2, y2, arc } = parseDAttribute(path.getAttribute('d') || '');
-  const el: LineElement = {
-    geometry: 'line',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    start: { x: x1, y: y1 },
-    end: { x: x2, y: y2 },
-    strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
-    attrs: csvToAttrs(csv, id),
-  };
-  if (arc) el.arc = arc;
-  return el;
-}
-
-function parseSpatialLineFromPath(
-  id: string, path: Element, layer: LayerData, csv?: CsvRow
-): SpatialLineElement {
-  const { x1, y1, x2, y2, arc } = parseDAttribute(path.getAttribute('d') || '');
-  const el: SpatialLineElement = {
-    geometry: 'spatial_line',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    start: { x: x1, y: y1 },
-    end: { x: x2, y: y2 },
-    startZ: parseFloat(csv?.start_z ?? '0'),
-    endZ: parseFloat(csv?.end_z ?? '0'),
-    strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
-    attrs: csvToAttrs(csv, id),
-  };
-  if (arc) el.arc = arc;
-  return el;
-}
-
 
 function applyHostFields(el: CanonicalElement, csv?: CsvRow): void {
   if (!csv) return;
   if (csv.host_id) el.hostId = csv.host_id;
   if (csv.position) el.locationParam = parseFloat(csv.position) || 0;
-}
-
-function parsePointElement(
-  id: string, rect: SVGRectElement, layer: LayerData, csv?: CsvRow
-): PointElement {
-  const x = parseFloat(rect.getAttribute('x') || '0');
-  const y = parseFloat(rect.getAttribute('y') || '0');
-  const rawW = parseFloat(rect.getAttribute('width') || '0');
-  const rawH = parseFloat(rect.getAttribute('height') || '0');
-  const attrs = csvToAttrs(csv, id);
-  // Prefer CSV size_x/size_y over SVG rect dimensions (SVG may have 0 for point elements)
-  const csvSizeX = parseFloat(attrs.size_x);
-  const csvSizeY = parseFloat(attrs.size_y);
-  const w = rawW || csvSizeX || 0.3;
-  const h = rawH || csvSizeY || csvSizeX || 0.3;
-  return {
-    geometry: 'point',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    position: { x: x + w / 2, y: y + h / 2 },
-    width: w,
-    height: h,
-    attrs,
-  };
-}
-
-function parsePointFromCircle(
-  id: string, circle: Element, layer: LayerData, csv?: CsvRow
-): PointElement {
-  const cx = parseFloat(circle.getAttribute('cx') || '0');
-  const cy = parseFloat(circle.getAttribute('cy') || '0');
-  const r = parseFloat(circle.getAttribute('r') || '0.15');
-  const d = r * 2;
-  return {
-    geometry: 'point',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    position: { x: cx, y: cy },
-    width: d,
-    height: d,
-    attrs: csvToAttrs(csv, id),
-  };
-}
-
-function parsePolygonElement(
-  id: string, poly: SVGPolygonElement, layer: LayerData, csv?: CsvRow
-): PolygonElement {
-  const pointsStr = poly.getAttribute('points') || '';
-  const vertices = parsePoints(pointsStr);
-  return {
-    geometry: 'polygon',
-    id,
-    tableName: layer.tableName,
-    discipline: layer.discipline,
-    vertices,
-    attrs: csvToAttrs(csv, id),
-  };
 }
 
 function csvToAttrs(csv: CsvRow | undefined, id: string): Record<string, string> {
@@ -410,10 +322,6 @@ function csvToAttrs(csv: CsvRow | undefined, id: string): Record<string, string>
   return attrs;
 }
 
-/**
- * Validate a CSV layer's rows, filtering out invalid entries.
- * Returns the valid rows and logs warnings for skipped ones.
- */
 function validateCsvRows(rows: Map<string, CsvRow>, tableName: string): Map<string, CsvRow> {
   const valid = new Map<string, CsvRow>();
   for (const [id, row] of rows) {
@@ -447,7 +355,6 @@ export function parseFloorLayers(layers: LayerData[]): CanonicalElement[] {
     elements.push(...parseLayer(layer));
   }
 
-  // Second pass: resolve hosted elements (doors/windows) using wall geometry
   const wallMap = new Map<string, LineElement>();
   for (const el of elements) {
     if (el.geometry === 'line' && (el.tableName === 'wall' || el.tableName === 'structure_wall' || el.tableName === 'curtain_wall')) {

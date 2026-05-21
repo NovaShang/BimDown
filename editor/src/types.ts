@@ -12,7 +12,8 @@ export interface CsvRow {
 export interface LayerData {
   tableName: string;
   discipline: string;
-  svgContent: string;
+  /** Raw GeoJSON FeatureCollection string for the layer (empty if CSV-only table). */
+  geojsonContent: string;
   csvRows: Map<string, CsvRow>;
 }
 

@@ -96,9 +96,9 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
     for (const level of levels) {
       for (const tableName of tables) {
-        const svgPath = `${level.id}/${tableName}.svg`;
+        const geoPath = `${level.id}/${tableName}.geojson`;
         const csvPath = `${level.id}/${tableName}.csv`;
-        if (manifest && !manifest.has(svgPath) && !manifest.has(csvPath)) continue;
+        if (manifest && !manifest.has(geoPath) && !manifest.has(csvPath)) continue;
         fetchTasks.push({ disc, level, tableName });
       }
     }
@@ -106,16 +106,16 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
 
   const results = await Promise.all(
     fetchTasks.map(async ({ disc, level, tableName }) => {
-      const [svgContent, csvContent] = await Promise.all([
-        fetchIfPresent(`${level.id}/${tableName}.svg`),
+      const [geojsonContent, csvContent] = await Promise.all([
+        fetchIfPresent(`${level.id}/${tableName}.geojson`),
         fetchIfPresent(`${level.id}/${tableName}.csv`),
       ]);
-      return { disc, level, tableName, svgContent, csvContent };
+      return { disc, level, tableName, geojsonContent, csvContent };
     })
   );
 
-  for (const { disc, level, tableName, svgContent, csvContent } of results) {
-    if (!svgContent && !csvContent) continue;
+  for (const { disc, level, tableName, geojsonContent, csvContent } of results) {
+    if (!geojsonContent && !csvContent) continue;
 
     const csvMap = new Map<string, CsvRow>();
     if (csvContent) {
@@ -135,7 +135,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     floors.get(level.id)!.layers.push({
       tableName,
       discipline: disc,
-      svgContent: svgContent ?? '',
+      geojsonContent: geojsonContent ?? '',
       csvRows: csvMap,
     });
   }
@@ -144,26 +144,26 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const globalFetchTasks: { disc: string; tableName: string }[] = [];
   for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
     for (const tableName of tables) {
-      const svgPath = `global/${tableName}.svg`;
+      const geoPath = `global/${tableName}.geojson`;
       const csvPath = `global/${tableName}.csv`;
-      if (manifest && !manifest.has(svgPath) && !manifest.has(csvPath)) continue;
+      if (manifest && !manifest.has(geoPath) && !manifest.has(csvPath)) continue;
       globalFetchTasks.push({ disc, tableName });
     }
   }
 
   const globalResults = await Promise.all(
     globalFetchTasks.map(async ({ disc, tableName }) => {
-      const [svgContent, csvContent] = await Promise.all([
-        fetchIfPresent(`global/${tableName}.svg`),
+      const [geojsonContent, csvContent] = await Promise.all([
+        fetchIfPresent(`global/${tableName}.geojson`),
         fetchIfPresent(`global/${tableName}.csv`),
       ]);
-      return { disc, tableName, svgContent, csvContent };
+      return { disc, tableName, geojsonContent, csvContent };
     })
   );
 
   const globalLayers: LayerData[] = [];
-  for (const { disc, tableName, svgContent, csvContent } of globalResults) {
-    if (!svgContent && !csvContent) continue;
+  for (const { disc, tableName, geojsonContent, csvContent } of globalResults) {
+    if (!geojsonContent && !csvContent) continue;
 
     const csvMap = new Map<string, CsvRow>();
     if (csvContent) {
@@ -175,7 +175,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     globalLayers.push({
       tableName,
       discipline: disc,
-      svgContent: svgContent ?? '',
+      geojsonContent: geojsonContent ?? '',
       csvRows: csvMap,
     });
   }
@@ -201,11 +201,11 @@ export async function loadGrids(ds: DataSource): Promise<GridData[]> {
 }
 
 export async function loadLayer(ds: DataSource, levelId: string, tableName: string): Promise<LayerData | null> {
-  const [svgContent, csvContent] = await Promise.all([
-    ds.fetchText(`${levelId}/${tableName}.svg`),
+  const [geojsonContent, csvContent] = await Promise.all([
+    ds.fetchText(`${levelId}/${tableName}.geojson`),
     ds.fetchText(`${levelId}/${tableName}.csv`),
   ]);
-  if (!svgContent && !csvContent) return null;
+  if (!geojsonContent && !csvContent) return null;
 
   const csvMap = new Map<string, CsvRow>();
   if (csvContent) {
@@ -218,7 +218,7 @@ export async function loadLayer(ds: DataSource, levelId: string, tableName: stri
   return {
     tableName,
     discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architectural',
-    svgContent: svgContent ?? '',
+    geojsonContent: geojsonContent ?? '',
     csvRows: csvMap,
   };
 }

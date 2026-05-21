@@ -4,7 +4,7 @@ import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox,
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
 import { persistDocument, persistLevels, persistGrids, persistGlobalLayer } from '../utils/persist.ts';
-import { groupByLayer, serializeToSvg } from '../model/serialize.ts';
+import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import LeftPanel from './LeftPanel.tsx';
@@ -83,12 +83,12 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
 
     for (const [key, groupElements] of groups) {
       const [discipline, tableName] = key.split('/');
-      const svgContent = serializeToSvg(groupElements);
+      const geojsonContent = serializeToGeoJson(groupElements);
       const csvRows = new Map<string, Record<string, string>>();
       for (const el of groupElements) {
         csvRows.set(el.id, el.attrs);
       }
-      dispatch({ type: 'UPDATE_LAYER', levelId: doc.levelId, layer: { tableName, discipline, svgContent, csvRows } });
+      dispatch({ type: 'UPDATE_LAYER', levelId: doc.levelId, layer: { tableName, discipline, geojsonContent, csvRows } });
     }
 
     // Sync grid changes back to state.grids

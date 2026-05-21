@@ -97,7 +97,7 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
       push({
         tableName: 'grid',
         discipline: 'reference',
-        svgContent: '',
+        geojsonContent: '',
         csvRows: gridCsvRows,
       }, state.currentLevel);
     }

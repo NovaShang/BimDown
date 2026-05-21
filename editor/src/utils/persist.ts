@@ -1,13 +1,12 @@
 import type { DocumentState } from '../model/document.ts';
 import type { Level, GridData } from '../types.ts';
-import { groupByLayer, serializeToSvg, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
+import { groupByLayer, serializeToGeoJson, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
 import type { DataSource } from './dataSource.ts';
 
 /**
  * Persist document state via the data source.
  */
 export async function persistDocument(doc: DocumentState, ds: DataSource, changedKeys?: Set<string>): Promise<void> {
-  // Grid elements are persisted to global/grid.csv separately, not per-level
   const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
   const groups = groupByLayer(elements);
 
@@ -22,11 +21,10 @@ export async function persistDocument(doc: DocumentState, ds: DataSource, change
     const [, tableName] = key.split('/');
     const levelId = doc.levelId;
 
-    // Only save SVG for tables that have geometry in SVG
     if (!isCsvOnlyTable(tableName)) {
-      const svgPath = `${levelId}/${tableName}.svg`;
-      const svgContent = serializeToSvg(groupElements);
-      saves.push(ds.saveFile(svgPath, svgContent));
+      const geomPath = `${levelId}/${tableName}.geojson`;
+      const geomContent = serializeToGeoJson(groupElements);
+      saves.push(ds.saveFile(geomPath, geomContent));
     }
 
     const csvPath = `${levelId}/${tableName}.csv`;
@@ -44,17 +42,17 @@ export async function persistLevels(levels: Level[], ds: DataSource): Promise<vo
 }
 
 /**
- * Persist a global layer (cross-level elements) to global/{tableName}.svg + .csv.
+ * Persist a global layer (cross-level elements) to global/{tableName}.geojson + .csv.
  */
 export async function persistGlobalLayer(
-  layer: { tableName: string; svgContent: string; csvRows: Map<string, Record<string, string>> },
+  layer: { tableName: string; geojsonContent: string; csvRows: Map<string, Record<string, string>> },
   ds: DataSource,
 ): Promise<void> {
   const elements = parseLayerToElements(layer);
   const saves: Promise<void>[] = [];
 
   if (!isCsvOnlyTable(layer.tableName)) {
-    saves.push(ds.saveFile(`global/${layer.tableName}.svg`, layer.svgContent));
+    saves.push(ds.saveFile(`global/${layer.tableName}.geojson`, layer.geojsonContent));
   }
 
   const csvContent = serializeToCsv(elements, layer.tableName);
