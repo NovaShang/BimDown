@@ -10,6 +10,8 @@ import {
 } from '../utils/wallMiter.ts';
 import { getMaterialFill } from '../renderers/wallRenderer.tsx';
 import { tessellateArc, pointOnArc } from '../utils/arcMath.ts';
+import { hasElementModule } from '../elements/registry.ts';
+import { isPipelineV2 } from '../adapters/svg/context.tsx';
 
 interface WallOutlinesProps {
   layers: ProcessedLayer[];
@@ -17,6 +19,12 @@ interface WallOutlinesProps {
 
 const WALL_TABLES = new Set(['wall', 'curtain_wall', 'structure_wall']);
 const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
+
+/** Tables whose own ElementModule.draw2D already paints the visible body
+ *  (so WallOutlines must NOT also paint them, to avoid double rendering). */
+function isHandledByModule(table: string): boolean {
+  return isPipelineV2() && hasElementModule(table);
+}
 
 const MEP_FILL: Record<string, string> = {
   duct: '#00b4d815',
@@ -50,6 +58,8 @@ export const WallOutlines = React.memo(function WallOutlines({ layers }: WallOut
       const isWall = WALL_TABLES.has(layer.tableName);
       const isMep = MEP_TABLES.has(layer.tableName);
       if (!isWall && !isMep) continue;
+      // V2: skip tables whose ElementModule handles its own outline.
+      if (isHandledByModule(layer.tableName)) continue;
 
       for (const el of layer.elements) {
         if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;

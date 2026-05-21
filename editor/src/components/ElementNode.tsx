@@ -3,6 +3,9 @@ import type { CanonicalElement } from '../model/elements.ts';
 import { getRenderer } from '../renderers/index.tsx';
 import { processSvg, extractInnerSvg } from '../utils/processor.ts';
 import { serializeToSvg, elementsToCsvRows } from '../model/serialize.ts';
+import { getElementModule } from '../elements/registry.ts';
+import { useGeometryContext, isPipelineV2 } from '../adapters/svg/context.tsx';
+import type { Draw2DContext } from '../elements/archetypes.ts';
 
 /**
  * Per-element SVG HTML cache (fallback path only).
@@ -36,6 +39,32 @@ interface ElementNodeProps {
  * Uses registered renderer if available, falls back to serialize→process pipeline.
  */
 export const ElementNode = React.memo(function ElementNode({ element }: ElementNodeProps) {
+  // ─── V2 pipeline: element-module path ────────────────────────────────────
+  // Hooks must run unconditionally — gate logic on the result.
+  const ctx = useGeometryContext();
+  if (isPipelineV2() && ctx) {
+    const mod = getElementModule(element.tableName);
+    if (mod) {
+      const facts = mod.geometry(element, ctx);
+      if (facts !== null) {
+        const drawCtx: Draw2DContext = {
+          elementId: element.id,
+          // TODO: wire selection/hover via separate overlay in 3b; for now keep
+          // ElementNode's React.memo by not subscribing to selection state.
+          selected: false,
+          hovered: false,
+          scale: 1,
+          levelElevation: ctx.levelElevation,
+        };
+        const result = mod.draw2D(facts, drawCtx);
+        if (result !== null && result !== undefined) {
+          return <g transform="scale(1,-1)">{result}</g>;
+        }
+      }
+    }
+  }
+
+  // ─── V1 fallback: original renderer registry ─────────────────────────────
   const render = getRenderer(element.tableName);
   if (render) {
     const result = render(element);

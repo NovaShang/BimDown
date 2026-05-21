@@ -18,6 +18,7 @@ import { pruneCache } from './ElementNode.tsx';
 import { REVERSE_PREFIX_MAP, toSelectionId, toElementId } from '../model/ids.ts';
 import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
+import { SVGGeometryProvider } from '../adapters/svg/context.tsx';
 
 import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
@@ -393,6 +394,20 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     handler.onPointerUp?.(toolCtx, e);
   }, [toolCtx, findElementId, globalDispatch]);
 
+  // ────── GEOMETRY CONTEXT INPUTS ──────
+  // Hooks must run unconditionally — compute these before any early return.
+  const currentLevelData = state.project?.levels.find(l => l.id === state.currentLevel) ?? null;
+  const allLevels = state.project?.levels ?? [];
+  // In edit mode, document holds the live element map. In view mode, layers
+  // are the only source — build a map from the processed layers so the
+  // geometry context can resolve neighbors / hosted children either way.
+  const allElements = useMemo<Map<string, CanonicalElement> | null>(() => {
+    if (state.document?.elements) return state.document.elements;
+    const map = new Map<string, CanonicalElement>();
+    for (const layer of layers) for (const el of layer.elements) map.set(el.id, el);
+    return map.size > 0 ? map : null;
+  }, [state.document, layers]);
+
   // ────── RENDER ──────
   const handler = getToolHandler(activeTool);
   const cursorClass = `cursor-${handler.cursor}`;
@@ -413,6 +428,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   const t = transformRef.current;
 
   return (
+    <SVGGeometryProvider level={currentLevelData} allLevels={allLevels} allElements={allElements}>
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
@@ -530,6 +546,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
       <HoverHighlight svgRef={svgRef} />
       <HoverTooltip />
     </div>
+    </SVGGeometryProvider>
   );
 });
 
