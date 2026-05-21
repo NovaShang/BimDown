@@ -135,6 +135,8 @@ Every Feature has `properties.id` matching the paired CSV row.
 }
 ```
 
+**Disconnected polygons — no `MultiPolygon`**: When a split produces multiple disconnected pieces (typical: slicing an L-shaped slab through its notch), emit them as **separate Features with suffixed ids** (`sl-18a`, `sl-18b`, …), each a single `Polygon`. `MultiPolygon` / `MultiLineString` / `MultiPoint` / `GeometryCollection` are not allowed in canonical form. The `bimdown-cli` library's `writeBimDownGeometry` does this automatically when JSTS operations return Multi* results — if you write geometry through it, you don't have to think about the rule.
+
 ### AI input flexibility (build normalizes everything)
 
 You can write any of these equivalent forms; `bimdown build` normalizes to canonical:

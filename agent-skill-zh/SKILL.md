@@ -130,6 +130,8 @@ project/
 }
 ```
 
+**断开的多边形——不要写 `MultiPolygon`**:切分产生几何上断开的多块时(典型场景:L 形板被切到拐角),拆成多个 Feature,id 用后缀(`sl-18a`、`sl-18b`)区分,每个仍是单 `Polygon`。`MultiPolygon` / `MultiLineString` / `MultiPoint` / `GeometryCollection` 在 canonical form 中禁止。`bimdown-cli` 库的 `writeBimDownGeometry` 在 JSTS 返回 Multi* 时会自动做这件事——只要走库写,你不用自己关心这条规则。
+
 ### AI 写法灵活,build 自动归一化
 
 你可以用以下任意形式书写,`bimdown build` 会自动归一化:
