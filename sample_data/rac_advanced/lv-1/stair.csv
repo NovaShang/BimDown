@@ -1,6 +1,6 @@
-﻿id,number,base_offset,mesh_file,start_z,end_z,top_level_id,top_offset,width,step_count
-st-1,,0,,,,lv-2,0,1.625,25
-st-2,,0,,,,lv-2,0,1.14,25
-st-3,,0,,,,lv-2,0,1.14,25
-st-4,,0,,,,lv-2,0,1.14,25
-st-5,,0,,,,lv-2,0,1.625,25
+id,number,mesh_file,top_level_id,width,step_count
+st-1,,,lv-2,1.625,25
+st-2,,,lv-2,1.14,25
+st-3,,,lv-2,1.14,25
+st-4,,,lv-2,1.14,25
+st-5,,,lv-2,1.625,25

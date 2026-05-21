@@ -1,14 +1,14 @@
 /**
  * Renders a BimDown project level to a composite SVG floor plan.
- * Reads all SVG files for a level, normalizes geometry, and produces
- * a single colored SVG with walls, doors, windows, slabs, spaces, etc.
+ * Reads all GeoJSON files for the level, composes a single colored SVG.
+ * Output is an image (SVG/PNG), not storage.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { discoverLayout } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
-import { parseSvgFile, type SvgElement } from './utils/svg.js';
-import { SVG_FILE_NAMES } from './schema/registry.js';
+import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
+import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -33,286 +33,48 @@ const COLORS: Record<string, { stroke: string; fill?: string }> = {
 
 const DEFAULT_COLOR = { stroke: '#666' };
 
-// Attributes we override — filter these from original SVG attrs to avoid duplicates
-const OVERRIDE_ATTRS = new Set(['stroke', 'fill', 'stroke-width', 'stroke-linecap']);
+// Default stroke widths per table (when CSV does not specify thickness)
+const DEFAULT_STROKE_WIDTH: Record<string, number> = {
+  wall: 0.2,
+  structure_wall: 0.2,
+  curtain_wall: 0.1,
+  room_separator: 0.05,
+  stair: 1.0,
+  ramp: 1.0,
+  railing: 0.05,
+  beam: 0.2,
+  brace: 0.2,
+  duct: 0.3,
+  pipe: 0.1,
+  cable_tray: 0.2,
+  conduit: 0.05,
+};
 
-// Tables to render in order (back to front)
 const RENDER_ORDER = [
   'slab', 'structure_slab',
-  'wall', 'structure_wall', 'room_separator',
+  'wall', 'structure_wall', 'room_separator', 'curtain_wall',
   'column', 'structure_column',
   'beam', 'brace',
-  'stair',
+  'stair', 'ramp', 'railing',
   'duct', 'pipe', 'cable_tray', 'conduit',
-  'equipment', 'terminal',
+  'equipment', 'terminal', 'mep_node',
   'door', 'window',
   'space',
 ];
 
-function elementBounds(el: SvgElement): { minX: number; minY: number; maxX: number; maxY: number } | null {
-  switch (el.tag) {
-    case 'path': {
-      const d = el.attrs.d ?? '';
-      const m = d.match(/M\s*(-?[\d.]+)[,\s]+(-?[\d.]+)\s*L\s*(-?[\d.]+)[,\s]+(-?[\d.]+)/);
-      if (!m) return null;
-      const x1 = parseFloat(m[1]), y1 = parseFloat(m[2]);
-      const x2 = parseFloat(m[3]), y2 = parseFloat(m[4]);
-      const sw = parseFloat(el.attrs['stroke-width'] ?? '0.2') / 2;
-      return { minX: Math.min(x1, x2) - sw, minY: Math.min(y1, y2) - sw, maxX: Math.max(x1, x2) + sw, maxY: Math.max(y1, y2) + sw };
-    }
-    case 'line': {
-      const x1 = parseFloat(el.attrs.x1 ?? '0'), y1 = parseFloat(el.attrs.y1 ?? '0');
-      const x2 = parseFloat(el.attrs.x2 ?? '0'), y2 = parseFloat(el.attrs.y2 ?? '0');
-      const sw = parseFloat(el.attrs['stroke-width'] ?? '0') / 2;
-      return { minX: Math.min(x1, x2) - sw, minY: Math.min(y1, y2) - sw, maxX: Math.max(x1, x2) + sw, maxY: Math.max(y1, y2) + sw };
-    }
-    case 'rect': {
-      const x = parseFloat(el.attrs.x ?? '0'), y = parseFloat(el.attrs.y ?? '0');
-      const w = parseFloat(el.attrs.width ?? '0'), h = parseFloat(el.attrs.height ?? '0');
-      return { minX: x, minY: y, maxX: x + w, maxY: y + h };
-    }
-    case 'circle': {
-      const cx = parseFloat(el.attrs.cx ?? '0'), cy = parseFloat(el.attrs.cy ?? '0');
-      const r = parseFloat(el.attrs.r ?? '0');
-      return { minX: cx - r, minY: cy - r, maxX: cx + r, maxY: cy + r };
-    }
-    case 'polygon': {
-      const pts = (el.attrs.points ?? '').trim().split(/\s+/).map((p) => {
-        const [x, y] = p.split(',').map(Number);
-        return { x: x ?? 0, y: y ?? 0 };
-      });
-      if (pts.length === 0) return null;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const p of pts) {
-        minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-        maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-      }
-      return { minX, minY, maxX, maxY };
-    }
-    default:
-      return null;
-  }
-}
-
-function renderElement(el: SvgElement, tableName: string): string {
-  const color = COLORS[tableName] ?? DEFAULT_COLOR;
-  const isDashed = tableName === 'room_separator';
-
-  switch (el.tag) {
-    case 'path': {
-      const attrs = Object.entries(el.attrs)
-        .filter(([k]) => !OVERRIDE_ATTRS.has(k))
-        .map(([k, v]) => `${k}="${v}"`)
-        .join(' ');
-      const sw = el.attrs['stroke-width'] ?? '0.2';
-      const dash = isDashed ? ' stroke-dasharray="0.2,0.1"' : '';
-      return `    <path ${attrs} stroke="${color.stroke}" stroke-width="${sw}" stroke-linecap="square"${dash} />`;
-    }
-    case 'line': {
-      const attrs = Object.entries(el.attrs)
-        .filter(([k]) => !OVERRIDE_ATTRS.has(k))
-        .map(([k, v]) => `${k}="${v}"`)
-        .join(' ');
-      const sw = el.attrs['stroke-width'] ?? '0.2';
-      const dash = isDashed ? ' stroke-dasharray="0.2,0.1"' : '';
-      return `    <line ${attrs} stroke="${color.stroke}" stroke-width="${sw}" stroke-linecap="square"${dash} />`;
-    }
-    case 'polygon': {
-      const fill = color.fill ?? 'none';
-      const attrs = Object.entries(el.attrs)
-        .filter(([k]) => !OVERRIDE_ATTRS.has(k))
-        .map(([k, v]) => `${k}="${v}"`)
-        .join(' ');
-      return `    <polygon ${attrs} fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
-    }
-    case 'rect': {
-      const fill = color.fill ?? 'none';
-      const attrs = Object.entries(el.attrs)
-        .filter(([k]) => !OVERRIDE_ATTRS.has(k))
-        .map(([k, v]) => `${k}="${v}"`)
-        .join(' ');
-      return `    <rect ${attrs} fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
-    }
-    case 'circle': {
-      const fill = color.fill ?? 'none';
-      const attrs = Object.entries(el.attrs)
-        .filter(([k]) => !OVERRIDE_ATTRS.has(k))
-        .map(([k, v]) => `${k}="${v}"`)
-        .join(' ');
-      return `    <circle ${attrs} fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
-    }
-    default:
-      return '';
-  }
-}
-
-function escapeXml(s: string): string {
-  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-}
-
-// CSV-only element types that are rendered from CSV data, not SVG files
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
 
-interface CsvOnlyElement {
+interface RenderedElement {
   tableName: string;
-  svgMarkup: string;
+  svg: string;
   bounds: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
-/**
- * Generate SVG markup for doors/windows from CSV position + host wall geometry.
- */
-function renderHostedElements(
-  levelDir: { path: string },
-  tableName: string,
-  wallElements: Map<string, SvgElement>,
-): CsvOnlyElement[] {
-  const csvPath = join(levelDir.path, `${tableName}.csv`);
-  if (!existsSync(csvPath)) return [];
-
-  const csv = readCsv(csvPath);
-  const color = COLORS[tableName] ?? DEFAULT_COLOR;
-  const results: CsvOnlyElement[] = [];
-
-  for (const row of csv.rows) {
-    const hostId = row.host_id;
-    const position = parseFloat(row.position ?? '');
-    const width = parseFloat(row.width ?? '0');
-    if (!hostId || isNaN(position)) continue;
-
-    const wall = wallElements.get(hostId);
-    if (!wall) continue;
-
-    let wx1: number, wy1: number, wx2: number, wy2: number;
-    if (wall.tag === 'path') {
-      const d = wall.attrs.d ?? '';
-      const m = d.match(/M\s*(-?[\d.]+)[,\s]+(-?[\d.]+)\s*L\s*(-?[\d.]+)[,\s]+(-?[\d.]+)/);
-      if (!m) continue;
-      wx1 = parseFloat(m[1]); wy1 = parseFloat(m[2]);
-      wx2 = parseFloat(m[3]); wy2 = parseFloat(m[4]);
-    } else {
-      wx1 = parseFloat(wall.attrs.x1 ?? '0');
-      wy1 = parseFloat(wall.attrs.y1 ?? '0');
-      wx2 = parseFloat(wall.attrs.x2 ?? '0');
-      wy2 = parseFloat(wall.attrs.y2 ?? '0');
-    }
-
-    // Direction along wall, normalized
-    const dx = wx2 - wx1;
-    const dy = wy2 - wy1;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len === 0) continue;
-    const ux = dx / len;
-    const uy = dy / len;
-
-    // Center point along wall at distance (meters) from start
-    const cx = wx1 + ux * position;
-    const cy = wy1 + uy * position;
-
-    // Opening line: width/2 in each direction along wall
-    const halfW = width / 2;
-    const x1 = cx - ux * halfW;
-    const y1 = cy - uy * halfW;
-    const x2 = cx + ux * halfW;
-    const y2 = cy + uy * halfW;
-
-    // Doors/windows are rendered on top of their host wall and must "pop" visually
-    // even when the wall itself is 0.2–0.3m thick. Use bold strokes:
-    //   door   → 0.22m red   (#e63946)
-    //   window → 0.18m teal  (#2a9d8f)
-    const sw = tableName === 'door' ? '0.22' : '0.18';
-    const markup = `    <line id="${row.id}" x1="${x1.toFixed(3)}" y1="${y1.toFixed(3)}" x2="${x2.toFixed(3)}" y2="${y2.toFixed(3)}" stroke="${color.stroke}" stroke-width="${sw}" />`;
-
-    results.push({
-      tableName,
-      svgMarkup: markup,
-      bounds: {
-        minX: Math.min(x1, x2),
-        minY: Math.min(y1, y2),
-        maxX: Math.max(x1, x2),
-        maxY: Math.max(y1, y2),
-      },
-    });
-  }
-
-  return results;
-}
-
-/**
- * Generate SVG markup for spaces.
- * If space.svg exists (generated by build), render polygons with fill.
- * Otherwise, fallback to seed point circles from CSV.
- */
-function renderSpaces(levelDir: { path: string }): CsvOnlyElement[] {
-  const csvPath = join(levelDir.path, 'space.csv');
-  if (!existsSync(csvPath)) return [];
-
-  const csv = readCsv(csvPath);
-  const color = COLORS.space ?? DEFAULT_COLOR;
-  const results: CsvOnlyElement[] = [];
-
-  // Build name lookup from CSV
-  const nameMap = new Map<string, string>();
-  for (const row of csv.rows) {
-    nameMap.set(row.id, row.name ?? row.id ?? '');
-  }
-
-  // If space.svg exists (generated by build), render polygons
-  const svgPath = join(levelDir.path, 'space.svg');
-  if (existsSync(svgPath)) {
-    try {
-      const svg = parseSvgFile(svgPath);
-      for (const el of svg.elements) {
-        if (el.tag !== 'polygon') continue;
-        const points = (el.attrs.points ?? '').trim().split(/\s+/).map((p) => {
-          const [x, y] = p.split(',').map(Number);
-          return { x: x ?? 0, y: y ?? 0 };
-        });
-        if (points.length < 3) continue;
-
-        // Compute bounds and centroid
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        let cx = 0, cy = 0;
-        for (const p of points) {
-          minX = Math.min(minX, p.x); minY = Math.min(minY, p.y);
-          maxX = Math.max(maxX, p.x); maxY = Math.max(maxY, p.y);
-          cx += p.x; cy += p.y;
-        }
-        cx /= points.length; cy /= points.length;
-
-        const name = nameMap.get(el.id) ?? el.id;
-        let markup = `    <polygon id="${el.id}" points="${el.attrs.points}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />`;
-        markup += `\n    <text x="${cx.toFixed(3)}" y="${cy.toFixed(3)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${(-2 * cy).toFixed(3)})">${escapeXml(name)}</text>`;
-
-        results.push({
-          tableName: 'space',
-          svgMarkup: markup,
-          bounds: { minX, minY, maxX, maxY },
-        });
-      }
-      if (results.length > 0) return results;
-    } catch { /* fall through to seed point rendering */ }
-  }
-
-  // Fallback: render seed point circles
-  for (const row of csv.rows) {
-    const x = parseFloat(row.x ?? '');
-    const y = parseFloat(row.y ?? '');
-    if (isNaN(x) || isNaN(y)) continue;
-
-    const name = row.name ?? row.id ?? '';
-    const r = 0.15;
-    let markup = `    <circle id="${row.id}" cx="${x.toFixed(3)}" cy="${y.toFixed(3)}" r="${r}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />`;
-    markup += `\n    <text x="${x.toFixed(3)}" y="${y.toFixed(3)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${(-2 * y).toFixed(3)})">${escapeXml(name)}</text>`;
-
-    results.push({
-      tableName: 'space',
-      svgMarkup: markup,
-      bounds: { minX: x - 1, minY: y - 1, maxX: x + 1, maxY: y + 1 },
-    });
-  }
-
-  return results;
+interface WallRef {
+  id: string;
+  start: { x: number; y: number };
+  end: { x: number; y: number };
+  thickness: number;
 }
 
 export function renderLevel(projectDir: string, levelId: string): string {
@@ -322,68 +84,70 @@ export function renderLevel(projectDir: string, levelId: string): string {
     throw new Error(`Level "${levelId}" not found. Available: ${layout.levelDirs.map((d) => d.name).join(', ')}`);
   }
 
-  // Collect all SVG-based elements with bounds
-  const allElements: { tableName: string; el: SvgElement }[] = [];
-  const csvOnlyElements: CsvOnlyElement[] = [];
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-  // Collect wall elements for hosted element (door/window) position lookup.
-  // Hosted elements may reference walls that live in global/ (multi-story or
-  // curtain walls), so we index walls from BOTH the current level AND global/.
-  const wallElements = new Map<string, SvgElement>();
-
-  // Render sources: global/ first (drawn underneath), then the current level.
-  // Global elements (multi-story walls, stairs, cross-floor MEP) are visible on
-  // every level — without this, doors/windows hosted on global walls would fail
-  // to render and the exterior envelope would disappear.
-  const renderSources: { path: string }[] = [
+  // Render sources (drawn back to front): global/ underlay, then current level.
+  const sources: { path: string }[] = [
     { path: layout.globalDir },
     { path: levelDir.path },
   ];
 
-  for (const tableName of RENDER_ORDER) {
-    if (CSV_ONLY_TABLES.has(tableName)) continue;
+  // Index walls for door/window placement.
+  const wallById = new Map<string, WallRef>();
+  const csvThicknesses = new Map<string, Map<string, number>>(); // tableName -> id -> thickness
 
-    const svgName = SVG_FILE_NAMES[tableName];
-    if (!svgName) continue;
-
-    for (const src of renderSources) {
-      const svgPath = join(src.path, svgName + '.svg');
-      if (!existsSync(svgPath)) continue;
-
-      const svg = parseSvgFile(svgPath);
-      for (const el of svg.elements) {
-        allElements.push({ tableName, el });
-        if (tableName === 'wall') wallElements.set(el.id, el);
-        const b = elementBounds(el);
-        if (b) {
-          minX = Math.min(minX, b.minX);
-          minY = Math.min(minY, b.minY);
-          maxX = Math.max(maxX, b.maxX);
-          maxY = Math.max(maxY, b.maxY);
-        }
+  for (const src of sources) {
+    indexWalls(src.path, wallById);
+    for (const t of ['wall', 'structure_wall', 'curtain_wall']) {
+      const m = readThicknessFromCsv(src.path, t);
+      if (m.size > 0) {
+        const existing = csvThicknesses.get(t) ?? new Map<string, number>();
+        for (const [k, v] of m) existing.set(k, v);
+        csvThicknesses.set(t, existing);
       }
     }
   }
 
-  // Render CSV-only elements
-  for (const tableName of ['door', 'window'] as const) {
-    csvOnlyElements.push(...renderHostedElements(levelDir, tableName, wallElements));
-  }
-  csvOnlyElements.push(...renderSpaces(levelDir));
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  const elements: RenderedElement[] = [];
 
-  for (const el of csvOnlyElements) {
-    minX = Math.min(minX, el.bounds.minX);
-    minY = Math.min(minY, el.bounds.minY);
-    maxX = Math.max(maxX, el.bounds.maxX);
-    maxY = Math.max(maxY, el.bounds.maxY);
+  for (const tableName of RENDER_ORDER) {
+    if (CSV_ONLY_TABLES.has(tableName)) continue;
+    const fileBase = GEOJSON_FILE_NAMES[tableName];
+    if (!fileBase) continue;
+
+    for (const src of sources) {
+      const path = join(src.path, `${fileBase}.geojson`);
+      if (!existsSync(path)) continue;
+
+      let fc;
+      try { fc = parseGeoJsonFile(path); }
+      catch { continue; }
+
+      const thicknessMap = csvThicknesses.get(tableName);
+      for (const feat of fc.features) {
+        const rendered = renderFeature(tableName, feat, thicknessMap);
+        if (rendered) elements.push(rendered);
+      }
+    }
   }
 
-  if (allElements.length === 0 && csvOnlyElements.length === 0) {
+  // Door / window (CSV + host wall)
+  for (const t of ['door', 'window'] as const) {
+    elements.push(...renderHostedFromCsv(levelDir.path, t, wallById));
+  }
+  // Space (CSV seed or generated boundary geojson)
+  elements.push(...renderSpaces(levelDir.path));
+
+  for (const e of elements) {
+    minX = Math.min(minX, e.bounds.minX);
+    minY = Math.min(minY, e.bounds.minY);
+    maxX = Math.max(maxX, e.bounds.maxX);
+    maxY = Math.max(maxY, e.bounds.maxY);
+  }
+
+  if (elements.length === 0) {
     return '<?xml version="1.0" encoding="utf-8"?>\n<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">\n  <text x="5" y="5" text-anchor="middle" font-size="1">No geometry found</text>\n</svg>';
   }
 
-  // viewBox: Y-flipped coordinates
   const pad = Math.max(maxX - minX, maxY - minY) * 0.05;
   const vbX = minX - pad;
   const vbY = -(maxY + pad);
@@ -392,23 +156,200 @@ export function renderLevel(projectDir: string, levelId: string): string {
 
   const parts: string[] = [
     '<?xml version="1.0" encoding="utf-8"?>',
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX.toFixed(3)} ${vbY.toFixed(3)} ${vbW.toFixed(3)} ${vbH.toFixed(3)}">`,
-    `  <rect x="${vbX.toFixed(3)}" y="${vbY.toFixed(3)}" width="${vbW.toFixed(3)}" height="${vbH.toFixed(3)}" fill="white" />`,
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${fmt(vbX)} ${fmt(vbY)} ${fmt(vbW)} ${fmt(vbH)}">`,
+    `  <rect x="${fmt(vbX)}" y="${fmt(vbY)}" width="${fmt(vbW)}" height="${fmt(vbH)}" fill="white" />`,
     '  <g transform="scale(1,-1)">',
   ];
-
-  // Render SVG-based elements in order
-  for (const { tableName, el } of allElements) {
-    const line = renderElement(el, tableName);
-    if (line) parts.push(line);
-  }
-
-  // Render CSV-only elements
-  for (const el of csvOnlyElements) {
-    parts.push(el.svgMarkup);
-  }
-
-  parts.push('  </g>');
-  parts.push('</svg>');
+  for (const e of elements) parts.push(e.svg);
+  parts.push('  </g>', '</svg>');
   return parts.join('\n');
+}
+
+// ─── Per-feature rendering ────────────────────────────────
+
+function renderFeature(
+  tableName: string,
+  feat: BimDownFeature,
+  thicknessMap: Map<string, number> | undefined,
+): RenderedElement | null {
+  const id = String(feat.properties?.id ?? '');
+  if (!id) return null;
+  const color = COLORS[tableName] ?? DEFAULT_COLOR;
+  const isDashed = tableName === 'room_separator';
+
+  const g = feat.geometry;
+  switch (g.type) {
+    case 'LineString': {
+      if (g.coordinates.length < 2) return null;
+      const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
+      const sw = thicknessMap?.get(id) ?? DEFAULT_STROKE_WIDTH[tableName] ?? 0.1;
+      const arc = feat.properties.arc as ArcParams | undefined;
+      const d = arc
+        ? `M ${fmt(a[0])},${fmt(a[1])} A ${fmt(arc.radius)},${fmt(arc.radius)} 0 ${arc.large_arc ? 1 : 0},${arc.sweep ? 1 : 0} ${fmt(b[0])},${fmt(b[1])}`
+        : `M ${fmt(a[0])},${fmt(a[1])} L ${fmt(b[0])},${fmt(b[1])}`;
+      const dash = isDashed ? ' stroke-dasharray="0.2,0.1"' : '';
+      const svg = `    <path id="${id}" d="${d}" stroke="${color.stroke}" stroke-width="${fmt(sw)}" stroke-linecap="square" fill="none"${dash} />`;
+      const hw = sw / 2;
+      return {
+        tableName, svg,
+        bounds: { minX: Math.min(a[0], b[0]) - hw, minY: Math.min(a[1], b[1]) - hw, maxX: Math.max(a[0], b[0]) + hw, maxY: Math.max(a[1], b[1]) + hw },
+      };
+    }
+    case 'Point': {
+      const [x, y] = g.coordinates;
+      const fill = color.fill ?? color.stroke;
+      const r = 0.15;
+      const svg = `    <circle id="${id}" cx="${fmt(x)}" cy="${fmt(y)}" r="${r}" fill="${fill}" stroke="${color.stroke}" stroke-width="0.02" />`;
+      return { tableName, svg, bounds: { minX: x - r, minY: y - r, maxX: x + r, maxY: y + r } };
+    }
+    case 'Polygon': {
+      const ring = g.coordinates[0];
+      if (!ring || ring.length < 3) return null;
+      const pts = ring.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(' ');
+      const fill = color.fill ?? 'none';
+      const svg = `    <polygon id="${id}" points="${pts}" fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of ring) {
+        minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+        maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
+      }
+      return { tableName, svg, bounds: { minX, minY, maxX, maxY } };
+    }
+  }
+  return null;
+}
+
+// ─── Walls/host indexing ──────────────────────────────────
+
+function indexWalls(dirPath: string, out: Map<string, WallRef>): void {
+  for (const t of ['wall', 'curtain_wall', 'structure_wall']) {
+    const path = join(dirPath, `${GEOJSON_FILE_NAMES[t]}.geojson`);
+    if (!existsSync(path)) continue;
+    let fc;
+    try { fc = parseGeoJsonFile(path); } catch { continue; }
+    const thicknessMap = readThicknessFromCsv(dirPath, t);
+    for (const f of fc.features) {
+      if (f.geometry.type !== 'LineString' || f.geometry.coordinates.length < 2) continue;
+      const id = String(f.properties.id ?? '');
+      if (!id) continue;
+      const a = f.geometry.coordinates[0], b = f.geometry.coordinates[f.geometry.coordinates.length - 1];
+      out.set(id, {
+        id,
+        start: { x: a[0], y: a[1] },
+        end: { x: b[0], y: b[1] },
+        thickness: thicknessMap.get(id) ?? 0.2,
+      });
+    }
+  }
+}
+
+function readThicknessFromCsv(dirPath: string, tableName: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const csvPath = join(dirPath, `${tableName}.csv`);
+  if (!existsSync(csvPath)) return out;
+  const csv = readCsv(csvPath);
+  for (const row of csv.rows) {
+    const t = parseFloat(row.thickness ?? '');
+    if (!isNaN(t)) out.set(row.id, t);
+  }
+  return out;
+}
+
+// ─── Door / window (hosted) ───────────────────────────────
+
+function renderHostedFromCsv(levelPath: string, tableName: 'door' | 'window', wallById: Map<string, WallRef>): RenderedElement[] {
+  const csvPath = join(levelPath, `${tableName}.csv`);
+  if (!existsSync(csvPath)) return [];
+  const csv = readCsv(csvPath);
+  const color = COLORS[tableName] ?? DEFAULT_COLOR;
+  const out: RenderedElement[] = [];
+
+  for (const row of csv.rows) {
+    const hostId = row.host_id;
+    const pos = parseFloat(row.position ?? '');
+    const width = parseFloat(row.width ?? '0');
+    if (!hostId || isNaN(pos) || isNaN(width)) continue;
+    const wall = wallById.get(hostId);
+    if (!wall) continue;
+
+    const dx = wall.end.x - wall.start.x;
+    const dy = wall.end.y - wall.start.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len === 0) continue;
+    const ux = dx / len, uy = dy / len;
+    const cx = wall.start.x + ux * pos;
+    const cy = wall.start.y + uy * pos;
+    const half = width / 2;
+    const x1 = cx - ux * half, y1 = cy - uy * half;
+    const x2 = cx + ux * half, y2 = cy + uy * half;
+
+    const sw = tableName === 'door' ? 0.22 : 0.18;
+    const svg = `    <line id="${row.id}" x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="${color.stroke}" stroke-width="${sw}" />`;
+    out.push({
+      tableName, svg,
+      bounds: { minX: Math.min(x1, x2), minY: Math.min(y1, y2), maxX: Math.max(x1, x2), maxY: Math.max(y1, y2) },
+    });
+  }
+  return out;
+}
+
+// ─── Spaces ───────────────────────────────────────────────
+
+function renderSpaces(levelPath: string): RenderedElement[] {
+  const csvPath = join(levelPath, 'space.csv');
+  if (!existsSync(csvPath)) return [];
+  const csv = readCsv(csvPath);
+  const color = COLORS.space ?? DEFAULT_COLOR;
+  const out: RenderedElement[] = [];
+
+  const nameMap = new Map<string, string>();
+  for (const row of csv.rows) nameMap.set(row.id, row.name ?? row.id ?? '');
+
+  const geomPath = join(levelPath, 'space.geojson');
+  if (existsSync(geomPath)) {
+    try {
+      const fc = parseGeoJsonFile(geomPath);
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'Polygon') continue;
+        const ring = f.geometry.coordinates[0];
+        if (!ring || ring.length < 3) continue;
+        const id = String(f.properties.id ?? '');
+        const pts = ring.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(' ');
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let cx = 0, cy = 0;
+        for (const p of ring) {
+          minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+          maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
+          cx += p[0]; cy += p[1];
+        }
+        cx /= ring.length; cy /= ring.length;
+        const name = nameMap.get(id) ?? id;
+        const svg = `    <polygon id="${id}" points="${pts}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />\n    <text x="${fmt(cx)}" y="${fmt(cy)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * cy)})">${escapeXml(name)}</text>`;
+        out.push({ tableName: 'space', svg, bounds: { minX, minY, maxX, maxY } });
+      }
+      if (out.length > 0) return out;
+    } catch { /* fall through */ }
+  }
+
+  // Fallback: seed-point circles from CSV
+  for (const row of csv.rows) {
+    const x = parseFloat(row.x ?? '');
+    const y = parseFloat(row.y ?? '');
+    if (isNaN(x) || isNaN(y)) continue;
+    const name = row.name ?? row.id ?? '';
+    const svg = `    <circle id="${row.id}" cx="${fmt(x)}" cy="${fmt(y)}" r="0.15" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />\n    <text x="${fmt(x)}" y="${fmt(y)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * y)})">${escapeXml(name)}</text>`;
+    out.push({ tableName: 'space', svg, bounds: { minX: x - 1, minY: y - 1, maxX: x + 1, maxY: y + 1 } });
+  }
+  return out;
+}
+
+// ─── Helpers ──────────────────────────────────────────────
+
+function fmt(n: number): string {
+  if (!isFinite(n)) return '0';
+  return Number(n.toFixed(3)).toString();
+}
+
+function escapeXml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }

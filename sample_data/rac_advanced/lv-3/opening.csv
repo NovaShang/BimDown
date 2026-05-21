@@ -1,5 +1,5 @@
-﻿id,number,level_id,base_offset,mesh_file,host_id,position,width,height,shape
-sl-2,,lv-3,0,,sl-2,,,,
-sl-2,,lv-3,0,,sl-2,,,,
-sl-2,,lv-3,0,,sl-2,,,,
-sl-2,,lv-3,0,,sl-2,,,,
+id,number,level_id,mesh_file,host_id,position,width,height,shape
+sl-2,,lv-3,,sl-2,,,,
+sl-2,,lv-3,,sl-2,,,,
+sl-2,,lv-3,,sl-2,,,,
+sl-2,,lv-3,,sl-2,,,,

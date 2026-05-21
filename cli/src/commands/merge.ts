@@ -1,14 +1,40 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join, basename } from 'node:path';
 import { readCsv, writeCsv, type CsvData } from '../utils/csv.js';
-import { parseSvgFile, writeMergedSvg, type MergeSvgInput } from '../utils/svg.js';
+import {
+  parseGeoJsonFile,
+  stringifyFeatureCollection,
+  type BimDownFeature,
+  type BimDownFeatureCollection,
+} from '../utils/geojson.js';
 import { discoverLayout, listFiles, type ProjectLayout } from '../utils/fs.js';
 import {
   buildRegistry,
   getSpecDir,
-  SVG_FILE_NAMES,
+  GEOJSON_FILE_NAMES,
 } from '../schema/registry.js';
 import type { ResolvedTable } from '../schema/types.js';
+
+interface MergeGeomInput {
+  features: BimDownFeature[];
+  idRemap: Map<string, string>;
+}
+
+function writeMergedGeoJson(inputs: MergeGeomInput[]): string {
+  const features: BimDownFeature[] = [];
+  for (const input of inputs) {
+    for (const f of input.features) {
+      const oldId = String(f.properties?.id ?? '');
+      const newId = input.idRemap.get(oldId) ?? oldId;
+      features.push({
+        ...f,
+        properties: { ...f.properties, id: newId },
+      });
+    }
+  }
+  const fc: BimDownFeatureCollection = { type: 'FeatureCollection', features };
+  return stringifyFeatureCollection(fc);
+}
 
 const ELEVATION_TOLERANCE = 0.001;
 const GRID_COORD_TOLERANCE = 0.01;
@@ -25,10 +51,10 @@ interface SourceData {
   levels: CsvData;
   grids: CsvData | null;
   idMap: CsvData | null;
-  /** levelDirName -> tableName -> { csv, svgFile? } */
-  levelData: Map<string, Map<string, { csv: CsvData; svgFile: string | null }>>;
+  /** levelDirName -> tableName -> { csv, geomFile? } */
+  levelData: Map<string, Map<string, { csv: CsvData; geomFile: string | null }>>;
   /** global table data (beam, stair, etc. that live in global/) */
-  globalData: Map<string, { csv: CsvData; svgFile: string | null }>;
+  globalData: Map<string, { csv: CsvData; geomFile: string | null }>;
 }
 
 export async function merge(dirs: string[], outputDir: string): Promise<void> {
@@ -97,7 +123,7 @@ function scanSource(dir: string, registry: Map<string, ResolvedTable>): SourceDa
   const idMap = existsSync(idMapPath) ? readCsv(idMapPath) : null;
 
   // Read global element tables (non-level, non-grid, non-_IdMap)
-  const globalData = new Map<string, { csv: CsvData; svgFile: string | null }>();
+  const globalData = new Map<string, { csv: CsvData; geomFile: string | null }>();
   if (existsSync(layout.globalDir)) {
     for (const f of listFiles(layout.globalDir)) {
       if (!f.endsWith('.csv')) continue;
@@ -105,24 +131,24 @@ function scanSource(dir: string, registry: Map<string, ResolvedTable>): SourceDa
       if (tableName === 'level' || tableName === 'grid' || tableName === '_IdMap') continue;
       if (!registry.has(tableName)) continue;
       const csv = readCsv(join(layout.globalDir, f));
-      const svgName = SVG_FILE_NAMES[tableName];
-      const svgFile = svgName ? join(layout.globalDir, svgName + '.svg') : null;
-      globalData.set(tableName, { csv, svgFile: svgFile && existsSync(svgFile) ? svgFile : null });
+      const geomName = GEOJSON_FILE_NAMES[tableName];
+      const geomFile = geomName ? join(layout.globalDir, geomName + '.geojson') : null;
+      globalData.set(tableName, { csv, geomFile: geomFile && existsSync(geomFile) ? geomFile : null });
     }
   }
 
   // Read per-level data
-  const levelData = new Map<string, Map<string, { csv: CsvData; svgFile: string | null }>>();
+  const levelData = new Map<string, Map<string, { csv: CsvData; geomFile: string | null }>>();
   for (const ld of layout.levelDirs) {
-    const tables = new Map<string, { csv: CsvData; svgFile: string | null }>();
+    const tables = new Map<string, { csv: CsvData; geomFile: string | null }>();
     for (const f of listFiles(ld.path)) {
       if (!f.endsWith('.csv')) continue;
       const tableName = f.replace('.csv', '');
       if (!registry.has(tableName)) continue;
       const csv = readCsv(join(ld.path, f));
-      const svgName = SVG_FILE_NAMES[tableName];
-      const svgFile = svgName ? join(ld.path, svgName + '.svg') : null;
-      tables.set(tableName, { csv, svgFile: svgFile && existsSync(svgFile) ? svgFile : null });
+      const geomName = GEOJSON_FILE_NAMES[tableName];
+      const geomFile = geomName ? join(ld.path, geomName + '.geojson') : null;
+      tables.set(tableName, { csv, geomFile: geomFile && existsSync(geomFile) ? geomFile : null });
     }
     if (tables.size > 0) {
       levelData.set(ld.name, tables);
@@ -436,38 +462,37 @@ function writeGlobalTables(
   const refFields = getRefFieldNames(registry);
 
   // Collect global tables across sources
-  const merged = new Map<string, { rows: Record<string, string>[]; headers: string[]; svgInputs: MergeSvgInput[] }>();
+  const merged = new Map<string, { rows: Record<string, string>[]; headers: string[]; geomInputs: MergeGeomInput[] }>();
 
   for (let si = 0; si < sources.length; si++) {
     for (const [tableName, data] of sources[si].globalData) {
       if (!merged.has(tableName)) {
-        merged.set(tableName, { rows: [], headers: data.csv.headers, svgInputs: [] });
+        merged.set(tableName, { rows: [], headers: data.csv.headers, geomInputs: [] });
       }
       const entry = merged.get(tableName)!;
 
-      // Remap and collect rows
       for (const row of data.csv.rows) {
         entry.rows.push(remapRow(row, remaps[si], refFields));
       }
 
-      // Collect SVG elements
-      if (data.svgFile) {
-        const svg = parseSvgFile(data.svgFile);
-        entry.svgInputs.push({ elements: svg.elements, idRemap: remaps[si] });
+      if (data.geomFile) {
+        try {
+          const fc = parseGeoJsonFile(data.geomFile);
+          entry.geomInputs.push({ features: fc.features, idRemap: remaps[si] });
+        } catch { /* ignore unparseable geometry */ }
       }
     }
   }
 
-  // Write
   for (const [tableName, entry] of merged) {
     if (entry.rows.length > 0) {
       writeCsv(join(outputDir, 'global', tableName + '.csv'), { headers: entry.headers, rows: entry.rows });
     }
-    if (entry.svgInputs.length > 0) {
-      const svgName = SVG_FILE_NAMES[tableName];
-      if (svgName) {
-        const content = writeMergedSvg(entry.svgInputs);
-        writeFileSync(join(outputDir, 'global', svgName + '.svg'), content, 'utf-8');
+    if (entry.geomInputs.length > 0) {
+      const geomName = GEOJSON_FILE_NAMES[tableName];
+      if (geomName) {
+        const content = writeMergedGeoJson(entry.geomInputs);
+        writeFileSync(join(outputDir, 'global', geomName + '.geojson'), content, 'utf-8');
       }
     }
   }
@@ -482,8 +507,8 @@ function writeLevelTables(
 ): void {
   const refFields = getRefFieldNames(registry);
 
-  // outputLevelDir -> tableName -> { rows, headers, svgInputs }
-  const merged = new Map<string, Map<string, { rows: Record<string, string>[]; headers: string[]; svgInputs: MergeSvgInput[] }>>();
+  // outputLevelDir -> tableName -> { rows, headers, geomInputs }
+  const merged = new Map<string, Map<string, { rows: Record<string, string>[]; headers: string[]; geomInputs: MergeGeomInput[] }>>();
 
   for (let si = 0; si < sources.length; si++) {
     const dirMap = levelDirMap.get(String(si))!;
@@ -498,7 +523,7 @@ function writeLevelTables(
 
       for (const [tableName, data] of tables) {
         if (!levelMerged.has(tableName)) {
-          levelMerged.set(tableName, { rows: [], headers: data.csv.headers, svgInputs: [] });
+          levelMerged.set(tableName, { rows: [], headers: data.csv.headers, geomInputs: [] });
         }
         const entry = levelMerged.get(tableName)!;
 
@@ -506,9 +531,11 @@ function writeLevelTables(
           entry.rows.push(remapRow(row, remaps[si], refFields));
         }
 
-        if (data.svgFile) {
-          const svg = parseSvgFile(data.svgFile);
-          entry.svgInputs.push({ elements: svg.elements, idRemap: remaps[si] });
+        if (data.geomFile) {
+          try {
+            const fc = parseGeoJsonFile(data.geomFile);
+            entry.geomInputs.push({ features: fc.features, idRemap: remaps[si] });
+          } catch { /* ignore */ }
         }
       }
     }
@@ -523,11 +550,11 @@ function writeLevelTables(
       if (entry.rows.length > 0) {
         writeCsv(join(dirPath, tableName + '.csv'), { headers: entry.headers, rows: entry.rows });
       }
-      if (entry.svgInputs.length > 0) {
-        const svgName = SVG_FILE_NAMES[tableName];
-        if (svgName) {
-          const content = writeMergedSvg(entry.svgInputs);
-          writeFileSync(join(dirPath, svgName + '.svg'), content, 'utf-8');
+      if (entry.geomInputs.length > 0) {
+        const geomName = GEOJSON_FILE_NAMES[tableName];
+        if (geomName) {
+          const content = writeMergedGeoJson(entry.geomInputs);
+          writeFileSync(join(dirPath, geomName + '.geojson'), content, 'utf-8');
         }
       }
     }

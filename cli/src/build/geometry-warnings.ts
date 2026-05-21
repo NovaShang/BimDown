@@ -1,9 +1,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildRegistry, getSpecDir, SVG_FILE_NAMES } from '../schema/registry.js';
-import { discoverLayout, listFiles } from '../utils/fs.js';
+import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES } from '../schema/registry.js';
+import { discoverLayout } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
-import { parseSvgFile, extractLineGeometry, type SvgElement } from '../utils/svg.js';
+import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
 
 const TOLERANCE = 0.01; // 1cm
 
@@ -25,14 +25,18 @@ export function validateGeometry(dir: string): string[] {
   for (const d of allDirs) {
     if (!existsSync(d.path)) continue;
     for (const table of ['wall', 'structure_wall', 'curtain_wall']) {
-      const svgPath = join(d.path, `${table}.svg`);
-      if (!existsSync(svgPath)) continue;
+      const geomName = GEOJSON_FILE_NAMES[table];
+      if (!geomName) continue;
+      const path = join(d.path, `${geomName}.geojson`);
+      if (!existsSync(path)) continue;
       try {
-        const svg = parseSvgFile(svgPath);
-        for (const el of svg.elements) {
-          if (el.tag !== 'path') continue;
-          const geo = extractLineGeometry(el);
-          wallGeometries.set(el.id, { length: geo.length });
+        const fc = parseGeoJsonFile(path);
+        for (const f of fc.features) {
+          if (f.geometry.type !== 'LineString') continue;
+          const id = String(f.properties?.id ?? '');
+          if (!id) continue;
+          const lg = extractLineGeometry(f);
+          wallGeometries.set(id, { length: lg.length });
         }
       } catch { /* skip */ }
     }
@@ -81,16 +85,20 @@ function validateLineConnectivity(levelDir: { name: string; path: string }): str
   const segments: Segment[] = [];
 
   for (const table of BOUNDARY_TABLES) {
-    const svgPath = join(levelDir.path, `${table}.svg`);
-    if (!existsSync(svgPath)) continue;
+    const geomName = GEOJSON_FILE_NAMES[table];
+    if (!geomName) continue;
+    const path = join(levelDir.path, `${geomName}.geojson`);
+    if (!existsSync(path)) continue;
     try {
-      const svg = parseSvgFile(svgPath);
-      for (const el of svg.elements) {
-        if (el.tag !== 'path') continue;
-        const geo = extractLineGeometry(el);
-        endpoints.push({ x: geo.start_x, y: geo.start_y, side: 'start', elementId: el.id, table });
-        endpoints.push({ x: geo.end_x, y: geo.end_y, side: 'end', elementId: el.id, table });
-        segments.push({ start_x: geo.start_x, start_y: geo.start_y, end_x: geo.end_x, end_y: geo.end_y, elementId: el.id, table });
+      const fc = parseGeoJsonFile(path);
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'LineString') continue;
+        const id = String(f.properties?.id ?? '');
+        if (!id) continue;
+        const lg = extractLineGeometry(f);
+        endpoints.push({ x: lg.start_x, y: lg.start_y, side: 'start', elementId: id, table });
+        endpoints.push({ x: lg.end_x, y: lg.end_y, side: 'end', elementId: id, table });
+        segments.push({ start_x: lg.start_x, start_y: lg.start_y, end_x: lg.end_x, end_y: lg.end_y, elementId: id, table });
       }
     } catch { /* skip */ }
   }
@@ -138,7 +146,7 @@ function validateLineConnectivity(levelDir: { name: string; path: string }): str
         : '';
 
     warnings.push(
-      `[warn] ${levelDir.name}/${ep.table}.svg  ${ep.elementId} ${ep.side} (${ep.x.toFixed(3)}, ${ep.y.toFixed(3)}) has no connected line element${nearestInfo}`,
+      `[warn] ${levelDir.name}/${ep.table}.geojson  ${ep.elementId} ${ep.side} (${ep.x.toFixed(3)}, ${ep.y.toFixed(3)}) has no connected line element${nearestInfo}`,
     );
   }
 

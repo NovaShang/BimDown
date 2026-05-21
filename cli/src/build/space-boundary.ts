@@ -1,7 +1,14 @@
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseSvgFile, extractLineGeometry } from '../utils/svg.js';
+import {
+  parseGeoJsonFile,
+  stringifyFeatureCollection,
+  extractLineGeometry,
+  type BimDownFeature,
+  type BimDownFeatureCollection,
+} from '../utils/geojson.js';
 import { readCsv } from '../utils/csv.js';
+import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 
 const TOLERANCE = 0.01; // 1cm in meters
 const MAX_FACE_EDGES = 10000; // safety limit for face tracing
@@ -42,7 +49,7 @@ interface Segment {
 
 export interface SpaceBoundaryResult {
   warnings: string[];
-  svgWritten: boolean;
+  geojsonWritten: boolean;
 }
 
 // ─── Main entry point ───────────────────────────────────
@@ -54,10 +61,10 @@ export function computeSpaceBoundaries(
   const warnings: string[] = [];
 
   const spaceCsvPath = join(levelDir.path, 'space.csv');
-  if (!existsSync(spaceCsvPath)) return { warnings, svgWritten: false };
+  if (!existsSync(spaceCsvPath)) return { warnings, geojsonWritten: false };
 
   const spaceCsv = readCsv(spaceCsvPath);
-  if (spaceCsv.rows.length === 0) return { warnings, svgWritten: false };
+  if (spaceCsv.rows.length === 0) return { warnings, geojsonWritten: false };
 
   // 1. Collect all boundary line segments (level-local + global)
   const segments = collectBoundarySegments(levelDir.path);
@@ -66,7 +73,7 @@ export function computeSpaceBoundaries(
   }
   if (segments.length === 0) {
     warnings.push(`${levelDir.name}/  no boundary elements found for space boundary computation`);
-    return { warnings, svgWritten: false };
+    return { warnings, geojsonWritten: false };
   }
 
   // 2. Split segments at T-junctions AND proper crossings so the half-edge
@@ -118,11 +125,11 @@ export function computeSpaceBoundaries(
     }
   }
 
-  if (matchedSpaces.size === 0) return { warnings, svgWritten: false };
+  if (matchedSpaces.size === 0) return { warnings, geojsonWritten: false };
 
   // 8. Write space.svg
   writeSvg(levelDir.path, matchedSpaces);
-  return { warnings, svgWritten: true };
+  return { warnings, geojsonWritten: true };
 }
 
 // ─── Segment collection ─────────────────────────────────
@@ -131,26 +138,26 @@ function collectBoundarySegments(levelPath: string): Segment[] {
   const segments: Segment[] = [];
 
   for (const table of BOUNDARY_TABLES) {
-    const svgPath = join(levelPath, `${table}.svg`);
-    if (!existsSync(svgPath)) continue;
+    const geomName = GEOJSON_FILE_NAMES[table];
+    if (!geomName) continue;
+    const path = join(levelPath, `${geomName}.geojson`);
+    if (!existsSync(path)) continue;
 
     try {
-      const svg = parseSvgFile(svgPath);
-      for (const el of svg.elements) {
-        if (el.tag !== 'path') continue;
-        const geo = extractLineGeometry(el);
-        if (geo.length < TOLERANCE) continue; // skip degenerate segments
+      const fc = parseGeoJsonFile(path);
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'LineString') continue;
+        const id = String(f.properties?.id ?? '');
+        if (!id) continue;
+        const lg = extractLineGeometry(f);
+        if (lg.length < TOLERANCE) continue;
         segments.push({
-          startX: geo.start_x,
-          startY: geo.start_y,
-          endX: geo.end_x,
-          endY: geo.end_y,
-          id: el.id,
+          startX: lg.start_x, startY: lg.start_y,
+          endX: lg.end_x, endY: lg.end_y,
+          id,
         });
       }
-    } catch {
-      // Skip unparseable SVGs
-    }
+    } catch { /* skip */ }
   }
 
   return segments;
@@ -402,45 +409,25 @@ function pointInPolygon(px: number, py: number, polygon: { x: number; y: number 
   return crossings % 2 === 1;
 }
 
-// ─── SVG output ─────────────────────────────────────────
+// ─── GeoJSON output ─────────────────────────────────────
 
 function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>): void {
-  // Compute viewBox from all polygon bounds
-  let minX = Infinity,
-    minY = Infinity,
-    maxX = -Infinity,
-    maxY = -Infinity;
-
-  for (const face of matchedSpaces.values()) {
-    for (const p of face.polygon) {
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x);
-      maxY = Math.max(maxY, p.y);
-    }
-  }
-
-  const pad = Math.max(maxX - minX, maxY - minY) * 0.02;
-  const vbX = (minX - pad).toFixed(3);
-  const vbY = (-(maxY + pad)).toFixed(3);
-  const vbW = (maxX - minX + pad * 2).toFixed(3);
-  const vbH = (maxY - minY + pad * 2).toFixed(3);
-
-  const lines: string[] = [
-    '<?xml version="1.0" encoding="utf-8"?>',
-    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${vbX} ${vbY} ${vbW} ${vbH}">`,
-    '  <g transform="scale(1,-1)">',
-  ];
-
+  const features: BimDownFeature[] = [];
   for (const [spaceId, face] of matchedSpaces) {
-    const pointsStr = face.polygon
-      .map((p) => `${p.x.toFixed(3)},${p.y.toFixed(3)}`)
-      .join(' ');
-    lines.push(`    <polygon id="${spaceId}" points="${pointsStr}" />`);
+    // Close the ring per RFC 7946
+    const ring = face.polygon.map((p) => [
+      Number(p.x.toFixed(3)),
+      Number(p.y.toFixed(3)),
+    ] as [number, number]);
+    if (ring.length === 0) continue;
+    const first = ring[0], last = ring[ring.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
+    features.push({
+      type: 'Feature',
+      properties: { id: spaceId },
+      geometry: { type: 'Polygon', coordinates: [ring] },
+    });
   }
-
-  lines.push('  </g>');
-  lines.push('</svg>');
-
-  writeFileSync(join(levelPath, 'space.svg'), lines.join('\n'));
+  const fc: BimDownFeatureCollection = { type: 'FeatureCollection', features };
+  writeFileSync(join(levelPath, 'space.geojson'), stringifyFeatureCollection(fc), 'utf-8');
 }

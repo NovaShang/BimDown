@@ -2,14 +2,21 @@
  * bimdown-cli library entry — for programmatic use by AI agents and scripts.
  *
  * Usage:
- *   import { readBimDownGeometry, writeBimDownGeometry, svgToJsts, jstsToSvg } from 'bimdown-cli';
+ *   import {
+ *     readBimDownGeometry, writeBimDownGeometry,
+ *     readFeatureCollection, writeFeatureCollection,
+ *     geoJsonToJsts, jstsToGeoJson,
+ *     GeometryFactory, Coordinate,
+ *   } from 'bimdown-cli';
  */
 
 export {
   readBimDownGeometry,
   writeBimDownGeometry,
-  svgToJsts,
-  jstsToSvg,
+  readFeatureCollection,
+  writeFeatureCollection,
+  geoJsonToJsts,
+  jstsToGeoJson,
   type BimDownGeometry,
   type GeometryMap,
 } from './geo/index.js';
@@ -20,13 +27,25 @@ export {
   GeometryFactory,
 } from './geo/jsts-exports.js';
 
-// Low-level SVG parsing utilities (already used internally)
+// Low-level GeoJSON parsing utilities
 export {
-  parseSvgFile,
+  parseGeoJsonFile,
+  stringifyFeatureCollection,
   extractLineGeometry,
-  extractRectGeometry,
+  extractPointGeometry,
   extractPolygonGeometry,
-  extractCircleGeometry,
-  type SvgElement,
-  type SvgFile,
-} from './utils/svg.js';
+  geometryBounds,
+  featureId,
+  type BimDownFeature,
+  type BimDownFeatureCollection,
+  type BimDownFeatureProperties,
+  type GeoJsonGeometry,
+  type PointGeometryJson,
+  type LineStringGeometryJson,
+  type PolygonGeometryJson,
+  type Position,
+  type ArcParams,
+  type LineGeometry,
+  type PointGeometry,
+  type PolygonGeometry,
+} from './utils/geojson.js';

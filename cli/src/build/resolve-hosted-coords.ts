@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseSvgFile, extractLineGeometry } from '../utils/svg.js';
+import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
 import { readCsv, writeCsv } from '../utils/csv.js';
 import { discoverLayout, listFiles } from '../utils/fs.js';
+import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 
 const TOLERANCE = 0.05; // 5cm snap tolerance for finding nearest wall
 
@@ -39,20 +40,22 @@ export function resolveHostedCoords(dir: string): string[] {
     // Collect wall geometries for this level
     const walls: WallGeo[] = [];
     for (const table of ['wall', 'structure_wall', 'curtain_wall']) {
-      const svgPath = join(d.path, `${table}.svg`);
-      if (!existsSync(svgPath)) continue;
+      const geomName = GEOJSON_FILE_NAMES[table];
+      if (!geomName) continue;
+      const path = join(d.path, `${geomName}.geojson`);
+      if (!existsSync(path)) continue;
       try {
-        const svg = parseSvgFile(svgPath);
-        for (const el of svg.elements) {
-          if (el.tag !== 'path') continue;
-          const geo = extractLineGeometry(el);
+        const fc = parseGeoJsonFile(path);
+        for (const f of fc.features) {
+          if (f.geometry.type !== 'LineString') continue;
+          const id = String(f.properties?.id ?? '');
+          if (!id) continue;
+          const lg = extractLineGeometry(f);
           walls.push({
-            id: el.id,
-            start_x: geo.start_x,
-            start_y: geo.start_y,
-            end_x: geo.end_x,
-            end_y: geo.end_y,
-            length: geo.length,
+            id,
+            start_x: lg.start_x, start_y: lg.start_y,
+            end_x: lg.end_x, end_y: lg.end_y,
+            length: lg.length,
           });
         }
       } catch { /* skip */ }

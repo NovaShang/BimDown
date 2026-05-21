@@ -1,7 +1,7 @@
-﻿id,number,base_offset,mesh_file,start_z,end_z,height
-rl-1,,,,,,
-rl-2,,,,,,
-rl-3,,,,,,
-rl-4,,,,,,
-rl-5,,,,,,
-rl-6,,,,,,
+id,number,mesh_file,height
+rl-1,,,
+rl-2,,,
+rl-3,,,
+rl-4,,,
+rl-5,,,
+rl-6,,,

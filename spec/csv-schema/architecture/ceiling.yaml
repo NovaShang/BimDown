@@ -6,4 +6,5 @@ bases:
 fields:
   - name: height_offset
     type: float
-    description: Offset below level elevation (e.g. -0.3 for 30cm dropped ceiling)
+    storage: geojson_property
+    description: Offset below level elevation (e.g. -0.3 for 30cm dropped ceiling). Stored in GeoJSON Feature properties.

@@ -1,2 +1,2 @@
-﻿id,number,base_offset,mesh_file,material,roof_type,slope,thickness
-ro-6,,,mesh/ro-6.glb,composite,flat,0,0.075
+id,number,mesh_file,material,roof_type,slope,thickness
+ro-6,,mesh/ro-6.glb,composite,flat,0,0.075

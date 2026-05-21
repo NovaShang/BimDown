@@ -9,6 +9,16 @@ export function initProject(absDir: string) {
   // Write marking file
   writeFileSync(join(absDir, '.bimdown'), '', 'utf-8');
 
+  // project_metadata.json with current format_version
+  const metadataPath = join(absDir, 'project_metadata.json');
+  if (!existsSync(metadataPath)) {
+    writeFileSync(
+      metadataPath,
+      JSON.stringify({ format_version: 2, units: 'm' }, null, 2) + '\n',
+      'utf-8',
+    );
+  }
+
   // Create global dir
   const globalDir = join(absDir, 'global');
   if (!existsSync(globalDir)) {

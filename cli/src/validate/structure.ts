@@ -1,14 +1,16 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { discoverLayout, listFiles } from '../utils/fs.js';
-import { ID_PREFIXES, SVG_FILE_NAMES, GLOBAL_ONLY_TABLES } from '../schema/registry.js';
+import { ID_PREFIXES, GEOJSON_FILE_NAMES, GLOBAL_ONLY_TABLES } from '../schema/registry.js';
 
-// Tables where SVG is optional (opening: wall-mode has no SVG, slab-mode does)
-const OPTIONAL_SVG_TABLES = new Set(['opening', 'space']);
+// Tables where the GeoJSON file is optional (opening: wall-mode is CSV-only, slab-mode has geometry; space: boundary auto-generated)
+const OPTIONAL_GEOMETRY_TABLES = new Set(['opening', 'space']);
 
 const KNOWN_CSV_NAMES = new Set(Object.keys(ID_PREFIXES).map((t) => `${t}.csv`));
-const KNOWN_SVG_NAMES = new Set(Object.values(SVG_FILE_NAMES).map((s) => `${s}.svg`));
+const KNOWN_GEOJSON_NAMES = new Set(Object.values(GEOJSON_FILE_NAMES).map((s) => `${s}.geojson`));
 const KNOWN_GLOBAL_EXTRAS = new Set(['_IdMap.csv']);
+
+const CURRENT_FORMAT_VERSION = 2;
 
 export function validateStructure(dir: string): string[] {
   const issues: string[] = [];
@@ -29,17 +31,21 @@ export function validateStructure(dir: string): string[] {
     issues.push('global/  missing grid.csv');
   }
 
-  // global/ — only known CSV files allowed, no SVG, no other files
+  // global/ — CSVs and GeoJSON files (cross-floor elements may have geometry in global/) allowed
   for (const f of globalFiles) {
     const ext = extname(f);
     if (ext === '.svg') {
-      issues.push(`global/${f}  SVG files are not allowed in global/`);
+      issues.push(`global/${f}  SVG files are not allowed (use GeoJSON; see migration script)`);
     } else if (ext === '.csv') {
       if (!KNOWN_CSV_NAMES.has(f) && !KNOWN_GLOBAL_EXTRAS.has(f)) {
         issues.push(`global/${f}  unknown file — only known table CSVs are allowed`);
       }
+    } else if (ext === '.geojson') {
+      if (!KNOWN_GEOJSON_NAMES.has(f)) {
+        issues.push(`global/${f}  unknown GeoJSON file — not a recognized BimDown table name`);
+      }
     } else {
-      issues.push(`global/${f}  unexpected file — only CSV files are allowed in global/`);
+      issues.push(`global/${f}  unexpected file — only CSV and GeoJSON files are allowed in global/`);
     }
   }
 
@@ -52,7 +58,6 @@ export function validateStructure(dir: string): string[] {
 
     const files = listFiles(ld.path);
 
-    // Reject any file that is not a known CSV or known SVG
     for (const f of files) {
       const ext = extname(f);
       if (ext === '.csv') {
@@ -64,43 +69,42 @@ export function validateStructure(dir: string): string[] {
           issues.push(`${ld.name}/${f}  ${tableName} belongs in global/ only`);
         }
       } else if (ext === '.svg') {
-        if (!KNOWN_SVG_NAMES.has(f)) {
-          issues.push(`${ld.name}/${f}  unknown SVG file — not a recognized BimDown table name`);
+        issues.push(`${ld.name}/${f}  SVG files are not allowed (use GeoJSON; see migration script)`);
+      } else if (ext === '.geojson') {
+        if (!KNOWN_GEOJSON_NAMES.has(f)) {
+          issues.push(`${ld.name}/${f}  unknown GeoJSON file — not a recognized BimDown table name`);
         }
-        // SVG must have matching CSV
-        const svgBase = f.replace('.svg', '');
-        const tableName = Object.entries(SVG_FILE_NAMES).find(
-          ([, v]) => v === svgBase,
-        )?.[0];
+        const base = f.replace('.geojson', '');
+        const tableName = Object.entries(GEOJSON_FILE_NAMES).find(([, v]) => v === base)?.[0];
         if (tableName && !files.includes(`${tableName}.csv`)) {
-          issues.push(`${ld.name}/${f}  orphaned SVG — no matching ${tableName}.csv`);
+          issues.push(`${ld.name}/${f}  orphaned GeoJSON — no matching ${tableName}.csv`);
         }
       } else {
-        issues.push(`${ld.name}/${f}  unexpected file — only CSV and SVG files are allowed`);
+        issues.push(`${ld.name}/${f}  unexpected file — only CSV and GeoJSON files are allowed`);
       }
     }
 
-    // CSV must have matching SVG (reverse check) — unless SVG is optional for that table
+    // CSV must have matching GeoJSON (reverse check) — unless geometry is optional for that table
     for (const f of files) {
       if (extname(f) !== '.csv') continue;
       const tableName = f.replace('.csv', '');
-      const svgName = SVG_FILE_NAMES[tableName];
-      if (svgName && !files.includes(`${svgName}.svg`) && !OPTIONAL_SVG_TABLES.has(tableName)) {
-        issues.push(`${ld.name}/${f}  missing paired SVG file "${svgName}.svg"`);
+      const geojsonName = GEOJSON_FILE_NAMES[tableName];
+      if (geojsonName && !files.includes(`${geojsonName}.geojson`) && !OPTIONAL_GEOMETRY_TABLES.has(tableName)) {
+        issues.push(`${ld.name}/${f}  missing paired GeoJSON file "${geojsonName}.geojson"`);
       }
     }
   }
 
-  // Reject any top-level entries that are not global/ or lv-{n}/ or project_metadata.json
+  // Reject top-level entries other than global/, lv-{n}/, project_metadata.json
   const topEntries = readdirSync(dir);
   for (const f of topEntries) {
     if (f === 'global' || /^lv-.+$/.test(f)) continue;
     if (f === 'project_metadata.json') continue;
-    if (f.startsWith('.')) continue; // allow hidden dirs like .pi
+    if (f.startsWith('.')) continue;
     issues.push(`${f}  unexpected entry in project root — only global/ and lv-{n}/ directories are allowed`);
   }
 
-  // Validate project_metadata.json if present
+  // Validate project_metadata.json
   const metadataPath = join(dir, 'project_metadata.json');
   if (existsSync(metadataPath)) {
     try {
@@ -109,8 +113,20 @@ export function validateStructure(dir: string): string[] {
       if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
         issues.push('project_metadata.json  must be a JSON object');
       } else {
-        if (!metadata.format_version || typeof metadata.format_version !== 'string') {
-          issues.push('project_metadata.json  missing or invalid "format_version" (required string)');
+        const fv = metadata.format_version;
+        if (fv === undefined || fv === null) {
+          issues.push('project_metadata.json  missing "format_version"');
+        } else {
+          const n = typeof fv === 'number' ? fv : parseInt(String(fv), 10);
+          if (!Number.isFinite(n)) {
+            issues.push(`project_metadata.json  invalid "format_version": ${fv}`);
+          } else if (n < CURRENT_FORMAT_VERSION) {
+            issues.push(
+              `project_metadata.json  format_version ${n} is no longer supported. Run: npx tsx scripts/svg-to-geojson.ts <project_dir>`,
+            );
+          } else if (n > CURRENT_FORMAT_VERSION) {
+            issues.push(`project_metadata.json  format_version ${n} is newer than CLI (${CURRENT_FORMAT_VERSION})`);
+          }
         }
         for (const key of Object.keys(metadata)) {
           if (!['format_version', 'project_name', 'units', 'source'].includes(key)) {

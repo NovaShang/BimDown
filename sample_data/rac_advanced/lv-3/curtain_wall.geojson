@@ -1,0 +1,8 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"id":"cw-27"},"geometry":{"type":"LineString","coordinates":[[24.469,23.323],[27.36,23.323]]}},
+    {"type":"Feature","properties":{"id":"cw-28"},"geometry":{"type":"LineString","coordinates":[[1.354,-15.915],[-1.486,-15.915]]}},
+    {"type":"Feature","properties":{"id":"cw-29"},"geometry":{"type":"LineString","coordinates":[[53.63,-15.915],[56.521,-15.915]]}}
+  ]
+}

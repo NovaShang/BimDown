@@ -3,11 +3,11 @@ bases:
   - element
   - materialized
 description: >
-  Unified foundation type. Geometry form is determined by the SVG element:
-  - <rect>/<circle> (point-based): isolated/pad footing
-  - <path> (line-based): strip/continuous footing
-  - <polygon> (polygon-based): raft/mat foundation
-  Computed geometry fields are hydrated from SVG at query time.
+  Unified foundation type. Geometry form is determined by the GeoJSON geometry type:
+  - Point: isolated/pad footing (section in CSV: shape, size_x, size_y)
+  - LineString: strip/continuous footing (thickness, width in CSV)
+  - Polygon: raft/mat foundation
+  Computed geometry fields are hydrated from GeoJSON at query time.
 
 fields:
   - name: thickness

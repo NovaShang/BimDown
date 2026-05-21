@@ -28,19 +28,28 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
   'foundation',
 ]);
 
-// Tables without SVG geometry (level/grid are global-only, door/window use CSV position)
-const TABLES_WITHOUT_SVG = new Set(['level', 'grid', 'door', 'window', 'mesh']);
+// Tables without a geometry file (level/grid use CSV inline; door/window are hosted; mesh is GLB)
+const TABLES_WITHOUT_GEOMETRY = new Set(['level', 'grid', 'door', 'window', 'mesh']);
 
-// SVG file name mapping: table name -> svg file name (without extension)
-// SVG files use the same name as the CSV (both singular): wall.csv + wall.svg
-export const SVG_FILE_NAMES: Record<string, string> = Object.fromEntries(
+// GeoJSON file name mapping: table name -> geojson file name (without extension)
+// GeoJSON files use the same name as the CSV (both singular): wall.csv + wall.geojson
+export const GEOJSON_FILE_NAMES: Record<string, string> = Object.fromEntries(
   Object.keys(ID_PREFIXES)
-    .filter((k) => !TABLES_WITHOUT_SVG.has(k))
+    .filter((k) => !TABLES_WITHOUT_GEOMETRY.has(k))
     .map((k) => [k, k]),
 );
 
-// Tables that have SVG geometry
-export const TABLES_WITH_SVG = new Set(Object.keys(SVG_FILE_NAMES));
+// Tables that have a GeoJSON geometry file
+export const TABLES_WITH_GEOMETRY = new Set(Object.keys(GEOJSON_FILE_NAMES));
+
+// Tables whose elements use 3D coordinates (spatial line elements).
+// Level-anchored tables (wall, slab, column, etc.) use 2D coordinates + Z properties.
+export const SPATIAL_3D_TABLES = new Set([
+  'stair', 'ramp', 'railing',
+  'beam', 'brace',
+  'duct', 'pipe', 'cable_tray', 'conduit',
+  'equipment', 'terminal', 'mep_node',
+]);
 
 let _registry: Map<string, ResolvedTable> | null = null;
 let _specDir: string | null = null;
@@ -59,7 +68,8 @@ export function buildRegistry(specDir: string): Map<string, ResolvedTable> {
     if (!prefix) continue; // skip unknown concrete schemas
 
     const allFields = resolveFields(name, schemas, resolved);
-    const csvFields = allFields.filter((f) => !f.computed);
+    const csvFields = allFields.filter((f) => !f.computed && f.storage === 'csv');
+    const geojsonPropertyFields = allFields.filter((f) => !f.computed && f.storage === 'geojson_property');
     const computedFields = allFields.filter((f) => f.computed);
 
     registry.set(name, {
@@ -69,6 +79,7 @@ export function buildRegistry(specDir: string): Map<string, ResolvedTable> {
       hostType: schema.host_type,
       allFields,
       csvFields,
+      geojsonPropertyFields,
       computedFields,
     });
   }

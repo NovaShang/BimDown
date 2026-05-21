@@ -1,4 +1,4 @@
-﻿id,number,base_offset,mesh_file,material,roof_type,slope,thickness
-ro-3,,,,composite,gable,15,0.1
-ro-4,,,,composite,gable,15,0.1
-ro-5,,,,composite,gable,15,0.1
+id,number,mesh_file,material,roof_type,slope,thickness
+ro-3,,,composite,gable,15,0.1
+ro-4,,,composite,gable,15,0.1
+ro-5,,,composite,gable,15,0.1

@@ -8,4 +8,4 @@ fields:
   - name: thickness
     type: float
     required: true
-    description: Wall thickness in meters. SVG stroke-width should match but CSV is source of truth.
+    description: Wall thickness in meters. CSV is the source of truth.

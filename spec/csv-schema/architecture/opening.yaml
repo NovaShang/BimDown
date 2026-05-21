@@ -5,9 +5,9 @@ description: >
   Opening (void) in a host element. host_id is always required.
   Geometry form depends on the host type:
   - Wall opening: host_id references a wall. Uses position (distance in meters from wall start),
-    width, and height. No SVG geometry.
-  - Slab opening: host_id references a slab. Uses SVG geometry
-    (<rect> or <polygon>) to define the void shape.
+    width, and height. No GeoJSON geometry.
+  - Slab opening: host_id references a slab. Uses a GeoJSON Polygon (2D, in slab plane)
+    to define the void shape.
 
 fields:
   - name: host_id

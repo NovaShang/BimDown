@@ -1,15 +1,15 @@
 import { existsSync } from 'node:fs';
-import { join, relative } from 'node:path';
-import { buildRegistry, getSpecDir, SVG_FILE_NAMES, GLOBAL_ONLY_TABLES } from '../schema/registry.js';
+import { join } from 'node:path';
+import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import type { ResolvedTable } from '../schema/types.js';
 import { discoverLayout, listFiles } from '../utils/fs.js';
 import { readCsv, type CsvData } from '../utils/csv.js';
 import { validateStructure } from './structure.js';
 import { validateCsvHeaders, validateCsvRequired, validateCsvEnums } from './csv.js';
-import { validateIdFormat, createIdRegistry, registerIds, type IdRegistry } from './ids.js';
+import { validateIdFormat, createIdRegistry, registerIds } from './ids.js';
 import { validateReferences } from './references.js';
 import { validateRanges } from './ranges.js';
-import { validateSvgFile } from './svg.js';
+import { validateGeoJsonFile } from './geojson.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -108,36 +108,33 @@ export function validate(dir: string): string[] {
     }
   }
 
-  // 9. SVG validation
+  // 9. GeoJSON validation
   for (const d of allDirs) {
-    if (!existsSync(d.path) || d.name === 'global') continue;
+    if (!existsSync(d.path)) continue;
     const files = listFiles(d.path);
     for (const f of files) {
-      if (!f.endsWith('.svg')) continue;
-      const svgBase = f.replace('.svg', '');
-      const tableEntry = Object.entries(SVG_FILE_NAMES).find(([, v]) => v === svgBase);
+      if (!f.endsWith('.geojson')) continue;
+      const base = f.replace('.geojson', '');
+      const tableEntry = Object.entries(GEOJSON_FILE_NAMES).find(([, v]) => v === base);
       if (!tableEntry) continue;
       const [tableName] = tableEntry;
       const table = registry.get(tableName);
       if (!table) continue;
 
-      // Gather CSV IDs for this table in this level dir
+      // Gather CSV IDs for this table in this partition (global or current level)
       const csvIds = new Set<string>();
       for (const entry of csvEntries) {
-        if (entry.tableName === tableName) {
-          const entryDir = entry.path.split('/')[0];
-          if (entryDir === d.name) {
-            for (const row of entry.data.rows) {
-              if (row.id) csvIds.add(row.id);
-            }
-          }
+        if (entry.tableName !== tableName) continue;
+        const entryDir = entry.path.split('/')[0];
+        if (entryDir !== d.name) continue;
+        for (const row of entry.data.rows) {
+          if (row.id) csvIds.add(row.id);
         }
       }
 
-      const svgFullPath = join(d.path, f);
+      const fullPath = join(d.path, f);
       const relPath = `${d.name}/${f}`;
-      const isHosted = !!table.hostType;
-      issues.push(...validateSvgFile(relPath, svgFullPath, csvIds, isHosted, tableName));
+      issues.push(...validateGeoJsonFile(relPath, fullPath, csvIds, tableName));
     }
   }
 

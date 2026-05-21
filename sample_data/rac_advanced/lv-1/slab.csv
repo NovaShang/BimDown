@@ -1,7 +1,7 @@
-﻿id,number,base_offset,mesh_file,material,function,thickness
-sl-3,,0,,wood,floor,0.14
-sl-8,,2.55,,steel,floor,0.013
-sl-9,,2.55,,steel,floor,0.013
-sl-10,,2.55,,steel,floor,0.013
-sl-11,,2.55,,steel,floor,0.013
-sl-16,,0,,concrete,floor,0.1
+id,number,mesh_file,material,function,thickness
+sl-3,,,wood,floor,0.14
+sl-8,,,steel,floor,0.013
+sl-9,,,steel,floor,0.013
+sl-10,,,steel,floor,0.013
+sl-11,,,steel,floor,0.013
+sl-16,,,concrete,floor,0.1

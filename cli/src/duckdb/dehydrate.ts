@@ -16,9 +16,16 @@ export async function dehydrate(conn: DuckDBConnection, dir: string): Promise<vo
     );
     if (!check.rows.length || check.rows[0].cnt === 0n) continue;
 
-    const csvHeaders = table.csvFields.map((f) => f.name);
+    // Only select CSV fields that actually exist as columns in DuckDB
+    // (mixin fields like host_x/host_y are valid AI inputs but absent in dehydrated data).
+    const colsResult = await runQuery(
+      conn,
+      `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'`,
+    );
+    const existingCols = new Set(colsResult.rows.map((r) => String(r.column_name)));
+    const csvHeaders = table.csvFields.map((f) => f.name).filter((h) => existingCols.has(h));
+    if (csvHeaders.length === 0) continue;
 
-    // Get distinct partitions
     const partResult = await runQuery(
       conn,
       `SELECT DISTINCT _partition FROM "${tableName}"`,

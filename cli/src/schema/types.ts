@@ -1,11 +1,15 @@
+export type FieldStorage = 'csv' | 'geojson_property';
+
 export interface RawField {
   name: string;
   type: string;
   required?: boolean;
   computed?: boolean;
+  storage?: FieldStorage;
   reference?: string;
   values?: string[];
   description?: string;
+  default?: unknown;
 }
 
 export interface RawSchema {
@@ -22,9 +26,11 @@ export interface ResolvedField {
   type: string;
   required: boolean;
   computed: boolean;
+  storage: FieldStorage;
   reference?: string;
   values?: string[];
   description?: string;
+  default?: unknown;
 }
 
 export interface ResolvedTable {
@@ -33,6 +39,7 @@ export interface ResolvedTable {
   hostType?: string;
   allFields: ResolvedField[];
   csvFields: ResolvedField[];
+  geojsonPropertyFields: ResolvedField[];
   computedFields: ResolvedField[];
   description?: string;
 }

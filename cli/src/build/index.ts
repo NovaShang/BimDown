@@ -27,7 +27,7 @@ export function build(dir: string): BuildResult {
   // 2. Geometry warnings (connectivity, hosted bounds, overlap)
   const warnings = validateGeometry(dir);
 
-  // 3. Compute space boundaries per level → write space.svg
+  // 3. Compute space boundaries per level → write space.geojson
   const artifacts: string[] = [];
   const layout = discoverLayout(dir);
 
@@ -37,8 +37,8 @@ export function build(dir: string): BuildResult {
 
     const result = computeSpaceBoundaries(levelDir, layout.globalDir);
     warnings.push(...result.warnings);
-    if (result.svgWritten) {
-      artifacts.push(`${levelDir.name}/space.svg`);
+    if (result.geojsonWritten) {
+      artifacts.push(`${levelDir.name}/space.geojson`);
     }
   }
 

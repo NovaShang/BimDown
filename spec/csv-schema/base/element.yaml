@@ -25,6 +25,8 @@ fields:
   - name: base_offset
     type: float
     default: 0
+    storage: geojson_property
+    description: Vertical offset from base_level_id, meters. Stored in GeoJSON Feature properties.
 
   - name: mesh_file
     type: string

@@ -1,31 +1,34 @@
-import { existsSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { parseSvgFile, extractLineGeometry } from '../utils/svg.js';
+import {
+  parseGeoJsonFile,
+  stringifyFeatureCollection,
+  type BimDownFeatureCollection,
+  type Position,
+} from '../utils/geojson.js';
+import { writeFileSync } from 'node:fs';
 import { readCsv } from '../utils/csv.js';
-import { discoverLayout, listFiles } from '../utils/fs.js';
+import { discoverLayout } from '../utils/fs.js';
+import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 
 const MIN_SNAP_TOLERANCE = 0.10; // 10cm floor
 
 const BOUNDARY_TABLES = ['wall', 'structure_wall', 'curtain_wall', 'room_separator'];
 const WALL_TABLES_WITH_THICKNESS = ['wall', 'structure_wall', 'curtain_wall'];
 
-interface Point {
-  x: number;
-  y: number;
-}
+interface Point { x: number; y: number }
 
 interface EndpointRef {
   point: Point;
   table: string;
   elementId: string;
   side: 'start' | 'end';
-  levelDir: string;
-  levelPath: string;
+  dirPath: string;
 }
 
 /**
  * Pre-build step: snap wall endpoints that are within SNAP_TOLERANCE of each other.
- * Modifies SVG files in-place. Returns count of snapped endpoints.
+ * Modifies GeoJSON files in-place. Returns count of snapped endpoints.
  */
 export function snapEndpoints(dir: string): number {
   const layout = discoverLayout(dir);
@@ -34,49 +37,48 @@ export function snapEndpoints(dir: string): number {
     ...layout.levelDirs,
   ];
 
-  let totalSnapped = 0;
-
-  // Compute snap tolerance: max(10cm, max wall thickness in project)
   const snapTolerance = computeSnapTolerance(allDirs);
 
-  // Collect ALL endpoints across all directories (level + global)
-  // so that level endpoints can snap to global endpoints
+  // Collect all endpoints
   const allEndpoints: EndpointRef[] = [];
+  const fcCache = new Map<string, BimDownFeatureCollection>(); // key = `${dirPath}/${table}.geojson`
+
   for (const d of allDirs) {
     if (!existsSync(d.path)) continue;
     for (const table of BOUNDARY_TABLES) {
-      const svgPath = join(d.path, `${table}.svg`);
-      if (!existsSync(svgPath)) continue;
-      try {
-        const svg = parseSvgFile(svgPath);
-        for (const el of svg.elements) {
-          if (el.tag !== 'path') continue;
-          const geo = extractLineGeometry(el);
-          allEndpoints.push({ point: { x: geo.start_x, y: geo.start_y }, table, elementId: el.id, side: 'start', levelDir: d.name, levelPath: d.path });
-          allEndpoints.push({ point: { x: geo.end_x, y: geo.end_y }, table, elementId: el.id, side: 'end', levelDir: d.name, levelPath: d.path });
-        }
-      } catch { /* skip */ }
+      const geomName = GEOJSON_FILE_NAMES[table];
+      if (!geomName) continue;
+      const path = join(d.path, `${geomName}.geojson`);
+      if (!existsSync(path)) continue;
+
+      let fc;
+      try { fc = parseGeoJsonFile(path); } catch { continue; }
+      fcCache.set(path, fc);
+
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'LineString' || f.geometry.coordinates.length < 2) continue;
+        const id = String(f.properties?.id ?? '');
+        if (!id) continue;
+        const a = f.geometry.coordinates[0];
+        const b = f.geometry.coordinates[f.geometry.coordinates.length - 1];
+        allEndpoints.push({ point: { x: a[0], y: a[1] }, table, elementId: id, side: 'start', dirPath: d.path });
+        allEndpoints.push({ point: { x: b[0], y: b[1] }, table, elementId: id, side: 'end', dirPath: d.path });
+      }
     }
   }
 
   if (allEndpoints.length === 0) return 0;
 
-  // Build clusters of nearby endpoints (across all directories)
   const clusters = clusterEndpoints(allEndpoints, snapTolerance);
+  const snapMap = new Map<string, Point>();
+  let totalSnapped = 0;
 
-  // For each cluster with > 1 endpoint, snap to canonical position
-  const snapMap = new Map<string, Point>(); // "levelPath:table:elementId:side" → snapped point
   for (const cluster of clusters) {
     if (cluster.length <= 1) continue;
-
-    // Canonical = the point that already has the most connections (most common coordinate)
     const canonical = pickCanonical(cluster);
-
     for (const ep of cluster) {
-      const dx = Math.abs(ep.point.x - canonical.x);
-      const dy = Math.abs(ep.point.y - canonical.y);
-      if (dx > 1e-6 || dy > 1e-6) {
-        const key = `${ep.levelPath}:${ep.table}:${ep.elementId}:${ep.side}`;
+      if (Math.abs(ep.point.x - canonical.x) > 1e-6 || Math.abs(ep.point.y - canonical.y) > 1e-6) {
+        const key = `${ep.dirPath}:${ep.table}:${ep.elementId}:${ep.side}`;
         snapMap.set(key, canonical);
         totalSnapped++;
       }
@@ -85,52 +87,43 @@ export function snapEndpoints(dir: string): number {
 
   if (snapMap.size === 0) return 0;
 
-  // Apply snaps to SVG files in each directory
+  // Apply snaps by rewriting GeoJSON files
+  const dirtyPaths = new Set<string>();
   for (const d of allDirs) {
-    if (!existsSync(d.path)) continue;
-
     for (const table of BOUNDARY_TABLES) {
-      const svgPath = join(d.path, `${table}.svg`);
-      if (!existsSync(svgPath)) continue;
+      const geomName = GEOJSON_FILE_NAMES[table];
+      if (!geomName) continue;
+      const path = join(d.path, `${geomName}.geojson`);
+      const fc = fcCache.get(path);
+      if (!fc) continue;
 
-      let svgText = readFileSync(svgPath, 'utf-8');
-      let modified = false;
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'LineString' || f.geometry.coordinates.length < 2) continue;
+        const id = String(f.properties?.id ?? '');
+        const startKey = `${d.path}:${table}:${id}:start`;
+        const endKey = `${d.path}:${table}:${id}:end`;
+        const ns = snapMap.get(startKey);
+        const ne = snapMap.get(endKey);
+        if (!ns && !ne) continue;
 
-      // Re-parse to get element geometries
-      try {
-        const svg = parseSvgFile(svgPath);
-        for (const el of svg.elements) {
-          if (el.tag !== 'path') continue;
-          const geo = extractLineGeometry(el);
-
-          const startKey = `${d.path}:${table}:${el.id}:start`;
-          const endKey = `${d.path}:${table}:${el.id}:end`;
-          const newStart = snapMap.get(startKey);
-          const newEnd = snapMap.get(endKey);
-
-          if (!newStart && !newEnd) continue;
-
-          const sx = newStart?.x ?? geo.start_x;
-          const sy = newStart?.y ?? geo.start_y;
-          const ex = newEnd?.x ?? geo.end_x;
-          const ey = newEnd?.y ?? geo.end_y;
-
-          // Replace the d attribute for this element
-          const oldD = el.attrs.d;
-          const newD = `M ${fmtNum(sx)} ${fmtNum(sy)} L ${fmtNum(ex)} ${fmtNum(ey)}`;
-
-          if (oldD && oldD !== newD) {
-            // Use a targeted replacement: find this element's path and replace its d attribute
-            svgText = replacePathD(svgText, el.id, oldD, newD);
-            modified = true;
-          }
+        const coords = f.geometry.coordinates;
+        if (ns) {
+          const z = coords[0].length === 3 ? (coords[0] as [number, number, number])[2] : undefined;
+          coords[0] = (z !== undefined ? [ns.x, ns.y, z] : [ns.x, ns.y]) as Position;
         }
-      } catch { continue; }
-
-      if (modified) {
-        writeFileSync(svgPath, svgText, 'utf-8');
+        if (ne) {
+          const last = coords.length - 1;
+          const z = coords[last].length === 3 ? (coords[last] as [number, number, number])[2] : undefined;
+          coords[last] = (z !== undefined ? [ne.x, ne.y, z] : [ne.x, ne.y]) as Position;
+        }
+        dirtyPaths.add(path);
       }
     }
+  }
+
+  for (const path of dirtyPaths) {
+    const fc = fcCache.get(path);
+    if (fc) writeFileSync(path, stringifyFeatureCollection(fc), 'utf-8');
   }
 
   return totalSnapped;
@@ -152,8 +145,7 @@ function computeSnapTolerance(dirs: { name: string; path: string }[]): number {
       } catch { /* skip */ }
     }
   }
-  const tolerance = Math.max(MIN_SNAP_TOLERANCE, maxThickness);
-  return tolerance;
+  return Math.max(MIN_SNAP_TOLERANCE, maxThickness);
 }
 
 function clusterEndpoints(endpoints: EndpointRef[], tolerance: number): EndpointRef[][] {
@@ -165,7 +157,6 @@ function clusterEndpoints(endpoints: EndpointRef[], tolerance: number): Endpoint
     const cluster: EndpointRef[] = [endpoints[i]];
     visited.add(i);
 
-    // Find all endpoints within tolerance of any member of this cluster
     let expanded = true;
     while (expanded) {
       expanded = false;
@@ -181,27 +172,19 @@ function clusterEndpoints(endpoints: EndpointRef[], tolerance: number): Endpoint
         }
       }
     }
-
     clusters.push(cluster);
   }
-
   return clusters;
 }
 
 function pickCanonical(cluster: EndpointRef[]): Point {
-  // Count how many times each coordinate appears (exact match)
   const counts = new Map<string, { point: Point; count: number }>();
   for (const ep of cluster) {
-    const key = `${fmtNum(ep.point.x)},${fmtNum(ep.point.y)}`;
+    const key = `${ep.point.x.toFixed(4)},${ep.point.y.toFixed(4)}`;
     const entry = counts.get(key);
-    if (entry) {
-      entry.count++;
-    } else {
-      counts.set(key, { point: ep.point, count: 1 });
-    }
+    if (entry) entry.count++;
+    else counts.set(key, { point: ep.point, count: 1 });
   }
-
-  // Pick the most common point
   let best: { point: Point; count: number } = { point: cluster[0].point, count: 0 };
   for (const entry of counts.values()) {
     if (entry.count > best.count) best = entry;
@@ -211,31 +194,4 @@ function pickCanonical(cluster: EndpointRef[]): Point {
 
 function dist(a: Point, b: Point): number {
   return Math.sqrt((a.x - b.x) ** 2 + (a.y - b.y) ** 2);
-}
-
-function fmtNum(n: number): string {
-  // Use reasonable precision, trim trailing zeros
-  const s = n.toFixed(4);
-  return s.replace(/\.?0+$/, '') || '0';
-}
-
-function replacePathD(svgText: string, id: string, oldD: string, newD: string): string {
-  // Find the <path> element with this id and replace its d attribute
-  // Match pattern: id="<id>" ... d="<oldD>" or d="<oldD>" ... id="<id>"
-  const escaped = oldD.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const idEscaped = id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-  // Try to find and replace the d attribute within the path element that has this id
-  const pathRegex = new RegExp(`(<path[^>]*\\bid="${idEscaped}"[^>]*\\bd=")${escaped}(")`);
-  if (pathRegex.test(svgText)) {
-    return svgText.replace(pathRegex, `$1${newD}$2`);
-  }
-
-  // Also try d before id
-  const pathRegex2 = new RegExp(`(<path[^>]*\\bd=")${escaped}("[^>]*\\bid="${idEscaped}")`);
-  if (pathRegex2.test(svgText)) {
-    return svgText.replace(pathRegex2, `$1${newD}$2`);
-  }
-
-  return svgText;
 }

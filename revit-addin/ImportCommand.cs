@@ -4,7 +4,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using BimDown.RevitAddin.Import;
-using BimDown.RevitAddin.Svg;
+using BimDown.RevitAddin.Geojson;
 
 namespace BimDown.RevitAddin;
 
@@ -113,7 +113,7 @@ public class ImportCommand : IExternalCommand
         var tablesProcessed = 0;
 
         // Read SVG geometry layer
-        var svgGeometry = SvgReader.ReadAll(inputDir);
+        var svgGeometry = GeoJsonReader.ReadAll(inputDir);
 
         // Collect all CSV rows per table from level-partitioned directories
         var tableRows = ReadPartitionedCsvs(inputDir);

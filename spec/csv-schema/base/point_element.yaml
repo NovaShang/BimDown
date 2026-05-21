@@ -15,3 +15,4 @@ fields:
   - name: rotation
     type: float
     computed: true
+    description: Degrees CCW about +Z. Hydrated from GeoJSON properties.rotation (default 0).

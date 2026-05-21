@@ -1,0 +1,6 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {"type":"Feature","properties":{"id":"ro-2"},"geometry":{"type":"Polygon","coordinates":[[[7.245,-7.284],[7.245,-0.089],[14.709,-0.089],[14.709,-7.284],[7.245,-7.284]]]}}
+  ]
+}

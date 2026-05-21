@@ -65,8 +65,10 @@ function normalizeField(raw: RawField): ResolvedField {
     type: raw.type,
     required: raw.required ?? false,
     computed: raw.computed ?? false,
+    storage: raw.storage ?? 'csv',
     reference: raw.reference,
     values: raw.values,
     description: raw.description,
+    default: raw.default,
   };
 }

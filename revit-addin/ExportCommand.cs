@@ -3,7 +3,7 @@ using System.IO.Compression;
 using Autodesk.Revit.Attributes;
 using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
-using BimDown.RevitAddin.Svg;
+using BimDown.RevitAddin.Geojson;
 using BimDown.RevitAddin.Tables;
 
 namespace BimDown.RevitAddin;
@@ -385,16 +385,16 @@ public class ExportCommand : IExternalCommand
 
             foreach (var (dirName, groupRows) in groups)
             {
-                // Set level_id to partition dir so SvgWriter groups correctly.
-                // Rows are not used after SVG writing.
+                // Set level_id to partition dir so GeoJsonWriter groups correctly.
+                // Rows are not used after geometry writing.
                 foreach (var row in groupRows)
                     row["level_id"] = dirName;
                 partitioned.Add((exporter.TableName, groupRows));
             }
         }
 
-        RunStep("SVG export", errors, () =>
-            SvgWriter.WriteAll(outputDir, partitioned, levelData.Rows));
+        RunStep("GeoJSON export", errors, () =>
+            GeoJsonWriter.WriteAll(outputDir, partitioned, levelData.Rows));
     }
 
     static void WriteMetadata(string outputDir, Document doc, List<string> errors)
@@ -403,7 +403,7 @@ public class ExportCommand : IExternalCommand
         {
             var metadata = new Dictionary<string, string>
             {
-                ["format_version"] = "3.0",
+                ["format_version"] = "2",
                 ["project_name"] = doc.Title ?? "",
                 ["units"] = "meters",
                 ["source"] = $"Revit {doc.Application.VersionNumber}"

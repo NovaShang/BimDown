@@ -1,17 +1,18 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DuckDBConnection } from '@duckdb/node-api';
-import { buildRegistry, getSpecDir, SVG_FILE_NAMES } from '../schema/registry.js';
+import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES, SPATIAL_3D_TABLES } from '../schema/registry.js';
 import type { ResolvedTable } from '../schema/types.js';
 import { discoverLayout } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
 import {
-  parseSvgFile,
+  parseGeoJsonFile,
   extractLineGeometry,
-  extractRectGeometry,
+  extractPointGeometry,
   extractPolygonGeometry,
-  extractCircleGeometry,
-} from '../utils/svg.js';
+  featureId,
+  type BimDownFeature,
+} from '../utils/geojson.js';
 import { runQuery } from './engine.js';
 
 const INSERT_BATCH_SIZE = 500;
@@ -66,8 +67,7 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
     hydrated.push({ name: tableName, table });
   }
 
-  // Pass 2 — inject computed fields. By this point the `level` table (if any)
-  // is guaranteed to exist, so `_levels` can be built up front and reused.
+  // Pass 2 — inject geometry-derived fields and GeoJSON properties.
   const levelsReady = await tryCreateLevelsTemp(conn);
 
   for (const { name, table } of hydrated) {
@@ -110,7 +110,7 @@ async function tryCreateLevelsTemp(conn: DuckDBConnection): Promise<boolean> {
  * UPDATE that joins `_levels` twice (base + top). Cascading defaults:
  *   base_level_id: explicit → _partition (non-global) → lowest level
  *   top_level_id:  explicit → next level above base_level_id
- * Rows that can't resolve either side stay NULL (same as the JS fallback).
+ * Rows that can't resolve either side stay NULL.
  */
 async function injectHeight(conn: DuckDBConnection, tableName: string): Promise<void> {
   const colsResult = await runQuery(
@@ -119,8 +119,6 @@ async function injectHeight(conn: DuckDBConnection, tableName: string): Promise<
   );
   const existing = new Set(colsResult.rows.map((r) => String(r.column_name)));
 
-  // Ensure the columns the UPDATE references all exist, so the SQL stays uniform
-  // across tables whose CSVs omit some of these fields.
   const ensureVarchar = async (col: string) => {
     if (!existing.has(col)) {
       await runQuery(conn, `ALTER TABLE "${tableName}" ADD COLUMN "${col}" VARCHAR`);
@@ -155,81 +153,89 @@ async function injectHeight(conn: DuckDBConnection, tableName: string): Promise<
 }
 
 /**
- * Inject geometry fields (start_x, end_x, points, ...) from SVG files into the
- * main table. Uses a per-table temp staging table + a single JOIN UPDATE instead
- * of one UPDATE per row.
+ * Hydrate geometry-derived fields AND GeoJSON Feature properties into the main
+ * DuckDB table. Properties stored in GeoJSON (base_offset, top_offset,
+ * height_offset, rotation, arc) appear as table columns alongside CSV columns,
+ * so downstream SQL doesn't need to know where each value was physically stored.
  */
 async function injectGeometry(
   conn: DuckDBConnection,
   tableName: string,
   dirs: { name: string; path: string }[],
 ): Promise<void> {
-  const svgName = SVG_FILE_NAMES[tableName];
-  if (!svgName) return;
+  const fileName = GEOJSON_FILE_NAMES[tableName];
+  if (!fileName) return;
+  const isSpatial = SPATIAL_3D_TABLES.has(tableName);
 
-  const geometries = new Map<string, Record<string, number | string>>();
+  // Map of element id → flat record of computed + property values
+  const rowsById = new Map<string, Record<string, number | string>>();
 
   for (const d of dirs) {
-    // global/ can have SVGs too (multi-story walls, curtain walls, beams).
-    const svgPath = join(d.path, `${svgName}.svg`);
-    if (!existsSync(svgPath)) continue;
+    const path = join(d.path, `${fileName}.geojson`);
+    if (!existsSync(path)) continue;
 
+    let fc;
     try {
-      const svg = parseSvgFile(svgPath);
-      for (const el of svg.elements) {
-        if (el.tag === 'path') {
-          geometries.set(el.id, extractLineGeometry(el));
-        } else if (el.tag === 'rect') {
-          geometries.set(el.id, extractRectGeometry(el));
-        } else if (el.tag === 'polygon') {
-          geometries.set(el.id, extractPolygonGeometry(el));
-        } else if (el.tag === 'circle') {
-          geometries.set(el.id, extractCircleGeometry(el));
-        }
-      }
+      fc = parseGeoJsonFile(path);
     } catch {
-      // Skip unparseable SVGs
+      continue;
+    }
+
+    for (const feature of fc.features) {
+      const id = featureId(feature);
+      if (!id || id === '<unknown>') continue;
+      const out: Record<string, number | string> = {};
+      extractGeometryFields(feature, isSpatial, out);
+      extractPropertyFields(feature, out);
+      rowsById.set(id, out);
     }
   }
 
-  if (geometries.size === 0) return;
+  if (rowsById.size === 0) return;
 
-  // Union of all geometry field names across collected rows.
+  // Union of all field names across collected rows.
   const allKeys = new Set<string>();
-  for (const geo of geometries.values()) {
-    for (const k of Object.keys(geo)) allKeys.add(k);
+  for (const rec of rowsById.values()) {
+    for (const k of Object.keys(rec)) allKeys.add(k);
   }
-  const geoCols = Array.from(allKeys);
-  const typeOf = (col: string) => (col === 'points' ? 'VARCHAR' : 'DOUBLE');
+  const cols = Array.from(allKeys);
+  // `points`/`shape` are strings. base_offset/top_offset/height_offset are stored as VARCHAR
+  // so injectHeight's NULLIF-CAST pattern keeps working uniformly across CSV-derived and
+  // GeoJSON-derived columns. Everything else is DOUBLE.
+  const stringCols = new Set(['points', 'shape', 'base_offset', 'top_offset', 'height_offset']);
+  const typeOf = (col: string) => (stringCols.has(col) ? 'VARCHAR' : 'DOUBLE');
 
-  // Add any missing geometry columns on the main table.
+  // Add any missing columns on the main table.
   const existingCols = await runQuery(
     conn,
     `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'`,
   );
   const existingSet = new Set(existingCols.rows.map((r) => String(r.column_name)));
-  for (const col of geoCols) {
+  for (const col of cols) {
     if (existingSet.has(col)) continue;
     await runQuery(conn, `ALTER TABLE "${tableName}" ADD COLUMN "${col}" ${typeOf(col)}`);
   }
 
-  // Stage into a temp table, then UPDATE ... FROM for a single round-trip.
+  // Stage into a temp table, then UPDATE ... FROM.
   const stagingName = `_geo_${tableName}`;
-  const stagingColDefs = ['"id" VARCHAR', ...geoCols.map((c) => `"${c}" ${typeOf(c)}`)].join(', ');
+  const stagingColDefs = ['"id" VARCHAR', ...cols.map((c) => `"${c}" ${typeOf(c)}`)].join(', ');
   await runQuery(conn, `CREATE TEMP TABLE "${stagingName}" (${stagingColDefs})`);
 
-  const entries = Array.from(geometries.entries());
+  const entries = Array.from(rowsById.entries());
   for (let i = 0; i < entries.length; i += INSERT_BATCH_SIZE) {
     const batch = entries.slice(i, i + INSERT_BATCH_SIZE);
     const valuesSql = batch
-      .map(([id, geo]) => {
+      .map(([id, rec]) => {
         const vals = [escapeSql(id)];
-        for (const col of geoCols) {
-          const v = geo[col];
+        for (const col of cols) {
+          const v = rec[col];
           if (v === undefined || v === null) {
             vals.push('NULL');
           } else if (typeof v === 'string') {
             vals.push(escapeSql(v));
+          } else if (stringCols.has(col)) {
+            // Numeric value going into a VARCHAR column — quote it.
+            vals.push(escapeSql(String(v)));
           } else {
             vals.push(String(v));
           }
@@ -240,13 +246,48 @@ async function injectGeometry(
     await runQuery(conn, `INSERT INTO "${stagingName}" VALUES ${valuesSql}`);
   }
 
-  const setClause = geoCols.map((c) => `"${c}" = g."${c}"`).join(', ');
+  const setClause = cols.map((c) => `"${c}" = g."${c}"`).join(', ');
   await runQuery(
     conn,
     `UPDATE "${tableName}" SET ${setClause} FROM "${stagingName}" g WHERE "${tableName}".id = g.id`,
   );
 
   await runQuery(conn, `DROP TABLE "${stagingName}"`);
+}
+
+function extractGeometryFields(feature: BimDownFeature, isSpatial: boolean, out: Record<string, number | string>): void {
+  const g = feature.geometry;
+  if (g.type === 'LineString') {
+    const lg = extractLineGeometry(feature);
+    out.start_x = lg.start_x;
+    out.start_y = lg.start_y;
+    out.end_x = lg.end_x;
+    out.end_y = lg.end_y;
+    out.length = lg.length;
+    if (isSpatial) {
+      if (lg.start_z !== undefined) out.start_z = lg.start_z;
+      if (lg.end_z !== undefined) out.end_z = lg.end_z;
+    }
+  } else if (g.type === 'Point') {
+    const pg = extractPointGeometry(feature);
+    out.x = pg.x;
+    out.y = pg.y;
+    out.rotation = pg.rotation;
+    if (isSpatial && pg.z !== undefined) out.z = pg.z;
+  } else if (g.type === 'Polygon') {
+    const pg = extractPolygonGeometry(feature);
+    out.points = pg.outer.map((p) => `${p.x},${p.y}`).join(' ');
+    out.area = pg.area;
+  }
+}
+
+function extractPropertyFields(feature: BimDownFeature, out: Record<string, number | string>): void {
+  const p = feature.properties;
+  if (typeof p.base_offset === 'number') out.base_offset = p.base_offset;
+  if (typeof p.top_offset === 'number') out.top_offset = p.top_offset;
+  if (typeof p.height_offset === 'number') out.height_offset = p.height_offset;
+  // rotation may also come from properties (already covered for Points; for non-Points it's still meaningful)
+  if (typeof p.rotation === 'number' && out.rotation === undefined) out.rotation = p.rotation;
 }
 
 function escapeSql(val: string): string {

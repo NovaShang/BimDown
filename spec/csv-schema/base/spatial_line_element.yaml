@@ -6,8 +6,10 @@ abstract: true
 fields:
   - name: start_z
     type: float
-    required: true
+    computed: true
+    description: Z coordinate of the start endpoint. Hydrated from the 3rd component of the LineString's first coordinate.
 
   - name: end_z
     type: float
-    required: true
+    computed: true
+    description: Z coordinate of the end endpoint. Hydrated from the 3rd component of the LineString's last coordinate.

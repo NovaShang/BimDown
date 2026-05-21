@@ -15,12 +15,12 @@
 ```
 1. global/level.csv         ← MUST be first
 2. global/grid.csv          ← recommended second
-3. wall.csv + .svg          ← depends on level
+3. wall.csv + wall.geojson          ← depends on level
    ├─ door.csv              ← depends on wall (host_id)
    ├─ window.csv            ← depends on wall (host_id)
    └─ opening.csv           ← depends on wall or slab
-4. column.csv + .svg        ← independent
-5. slab.csv + .svg          ← needs wall outline known
+4. column.csv + column.geojson        ← independent
+5. slab.csv + slab.geojson          ← needs wall outline known
 6. space.csv                ← needs walls enclosed (build computes boundary)
 7. stair, ramp, railing     ← independent
 8. ceiling, roof            ← roof on top floor only
@@ -41,40 +41,40 @@ X-direction grids (vertical lines): `start_x = end_x`. Y-direction grids (horizo
 
 **Pitfall**: confusing X/Y — X-grids are vertical lines (constant x).
 
-### wall (`lv-N/wall.csv` + `.svg`)
-Most critical element. One wall = one straight line. Never split for doors/windows. Endpoints must align exactly at junctions — even 0.001m gap breaks space computation. `stroke-width` = `thickness` (CSV is source of truth).
+### wall (`lv-N/wall.csv` + `.geojson`)
+Most critical element. One wall = one straight line (`LineString` with 2 coordinates). Never split for doors/windows. Endpoints must align exactly at junctions — even 0.001m gap breaks space computation. `thickness` lives in CSV.
 
 **Order**: exterior → core → major interior → partitions. Render immediately after.
 
-**Pitfalls**: forgetting `<g transform="scale(1,-1)">`, endpoints not aligned, splitting walls at doors.
+**Pitfalls**: endpoints not aligned, splitting walls at doors.
 
 ### door (`lv-N/door.csv` — CSV only)
-`position` = meters from wall **start point** (M coordinate in SVG) to opening **center**. Validate: `position ± width/2` within wall length. No overlaps on same wall.
+**Recommended**: use `host_x, host_y` (2D coordinate of door center) — `bimdown build` auto-resolves to nearest wall + position. Alternative: manual `host_id` + `position` (meters from wall start to center). Validate: `position ± width/2` within wall length. No overlaps on same wall.
 
 **Before placing doors, write a room connectivity graph** (e.g., `Stair→Corridor→Office`, `Corridor→Meeting Room`). Each connection = one door. Verify every room traces back to a stair/elevator.
 
-**Pitfalls**: missing connections (room inaccessible), position to center not edge, wrong host_id.
+**Pitfalls**: missing connections (room inaccessible), host_x/host_y too far from any wall (>5cm).
 
 ### window (`lv-N/window.csv` — CSV only)
 Same rules as door. **Always set `base_offset`** = sill height (standard 0.9m). Omitting it puts windows at floor level.
 
-### slab (`lv-N/slab.csv` + `.svg`)
+### slab (`lv-N/slab.csv` + `.geojson`)
 Polygon matching exterior wall outline. `function`: floor/roof. Account for shaft openings.
 
 **Pitfall**: polygon not matching wall outline, forgetting openings.
 
-### column (`lv-N/column.csv` + `.svg`)
-SVG `<rect>` x,y = **corner** not center. For 0.5×0.5 column at origin: `x=-0.25, y=-0.25`. Round columns: `<circle cx= cy= r=>`.
+### column (`lv-N/column.csv` + `.geojson`)
+GeoJSON `Point` coordinates are the **center** of the column. Section attributes live in CSV: `shape` (rect/round), `size_x`, `size_y`. For a rotated rectangle, add `properties.rotation` (degrees CCW).
 
-**Pitfall**: using center coords for `<rect>` x,y.
+**Tip**: You can also write the column as a 4-vertex `Polygon` — `bimdown build` extracts the rotation and section dimensions and normalizes it to a `Point` + CSV section fields.
 
 ### space (`lv-N/space.csv` — CSV only)
 Seed point (x,y) inside enclosed room + `name`. `bimdown build` computes boundary.
 
 **Pitfall**: seed point on/outside wall, room not fully enclosed.
 
-### stair (`lv-N/stair.csv` + `.svg`)
-SVG = plan projection path. CSV: `width`, `step_count`, `start_z`, `end_z` (offsets from level).
+### stair (`lv-N/stair.csv` + `.geojson`)
+Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `width`, `step_count`.
 
 ### curtain_wall, ceiling, roof
 - Curtain wall: line element like wall, with `u_grid_count`/`v_grid_count`
@@ -83,18 +83,18 @@ SVG = plan projection path. CSV: `width`, `step_count`, `start_z`, `end_z` (offs
 
 ### Structure (structure_column, beam, foundation)
 - structure_column: like column but `structural_section_profile` supports i/t/l/c/cross shapes
-- beam: spatial line, `start_z`/`end_z`, section profile (primary rect 0.3×0.6m, secondary 0.2×0.4m)
-- foundation: geometry determines form — `<rect>`/`<circle>` = isolated, `<path>` = strip, `<polygon>` = raft
+- beam: spatial 3D `LineString`; CSV: section profile (primary rect 0.3×0.6m, secondary 0.2×0.4m)
+- foundation: GeoJSON geometry type chooses form — `Point` = isolated, `LineString` = strip, `Polygon` = raft
 
 ### MEP (duct, pipe, cable_tray, conduit)
-Spatial line elements. `shape` (rect/round), `size_x`(/`size_y`), `system_type`, `start_z`/`end_z`. Align endpoints to create connections. Run `bimdown resolve-topology` after all MEP placed.
+Spatial 3D `LineString` elements. CSV: `shape` (rect/round), `size_x` (/`size_y`), `system_type`. Align endpoints to create connections. Run `bimdown resolve-topology` after all MEP placed.
 
 ### equipment & terminal
 Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan, pump, transformer, panelboard, generator, water_heater, tank, other. `terminal_type`: supply_air_diffuser, return_air_grille, exhaust_air_grille, sprinkler_head, fire_alarm_device, light_fixture, power_outlet, data_outlet, plumbing_fixture, other.
 
 ## Multi-Story Efficiency
 
-1. Complete typical floor (usually lv-2) → validate → copy CSV+SVG to other `lv-N/` dirs
+1. Complete typical floor (usually lv-2) → validate → copy CSV+GeoJSON to other `lv-N/` dirs
 2. IDs are level-scoped — same `w-1` in different levels = different elements
 3. Modify non-standard floors: GF lobby, top floor mechanical/roof, basement parking
 
@@ -107,7 +107,7 @@ Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan,
 | Overlapping openings | Adjust positions on same wall |
 | Space seed not enclosed | Move seed point inside or close wall gaps |
 | Unknown column in CSV | Remove computed field from CSV |
-| SVG ID not in CSV | Add CSV row or remove SVG element |
+| GeoJSON id not in CSV | Add CSV row or remove GeoJSON Feature |
 
 ## Final Checklist
 

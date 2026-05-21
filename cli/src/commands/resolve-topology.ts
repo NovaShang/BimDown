@@ -2,25 +2,22 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { readCsv, writeCsv, type CsvData } from '../utils/csv.js';
 import {
-  parseSvgFile,
+  parseGeoJsonFile,
+  stringifyFeatureCollection,
   extractLineGeometry,
-  extractRectGeometry,
-  extractCircleGeometry,
-  type SvgElement,
-} from '../utils/svg.js';
+  extractPointGeometry,
+  type BimDownFeature,
+  type BimDownFeatureCollection,
+} from '../utils/geojson.js';
 import { discoverLayout, listFiles } from '../utils/fs.js';
-import { buildRegistry, getSpecDir, SVG_FILE_NAMES } from '../schema/registry.js';
+import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES } from '../schema/registry.js';
 
 const TOLERANCE = 0.01; // 1cm in meters
 
 const CURVE_TABLES = ['duct', 'pipe', 'cable_tray', 'conduit'];
 const NODE_TABLES = ['equipment', 'terminal', 'mep_node'];
 
-interface Point3D {
-  x: number;
-  y: number;
-  z: number;
-}
+interface Point3D { x: number; y: number; z: number }
 
 interface CurveEndpoint {
   curveId: string;
@@ -35,26 +32,15 @@ interface NodeEntry {
   tableName: string;
   id: string;
   pos: Point3D;
-  /** Bounding box half-extents for fitting containment check */
-  halfW: number;
-  halfH: number;
 }
 
 function dist3d(a: Point3D, b: Point3D): number {
-  const dx = a.x - b.x;
-  const dy = a.y - b.y;
-  const dz = a.z - b.z;
+  const dx = a.x - b.x, dy = a.y - b.y, dz = a.z - b.z;
   return Math.sqrt(dx * dx + dy * dy + dz * dz);
 }
 
-/** Check if point falls within a node's 2D bounding box (with Z tolerance) */
-function insideBBox(point: Point3D, node: NodeEntry): boolean {
-  const dz = Math.abs(point.z - node.pos.z);
-  if (dz > TOLERANCE) return false;
-  const dx = Math.abs(point.x - node.pos.x);
-  const dy = Math.abs(point.y - node.pos.y);
-  // Use bbox half-extents + tolerance margin
-  return dx <= node.halfW + TOLERANCE && dy <= node.halfH + TOLERANCE;
+function near(a: Point3D, b: Point3D): boolean {
+  return dist3d(a, b) <= TOLERANCE;
 }
 
 export function resolveTopology(dir: string): void {
@@ -66,13 +52,11 @@ export function resolveTopology(dir: string): void {
     ...layout.levelDirs,
   ];
 
-  // ─── Phase 1: Load curves, collect free endpoints ───────
+  // ─── Phase 1: load curves, collect free endpoints ─────────
   const freeEndpoints: CurveEndpoint[] = [];
-  // Track CSV data for later update: key = "levelDir/tableName"
   const curveData = new Map<string, { csv: CsvData; path: string }>();
   let totalCurves = 0;
-  let skippedStart = 0;
-  let skippedEnd = 0;
+  let alreadyResolved = 0;
 
   for (const d of allDirs) {
     if (!existsSync(d.path)) continue;
@@ -80,68 +64,49 @@ export function resolveTopology(dir: string): void {
 
     for (const tableName of CURVE_TABLES) {
       if (!files.includes(`${tableName}.csv`)) continue;
-      const svgName = SVG_FILE_NAMES[tableName];
-      if (!svgName || !files.includes(`${svgName}.svg`)) continue;
+      const geomName = GEOJSON_FILE_NAMES[tableName];
+      if (!geomName || !files.includes(`${geomName}.geojson`)) continue;
 
       const csvPath = join(d.path, `${tableName}.csv`);
-      const svgPath = join(d.path, `${svgName}.svg`);
-
+      const geomPath = join(d.path, `${geomName}.geojson`);
       const csv = readCsv(csvPath);
       const key = `${d.name}/${tableName}`;
       curveData.set(key, { csv, path: csvPath });
 
-      let svgElements: SvgElement[];
-      try {
-        svgElements = parseSvgFile(svgPath).elements;
-      } catch {
-        continue;
-      }
+      let fc;
+      try { fc = parseGeoJsonFile(geomPath); }
+      catch { continue; }
 
-      const geoMap = new Map<string, { start_x: number; start_y: number; end_x: number; end_y: number }>();
-      for (const el of svgElements) {
-        if (el.tag === 'path') {
-          const geo = extractLineGeometry(el);
-          geoMap.set(el.id, geo);
-        }
+      const geoById = new Map<string, BimDownFeature>();
+      for (const f of fc.features) {
+        const id = String(f.properties?.id ?? '');
+        if (id) geoById.set(id, f);
       }
 
       for (const row of csv.rows) {
-        const geo = geoMap.get(row.id);
-        if (!geo) continue;
+        const feat = geoById.get(row.id);
+        if (!feat || feat.geometry.type !== 'LineString') continue;
         totalCurves++;
+        const lg = extractLineGeometry(feat);
 
-        const startZ = parseFloat(row.start_z ?? '0');
-        const endZ = parseFloat(row.end_z ?? '0');
+        if (row.start_node_id) alreadyResolved++;
+        else freeEndpoints.push({
+          curveId: row.id, side: 'start',
+          point: { x: lg.start_x, y: lg.start_y, z: lg.start_z ?? 0 },
+          levelDir: d.name, systemType: row.system_type ?? '',
+        });
 
-        // Only collect endpoints where node ID is not already set
-        if (row.start_node_id) {
-          skippedStart++;
-        } else {
-          freeEndpoints.push({
-            curveId: row.id,
-            side: 'start',
-            point: { x: geo.start_x, y: geo.start_y, z: startZ },
-            levelDir: d.name,
-            systemType: row.system_type ?? '',
-          });
-        }
-
-        if (row.end_node_id) {
-          skippedEnd++;
-        } else {
-          freeEndpoints.push({
-            curveId: row.id,
-            side: 'end',
-            point: { x: geo.end_x, y: geo.end_y, z: endZ },
-            levelDir: d.name,
-            systemType: row.system_type ?? '',
-          });
-        }
+        if (row.end_node_id) alreadyResolved++;
+        else freeEndpoints.push({
+          curveId: row.id, side: 'end',
+          point: { x: lg.end_x, y: lg.end_y, z: lg.end_z ?? 0 },
+          levelDir: d.name, systemType: row.system_type ?? '',
+        });
       }
     }
   }
 
-  // ─── Phase 2: Load existing node positions + bboxes ─────
+  // ─── Phase 2: load existing nodes ─────────────────────────
   const nodes: NodeEntry[] = [];
 
   for (const d of allDirs) {
@@ -150,72 +115,49 @@ export function resolveTopology(dir: string): void {
 
     for (const tableName of NODE_TABLES) {
       if (!files.includes(`${tableName}.csv`)) continue;
-      const svgName = SVG_FILE_NAMES[tableName];
-      if (!svgName || !files.includes(`${svgName}.svg`)) continue;
+      const geomName = GEOJSON_FILE_NAMES[tableName];
+      if (!geomName || !files.includes(`${geomName}.geojson`)) continue;
 
+      const geomPath = join(d.path, `${geomName}.geojson`);
       const csvPath = join(d.path, `${tableName}.csv`);
-      const svgPath = join(d.path, `${svgName}.svg`);
       const csv = readCsv(csvPath);
 
-      let svgElements: SvgElement[];
-      try {
-        svgElements = parseSvgFile(svgPath).elements;
-      } catch {
-        continue;
-      }
+      let fc;
+      try { fc = parseGeoJsonFile(geomPath); }
+      catch { continue; }
 
-      const posMap = new Map<string, { x: number; y: number; halfW: number; halfH: number }>();
-      for (const el of svgElements) {
-        if (el.tag === 'rect') {
-          const geo = extractRectGeometry(el);
-          posMap.set(el.id, { x: geo.x, y: geo.y, halfW: geo.size_x / 2, halfH: geo.size_y / 2 });
-        } else if (el.tag === 'circle') {
-          const geo = extractCircleGeometry(el);
-          const r = geo.size_x / 2;
-          posMap.set(el.id, { x: geo.x, y: geo.y, halfW: r, halfH: r });
-        }
+      const posById = new Map<string, Point3D>();
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'Point') continue;
+        const id = String(f.properties?.id ?? '');
+        if (!id) continue;
+        const pg = extractPointGeometry(f);
+        posById.set(id, { x: pg.x, y: pg.y, z: pg.z ?? 0 });
       }
 
       for (const row of csv.rows) {
-        const p = posMap.get(row.id);
+        const p = posById.get(row.id);
         if (!p) continue;
-        const z = parseFloat(row.base_offset ?? '0');
-        nodes.push({
-          levelDir: d.name,
-          tableName,
-          id: row.id,
-          pos: { x: p.x, y: p.y, z },
-          halfW: p.halfW,
-          halfH: p.halfH,
-        });
+        nodes.push({ levelDir: d.name, tableName, id: row.id, pos: p });
       }
     }
   }
 
-  // ─── Phase 3: Match free endpoints to existing fittings ─
-  // A free endpoint inside a fitting's bbox → assign that fitting's ID
-  const resolvedIds = new Map<string, string>(); // "curveId:side" -> nodeId
+  // ─── Phase 3: match free endpoints to existing nodes ──────
+  const resolvedIds = new Map<string, string>();
   const stillFree: CurveEndpoint[] = [];
 
   for (const ep of freeEndpoints) {
     let matched: NodeEntry | null = null;
     for (const node of nodes) {
-      if (insideBBox(ep.point, node)) {
-        matched = node;
-        break;
-      }
+      if (near(ep.point, node.pos)) { matched = node; break; }
     }
-
-    if (matched) {
-      resolvedIds.set(`${ep.curveId}:${ep.side}`, matched.id);
-    } else {
-      stillFree.push(ep);
-    }
+    if (matched) resolvedIds.set(`${ep.curveId}:${ep.side}`, matched.id);
+    else stillFree.push(ep);
   }
-
   const fittingMatches = resolvedIds.size;
 
-  // ─── Phase 4: Cluster remaining free endpoints → new mep_nodes
+  // ─── Phase 4: cluster remaining endpoints into new mep_nodes ──
   interface Junction {
     point: Point3D;
     endpoints: CurveEndpoint[];
@@ -224,155 +166,87 @@ export function resolveTopology(dir: string): void {
     systemType: string;
   }
   const junctions: Junction[] = [];
-
   for (const ep of stillFree) {
     let found = false;
     for (const j of junctions) {
-      if (dist3d(ep.point, j.point) < TOLERANCE) {
-        j.endpoints.push(ep);
-        found = true;
-        break;
-      }
+      if (near(ep.point, j.point)) { j.endpoints.push(ep); found = true; break; }
     }
-    if (!found) {
-      junctions.push({
-        point: ep.point,
-        endpoints: [ep],
-        levelDir: ep.levelDir,
-        systemType: ep.systemType,
-        nodeId: '',
-      });
-    }
+    if (!found) junctions.push({
+      point: ep.point, endpoints: [ep], nodeId: '',
+      levelDir: ep.levelDir, systemType: ep.systemType,
+    });
   }
 
-  // Find max existing mep_node ID number per level
+  // Allocate mep-node IDs per level
   const maxMnId = new Map<string, number>();
   for (const n of nodes) {
-    if (n.tableName === 'mep_node') {
-      const num = parseInt(n.id.replace('mn-', ''), 10);
-      const current = maxMnId.get(n.levelDir) ?? 0;
-      if (num > current) maxMnId.set(n.levelDir, num);
-    }
+    if (n.tableName !== 'mep_node') continue;
+    const m = n.id.match(/^mn-(\d+)$/);
+    if (!m) continue;
+    const num = parseInt(m[1], 10);
+    const cur = maxMnId.get(n.levelDir) ?? 0;
+    if (num > cur) maxMnId.set(n.levelDir, num);
+  }
+  for (const j of junctions) {
+    const cur = maxMnId.get(j.levelDir) ?? 0;
+    const next = cur + 1;
+    maxMnId.set(j.levelDir, next);
+    j.nodeId = `mn-${next}`;
+    for (const ep of j.endpoints) resolvedIds.set(`${ep.curveId}:${ep.side}`, j.nodeId);
   }
 
-  // Assign IDs and record in resolvedIds
+  // ─── Phase 5: write new mep_node entries (CSV + GeoJSON) ──
+  const newByLevel = new Map<string, Junction[]>();
   for (const j of junctions) {
-    const current = maxMnId.get(j.levelDir) ?? 0;
-    const nextId = current + 1;
-    maxMnId.set(j.levelDir, nextId);
-    j.nodeId = `mn-${nextId}`;
-
-    for (const ep of j.endpoints) {
-      resolvedIds.set(`${ep.curveId}:${ep.side}`, j.nodeId);
-    }
-  }
-
-  // ─── Phase 5: Write new mep_node entries ────────────────
-  const newNodesByLevel = new Map<string, Junction[]>();
-  for (const j of junctions) {
-    const arr = newNodesByLevel.get(j.levelDir) ?? [];
+    const arr = newByLevel.get(j.levelDir) ?? [];
     arr.push(j);
-    newNodesByLevel.set(j.levelDir, arr);
+    newByLevel.set(j.levelDir, arr);
   }
 
-  for (const [levelDir, levelJunctions] of newNodesByLevel) {
+  for (const [levelDir, jns] of newByLevel) {
     const dirPath = levelDir === 'global' ? layout.globalDir : join(dir, levelDir);
     if (!existsSync(dirPath)) mkdirSync(dirPath, { recursive: true });
 
     const csvPath = join(dirPath, 'mep_node.csv');
-    const svgPath = join(dirPath, 'mep_node.svg');
+    const geomPath = join(dirPath, 'mep_node.geojson');
 
-    // Read existing or create new
+    // CSV: append new mep_node rows (base_offset moved to GeoJSON properties now, so no Z column needed)
     let csv: CsvData;
-    if (existsSync(csvPath)) {
-      csv = readCsv(csvPath);
-    } else {
-      csv = { headers: ['id', 'number', 'base_offset', 'system_type'], rows: [] };
-    }
-    for (const h of ['id', 'number', 'base_offset', 'system_type']) {
+    if (existsSync(csvPath)) csv = readCsv(csvPath);
+    else csv = { headers: ['id', 'number', 'system_type'], rows: [] };
+    for (const h of ['id', 'number', 'system_type']) {
       if (!csv.headers.includes(h)) csv.headers.push(h);
     }
-
-    // Read existing SVG elements
-    let existingSvgElements: SvgElement[] = [];
-    if (existsSync(svgPath)) {
-      try {
-        existingSvgElements = parseSvgFile(svgPath).elements;
-      } catch { /* ignore */ }
+    for (const j of jns) {
+      csv.rows.push({ id: j.nodeId, number: '', system_type: j.systemType });
     }
-
-    // Add new rows and SVG circle elements
-    const newSvgLines: string[] = [];
-    const NODE_RADIUS = 0.025; // small circle for auto-generated nodes
-    for (const j of levelJunctions) {
-      csv.rows.push({
-        id: j.nodeId,
-        number: '',
-        base_offset: String(j.point.z),
-        system_type: j.systemType,
-      });
-      newSvgLines.push(
-        `    <circle id="${j.nodeId}" cx="${j.point.x.toFixed(3)}" cy="${j.point.y.toFixed(3)}" r="${NODE_RADIUS}" />`,
-      );
-    }
-
     writeCsv(csvPath, csv);
 
-    // Rebuild SVG (existing elements + new circles)
-    const existingLines: string[] = [];
-    for (const el of existingSvgElements) {
-      const attrs = Object.entries(el.attrs).map(([k, v]) => `${k}="${v}"`).join(' ');
-      existingLines.push(`    <${el.tag} ${attrs} />`);
+    // GeoJSON: append new Point features (3D, mep_node is spatial)
+    let fc: BimDownFeatureCollection;
+    if (existsSync(geomPath)) {
+      try { fc = parseGeoJsonFile(geomPath); }
+      catch { fc = { type: 'FeatureCollection', features: [] }; }
+    } else {
+      fc = { type: 'FeatureCollection', features: [] };
     }
-
-    // Compute viewBox
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const el of existingSvgElements) {
-      if (el.tag === 'rect') {
-        const g = extractRectGeometry(el);
-        minX = Math.min(minX, g.x - g.size_x / 2); minY = Math.min(minY, g.y - g.size_y / 2);
-        maxX = Math.max(maxX, g.x + g.size_x / 2); maxY = Math.max(maxY, g.y + g.size_y / 2);
-      } else if (el.tag === 'circle') {
-        const g = extractCircleGeometry(el);
-        const r = g.size_x / 2;
-        minX = Math.min(minX, g.x - r); minY = Math.min(minY, g.y - r);
-        maxX = Math.max(maxX, g.x + r); maxY = Math.max(maxY, g.y + r);
-      }
+    for (const j of jns) {
+      fc.features.push({
+        type: 'Feature',
+        properties: { id: j.nodeId },
+        geometry: { type: 'Point', coordinates: [j.point.x, j.point.y, j.point.z] },
+      });
     }
-    for (const j of levelJunctions) {
-      minX = Math.min(minX, j.point.x - NODE_RADIUS); minY = Math.min(minY, j.point.y - NODE_RADIUS);
-      maxX = Math.max(maxX, j.point.x + NODE_RADIUS); maxY = Math.max(maxY, j.point.y + NODE_RADIUS);
-    }
-
-    let viewBox = '0 0 1 1';
-    if (minX !== Infinity) {
-      const pad = Math.max(maxX - minX, maxY - minY) * 0.02;
-      viewBox = `${(minX - pad).toFixed(3)} ${(-(maxY + pad)).toFixed(3)} ${(maxX - minX + pad * 2).toFixed(3)} ${(maxY - minY + pad * 2).toFixed(3)}`;
-    }
-
-    writeFileSync(svgPath, [
-      '<?xml version="1.0" encoding="utf-8"?>',
-      `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}">`,
-      '  <g transform="scale(1,-1)">',
-      ...existingLines,
-      ...newSvgLines,
-      '  </g>',
-      '</svg>',
-    ].join('\n'), 'utf-8');
+    writeFileSync(geomPath, stringifyFeatureCollection(fc), 'utf-8');
   }
 
-  // ─── Phase 6: Update curve CSVs ─────────────────────────
+  // ─── Phase 6: back-fill curve CSV node IDs ────────────────
   let updatedRows = 0;
-
   for (const [, entry] of curveData) {
     let modified = false;
-    const csv = entry.csv;
-
-    if (!csv.headers.includes('start_node_id')) csv.headers.push('start_node_id');
-    if (!csv.headers.includes('end_node_id')) csv.headers.push('end_node_id');
-
-    for (const row of csv.rows) {
-      // Only fill empty slots — never overwrite Revit-resolved connections
+    if (!entry.csv.headers.includes('start_node_id')) entry.csv.headers.push('start_node_id');
+    if (!entry.csv.headers.includes('end_node_id')) entry.csv.headers.push('end_node_id');
+    for (const row of entry.csv.rows) {
       if (!row.start_node_id) {
         const id = resolvedIds.get(`${row.id}:start`);
         if (id) { row.start_node_id = id; modified = true; updatedRows++; }
@@ -382,22 +256,13 @@ export function resolveTopology(dir: string): void {
         if (id) { row.end_node_id = id; modified = true; }
       }
     }
-
-    if (modified) {
-      writeCsv(entry.path, csv);
-    }
+    if (modified) writeCsv(entry.path, entry.csv);
   }
 
-  // ─── Summary ────────────────────────────────────────────
-  const totalEndpoints = totalCurves * 2;
-  const alreadyResolved = skippedStart + skippedEnd;
-  console.log(`Scanned ${totalCurves} MEP curves (${totalEndpoints} endpoints)`);
+  console.log(`Scanned ${totalCurves} MEP curves (${totalCurves * 2} endpoints)`);
   console.log(`  Already connected: ${alreadyResolved} (from Revit export)`);
   console.log(`  Free endpoints: ${freeEndpoints.length}`);
-  console.log(`  Matched to existing fittings (bbox): ${fittingMatches}`);
+  console.log(`  Matched to existing nodes (proximity): ${fittingMatches}`);
   console.log(`  New mep_nodes created: ${junctions.length}`);
-  console.log(`  Unresolved: ${stillFree.length - junctions.reduce((s, j) => s + j.endpoints.length, 0)}`);
-  if (updatedRows > 0) {
-    console.log(`Updated ${updatedRows} curve rows`);
-  }
+  if (updatedRows > 0) console.log(`Updated ${updatedRows} curve rows`);
 }

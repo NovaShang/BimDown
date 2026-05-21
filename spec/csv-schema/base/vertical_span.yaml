@@ -5,17 +5,18 @@ fields:
   - name: base_level_id
     type: reference
     reference: level
-    description: Base level. Optional — usually derived from the containing directory, but required for multi-story elements stored in global/.
+    description: Base level. Defaults to the containing directory's level (implicit for level-N/ directories). Must be set explicitly for elements in global/.
 
   - name: top_level_id
     type: reference
     reference: level
-    description: Top constraint level. Empty = next level above current level.
+    description: Top constraint level. Empty = level immediately above base_level_id.
 
   - name: top_offset
     type: float
     default: 0
-    description: Offset from top level. Default 0.
+    storage: geojson_property
+    description: Vertical offset from top_level_id, meters. Stored in GeoJSON Feature properties.
 
   - name: height
     type: float

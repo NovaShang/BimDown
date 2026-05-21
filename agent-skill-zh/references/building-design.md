@@ -93,7 +93,7 @@ Exterior first (0.2–0.3m, concrete/brick), then interior partitions (0.1–0.1
 
 **Windows**: standard 1.2–1.8×1.5m `base_offset=0.9`, floor-to-ceiling 1.5–3.0×2.4m `base_offset=0.0`, high strip 1.2–2.4×0.6m `base_offset=1.8`. **Always set `base_offset`** (sill height) — omitting it puts windows at floor level.
 
-`position` = meters from wall start to opening center. Validate: `position ± width/2` within wall length, no overlaps.
+**Recommended**: use `host_x, host_y` (2D coordinate of the opening center) instead of `position` — `bimdown build` auto-finds the wall and computes position. Validate: `position ± width/2` within wall length, no overlaps.
 
 **Connectivity check**: Place doors according to the connectivity graph from Phase 4. Every `──` connection in the graph = one door on the wall between those spaces. After placing all doors, verify every room traces back to a stair/elevator.
 
@@ -113,13 +113,13 @@ Complete typical floor (usually lv-2) → validate → copy to other lv-N dirs �
 
 ## Phase 6: Structural Design
 
-**Columns** (`structure_column`): At grid intersections. Sizes: residential 0.3–0.4m, office 0.5–0.6m, tall 0.6–0.8m. SVG `<rect>` x,y = corner (not center).
+**Columns** (`structure_column`): At grid intersections. Sizes: residential 0.3–0.4m, office 0.5–0.6m, tall 0.6–0.8m. GeoJSON `Point` coordinates are the column center; CSV carries shape/size_x/size_y.
 
-**Beams**: Primary along grid (rect 0.3×0.6m), secondary perpendicular at 2–3m (rect 0.2×0.4m). `start_z`/`end_z` = offset from level (0 or negative).
+**Beams**: Primary along grid (rect 0.3×0.6m), secondary perpendicular at 2–3m (rect 0.2×0.4m). Spatial 3D `LineString` — write the actual Z of each endpoint (absolute meters).
 
 **Structure slabs**: If needed separately from architectural slabs.
 
-**Foundations** (lowest level): SVG geometry determines type — `<rect>`/`<circle>` = isolated, `<path>` = strip, `<polygon>` = raft.
+**Foundations** (lowest level): GeoJSON geometry type determines form — `Point` = isolated, `LineString` = strip, `Polygon` = raft.
 
 **Checkpoint**: column at every grid intersection, beams connect columns, foundations under all columns.
 

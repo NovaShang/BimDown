@@ -1,6 +1,6 @@
 ---
 name: bimdown
-version: 1.4.1
+version: 2.0.0
 description: A bridge between AI and building data. Read & create BIM exactly like writing code. Execute architectural design, or just model your own house!
 metadata:
   {
@@ -15,7 +15,7 @@ metadata:
         "publish": {
           "endpoint": "https://bim-claw.com/api/shares/publish",
           "method": "POST",
-          "description": "Optional sharing step. Uploads project CSV/SVG/GLB files as a zip to BimClaw and returns a public share URL. Anonymous (no account or token required). The agent MUST ask the user for explicit permission before the first publish of any given project.",
+          "description": "Optional sharing step. Uploads project CSV/GeoJSON/GLB files as a zip to BimClaw and returns a public share URL. Anonymous (no account or token required). The agent MUST ask the user for explicit permission before the first publish of any given project.",
           "override": "Set BIMCLAW_API to point at a different backend (self-hosted)."
         }
       }
@@ -25,385 +25,250 @@ metadata:
 
 # BimDown Agent Skill & Schema Rules
 
-> **Your Mission:** A bridge between AI agents and building data. Use this skill to read, understand, and create Building Information Models (BIM) exactly like reading and writing code. It enables you to execute architectural design, model from drawings, perform quantity surveying, and conduct model reviews. Of course, just modeling your own house is also very interesting and fully supported.
-
+> **Your Mission:** A bridge between AI agents and building data. Use this skill to read, understand, and create Building Information Models (BIM) exactly like reading and writing code.
 
 ## Setup / Prerequisites
 
-This skill **REQUIRES** the `bimdown` binary (provided by the `bimdown-cli` npm package). All workflow steps below invoke it directly — without it, the skill cannot function.
+This skill **REQUIRES** the `bimdown` binary (provided by the `bimdown-cli` npm package).
 
 1. **Check first**: Run `which bimdown` (or `bimdown --version`). If it exists, skip the install step.
-2. **If missing**: Install via npm — but you **MUST explicitly ask the user for permission** before running `npm install -g` autonomously. This writes to global npm paths and executes arbitrary package scripts, so it is a privileged action.
+2. **If missing**: Install via npm — ask the user for permission before running `npm install -g`.
 
 ```bash
 npm install -g bimdown-cli
 ```
 
-The CLI is fully offline except for the optional `bimdown publish` step (see the Publishing section below for details on what that uploads and where).
-
 You are an AI Coder operating within a BimDown project environment.
-BimDown is an open-source, AI-native building data format using CSV for semantics and SVG for geometry.
+BimDown is an open-source, AI-native building data format using **CSV for attributes** and **GeoJSON for geometry**.
 
-## Core Architecture & Base Concepts
+## Core Architecture
 
-- **Global Unit is METERS**: All coordinates, widths, and structural attributes in CSV/SVG MUST strictly use METERS. BimDown simulates real-world dimensions.
-- **Computed Fields are READ-ONLY**: Any field marked with `computed: true` (or listed in `virtual_fields`) is automatically calculated by the CLI. **DO NOT** write these fields to CSV files. You can retrieve their values using `bimdown query`.
-- **Dual Nature**: Properties live in `{name}.csv`. 2D geometry lives in a sibling `{name}.svg` file. The `id` fields across both must match perfectly.
-- **SVG-derived virtual columns**: When you write geometry in SVG, the CLI automatically computes these fields for `bimdown query` — do NOT write them to CSV:
-  - Line elements (wall, beam, pipe, etc.): `length`, `start_x`, `start_y`, `end_x`, `end_y`
-  - Polygon elements (slab, roof, etc.): `area`, `perimeter`
-  - All elements: `level_id` (inferred from folder name, e.g. `lv-1/` → `lv-1`)
-- **Concrete Example of CSV+SVG Linked State**:
-  > `lv-1/wall.csv` (note: NO `level_id` column — it is auto-inferred):
-  > `id,thickness,material`
-  > `w-1,0.2,concrete`
-  >
-  > `lv-1/wall.svg`:
-  > `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 -10 10 10"> <g transform="scale(1,-1)"> <path id="w-1" d="M 0 0 L 10 0" stroke-width="0.2" /> </g> </svg>`
-  >
-  > After this, `bimdown query . "SELECT id, length, level_id FROM wall"` returns `w-1, 10.0, lv-1` — both `length` and `level_id` are computed automatically.
+- **Units are METERS** for all coordinates and dimensions.
+- **CSV holds attributes** (material, thickness, sizes, FKs, enums). **GeoJSON holds geometry** (Point / LineString / Polygon) plus optional numeric hints (`base_offset`, `top_offset`, `arc`, `rotation`).
+- **Computed fields are READ-ONLY**: `length`, `area`, `height`, `start_x/y/z`, `end_x/y/z`, `x`, `y`, `rotation`, `points`, `volume`, `bbox_*`, `level_id`. Never write them anywhere — the CLI hydrates them at query time.
+- **The `id` field links CSV row ↔ GeoJSON `properties.id`** for each element.
+- **`format_version: 2`** in `project_metadata.json`. Legacy SVG projects (v1) must be migrated first via the `svg-to-geojson` script.
 
 ## Project Directory Structure
 
 ```
 project/
-  project_metadata.json        # project root marker (format version, name, units)
-  global/                      # global-only files — MUST be here, NOT in lv-N/
-    grid.csv
-    level.csv
-    mesh.csv
-  lv-1/                        # per-level files
-    wall.csv + wall.svg        # elements with geometry have paired CSV+SVG
-    door.csv                   # hosted elements are CSV-only (parametric position on host wall)
-    space.csv                  # spaces: CSV seed point + space.svg boundary (computed by build)
+  project_metadata.json     # { "format_version": 2, "units": "m", ... }
+  global/                   # cross-floor reference + multi-level geometry
+    level.csv               # floor elevations (Z source of truth)
+    grid.csv                # structural grid lines (inline coords)
+    wall.geojson + wall.csv # multi-story walls
+    pipe.geojson + pipe.csv # vertical risers
+    ...
+  lv-1/                     # per-level element files
+    wall.csv + wall.geojson
+    column.csv + column.geojson
+    slab.csv + slab.geojson
+    door.csv                # hosted: CSV only (host_id + position)
+    window.csv              # hosted: CSV only
+    space.csv               # seed point only (boundary auto-generated)
     ...
   lv-2/
     ...
 ```
 
-**Key rules**:
-- `level.csv`, `grid.csv`, `mesh.csv` MUST live in `global/`, never in `lv-N/` directories
-- Per-level elements (wall, door, slab, space, etc.) go in `lv-N/` directories
-- The folder name (e.g. `lv-1`) becomes the element's `level_id` — do NOT write `level_id` to CSV
+**Key partition rules**:
+- An element's `base_level_id` is **always** the containing directory's level. To express a multi-level element (e.g. a wall spanning lv-1 → lv-3), place it in `global/`.
+- Spatial elements (beam, ramp, duct, pipe…) live in the level they primarily belong to. Only true cross-level instances (vertical risers, multi-flight stairs) go in `global/`.
 
-## Recommended Workflow for Creating/Modifying Buildings
+## Z-Axis Handling (Important — read carefully)
 
-1. **Plan spatial layout first**: Before writing any files, reason through the spatial relationships — wall positions, room adjacencies, door/window placements. Sketch coordinates mentally or on paper.
-2. **Write SVG geometry first**: Create the `.svg` files (walls, slabs, columns) with correct coordinates. Geometry determines everything else.
-3. **Write CSV attributes second**: Create the `.csv` files with element properties (material, thickness, etc.). Remember: do NOT include computed fields like `level_id`, `length`, `area`.
-4. **Render and visually verify**: Run `bimdown render <dir> -o render.png` and **view the PNG image** to confirm the layout is correct. Check that walls connect properly, rooms are enclosed, and doors/windows are in the right positions. **Save render outputs and any other non-BimDown files OUTSIDE the project directory** — the project directory must only contain BimDown CSV/SVG files, otherwise `build` will reject them.
-5. **Build**: Run `bimdown build <dir>` to validate schema, check geometry, and compute space boundaries (generates `space.svg` from seed points).
-6. **Iterate**: If the render or build shows problems, fix the SVG geometry and re-render until the layout looks right.
-7. **Publish** (optional, network step): Run `bimdown publish <dir>` to upload the project to BimClaw and get a shareable 3D preview URL. See the **Publishing & Data Upload** section below for what is uploaded, where, and the consent requirement.
+Two modes depending on the element type:
 
-## Reference SOPs
+### Level-anchored elements (wall, column, slab, ceiling, roof, curtain_wall, room_separator)
 
-**STOP — before writing a single file, you MUST read the matching reference SOP below.** These are not optional background material; they are the authoritative step-by-step procedures for the task.
+- GeoJSON `geometry.coordinates` are **2D** `[x, y]` — no Z.
+- `base_level_id`, `top_level_id` in **CSV** (FKs). Defaults: base = directory level; top = level immediately above base.
+- Numeric Z offsets (optional, default 0) in **GeoJSON `properties`**: `base_offset`, `top_offset`.
+- This means: changing a level's elevation in `level.csv` auto-updates every anchored element. AI never does arithmetic on level elevations.
 
-- **If you need to DESIGN a building** (any request that starts from a brief, requirements, program, or "design me a ..."): **YOU MUST READ** [`references/building-design.md`](./references/building-design.md) — the full design-to-BIM workflow from massing through MEP.
-- **If you need to MODEL from existing plans** (floor plan images, sketches, known dimensions, or an existing building to replicate): **YOU MUST READ** [`references/bim-modeling.md`](./references/bim-modeling.md) — element creation order, dependencies, and best practices.
+### Spatial elements (beam, brace, stair, ramp, railing, duct, pipe, cable_tray, conduit, equipment, terminal, mep_node)
 
-Do not guess the workflow from memory. Do not start writing CSV/SVG before the relevant SOP has been read in full.
+- GeoJSON `geometry.coordinates` are **3D** `[x, y, z]` (absolute Z in meters).
+- `base_level_id` (CSV) is still recorded for partitioning, but geometry is self-contained in 3D.
 
-## CLI Tools & Best Practices
+## GeoJSON Geometry Reference
 
-1. **`bimdown query <dir> <sql> --json`**: Runs DuckDB SQL across all tables, including SVG-derived virtual columns.
-   - **Example**: `bimdown query ./proj "SELECT id, length FROM wall WHERE length > 5.0" --json`
-2. **`bimdown render <dir> [-l level] [-o output.png] [-w width]`**: Renders a level into a PNG blueprint image (default 2048px wide). Use `.svg` extension for SVG output. **Always render after modifying geometry and view the PNG to visually verify the result.**
-   - **Color legend** (memorize this so you can interpret your own renders):
-     - **Walls**: dark navy `#1a1a2e` (structural walls are slate `#4a4e69`)
-     - **Columns**: dark solid fill (structural columns slightly lighter)
-     - **Slabs**: light grey translucent
-     - **Spaces / rooms**: blue translucent with room name label
-     - **Stairs**: orange
-     - **Beams**: purple
-     - **DOORS**: **bold red `#e63946`** lines cutting across the host wall — clearly visible
-     - **WINDOWS**: **bold teal `#2a9d8f`** lines cutting across the host wall — clearly visible
-     - **MEP** — ducts: cyan, pipes: light blue, cable tray: green, conduit: teal, equipment: red fill, terminals: orange fill
-   - If a door or window is missing from the render, it usually means its `host_id` or `position` is wrong — check the CSV before blaming the renderer.
-3. **`bimdown build <dir>`**: Validates the project, checks geometry (wall connectivity, hosted element bounds), and computes space boundaries (generates `space.svg`). **Run this EVERY TIME after modifying CSV or SVG files!** Also available as `bimdown validate` (alias).
-4. **`bimdown schema [table]`**: Prints the full schema for any element type. Use this to look up fields before creating elements.
-5. **`bimdown diff <dirA> <dirB>`**: Emits a `+`, `-`, `~` structural difference between project snapshots.
-6. **`bimdown init <dir>`**: Creates a new empty BimDown project with the correct directory structure.
-7. **`bimdown publish <dir> [--expires 7d] [--api <url>]`**: Publishes the project to BimClaw (default endpoint `https://bim-claw.com/api/shares/publish`) and returns a shareable 3D preview URL. Anonymous — no account or token is required. See the **Publishing & Data Upload** section below for the full security contract before running this.
-8. **`bimdown info <dir>`**: Prints project summary (levels, element counts).
-9. **`bimdown resolve-topology <dir>`**: Auto-detects coincident endpoints for MEP curves, generates `mep_nodes`, and fills connectivity fields.
-10. **`bimdown merge <dirs...> -o <output>`**: Merges multiple project directories into one, resolving ID conflicts.
-11. **`bimdown sync <dir>`**: Hydrates into DuckDB and dehydrates back out to CSV/SVG, applying computed defaults.
-12. **Downloading a shared project**: If the user provides a share link like `https://bim-claw.com/s/<token>`, append `/download` to get the zip: `curl -L https://bim-claw.com/s/<token>/download -o project.zip && unzip project.zip -d project/`
+Every Feature has `properties.id` matching the paired CSV row.
+
+### Canonical forms
+
+```jsonc
+// Straight wall (level-anchored, 2D)
+{
+  "type": "Feature",
+  "properties": { "id": "w-1" },
+  "geometry": { "type": "LineString", "coordinates": [[0, 0], [5, 0]] }
+}
+
+// Curved wall: 2 endpoints + arc properties
+{
+  "type": "Feature",
+  "properties": { "id": "w-2", "arc": { "radius": 3, "large_arc": false, "sweep": true } },
+  "geometry": { "type": "LineString", "coordinates": [[5, 0], [5, 6]] }
+}
+
+// Column (level-anchored Point; section attrs live in CSV)
+{
+  "type": "Feature",
+  "properties": { "id": "c-1" },
+  "geometry": { "type": "Point", "coordinates": [2, 2] }
+}
+
+// Beam (spatial 3D LineString)
+{
+  "type": "Feature",
+  "properties": { "id": "bm-1" },
+  "geometry": { "type": "LineString", "coordinates": [[0, 0, 3.5], [10, 5, 3.7]] }
+}
+
+// Slab (2D Polygon, closed ring; CSV has thickness, material)
+{
+  "type": "Feature",
+  "properties": { "id": "sl-1" },
+  "geometry": { "type": "Polygon", "coordinates": [[[0,0],[10,0],[10,8],[0,8],[0,0]]] }
+}
+```
+
+### AI input flexibility (build normalizes everything)
+
+You can write any of these equivalent forms; `bimdown build` normalizes to canonical:
+
+| Variant you write | Build action |
+|---|---|
+| Arc wall as tessellated polyline (`LineString` with N≥3 points on a circle) | Detects arc → emits 2-point LineString + `properties.arc` |
+| Rectangular column as 4-vertex Polygon | Extracts `shape/size_x/size_y` to CSV, `rotation` to properties; geometry → Point at centroid |
+| Round column as regular polygon approximation (N≥8 vertices on a circle) | Extracts `shape="round"`, sizes; geometry → Point at center |
+| Unclosed Polygon ring | Auto-closes |
+| 3D coordinates on a level-anchored element with constant Z | Drops Z; if `Z != base_level.elevation + base_offset`, recomputes `base_offset` |
+
+## Recommended Workflow
+
+1. **Plan spatial layout first**: reason through wall positions, room adjacencies, openings.
+2. **Write GeoJSON geometry**: create `*.geojson` Feature collections with correct coordinates.
+3. **Write CSV attributes**: element properties (material, thickness, size_x/y, …). Never include computed fields.
+4. **Render and visually verify**: `bimdown render <dir> -l lv-1 -o render.png` and view the PNG. Save renders **outside** the project directory.
+5. **Build**: `bimdown build <dir>` — validates schema, snaps endpoints, normalizes geometry, computes space boundaries.
+6. **Iterate** until the render looks right.
+
+## CLI Tools
+
+1. **`bimdown query <dir> <sql> [--json]`** — DuckDB SQL across all tables, including hydrated geometry fields.
+   - Example: `bimdown query ./proj "SELECT id, length FROM wall WHERE length > 5"`
+2. **`bimdown render <dir> [-l level] [-o out.png] [-w width]`** — render a level as PNG/SVG image.
+3. **`bimdown build <dir>`** — validate + snap endpoints + normalize geometry + compute space boundaries. Run after every edit.
+4. **`bimdown schema [table]`** — print the full schema for a table.
+5. **`bimdown diff <dirA> <dirB>`** — diff two projects.
+6. **`bimdown init <dir>`** — create a new empty project (`format_version: 2`).
+7. **`bimdown publish <dir>`** — upload to BimClaw and get a share URL (network step; **ask user first**).
+8. **`bimdown info <dir>`** — element counts per level.
+9. **`bimdown resolve-topology <dir>`** — auto-resolve MEP curve connectivity.
+10. **`bimdown merge <dirs...> -o <out>`** — merge projects.
+11. **`bimdown sync <dir>`** — hydrate to DuckDB then dehydrate to files (applies normalization).
 
 ## Publishing & Data Upload
 
-`bimdown publish` is the **only** network-using command in this skill. Everything else runs fully offline on local files. Before running it, be explicit with the user about the following:
+`bimdown publish` is the **only** network command. Before running:
 
-- **Destination**: `https://bim-claw.com/api/shares/publish` by default. Override with `--api <url>` or the `BIMCLAW_API` environment variable to point at a self-hosted backend.
-- **What is uploaded**: the entire project directory, zipped — every CSV, every SVG, any `mesh/*.glb` files, and `project_metadata.json`. Filenames, geometry, room names, and any materials/notes you put in CSV columns all leave the device.
-- **Authentication**: **none**. The upload is anonymous; no account, API key, or token is used or stored. The server returns a random share token (e.g. `https://bim-claw.com/s/abc123`). Anyone with that link can view and download the project until it expires (default 7 days, configurable via `--expires`).
-- **Consent requirement** (HARD RULE): Before the **first** publish of any given project in a session, **you MUST ask the user for explicit permission** and wait for their confirmation. Do not publish autonomously. Once confirmed for that project, further re-publishes within the same conversation are fine.
-- **Sensitivity check**: If the project contains anything the user might consider confidential — client names, specific addresses, unpublished designs, stamped construction docs — call this out in the consent question so the user can make an informed decision.
+- **Destination**: `https://bim-claw.com/api/shares/publish` (override with `--api` or `BIMCLAW_API`).
+- **Uploaded**: the entire project zipped — every CSV, every GeoJSON, any GLB files, `project_metadata.json`.
+- **Anonymous**: no account; the server returns a random share token. Anyone with the link can view/download until expiry (default 7 days).
+- **Consent**: Ask the user for explicit permission before the first publish of a project.
 
-## Critical File & Geometry Rules
+## Critical Rules
 
-- **ID format**:
-  - **Grid and Level** allow any string after prefix: level: `lv-` + any string (e.g. `lv-1`, `lv-A`, `lv-B2`); grid: `gr-` + any string (e.g. `gr-1`, `gr-A`, `gr-B2`)
-  - **All other elements** use `{prefix}-{number}` (digits only): wall → `w-{n}`, column → `c-{n}`, slab → `sl-{n}`, space → `sp-{n}`, door → `d-{n}`, window → `wn-{n}`, ...
-  - **Always run `bimdown build` to confirm your IDs are compliant.**
-- **SVG Coordinate Y-Flip**: All geometry inside `.svg` files **MUST** be wrapped in a Y-axis flip group: `<g transform="scale(1,-1)"> ... </g>`. This is just a fixed boilerplate — you do NOT need to do any coordinate conversion. Use normal Cartesian coordinates (X = right, Y = up) directly inside the group.
-- **CSV vs Computed Fields**: Only write fields that are NOT marked as computed. Specifically, `level_id`, `length`, `area`, `start_x/y`, `end_x/y`, `perimeter`, `volume`, `bbox_*` are all auto-computed — never write them to CSV.
-- **Vertical positioning** (walls, columns, and other vertical elements):
-  - `level_id`: auto-inferred from folder name — do NOT write to CSV
-  - `base_offset`: vertical offset in meters from the element's level. Default 0. Usually leave empty.
-  - `top_level_id`: the level where the element's top is constrained. **Leave empty** to default to the next level above. Only set this if the element spans to a non-adjacent level.
-  - `top_offset`: vertical offset in meters from the top level. Default 0. Usually leave empty.
-  - `height`: auto-computed from level elevations and offsets — do NOT write to CSV.
-  - **For most single-story walls**: leave `top_level_id`, `top_offset`, and `base_offset` all empty — the CLI will compute the correct height from level elevations.
+- **ID format**: `{prefix}-{n}` (digits only) for most elements; `lv-{any}` / `gr-{any}` for level/grid.
+- **GeoJSON coordinate system**: project-local meters, `+X=East`, `+Y=North`, `+Z=Up`. **No `crs` member**, **no `scale(1,-1)` flip** — GeoJSON uses native Y-up by convention.
+- **CSV vs computed**: write only non-computed CSV fields. Never include `length`, `area`, `start_x/y/z`, `end_x/y/z`, `x`, `y`, `rotation`, `points`, `height`, `volume`, `bbox_*`, `level_id`.
+- **GeoJSON properties vs CSV**:
+  - `id` — both (matched by string equality).
+  - `base_offset`, `top_offset`, `arc`, `rotation`, `height_offset` (ceiling) — **GeoJSON `properties`** only.
+  - `base_level_id`, `top_level_id`, `host_id`, `position`, all material/size/enum attrs — **CSV** only.
 
 ## Generation Tips
 
-### Typical Values (meters)
-| Element | Field | Typical Range |
-|---------|-------|--------------|
+### Typical values (meters)
+| Element | Field | Range |
+|---|---|---|
 | Wall (partition) | thickness | 0.1 – 0.15 |
 | Wall (exterior) | thickness | 0.2 – 0.3 |
 | Wall (structural) | thickness | 0.3 – 0.6 |
 | Door (single) | width × height | 0.9 × 2.1 |
 | Door (double) | width × height | 1.8 × 2.1 |
 | Window | width × height | 1.2–1.8 × 1.5 |
-| Window | base_offset (sill height) | 0.9 (standard), 0.0 (floor-to-ceiling) |
+| Window sill | `properties.base_offset` | 0.9 (standard), 0 (floor-to-ceiling) |
 | Column | size_x × size_y | 0.3–0.6 × 0.3–0.6 |
 | Slab | thickness | 0.15 – 0.25 |
-| Level spacing | elevation diff | 3.0 – 4.0 |
+| Level spacing | elevation Δ | 3.0 – 4.0 |
 
-### Room Boundary Connectivity
-Rooms are enclosed by **walls, curtain walls, columns, and room separators**. For the boundary to close properly:
-- Line element endpoints (walls, curtain walls, room separators) must meet exactly at shared coordinates
-- Example: w-1 ends at (10,0) → w-2 must start at (10,0) for an L-junction
-- The CLI `build` command warns about unconnected endpoints and computes space boundaries from closed loops
+### Room boundary connectivity
+For room boundaries to close cleanly (so `build` can compute spaces):
+- Line-element endpoints must meet at shared coordinates (build snaps within 10cm).
+- `bimdown build` warns about unconnected endpoints and computes faces from closed loops.
 
-### Door/Window Placement Rules
-
-**Recommended: use `host_x, host_y`** instead of `position`. Just write the 2D coordinate of the opening center — `bimdown build` will auto-resolve the nearest wall and compute `position` for you.
+### Door / window placement
+Doors and windows are hosted on walls and have **no GeoJSON file** — only CSV with `host_id` + `position` (distance in meters from wall start to opening center).
 
 ```csv
-id,host_x,host_y,width,height,operation,material
-d-1,5.0,3.0,0.9,2.1,single,wood
+id,host_id,position,width,height,operation,material
+d-1,w-3,1.5,0.9,2.1,single_swing,wood
 ```
 
-After `bimdown build`, the CSV is rewritten with `host_id` and `position` replacing `host_x/host_y`. You can also provide `host_id` alongside `host_x/host_y` to force a specific wall.
-
-**Alternative: manual `position`** = distance in meters from wall **start point** (the M coordinate in SVG path) to the opening **center**.
-
-**Validation rules** (apply to both methods):
-- Must satisfy: `position - width/2 >= 0` AND `position + width/2 <= wall_length`
+Validation rules:
+- `position - width/2 >= 0` and `position + width/2 <= wall_length`
 - Multiple openings on the same wall must not overlap
-- The CLI `build` command warns about out-of-bounds and overlapping placements
 
-### SVG File Template
-Always use this structure for SVG files:
-```xml
-<svg xmlns="http://www.w3.org/2000/svg">
-  <g transform="scale(1,-1)">
-    <!-- elements here, using normal Cartesian coordinates (X=right, Y=up) -->
-  </g>
-</svg>
+### GeoJSON file template
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "id": "w-1" },
+      "geometry": { "type": "LineString", "coordinates": [[0,0],[5,0]] } }
+  ]
+}
 ```
 
 ## Base Schema Reference
 
 All elements inherit from `element`:
-- **Write to CSV**: `id` (required), `number`, `base_offset` (default 0), `mesh_file`
-- **Query-only** (computed, never write): `level_id`, `created_at`, `updated_at`, `volume`, `bbox_min_x`, `bbox_min_y`, `bbox_min_z`, `bbox_max_x`, `bbox_max_y`, `bbox_max_z`
+- **CSV**: `id` (required), `number`, `mesh_file`.
+- **GeoJSON properties**: `base_offset` (default 0).
+- **Computed**: `level_id`, `volume`, `bbox_*`.
 
-**Geometry bases** — these fields are query-only (derived from SVG, never write to CSV):
-- `line_element` (wall, beam, etc.): `start_x`, `start_y`, `end_x`, `end_y`, `length`
-- `point_element` (column, equipment, etc.): `x`, `y`, `rotation`
-- `polygon_element` (slab, roof, etc.): `points`, `area`, `perimeter`
+**Geometry bases** (computed-only):
+- `line_element` (wall, beam, …): `start_x`, `start_y`, `end_x`, `end_y`, `length`.
+- `spatial_line_element` (beam, duct, …): adds `start_z`, `end_z`.
+- `point_element` (column, equipment, …): `x`, `y`, `rotation`.
+- `polygon_element` (slab, roof, …): `points`, `area`.
 
-**Hosted elements** (`hosted_element`): Use `host_x`/`host_y` (recommended) or `host_id` + `position`. See Door/Window Placement Rules above.
+**Vertical span** (`vertical_span`):
+- **CSV**: `base_level_id`, `top_level_id`.
+- **GeoJSON properties**: `top_offset` (default 0).
+- **Computed**: `height`.
 
-**Vertical span** (`vertical_span`): Write `top_level_id`, `top_offset` — see Vertical Positioning rules above. Query-only: `height`.
+**Hosted** (`hosted_element`): `host_id`, `position` — both in CSV. No GeoJSON file.
 
-**Material enum** (`materialized`): concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite
+**Material enum**: concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite.
 
-## Core Schema Topologies (Concrete Tables)
+## Available Tables
 
-Below is a curated whitelist of the **most commonly used** core architectural elements. 
+`beam`, `brace`, `cable_tray`, `ceiling`, `column`, `conduit`, `curtain_wall`, `door`, `duct`, `equipment`, `foundation`, `grid`, `level`, `mep_node`, `mesh`, `opening`, `pipe`, `railing`, `ramp`, `roof`, `room_separator`, `slab`, `space`, `stair`, `structure_column`, `structure_slab`, `structure_wall`, `terminal`, `wall`, `window`.
 
-> **IMPORTANT**: The complete list of available elements in this project is:
-> `beam`, `brace`, `cable_tray`, `ceiling`, `column`, `conduit`, `curtain_wall`, `door`, `duct`, `equipment`, `foundation`, `grid`, `level`, `mep_node`, `mesh`, `opening`, `pipe`, `railing`, `ramp`, `roof`, `room_separator`, `slab`, `space`, `stair`, `structure_column`, `structure_slab`, `structure_wall`, `terminal`, `wall`, `window`
-> 
-> If the user asks you to modify or generate elements not listed below, **RUN** `bimdown schema <table_name>` to fetch their requirements!
+If the user asks about a table not covered above, run `bimdown schema <table_name>` for its full schema.
 
-### Table: `door` (Prefix: `d`)
-- **Geometry**: CSV only. Use `host_x, host_y` or `host_id` + `position` to place on a wall.
-```yaml
-id_prefix: d
-name: door
-bases:
-  - hosted_element
-  - materialized
-host_type: wall
+## Reference SOPs
 
-fields:
-  - name: width
-    type: float
-    required: true
-
-  - name: height
-    type: float
-
-  - name: operation
-    type: enum
-    values:
-      - single_swing
-      - double_swing
-      - sliding
-      - folding
-      - revolving
-
-  - name: hinge_position
-    type: enum
-    values:
-      - start
-      - end
-
-  - name: swing_side
-    type: enum
-    values:
-      - left
-      - right
-
-```
-
-### Table: `grid` (Prefix: `gr`)
-- **Geometry**: CSV only
-```yaml
-id_prefix: gr
-name: grid
-
-fields:
-  - name: id
-    type: string
-    required: true
-
-  - name: number
-    type: string
-    required: true
-
-  - name: start_x
-    type: float
-    required: true
-
-  - name: start_y
-    type: float
-    required: true
-
-  - name: end_x
-    type: float
-    required: true
-
-  - name: end_y
-    type: float
-    required: true
-```
-
-### Table: `level` (Prefix: `lv`)
-- **Geometry**: CSV only
-```yaml
-id_prefix: lv
-name: level
-
-fields:
-  - name: id
-    type: string
-    required: true
-
-  - name: number
-    type: string
-    required: true
-
-  - name: name
-    type: string
-
-  - name: elevation
-    type: float
-    required: true
-```
-
-### Table: `space` (Prefix: `sp`)
-- **Geometry**: SVG required
-```yaml
-id_prefix: sp
-name: space
-bases:
-  - element
-
-fields:
-  - name: x
-    type: float
-    required: true
-    description: Seed point X coordinate (room interior point)
-
-  - name: y
-    type: float
-    required: true
-    description: Seed point Y coordinate (room interior point)
-
-  - name: name
-    type: string
-
-  - name: boundary_points
-    type: string
-    computed: true
-    description: Space boundary polygon vertices (computed by build from surrounding walls)
-
-  - name: area
-    type: float
-    computed: true
-    description: Space area in square meters (computed from boundary polygon)
-
-```
-
-### Table: `wall` (Prefix: `w`)
-- **Geometry**: SVG required
-- **IMPORTANT**: A wall MUST be one complete straight line (start to end). Do NOT split a wall into segments for doors/windows. Doors and windows attach to the wall via the `position` parameter on the host wall.
-```yaml
-id_prefix: w
-name: wall
-bases:
-  - line_element
-  - vertical_span
-  - materialized
-
-fields:
-  - name: thickness
-    type: float
-    required: true
-    description: Wall thickness in meters. SVG stroke-width should match but CSV is source of truth.
-
-```
-
-### Table: `window` (Prefix: `wn`)
-- **Geometry**: CSV only. Use `host_x, host_y` or `host_id` + `position`. Always set `base_offset` (sill height, typically 0.9m).
-```yaml
-id_prefix: wn
-name: window
-bases:
-  - hosted_element
-  - materialized
-host_type: wall
-
-fields:
-  - name: width
-    type: float
-    required: true
-
-  - name: height
-    type: float
-
-```
+**Before writing files, READ the matching SOP**:
+- **Designing a building from a brief** → [`references/building-design.md`](./references/building-design.md)
+- **Modeling from existing plans / drawings** → [`references/bim-modeling.md`](./references/bim-modeling.md)
 
 ## Additional Resources
 
-If you need more detailed information about the BimDown format, or if you need the conversion tool to round-trip data between Autodesk Revit and BimDown, please refer to the official GitHub repository:
+For more detail or Revit round-trip tooling, see the official repository:
 **[https://github.com/NovaShang/BimDown](https://github.com/NovaShang/BimDown)**

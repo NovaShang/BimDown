@@ -1,7 +1,7 @@
-﻿id,number,base_offset,mesh_file,host_id,position,material,width,height
-wn-1,5,0.915,,w-2,17.818,glass,0.915,1.22
-wn-2,6,0.915,,w-2,16.498,glass,0.915,1.22
-wn-3,7,0.915,,w-2,13.974,glass,0.915,1.22
-wn-4,8,0.915,,w-2,12.77,glass,0.915,1.22
-wn-5,9,0.915,,w-2,11.566,glass,0.915,1.22
-wn-6,10,0.915,,w-2,10.362,glass,0.915,1.22
+id,number,mesh_file,host_id,position,material,width,height
+wn-1,5,,w-2,17.818,glass,0.915,1.22
+wn-2,6,,w-2,16.498,glass,0.915,1.22
+wn-3,7,,w-2,13.974,glass,0.915,1.22
+wn-4,8,,w-2,12.77,glass,0.915,1.22
+wn-5,9,,w-2,11.566,glass,0.915,1.22
+wn-6,10,,w-2,10.362,glass,0.915,1.22

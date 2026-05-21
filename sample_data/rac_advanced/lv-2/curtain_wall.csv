@@ -1,7 +1,7 @@
-﻿id,number,base_offset,mesh_file,top_level_id,top_offset,material,u_grid_count,v_grid_count,u_spacing,v_spacing,panel_material
-cw-23,,0,,lv-3,0,composite,2,2,0.241,0.33,Glass
-cw-24,,0,,lv-3,0,composite,2,4,0.241,,Glass
-cw-25,,0,,lv-3,0,composite,2,2,0.241,0.33,Glass
-cw-26,,0,,lv-3,0,composite,2,2,0.241,0.33,Glass
-cw-30,,0,,lv-3,0,composite,2,6,0.241,,Glass
-cw-31,,0,,lv-3,0,composite,1,2,,1.131,Glass
+id,number,mesh_file,top_level_id,material,u_grid_count,v_grid_count,u_spacing,v_spacing,panel_material
+cw-23,,,lv-3,composite,2,2,0.241,0.33,Glass
+cw-24,,,lv-3,composite,2,4,0.241,,Glass
+cw-25,,,lv-3,composite,2,2,0.241,0.33,Glass
+cw-26,,,lv-3,composite,2,2,0.241,0.33,Glass
+cw-30,,,lv-3,composite,2,6,0.241,,Glass
+cw-31,,,lv-3,composite,1,2,,1.131,Glass
