@@ -2,11 +2,16 @@ import { useMemo, Suspense } from 'react';
 import { useEditorState } from '../state/EditorContext.tsx';
 import { isDisciplineVisible } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
+import type { Level } from '../types.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { resolveBimMaterial } from './utils/bimMaterials.ts';
 import { getRenderer } from './renderers/index.ts';
 import MeshInstances from './layers/MeshInstances.tsx';
 import './renderers/registerDefaults.ts';
+import { hasElementModule } from '../elements/registry.ts';
+import { isPipelineV2 } from '../adapters/svg/context.tsx';
+import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
+import { ElementNode3D } from '../adapters/r3f/ElementNode3D.tsx';
 
 interface FloorRenderData {
   levelId: string;
@@ -107,6 +112,7 @@ export default function FloorGroup() {
           <group key={levelId} visible={isVisible}>
             <RenderElements
               elements={elements}
+              levelId={levelId}
               levelElevation={elevation}
               levelElevations={levelElevations}
             />
@@ -117,8 +123,9 @@ export default function FloorGroup() {
   );
 }
 
-function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
+function RenderElements({ elements, levelId, levelElevation, levelElevations, ghost }: {
   elements: CanonicalElement[];
+  levelId: string;
   levelElevation: number;
   levelElevations: Map<string, number>;
   ghost?: boolean;
@@ -129,25 +136,43 @@ function RenderElements({ elements, levelElevation, levelElevations, ghost }: {
     return map;
   }, [elements]);
 
-  // Split elements: mesh_file → MeshInstances, rest → parametric renderers
-  const { meshElements, parametricGroups } = useMemo(() => {
+  // V2 geometry context (built once per floor render pass).
+  const v2Active = isPipelineV2();
+  const v2Ctx = useMemo(() => {
+    if (!v2Active) return null;
+    const level: Level = { id: levelId, number: '', name: '', elevation: levelElevation };
+    const allLevels: Level[] = Array.from(levelElevations.entries()).map(
+      ([id, elevation]) => ({ id, number: '', name: '', elevation }),
+    );
+    return buildGeometryContext({ level, allLevels, allElements });
+  }, [v2Active, levelId, levelElevation, levelElevations, allElements]);
+
+  // Split: mesh_file → MeshInstances, V2-handled → ElementNode3D, rest → V1 parametric.
+  const { meshElements, v2Elements, parametricGroups } = useMemo(() => {
     const meshEls: CanonicalElement[] = [];
+    const v2Els: CanonicalElement[] = [];
     const paramGroups = new Map<string, CanonicalElement[]>();
     for (const el of elements) {
       if (el.attrs.mesh_file) {
         meshEls.push(el);
+      } else if (v2Active && hasElementModule(el.tableName)) {
+        v2Els.push(el);
       } else {
         const list = paramGroups.get(el.tableName) ?? [];
         list.push(el);
         paramGroups.set(el.tableName, list);
       }
     }
-    return { meshElements: meshEls, parametricGroups: paramGroups };
-  }, [elements]);
+    return { meshElements: meshEls, v2Elements: v2Els, parametricGroups: paramGroups };
+  }, [elements, v2Active]);
 
   return (
     <>
-      {/* Parametric renderers */}
+      {/* V2 element-module path */}
+      {v2Ctx && v2Elements.map(el => (
+        <ElementNode3D key={el.id} element={el} ctx={v2Ctx} />
+      ))}
+      {/* Parametric renderers (V1) */}
       {[...parametricGroups.entries()].map(([tableName, els]) => {
         const config = getRenderer(tableName);
         if (!config) return null;

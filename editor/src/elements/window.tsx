@@ -3,6 +3,7 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { getBlockSvg } from '../renderers/blockLoader.ts';
+import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 
 export interface WindowFacts {
   id: string;
@@ -79,9 +80,29 @@ export const windowModule: ElementModule<WindowFacts> = {
     );
   },
 
-  draw3D(): ReactNode {
-    // TODO 3c: port doorWindowBuilder.ts to R3F adapter.
-    return null;
+  draw3D(facts, drawCtx): ReactNode {
+    const cx = (facts.start.x + facts.end.x) / 2;
+    const cySvg = (facts.start.y + facts.end.y) / 2;
+    const cy = facts.baseY + facts.height / 2;
+    const angleRad = (facts.angleDeg * Math.PI) / 180;
+    const thickness = facts.strokeWidth || 0.04;
+    const material = getBimMaterial(resolveBimMaterial(facts.material, 'window'));
+    const isHL = drawCtx.selected || drawCtx.hovered;
+    return (
+      <mesh
+        position={[cx, cy, -cySvg]}
+        rotation={[0, angleRad, 0]}
+        scale={[facts.length, facts.height, thickness]}
+        material={isHL ? undefined : material}
+        userData={{ elementId: facts.id }}
+      >
+        <boxGeometry args={[1, 1, 1]} />
+        {isHL && (
+          <meshStandardMaterial attach="material" color="#06b6d4"
+            transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
+        )}
+      </mesh>
+    );
   },
 };
 

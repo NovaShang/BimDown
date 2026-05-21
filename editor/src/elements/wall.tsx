@@ -1,18 +1,30 @@
 import type { ReactNode } from 'react';
+import { Shape, ExtrudeGeometry, type BufferGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { computeCornerAdjustments, type WallSegment, type CornerAdjustment } from '../geometry/miter.ts';
 import { tessellateArc, pointOnArc, type ArcParams } from '../geometry/arc.ts';
 import { MATERIAL_OPTIONS } from '../model/tableRegistry.ts';
+import { applyOpenings } from '../three/resolve/csg.ts';
+import type { SurfacePrimitive, ParametricOpening } from '../three/primitives/types.ts';
+import { getBimMaterial } from '../three/utils/bimMaterials.ts';
+import { resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 
 /** Opening (door / window / line-hosted opening) range along wall centerline. */
 export interface WallOpening {
   hostedId: string;
+  hostedTable: 'door' | 'window' | 'opening';
   /** Center position in meters from wall start, along centerline. */
   position: number;
   /** Opening width in meters. */
   width: number;
+  /** Opening height in meters (for 3D CSG cut). */
+  height: number;
+  /** Bottom of opening above wall base, in meters (sill height for windows). */
+  sillHeight: number;
+  /** Profile shape for 3D CSG. */
+  shape: 'rect' | 'round' | 'arch';
 }
 
 export interface WallFacts {
@@ -115,15 +127,14 @@ function collectOpenings(el: LineElement, ctx: GeometryContext): WallOpening[] {
     if (!HOSTED_TABLES.has(child.tableName)) continue;
     if (child.geometry !== 'line' && child.geometry !== 'spatial_line') continue;
     const hosted = child as LineElement;
+    const tbl = child.tableName as 'door' | 'window' | 'opening';
 
     let position: number;
     let width: number;
     if (el.arc) {
-      // Arc wall: defer to attrs.position (meters along arc). Refinement later.
       position = parseFloat(hosted.attrs.position || '0');
       width = parseFloat(hosted.attrs.width || '0.9') || 0.9;
     } else {
-      // Straight wall: project hosted segment onto wall centerline.
       const tStart = (hosted.start.x - el.start.x) * ux + (hosted.start.y - el.start.y) * uy;
       const tEnd   = (hosted.end.x   - el.start.x) * ux + (hosted.end.y   - el.start.y) * uy;
       const tLo = Math.min(tStart, tEnd);
@@ -132,7 +143,13 @@ function collectOpenings(el: LineElement, ctx: GeometryContext): WallOpening[] {
       width = span > 0.001 ? span : (parseFloat(hosted.attrs.width || '0.9') || 0.9);
       position = (tLo + tHi) / 2;
     }
-    result.push({ hostedId: hosted.id, position, width });
+
+    const defaultHeight = tbl === 'window' ? 1.2 : 2.1;
+    const height = parseFloat(hosted.attrs.height || `${defaultHeight}`) || defaultHeight;
+    const sillHeight = parseFloat(hosted.attrs.base_offset || '0') || 0;
+    const shape = (hosted.attrs.shape || 'rect') as 'rect' | 'round' | 'arch';
+
+    result.push({ hostedId: hosted.id, hostedTable: tbl, position, width, height, sillHeight, shape });
   }
   return result.sort((a, b) => a.position - b.position);
 }
@@ -277,9 +294,80 @@ export const wallModule: ElementModule<WallFacts> = {
     );
   },
 
-  draw3D(): ReactNode {
-    // TODO Step 3c: emit R3F mesh equivalent to wallBuilder + applyOpenings.
-    return null;
+  draw3D(facts, drawCtx): ReactNode {
+    if (facts.footprint.length < 3) return null;
+
+    // Extrude the (miter-adjusted) footprint vertically.
+    const shape = new Shape();
+    shape.moveTo(facts.footprint[0].x, facts.footprint[0].y);
+    for (let i = 1; i < facts.footprint.length; i++) {
+      shape.lineTo(facts.footprint[i].x, facts.footprint[i].y);
+    }
+    shape.closePath();
+
+    let geo: BufferGeometry = new ExtrudeGeometry(shape, { depth: facts.height, bevelEnabled: false });
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, facts.baseY, 0);
+
+    // Build a SurfacePrimitive-shape payload and reuse the existing CSG opening cut.
+    if (facts.openings.length > 0) {
+      const parametric: ParametricOpening[] = facts.openings.map(op => ({
+        kind: 'parametric',
+        id: op.hostedId,
+        shape: op.shape,
+        // applyOpenings expects 'position' as distance from wall start (left edge).
+        position: op.position - op.width / 2,
+        width: op.width,
+        height: op.height,
+        sillHeight: op.sillHeight,
+      }));
+      const fakePrim: SurfacePrimitive = {
+        kind: 'surface',
+        id: `surface:${facts.id}`,
+        elementId: facts.id,
+        tableName: 'wall',
+        footprint: facts.footprint,
+        extrudeDirection: { x: 0, y: 1, z: 0 },
+        height: facts.height,
+        origin: { x: 0, y: facts.baseY, z: 0 },
+        material: resolveBimMaterial(facts.material, 'wall'),
+        miterMeta: {
+          startX: facts.centerline.start.x,
+          startY: facts.centerline.start.y,
+          endX:   facts.centerline.end.x,
+          endY:   facts.centerline.end.y,
+          halfWidth: facts.thickness / 2,
+          arc: facts.centerline.arc,
+        },
+        openings: parametric,
+      };
+      // Re-translate geo to model origin since miterMeta expects world XY-Z math
+      // identical to the V1 builder. Our extrude already placed it; CSG matches.
+      const cut = applyOpenings(geo, fakePrim);
+      if (cut !== geo) geo.dispose();
+      geo = cut;
+    }
+
+    const material = getBimMaterial(resolveBimMaterial(facts.material, 'wall'));
+    const isHL = drawCtx.selected || drawCtx.hovered;
+    return (
+      <mesh
+        geometry={geo}
+        material={isHL ? undefined : material}
+        castShadow
+        receiveShadow
+        userData={{ elementId: facts.id }}
+      >
+        {isHL && (
+          <meshStandardMaterial
+            attach="material"
+            color="#06b6d4"
+            transparent={material.transparent}
+            opacity={Math.max(material.opacity, 0.4)}
+          />
+        )}
+      </mesh>
+    );
   },
 
   bbox(facts) {
