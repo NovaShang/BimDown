@@ -14,3 +14,4 @@ import './grid.tsx';
 import './room_separator.tsx';
 import './brace.tsx';
 import './ramp.tsx';
+import './ceiling.tsx';

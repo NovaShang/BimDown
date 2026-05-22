@@ -44,6 +44,9 @@ export function slabGeometryFor(
   ctx: GeometryContext,
   table: string,
   defaultMaterial: string,
+  /** Extra elevation offset applied after base_offset (used by ceiling for its
+   *  `height_offset` drop). */
+  extraOffset = 0,
 ): SlabFacts | null {
   if (el.vertices.length < 3) return null;
   const baseOffset = parseFloat(el.attrs.base_offset || '0') || 0;
@@ -53,7 +56,7 @@ export function slabGeometryFor(
     table,
     vertices: el.vertices,
     thickness,
-    baseY: ctx.levelElevation + baseOffset,
+    baseY: ctx.levelElevation + baseOffset + extraOffset,
     material: el.attrs.material || defaultMaterial,
     holes: collectSlabHoles(el.id, ctx),
   };
