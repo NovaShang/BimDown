@@ -29,7 +29,7 @@ export const openingModule: ElementModule<OpeningFacts> = {
   archetype: 'hosted',
   prefix: 'op',
   hostType: 'wall',
-  hostTables: ['wall', 'curtain_wall', 'structure_wall', 'slab', 'structure_slab'],
+  hostTables: ['wall', 'curtain_wall', 'structure_wall', 'slab', 'structure_slab', 'roof'],
   widthAttr: 'width',
   csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'width', 'height', 'shape'],
   defaults: {

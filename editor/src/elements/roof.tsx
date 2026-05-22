@@ -5,11 +5,14 @@
  * tracked in test issues for follow-up work.
  */
 import type { ReactNode } from 'react';
+import { type BufferGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement, Point } from '../model/elements.ts';
 import { createRoofGeometry } from '../three/utils/roofGeometry.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { applyOpenings } from '../three/resolve/csg.ts';
+import type { SurfacePrimitive, PolygonOpening } from '../three/primitives/types.ts';
 import { MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS } from './_options.ts';
 
 const DEFAULT_THICKNESS = 0.2;
@@ -22,6 +25,8 @@ export interface RoofFacts {
   roofType: string;
   slopeDeg: number;
   material: string;
+  /** Polygon-opening holes hosted on this roof (skylights, smoke vents, etc.). */
+  holes: Point[][];
 }
 
 export const roofModule: ElementModule<RoofFacts> = {
@@ -48,6 +53,16 @@ export const roofModule: ElementModule<RoofFacts> = {
     const baseOffset = parseFloat(p.attrs.base_offset || '0') || 0;
     const thickness = parseFloat(p.attrs.thickness || `${DEFAULT_THICKNESS}`) || DEFAULT_THICKNESS;
     const slopeDeg = parseFloat(p.attrs.slope || '0') || 0;
+
+    // Polygon-opening holes from opening elements hosted on this roof.
+    const holes: Point[][] = [];
+    for (const child of ctx.hostedOf(p.id)) {
+      if (child.tableName !== 'opening') continue;
+      if (child.geometry !== 'polygon') continue;
+      const v = (child as PolygonElement).vertices;
+      if (v.length >= 3) holes.push(v);
+    }
+
     return {
       id: p.id,
       vertices: p.vertices,
@@ -56,6 +71,7 @@ export const roofModule: ElementModule<RoofFacts> = {
       roofType: p.attrs.roof_type || 'flat',
       slopeDeg,
       material: p.attrs.material || 'concrete',
+      holes,
     };
   },
 
@@ -63,18 +79,31 @@ export const roofModule: ElementModule<RoofFacts> = {
     const stroke = drawCtx.selected ? '#3a7bff' : '#8d6e63';
     const points = facts.vertices.map(v => `${v.x},${v.y}`).join(' ');
     return (
-      <polygon
-        points={points}
-        fill="rgba(141,110,99,0.05)"
-        stroke={stroke}
-        strokeWidth={0.025}
-        data-id={facts.id}
-      />
+      <g data-id={facts.id}>
+        <polygon
+          points={points}
+          fill="rgba(141,110,99,0.05)"
+          stroke={stroke}
+          strokeWidth={0.025}
+          data-id={facts.id}
+        />
+        {facts.holes.map((hole, i) => (
+          <polygon
+            key={i}
+            points={hole.map(v => `${v.x},${v.y}`).join(' ')}
+            fill="white"
+            stroke={stroke}
+            strokeWidth={0.02}
+            strokeDasharray="0.05 0.03"
+            data-id={facts.id}
+          />
+        ))}
+      </g>
     );
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    const geo = createRoofGeometry({
+    let geo: BufferGeometry | null = createRoofGeometry({
       kind: 'extrude',
       vertices: facts.vertices,
       baseY: facts.baseY,
@@ -83,6 +112,32 @@ export const roofModule: ElementModule<RoofFacts> = {
       slopeDeg: facts.slopeDeg,
     });
     if (!geo) return null;
+
+    // CSG-cut roof openings (skylights etc.) using the same applyOpenings helper
+    // slab uses. createRoofGeometry already includes pitch in the geometry; the
+    // hole prism is extruded vertically and intersected with that.
+    if (facts.holes.length > 0) {
+      const polyOpenings: PolygonOpening[] = facts.holes.map((vs, i) => ({
+        kind: 'polygon',
+        id: `${facts.id}:hole:${i}`,
+        vertices: vs,
+      }));
+      const fakePrim: SurfacePrimitive = {
+        kind: 'surface',
+        id: `surface:${facts.id}`,
+        elementId: facts.id,
+        tableName: 'roof',
+        footprint: facts.vertices,
+        extrudeDirection: { x: 0, y: 1, z: 0 },
+        height: facts.thickness,
+        origin: { x: 0, y: facts.baseY, z: 0 },
+        material: resolveBimMaterial(facts.material, 'roof'),
+        openings: polyOpenings,
+      };
+      const cut = applyOpenings(geo, fakePrim);
+      if (cut !== geo) geo.dispose();
+      geo = cut;
+    }
 
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'roof'));
     const isHL = drawCtx.selected || drawCtx.hovered;
