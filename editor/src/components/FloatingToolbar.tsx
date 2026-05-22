@@ -95,6 +95,11 @@ const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
 ];
 
 function getDrawTool(tableName: string): Tool {
+  // V2 element modules declare their archetype, but DrawingOverlay still
+  // checks specific tool names ('draw_line', etc.) to render the right
+  // placement preview. So we keep the named-tool dispatch here; the new
+  // archetype × operation lookup (tools/archetypes/index.ts) is the
+  // architectural artifact, used by callers that don't need overlay support.
   const placement = placementTypeForTable(tableName);
   switch (placement) {
     case 'hosted': return 'draw_hosted';

@@ -11,15 +11,26 @@ import { drawHostedTool } from './drawHostedTool.ts';
 import { relocateTool } from './relocateTool.ts';
 import { relocateHostedTool } from './relocateHostedTool.ts';
 import { rotateTool } from './rotateTool.ts';
+import { drawTool } from './drawTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
+  // Universal selection / view / camera
   select: selectTool,
   orbit: selectTool,
+  pan: panTool,
+  zoom: zoomTool,
+
+  // Universal placement — dispatches via element module's archetype
+  draw: drawTool,
+
+  // Universal move/edit — dispatches via element module's archetype
+  // (relocate stays available as the named "move" operation)
   relocate: relocateTool,
   relocate_hosted: relocateHostedTool,
   rotate: rotateTool,
-  pan: panTool,
-  zoom: zoomTool,
+
+  // Legacy archetype-keyed drawing tools (still callable by name; the new
+  // archetype × operation lookup is at tools/archetypes/index.ts).
   draw_line: drawLineTool,
   draw_point: drawPointTool,
   draw_polygon: drawPolygonTool,
@@ -30,3 +41,9 @@ const toolRegistry: Record<string, ToolHandler> = {
 export function getToolHandler(tool: Tool): ToolHandler {
   return toolRegistry[tool] || selectTool;
 }
+
+// Re-export the archetype × operation lookup so callers needing
+// "tool for this element type, this operation" don't have to know the
+// legacy tool name.
+export { getElementTool, getArchetypeTool } from './archetypes/index.ts';
+export type { ArchetypeOperation } from './archetypes/index.ts';
