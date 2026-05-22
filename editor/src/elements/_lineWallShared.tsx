@@ -56,9 +56,9 @@ export interface LineWallFacts {
 }
 
 /**
- * Per-table miter cache for line-archetype elements that participate in
- * their OWN miter network (currently the MEP duct/pipe/conduit/cable_tray
- * shared helper). Walls do not call this directly — they use
+ * Per-table miter cache for line-archetype elements whose network is
+ * scoped to a single table — currently used by the MEP shared helper
+ * (duct, pipe, conduit, cable_tray). Walls do NOT call this; they use
  * `getWallNetwork()` which spans wall + structure_wall.
  */
 export function getWallMiterAdjustments(

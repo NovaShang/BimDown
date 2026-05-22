@@ -7,17 +7,16 @@ import { resolvePropertyFields, type PropertyField } from './_propertyFields.ts'
 const registry = new Map<string, AnyElementModule>();
 
 /**
- * Register an element module. Call from each elements/<table>.ts at module load.
- * Throws if the table name collides.
+ * Register an element module. Call from each elements/<table>.ts at module
+ * load. Idempotent — under Vite HMR (and when a consumer imports the editor
+ * twice via different entry points) the same module file may execute more
+ * than once; the latest definition wins.
  *
  * If `module.propertyFields` is empty, it is auto-resolved from `csvHeaders`
  * and `drawingFields` via `resolvePropertyFields`. Modules can supply an
  * explicit non-empty list to override.
  */
 export function registerElement(module: AnyElementModule): void {
-  // Idempotent: under Vite HMR (and when a consumer imports the editor twice
-  // via different entry points) the same module file may execute more than
-  // once. Overwrite rather than throw — the latest definition wins.
   if (!module.propertyFields || module.propertyFields.length === 0) {
     (module as { propertyFields: PropertyField[] }).propertyFields =
       resolvePropertyFields(module.csvHeaders, module.drawingFields);
