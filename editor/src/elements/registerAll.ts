@@ -19,3 +19,4 @@ import './foundation.tsx';
 import './roof.tsx';
 import './stair.tsx';
 import './railing.tsx';
+import './curtain_wall.tsx';
