@@ -3,4 +3,56 @@ bases:
   - point_element
   - mep_system
 
-fields: []
+# mep_node represents an MEP fitting/accessory in the physical sense
+# (Revit's MEPFamilyInstance): a tee, elbow, coupling, valve, damper, etc.
+# It is the vertex in the (pipe-as-edge, fitting-as-vertex) topology graph.
+#
+# Passive fittings (coupling/elbow/tee/cross/reducer/transition/cap):
+#   leave `kind` empty — runtime derives it from the connected pipes'
+#   count, angles, and sizes. CSV stays minimal (just id + position).
+#
+# Functional accessories (valve/damper/pump/strainer/check_valve/etc.):
+#   set `kind` explicitly. `family` and the size attrs carry the catalog
+#   metadata needed for Revit round-trip.
+
+fields:
+  - name: kind
+    type: enum
+    required: false
+    description: >
+      Empty for passive fittings (kind derived from topology at runtime).
+      Set explicitly for functional accessories.
+    values:
+      - valve
+      - damper
+      - pump
+      - strainer
+      - check_valve
+      - flow_meter
+      - sensor
+      - access_panel
+      - other_accessory
+      - custom
+
+  - name: family
+    type: text
+    required: false
+    description: Optional Revit family name for round-trip fidelity.
+
+  - name: shape
+    type: enum
+    required: false
+    description: Cross-section shape of accessory body (only used when kind is set).
+    values:
+      - round
+      - rect
+
+  - name: size_w
+    type: float
+    required: false
+    description: Accessory body width (only used when kind is set).
+
+  - name: size_h
+    type: float
+    required: false
+    description: Accessory body height (only used when kind is set).
