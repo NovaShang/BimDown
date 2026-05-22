@@ -353,11 +353,20 @@ function clipSegOutside(A: Pt, B: Pt, poly: Pt[]): [Pt, Pt][] {
 }
 
 export interface WallPolygon {
+  /** Owning wall id. Multiple polygons can share the same id when a wall
+   *  is broken into segments by openings — siblings don't clip each other. */
   id: string;
   corners: Pt[];
   sideLen: number;
+  /** ptKey of the wall's actual start endpoint (for junction lookup). */
   startKey: string;
+  /** ptKey of the wall's actual end endpoint. */
   endKey: string;
+  /** True if this polygon's start cap is the wall's actual endpoint (vs an
+   *  interior opening cut). Defaults to true (whole-wall polygon). */
+  capStartIsWallEnd?: boolean;
+  /** True if this polygon's end cap is the wall's actual endpoint. */
+  capEndIsWallEnd?: boolean;
 }
 
 /** Axis-aligned bounding box */
@@ -386,100 +395,63 @@ function aabbOverlap(a: AABB, b: AABB): boolean {
 }
 
 /**
- * Per-wall variant of computeOuterEdges. Returns a map from wall id to its
- * clipped outer edges, so each element module can render only its own share.
+ * Per-polygon outline. Each input polygon may be a full wall footprint or
+ * one of several segments that an opening has cut out of a wall (sharing
+ * the same `id`). For each polygon:
+ *
+ *   - Side edges (parallel to the wall axis) are clipped against polygons
+ *     from OTHER walls. Sibling polygons (same `id`) are skipped — they
+ *     belong to the same wall and don't visually clip each other.
+ *   - Cap edges (perpendicular) are emitted unless the cap is the wall's
+ *     actual endpoint AND that endpoint participates in a junction with
+ *     another wall. Opening-cut caps are always emitted.
+ *
+ * Returned array is parallel to `polygons` — `out[i]` is the outline edge
+ * list for `polygons[i]`.
  */
-export function computeOuterEdgesByEl(
+export function computePerSegmentOutlines(
   polygons: WallPolygon[],
   junctionKeys: Set<string>,
-): Map<string, [Pt, Pt][]> {
-  const out = new Map<string, [Pt, Pt][]>();
-  const polyBounds = polygons.map(p => polyAABB(p.corners));
+): [Pt, Pt][][] {
+  const out: [Pt, Pt][][] = polygons.map(() => []);
+  const bounds = polygons.map(p => polyAABB(p.corners));
 
-  for (let wi = 0; wi < polygons.length; wi++) {
-    const { id, corners, sideLen, startKey, endKey } = polygons[wi];
-    const collected: [Pt, Pt][] = [];
-    const sideEdges: [Pt, Pt][] = [];
-    for (let i = 0; i < sideLen - 1; i++) {
-      sideEdges.push([corners[i], corners[i + 1]]);
-      sideEdges.push([corners[sideLen + i], corners[sideLen + i + 1]]);
+  for (let i = 0; i < polygons.length; i++) {
+    const P = polygons[i];
+    const { corners, sideLen, startKey, endKey } = P;
+    const capStartIsWallEnd = P.capStartIsWallEnd !== false;
+    const capEndIsWallEnd = P.capEndIsWallEnd !== false;
+
+    const sides: [Pt, Pt][] = [];
+    for (let k = 0; k < sideLen - 1; k++) {
+      sides.push([corners[k], corners[k + 1]]);
+      sides.push([corners[sideLen + k], corners[sideLen + k + 1]]);
     }
-    for (const [eA, eB] of sideEdges) {
-      let segments: [Pt, Pt][] = [[eA, eB]];
-      const edgeBounds = segAABB(eA, eB);
-      for (let wj = 0; wj < polygons.length; wj++) {
-        if (wj === wi) continue;
-        if (!aabbOverlap(edgeBounds, polyBounds[wj])) continue;
-        if (polygons[wj].sideLen !== 2) continue;
-        const otherPoly = polygons[wj].corners;
+    for (const [a, b] of sides) {
+      let subs: [Pt, Pt][] = [[a, b]];
+      const eb = segAABB(a, b);
+      for (let j = 0; j < polygons.length; j++) {
+        if (j === i) continue;
+        if (polygons[j].id === P.id) continue; // sibling segment of same wall
+        if (polygons[j].sideLen !== 2) continue; // skip arc walls as clippers
+        if (!aabbOverlap(eb, bounds[j])) continue;
         const next: [Pt, Pt][] = [];
-        for (const seg of segments) {
-          next.push(...clipSegOutside(seg[0], seg[1], otherPoly));
+        for (const sub of subs) {
+          next.push(...clipSegOutside(sub[0], sub[1], polygons[j].corners));
         }
-        segments = next;
-        if (segments.length === 0) break;
+        subs = next;
+        if (subs.length === 0) break;
       }
-      collected.push(...segments);
+      out[i].push(...subs);
     }
-    if (!junctionKeys.has(startKey)) {
-      collected.push([corners[0], corners[2 * sideLen - 1]]);
-    }
-    if (!junctionKeys.has(endKey)) {
-      collected.push([corners[sideLen - 1], corners[sideLen]]);
-    }
-    out.set(id, collected);
+
+    const startCap: [Pt, Pt] = [corners[0], corners[2 * sideLen - 1]];
+    const endCap: [Pt, Pt] = [corners[sideLen - 1], corners[sideLen]];
+    const showStart = !capStartIsWallEnd || !junctionKeys.has(startKey);
+    const showEnd = !capEndIsWallEnd || !junctionKeys.has(endKey);
+    if (showStart) out[i].push(startCap);
+    if (showEnd) out[i].push(endCap);
   }
   return out;
 }
 
-/**
- * Given wall polygons, compute only the outer edge segments.
- * Only the two SIDE edges (p1→p2 and p4→p3) are clipped against other polygons.
- * End caps (p1↔p4 and p2↔p3) are only drawn at free endpoints.
- * Uses AABB pre-filtering to skip non-overlapping polygons (avoids O(N²) worst case).
- */
-export function computeOuterEdges(
-  polygons: WallPolygon[],
-  junctionKeys: Set<string>,
-): [Pt, Pt][] {
-  const result: [Pt, Pt][] = [];
-  const polyBounds = polygons.map(p => polyAABB(p.corners));
-
-  for (let wi = 0; wi < polygons.length; wi++) {
-    const { corners, sideLen, startKey, endKey } = polygons[wi];
-    const leftEdges: [Pt, Pt][] = [];
-    const rightEdges: [Pt, Pt][] = [];
-    for (let i = 0; i < sideLen - 1; i++) {
-      leftEdges.push([corners[i], corners[i + 1]]);
-      rightEdges.push([corners[sideLen + i], corners[sideLen + i + 1]]);
-    }
-    const allSideEdges = [...leftEdges, ...rightEdges];
-
-    for (const [eA, eB] of allSideEdges) {
-      let segments: [Pt, Pt][] = [[eA, eB]];
-      const edgeBounds = segAABB(eA, eB);
-
-      for (let wj = 0; wj < polygons.length; wj++) {
-        if (wj === wi) continue;
-        if (!aabbOverlap(edgeBounds, polyBounds[wj])) continue;
-        if (polygons[wj].sideLen !== 2) continue;
-        const otherPoly = polygons[wj].corners;
-        const next: [Pt, Pt][] = [];
-        for (const seg of segments) {
-          next.push(...clipSegOutside(seg[0], seg[1], otherPoly));
-        }
-        segments = next;
-        if (segments.length === 0) break;
-      }
-      result.push(...segments);
-    }
-
-    if (!junctionKeys.has(startKey)) {
-      result.push([corners[0], corners[2 * sideLen - 1]]);
-    }
-    if (!junctionKeys.has(endKey)) {
-      result.push([corners[sideLen - 1], corners[sideLen]]);
-    }
-  }
-  return result;
-}

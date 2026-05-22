@@ -9,9 +9,9 @@ import type { GeometryContext } from './archetypes.ts';
 import type { LineElement, Point } from '../model/elements.ts';
 import {
   computeCornerAdjustments,
-  computeOuterEdgesByEl,
+  computePerSegmentOutlines,
   ptKey,
-  type WallSegment,
+  type WallSegment as WallMiterSegment,
   type CornerAdjustment,
   type WallPolygon,
 } from '../geometry/miter.ts';
@@ -33,16 +33,21 @@ export interface WallOpening {
   shape: 'rect' | 'round' | 'arch';
 }
 
+/** A draw-ready piece of a wall — one polygon plus the edges that should
+ *  be stroked as its visible outline. For a solid wall there is one
+ *  segment; openings split it into 2+ collinear segments, each with its
+ *  own junction-aware outline. */
+export interface WallDrawSegment {
+  corners: Point[];
+  outline: [Point, Point][];
+}
+
 export interface LineWallFacts {
   id: string;
   table: string;
   centerline: { start: Point; end: Point; arc?: ArcParams; length: number };
   footprint: Point[];
-  segments: Point[][];
-  /** Subset of footprint edges that face outside the wall network. Drawn as
-   *  the visible outline; inner edges at junctions are skipped so connected
-   *  walls render as a single contiguous shape. */
-  outerEdges: [Point, Point][];
+  segments: WallDrawSegment[];
   openings: WallOpening[];
   thickness: number;
   height: number;
@@ -50,6 +55,12 @@ export interface LineWallFacts {
   material: string;
 }
 
+/**
+ * Per-table miter cache for line-archetype elements that participate in
+ * their OWN miter network (currently the MEP duct/pipe/conduit/cable_tray
+ * shared helper). Walls do not call this directly — they use
+ * `getWallNetwork()` which spans wall + structure_wall.
+ */
 export function getWallMiterAdjustments(
   ctx: GeometryContext,
   table: string,
@@ -58,7 +69,7 @@ export function getWallMiterAdjustments(
     const walls = ctx.elementsByTable(table).filter(
       (e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line',
     );
-    const segments: WallSegment[] = walls.map(w => ({
+    const segments: WallMiterSegment[] = walls.map(w => ({
       id: w.id,
       x1: w.start.x, y1: w.start.y,
       x2: w.end.x, y2: w.end.y,
@@ -70,43 +81,83 @@ export function getWallMiterAdjustments(
   });
 }
 
+/** Tables whose walls share a single miter + outline network. Connections
+ *  across tables (e.g. `wall` meeting `structure_wall`) miter correctly
+ *  and the junction edge is hidden in 2D. */
+const WALL_NETWORK_TABLES = ['wall', 'structure_wall'] as const;
+
+export interface WallNetwork {
+  adj: Map<string, CornerAdjustment>;
+  /** Draw-ready segments keyed by element id. */
+  segmentsByEl: Map<string, WallDrawSegment[]>;
+}
+
 /**
- * Per-table cache: for each wall in `table`, return the set of footprint
- * edges that should be drawn as the visible outline. Edges shared with an
- * adjacent wall (junction) are excluded — so connected walls visually
- * merge into one contiguous shape.
+ * Build the wall network for the current pass: cross-table miter
+ * adjustments, plus per-segment draw polygons with junction-aware
+ * outlines. Memoized once per pass on the GeometryContext.
+ *
+ * The same wall may produce multiple segments when openings cut it; all
+ * sibling segments share the same element id so they don't visually
+ * clip each other.
  */
-export function getWallOuterEdges(
-  ctx: GeometryContext,
-  table: string,
-): Map<string, [Point, Point][]> {
-  return ctx.memo(`${table}:outerEdges`, () => {
-    const walls = ctx.elementsByTable(table).filter(
-      (e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line',
-    );
-    if (walls.length === 0) return new Map();
-    const adj = getWallMiterAdjustments(ctx, table);
-    const polygons: WallPolygon[] = [];
-    for (const w of walls) {
-      const fp = buildLineWallFootprint(w, adj);
-      if (fp.length === 0) continue;
-      const sideLen = fp.length / 2;
-      polygons.push({
-        id: w.id,
-        corners: fp,
-        sideLen,
-        startKey: ptKey(w.start.x, w.start.y),
-        endKey: ptKey(w.end.x, w.end.y),
-      });
+export function getWallNetwork(ctx: GeometryContext): WallNetwork {
+  return ctx.memo('wall-network', () => {
+    type W = { el: LineElement; startKey: string; endKey: string };
+    const walls: W[] = [];
+    for (const table of WALL_NETWORK_TABLES) {
+      for (const e of ctx.elementsByTable(table)) {
+        if (e.geometry !== 'line' && e.geometry !== 'spatial_line') continue;
+        const el = e as LineElement;
+        walls.push({
+          el,
+          startKey: ptKey(el.start.x, el.start.y),
+          endKey: ptKey(el.end.x, el.end.y),
+        });
+      }
     }
+    if (walls.length === 0) {
+      return { adj: new Map(), segmentsByEl: new Map() };
+    }
+
+    const miterInput: WallMiterSegment[] = walls.map(({ el }) => ({
+      id: el.id,
+      x1: el.start.x, y1: el.start.y,
+      x2: el.end.x, y2: el.end.y,
+      halfWidth: el.strokeWidth / 2,
+      fill: '',
+      arc: el.arc,
+    }));
+    const adj = computeCornerAdjustments(miterInput).adjustments;
+
     const epCount = new Map<string, number>();
-    for (const p of polygons) {
-      epCount.set(p.startKey, (epCount.get(p.startKey) ?? 0) + 1);
-      epCount.set(p.endKey, (epCount.get(p.endKey) ?? 0) + 1);
+    for (const w of walls) {
+      epCount.set(w.startKey, (epCount.get(w.startKey) ?? 0) + 1);
+      epCount.set(w.endKey, (epCount.get(w.endKey) ?? 0) + 1);
     }
     const junctionKeys = new Set<string>();
     for (const [k, c] of epCount) if (c >= 2) junctionKeys.add(k);
-    return computeOuterEdgesByEl(polygons, junctionKeys);
+
+    const polys: WallPolygon[] = [];
+    const elIdxRanges: { elId: string; from: number; to: number }[] = [];
+    for (const w of walls) {
+      const openings = collectWallOpenings(w.el, ctx);
+      const wallPolys = buildWallPolygons(w.el, openings, adj, w.startKey, w.endKey);
+      const from = polys.length;
+      polys.push(...wallPolys);
+      elIdxRanges.push({ elId: w.el.id, from, to: polys.length });
+    }
+
+    const outlines = computePerSegmentOutlines(polys, junctionKeys);
+    const segmentsByEl = new Map<string, WallDrawSegment[]>();
+    for (const { elId, from, to } of elIdxRanges) {
+      const segs: WallDrawSegment[] = [];
+      for (let i = from; i < to; i++) {
+        segs.push({ corners: polys[i].corners, outline: outlines[i] });
+      }
+      segmentsByEl.set(elId, segs);
+    }
+    return { adj, segmentsByEl };
   });
 }
 
@@ -188,14 +239,27 @@ export function collectWallOpenings(el: LineElement, ctx: GeometryContext): Wall
   return result.sort((a, b) => a.position - b.position);
 }
 
-export function buildWallSegments(
+/**
+ * Build the per-wall polygons (one for solid walls, multiple when openings
+ * split the wall). Each polygon carries cap classification (whether each
+ * cap is the wall's true endpoint vs an interior opening cut) so the
+ * downstream outline pass can decide whether to clip it at a junction.
+ */
+function buildWallPolygons(
   el: LineElement,
   openings: WallOpening[],
   adj: Map<string, CornerAdjustment>,
-): Point[][] {
+  startKey: string,
+  endKey: string,
+): WallPolygon[] {
   if (el.arc) {
     const fp = buildLineWallFootprint(el, adj);
-    return fp.length > 0 ? [fp] : [];
+    if (fp.length === 0) return [];
+    return [{
+      id: el.id, corners: fp, sideLen: fp.length / 2,
+      startKey, endKey,
+      capStartIsWallEnd: true, capEndIsWallEnd: true,
+    }];
   }
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
@@ -203,7 +267,12 @@ export function buildWallSegments(
   if (wallLen < 0.001) return [];
   if (openings.length === 0) {
     const fp = buildLineWallFootprint(el, adj);
-    return fp.length > 0 ? [fp] : [];
+    if (fp.length === 0) return [];
+    return [{
+      id: el.id, corners: fp, sideLen: 2,
+      startKey, endKey,
+      capStartIsWallEnd: true, capEndIsWallEnd: true,
+    }];
   }
   const ux = dx / wallLen, uy = dy / wallLen;
   const nx = -uy, ny = ux;
@@ -220,16 +289,20 @@ export function buildWallSegments(
   }
   if (cursor < wallLen - 1e-6) intervals.push([cursor, wallLen]);
   if (intervals.length === 0) return [];
-  return intervals.map(([s, e], idx) => {
-    const isFirst = idx === 0 && Math.abs(s) < 1e-6;
-    const isLast = idx === intervals.length - 1 && Math.abs(e - wallLen) < 1e-6;
+  return intervals.map(([s, e]) => {
+    const capStartIsWallEnd = Math.abs(s) < 1e-6;
+    const capEndIsWallEnd = Math.abs(e - wallLen) < 1e-6;
     let p1: Point = { x: el.start.x + ux * s + nx * hw, y: el.start.y + uy * s + ny * hw };
     let p2: Point = { x: el.start.x + ux * e + nx * hw, y: el.start.y + uy * e + ny * hw };
     let p3: Point = { x: el.start.x + ux * e - nx * hw, y: el.start.y + uy * e - ny * hw };
     let p4: Point = { x: el.start.x + ux * s - nx * hw, y: el.start.y + uy * s - ny * hw };
-    if (isFirst && startAdj) { p1 = startAdj.left; p4 = startAdj.right; }
-    if (isLast && endAdj)   { p2 = endAdj.right;  p3 = endAdj.left;  }
-    return [p1, p2, p3, p4];
+    if (capStartIsWallEnd && startAdj) { p1 = startAdj.left; p4 = startAdj.right; }
+    if (capEndIsWallEnd && endAdj) { p2 = endAdj.right; p3 = endAdj.left; }
+    return {
+      id: el.id, corners: [p1, p2, p3, p4], sideLen: 2,
+      startKey, endKey,
+      capStartIsWallEnd, capEndIsWallEnd,
+    };
   });
 }
 
@@ -238,12 +311,12 @@ export function wallGeometryFor(
   ctx: GeometryContext,
   table: string,
 ): LineWallFacts | null {
-  const adj = getWallMiterAdjustments(ctx, table);
-  const footprint = buildLineWallFootprint(el, adj);
+  const network = getWallNetwork(ctx);
+  const segments = network.segmentsByEl.get(el.id);
+  if (!segments || segments.length === 0) return null;
+  const footprint = buildLineWallFootprint(el, network.adj);
   if (footprint.length === 0) return null;
   const openings = collectWallOpenings(el, ctx);
-  const segments = buildWallSegments(el, openings, adj);
-  const outerEdges = getWallOuterEdges(ctx, table).get(el.id) ?? [];
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
   const chordLen = Math.sqrt(dx * dx + dy * dy);
@@ -254,7 +327,6 @@ export function wallGeometryFor(
     centerline: { start: el.start, end: el.end, arc: el.arc, length: chordLen },
     footprint,
     segments,
-    outerEdges,
     openings,
     thickness: el.strokeWidth,
     height: DEFAULT_HEIGHT,
@@ -270,51 +342,29 @@ export function wallDraw2D(
   strokeWidth: number,
 ): ReactNode {
   if (facts.segments.length === 0) return null;
-
-  // Common case: no openings → render fill polygon without stroke and use
-  // junction-clipped outerEdges for the outline. This makes connected walls
-  // visually merge at corners.
-  if (facts.openings.length === 0 && facts.outerEdges.length > 0) {
-    return (
-      <g data-id={facts.id}>
-        {facts.segments.map((seg, i) => (
-          <polygon
-            key={`f${i}`}
-            points={seg.map(p => `${p.x},${p.y}`).join(' ')}
-            fill={fill}
-            stroke="none"
-            data-id={facts.id}
-          />
-        ))}
-        {facts.outerEdges.map(([a, b], i) => (
+  return (
+    <g data-id={facts.id}>
+      {facts.segments.map((seg, i) => (
+        <polygon
+          key={`f${i}`}
+          points={seg.corners.map(p => `${p.x},${p.y}`).join(' ')}
+          fill={fill}
+          stroke="none"
+          data-id={facts.id}
+        />
+      ))}
+      {facts.segments.flatMap((seg, si) =>
+        seg.outline.map(([a, b], ei) => (
           <line
-            key={`e${i}`}
+            key={`e${si}-${ei}`}
             x1={a.x} y1={a.y} x2={b.x} y2={b.y}
             stroke={stroke}
             strokeWidth={strokeWidth}
             strokeLinecap="butt"
             data-id={facts.id}
           />
-        ))}
-      </g>
-    );
-  }
-
-  // Wall has openings: keep per-segment stroke (each segment has its own
-  // cap edges from the cuts). Junction cleanup for this branch is a TODO.
-  return (
-    <g data-id={facts.id}>
-      {facts.segments.map((seg, i) => (
-        <polygon
-          key={i}
-          points={seg.map(p => `${p.x},${p.y}`).join(' ')}
-          fill={fill}
-          stroke={stroke}
-          strokeWidth={strokeWidth}
-          strokeLinejoin="miter"
-          data-id={facts.id}
-        />
-      ))}
+        )),
+      )}
     </g>
   );
 }
