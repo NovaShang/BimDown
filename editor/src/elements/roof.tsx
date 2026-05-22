@@ -10,7 +10,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement, Point } from '../model/elements.ts';
 import { createRoofGeometry } from '../three/utils/roofGeometry.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS } from './_options.ts';
 
 const DEFAULT_THICKNESS = 0.2;
 

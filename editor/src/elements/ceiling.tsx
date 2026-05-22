@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { MATERIAL_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS } from './_options.ts';
 import { slabGeometryFor, slabDraw2D, slabDraw3D, type SlabFacts } from './_slabShared.tsx';
 
 const DEFAULT_HEIGHT_OFFSET = -0.3;

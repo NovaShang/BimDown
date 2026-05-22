@@ -6,7 +6,7 @@ import type { CanonicalElement, PointElement, Point } from '../model/elements.ts
 import { getBlockSvg } from './_blockLoader.ts';
 import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 
 const BLOCK_MAP: Record<string, string> = {
   rect: 'column_rectangular',

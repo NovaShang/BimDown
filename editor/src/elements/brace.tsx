@@ -9,7 +9,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 
 export interface BraceFacts {
   id: string;

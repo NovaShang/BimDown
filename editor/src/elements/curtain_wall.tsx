@@ -8,7 +8,7 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS } from './_options.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 const MULLION_SIZE = 0.05;

@@ -8,7 +8,7 @@ import {
   OPERATION_OPTIONS,
   HINGE_OPTIONS,
   SWING_SIDE_OPTIONS,
-} from '../model/tableRegistry.ts';
+} from './_options.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 
 const BLOCK_MAP: Record<string, string> = {

@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement } from '../model/elements.ts';
-import { SHAPE_OPTIONS } from '../model/tableRegistry.ts';
+import { SHAPE_OPTIONS } from './_options.ts';
 import {
   mepLineGeometry, mepLineDraw2D, mepLineDraw3D, type MepLineFacts,
 } from './_mepLineShared.tsx';

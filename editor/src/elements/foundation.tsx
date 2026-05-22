@@ -14,7 +14,7 @@ import type {
   CanonicalElement, PointElement, LineElement, PolygonElement, Point,
 } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS } from './_options.ts';
 
 const DEFAULT_THICKNESS = 0.4;
 

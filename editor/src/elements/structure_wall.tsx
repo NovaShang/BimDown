@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
-import { MATERIAL_OPTIONS } from '../model/tableRegistry.ts';
+import { MATERIAL_OPTIONS } from './_options.ts';
 import {
   wallGeometryFor, wallDraw2D, wallDraw3D, wallFillFor,
   type LineWallFacts,
