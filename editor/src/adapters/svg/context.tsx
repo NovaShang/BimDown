@@ -26,12 +26,17 @@ export function useGeometryContext(): GeometryContext | null {
   return useContext(SVGGeometryCtx);
 }
 
-/** Feature flag: route registered tables through new element-module pipeline. */
+/**
+ * Feature flag: route registered tables through new element-module pipeline.
+ *
+ * Defaults to ON now that all 29 tables in tableRegistry have V2 modules.
+ * Set localStorage.editorPipelineV2='0' to opt back into V1 (for A/B debug).
+ */
 export function isPipelineV2(): boolean {
-  if (typeof window === 'undefined') return false;
+  if (typeof window === 'undefined') return true;
   try {
-    return window.localStorage?.getItem('editorPipelineV2') === '1';
+    return window.localStorage?.getItem('editorPipelineV2') !== '0';
   } catch {
-    return false;
+    return true;
   }
 }
