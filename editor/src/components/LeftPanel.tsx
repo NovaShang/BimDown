@@ -2,9 +2,9 @@ import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
-import { TABLE_REGISTRY } from '../model/tableRegistry.ts';
+import { csvHeadersForTable } from '../model/tableRegistry.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
-import { PROPERTY_FIELD_DEFS } from '../model/propertyFields.ts';
+import { PROPERTY_FIELD_DEFS } from '../elements/_propertyFields.ts';
 import type { LayerGroup } from '../state/editorTypes.ts';
 import { ScrollArea } from './ui/scroll-area';
 import { Icon } from './Icons.tsx';
@@ -75,9 +75,9 @@ interface ColumnDef {
 }
 
 function getColumns(tableName: string): ColumnDef[] {
-  const def = TABLE_REGISTRY[tableName];
-  if (!def) return [];
-  return def.csvHeaders
+  const headers = csvHeadersForTable(tableName);
+  if (headers.length === 0) return [];
+  return headers
     .filter(h => !SKIP_FIELDS.has(h))
     .slice(0, 2)
     .map(h => {

@@ -3,7 +3,8 @@ import { useTranslation } from 'react-i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch } from '../state/EditorContext.tsx';
-import { getPropertyFields, PROPERTY_GROUPS, type PropertyField } from '../model/propertyFields.ts';
+import { getElementModule } from '../elements/registry.ts';
+import { PROPERTY_GROUPS, type PropertyField } from '../elements/_propertyFields.ts';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
@@ -53,7 +54,15 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     dispatch({ type: 'UPDATE_ATTRS', id: firstId, attrs: { [key]: value } });
   };
 
-  const fields = getPropertyFields(firstData.tableName, levels);
+  const fields = (() => {
+    const mod = getElementModule(firstData.tableName);
+    if (!mod) return [];
+    const levelOptions = levels.map(l => ({ value: l.id, label: l.name || l.id }));
+    // Inject level options for top_level_id at render time (levels are dynamic).
+    return mod.propertyFields.map(f =>
+      f.key === 'top_level_id' ? { ...f, options: levelOptions } : f,
+    );
+  })();
 
   const grouped: { labelKey: string; fields: PropertyField[] }[] = [];
   const fieldsByGroup = new Map<string, PropertyField[]>();
