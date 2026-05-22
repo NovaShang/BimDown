@@ -2,7 +2,7 @@ import { useEffect } from 'react';
 import type { EditorState, EditorAction, Tool } from '../state/editorTypes.ts';
 import { toSelectionId } from '../model/ids.ts';
 import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
-import { TABLE_REGISTRY } from '../model/tableRegistry.ts';
+import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
@@ -128,12 +128,12 @@ export function useCanvasKeyboard({
       if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const tableName = DRAW_TOOL_SHORTCUTS[e.key.toUpperCase()];
         if (tableName) {
-          const def = TABLE_REGISTRY[tableName];
-          if (def && def.discipline === activeDiscipline) {
+          const mod = getElementModule(tableName);
+          if (mod && mod.discipline === activeDiscipline) {
             const tool = PLACEMENT_TO_TOOL[placementTypeForTable(tableName)];
             if (tool) {
               globalDispatch({ type: 'SET_TOOL', tool });
-              globalDispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline: def.discipline } });
+              globalDispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline: mod.discipline } });
               globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
             }
           }

@@ -1,4 +1,4 @@
-import { defaultAttrsForTable, drawingFieldsForTable, TABLE_REGISTRY } from './tableRegistry.ts';
+import { defaultAttrsForTable, drawingFieldsForTable, isVerticalSpanTable } from './tableRegistry.ts';
 import type { Level } from '../types.ts';
 
 // Re-export DrawingField from the registry
@@ -28,8 +28,7 @@ export function getDefaultDrawingAttrs(
   }
 
   // Smart top_level_id default
-  const def = TABLE_REGISTRY[tableName];
-  if (def?.hasVerticalSpan && levels && currentLevelId) {
+  if (isVerticalSpanTable(tableName) && levels && currentLevelId) {
     const sorted = [...levels].sort((a, b) => a.elevation - b.elevation);
     const currentIdx = sorted.findIndex(l => l.id === currentLevelId);
     if (currentIdx >= 0 && currentIdx < sorted.length - 1) {

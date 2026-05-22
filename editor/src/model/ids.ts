@@ -1,16 +1,41 @@
 import type { CanonicalElement } from './elements.ts';
-import { TABLE_REGISTRY, prefixForTable } from './tableRegistry.ts';
+import { prefixForTable } from './tableRegistry.ts';
+import { allElementModules } from '../elements/registry.ts';
 
 /** Reverse lookup: prefix → tableName.
- *  Includes legacy prefixes for backward compatibility with existing data. */
-export const REVERSE_PREFIX_MAP: Record<string, string> = (() => {
-  const map: Record<string, string> = {};
-  // Current prefixes from registry
-  for (const [name, def] of Object.entries(TABLE_REGISTRY)) {
-    map[def.prefix] = name;
-  }
-  return map;
-})();
+ *
+ * Lazy Proxy: queries the element module registry on every read, so it
+ * works correctly even when accessed before all element modules have
+ * self-registered at module-load time.
+ */
+export const REVERSE_PREFIX_MAP: Record<string, string> = new Proxy({}, {
+  get(_, prop) {
+    if (typeof prop !== 'string') return undefined;
+    for (const mod of allElementModules()) {
+      if (mod.prefix === prop) return mod.table;
+    }
+    return undefined;
+  },
+  has(_, prop) {
+    if (typeof prop !== 'string') return false;
+    for (const mod of allElementModules()) {
+      if (mod.prefix === prop) return true;
+    }
+    return false;
+  },
+  ownKeys() {
+    return allElementModules().map(m => m.prefix);
+  },
+  getOwnPropertyDescriptor(_, prop) {
+    if (typeof prop !== 'string') return undefined;
+    for (const mod of allElementModules()) {
+      if (mod.prefix === prop) {
+        return { value: mod.table, writable: false, enumerable: true, configurable: true };
+      }
+    }
+    return undefined;
+  },
+}) as Record<string, string>;
 
 export function generateId(tableName: string, existingIds: Set<string>): string {
   const prefix = prefixForTable(tableName);
