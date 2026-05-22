@@ -5,8 +5,7 @@
  * all per-element metadata lives in `editor/src/elements/<table>.tsx`
  * modules and is queried via `elements/registry.ts`. This file now only
  * exposes:
- *   - type aliases (GeometryType, PlacementType, DrawingField, LayerStyle, TableDef)
- *   - re-exports of OPTIONS constants (so existing imports keep working)
+ *   - type aliases (GeometryType, PlacementType, DrawingField, LayerStyle)
  *   - helper functions that delegate to the element registry
  *   - DISCIPLINE_COLORS / DISCIPLINES constants
  *
@@ -44,44 +43,6 @@ export interface LayerStyle {
   icon: string;
   order: number;
 }
-
-/**
- * Legacy shape — kept for any straggling consumers that need the bag of
- * per-table metadata. Prefer reading from the element module directly via
- * `getElementModule(name)`.
- */
-export interface TableDef {
-  name: string;
-  prefix: string;
-  discipline: string;
-  geometry: GeometryType;
-  hostType?: string;
-  hostTables?: string[];
-  widthAttr?: string;
-  csvHeaders: string[];
-  defaults: Record<string, string>;
-  drawingFields: DrawingField[];
-  hasVerticalSpan?: boolean;
-  renderZIndex: number;
-  layerStyle: LayerStyle;
-}
-
-// ─── OPTIONS re-exports ──────────────────────────────────────────────────────
-
-export {
-  MATERIAL_OPTIONS,
-  OPERATION_OPTIONS,
-  HINGE_OPTIONS,
-  SWING_SIDE_OPTIONS,
-  SHAPE_OPTIONS,
-  STRUCTURAL_SHAPE_OPTIONS,
-  SLAB_FUNCTION_OPTIONS,
-  STRUCTURE_SLAB_FUNCTION_OPTIONS,
-  ROOF_TYPE_OPTIONS,
-  OPENING_SHAPE_OPTIONS,
-  EQUIPMENT_TYPE_OPTIONS,
-  TERMINAL_TYPE_OPTIONS,
-} from '../elements/_options.ts';
 
 // ─── Helper functions (derived from element registry) ────────────────────────
 
