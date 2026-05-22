@@ -549,6 +549,57 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
 
+      // Topology cascade (reverse of MOVE_ELEMENTS': mep_node case):
+      // When a pipe/duct/conduit/cable_tray's endpoint moves, drag the
+      // connected mep_node along with it AND every other pipe sharing that node.
+      const partialMoved = new Set<string>();
+      const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
+      if (MEP_TABLES.has(el.tableName)
+          && (el.geometry === 'line' || el.geometry === 'spatial_line')
+          && (resized.geometry === 'line' || resized.geometry === 'spatial_line')) {
+        const original = el as LineElement;
+        const after = resized as LineElement;
+        const startChanged = original.start.x !== after.start.x || original.start.y !== after.start.y;
+        const endChanged = original.end.x !== after.end.x || original.end.y !== after.end.y;
+
+        for (const [nodeAttr, dragged, changed] of [
+          ['start_node_id', { dx: after.start.x - original.start.x, dy: after.start.y - original.start.y }, startChanged],
+          ['end_node_id',   { dx: after.end.x   - original.end.x,   dy: after.end.y   - original.end.y   }, endChanged],
+        ] as const) {
+          if (!changed) continue;
+          const nodeIdRaw = original.attrs[nodeAttr];
+          if (!nodeIdRaw) continue;
+          // Match prefixed and unprefixed; nodes may live with or without level prefix.
+          const colonIdx = rawId.indexOf(':');
+          const prefix = colonIdx >= 0 ? rawId.substring(0, colonIdx + 1) : '';
+          const prefixedNodeId = prefix && !nodeIdRaw.includes(':') ? prefix + nodeIdRaw : nodeIdRaw;
+          const node = next.get(prefixedNodeId) ?? next.get(nodeIdRaw);
+          if (!node || node.tableName !== 'mep_node' || node.geometry !== 'point') continue;
+          const movedNode = moveElement(node, dragged.dx, dragged.dy);
+          next.set(node.id, movedNode);
+          partialMoved.add(node.id);
+          // Drag every other pipe sharing this node by the same delta on its
+          // matching endpoint.
+          const nodeRaw = node.id;
+          const nodeUnpref = nodeRaw.includes(':') ? nodeRaw.substring(nodeRaw.indexOf(':') + 1) : nodeRaw;
+          for (const other of state.document.elements.values()) {
+            if (other.id === rawId) continue;
+            if (!MEP_TABLES.has(other.tableName)) continue;
+            if (other.geometry !== 'line' && other.geometry !== 'spatial_line') continue;
+            const sMatch = other.attrs.start_node_id === nodeRaw || other.attrs.start_node_id === nodeUnpref;
+            const eMatch = other.attrs.end_node_id   === nodeRaw || other.attrs.end_node_id   === nodeUnpref;
+            if (!sMatch && !eMatch) continue;
+            const cur = next.get(other.id) ?? other;
+            if (cur.geometry !== 'line' && cur.geometry !== 'spatial_line') continue;
+            const ln = cur as LineElement;
+            const newStart = sMatch ? { x: ln.start.x + dragged.dx, y: ln.start.y + dragged.dy } : ln.start;
+            const newEnd   = eMatch ? { x: ln.end.x   + dragged.dx, y: ln.end.y   + dragged.dy } : ln.end;
+            next.set(other.id, { ...ln, start: newStart, end: newEnd });
+            partialMoved.add(other.id);
+          }
+        }
+      }
+
       if (action.preview) {
         return { ...state, document: { ...state.document, elements: next } };
       }
@@ -562,6 +613,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           before.set(id, state.document.elements.get(id) ?? null);
           after.set(id, hosted);
         }
+      }
+      // Topology-cascaded elements (mep_node + other connected pipes) in undo too.
+      for (const id of partialMoved) {
+        before.set(id, state.document.elements.get(id) ?? null);
+        after.set(id, next.get(id) ?? null);
       }
       return {
         ...state,
