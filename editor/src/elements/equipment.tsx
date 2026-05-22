@@ -131,15 +131,9 @@ export const terminalModule = makeEquipmentModule({
   renderZIndex: 91,
 });
 
-export const mepNodeModule = makeEquipmentModule({
-  table: 'mep_node', prefix: 'mn', color: '#ff6b6b',
-  csvHeaders: ['number', 'base_offset', 'system_type'],
-  defaults: { base_offset: '0', system_type: '' },
-  drawingFields: [],
-  layerStyle: { displayName: 'MEP Nodes', color: '#ff6b6b', icon: '●', order: 13.5 },
-  renderZIndex: 92,
-});
+// mep_node now lives in its own module (elements/mep_node.tsx) because it
+// requires topology-driven kind derivation and per-fitting geometry. It is
+// no longer co-built from this factory.
 
 registerElement(equipmentModule);
 registerElement(terminalModule);
-registerElement(mepNodeModule);

@@ -22,3 +22,4 @@ import './railing.tsx';
 import './curtain_wall.tsx';
 import './mesh.tsx';
 import './mep_lines.tsx';
+import './mep_node.tsx';
