@@ -18,4 +18,13 @@ export {
   elementModulesByDiscipline,
   csvOnlyTables,
   dualModeTables,
+  geometryTypeOf,
+  placementTypeOf,
 } from './registry.ts';
+
+export {
+  PROPERTY_FIELD_DEFS,
+  PROPERTY_GROUPS,
+  resolvePropertyFields,
+} from './_propertyFields.ts';
+export type { PropertyField, PropertyGroup } from './_propertyFields.ts';

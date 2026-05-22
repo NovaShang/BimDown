@@ -1,7 +1,7 @@
 import type { ReactNode } from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../model/tableRegistry.ts';
-import type { PropertyField } from '../model/propertyFields.ts';
+import type { PropertyField } from './_propertyFields.ts';
 import type { Level } from '../types.ts';
 
 // ─── Archetype ───────────────────────────────────────────────────────────────

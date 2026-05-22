@@ -1,5 +1,6 @@
 import type { AnyElementModule, Archetype } from './archetypes.ts';
 import type { GeometryType, PlacementType } from '../model/tableRegistry.ts';
+import { resolvePropertyFields, type PropertyField } from './_propertyFields.ts';
 
 // ─── Module registry ─────────────────────────────────────────────────────────
 
@@ -8,10 +9,18 @@ const registry = new Map<string, AnyElementModule>();
 /**
  * Register an element module. Call from each elements/<table>.ts at module load.
  * Throws if the table name collides.
+ *
+ * If `module.propertyFields` is empty, it is auto-resolved from `csvHeaders`
+ * and `drawingFields` via `resolvePropertyFields`. Modules can supply an
+ * explicit non-empty list to override.
  */
 export function registerElement(module: AnyElementModule): void {
   if (registry.has(module.table)) {
     throw new Error(`Element module already registered for table: ${module.table}`);
+  }
+  if (!module.propertyFields || module.propertyFields.length === 0) {
+    (module as { propertyFields: PropertyField[] }).propertyFields =
+      resolvePropertyFields(module.csvHeaders, module.drawingFields);
   }
   registry.set(module.table, module);
 }
