@@ -316,6 +316,35 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         changed = true;
         next.set(id, moveElement(el, dx, dy));
       }
+      // Topology cascade: when a mep_node moves, only the matching endpoint(s)
+      // of every pipe/duct/conduit/cable_tray referencing it should follow —
+      // the rest of the pipe stays where it is. Pipes already in `movedSet`
+      // (fully translated above) are skipped to avoid double-moving.
+      const partialMoved = new Set<string>();
+      for (const movedId of allIds) {
+        const movedEl = next.get(movedId);
+        if (!movedEl || movedEl.tableName !== 'mep_node') continue;
+        const colonIdx = movedId.indexOf(':');
+        const unprefixedNodeId = colonIdx >= 0 ? movedId.substring(colonIdx + 1) : movedId;
+        for (const el of state.document.elements.values()) {
+          if (
+            el.tableName !== 'duct' && el.tableName !== 'pipe'
+            && el.tableName !== 'conduit' && el.tableName !== 'cable_tray'
+          ) continue;
+          if (movedSet.has(el.id)) continue;
+          const startMatch = el.attrs.start_node_id === movedId || el.attrs.start_node_id === unprefixedNodeId;
+          const endMatch   = el.attrs.end_node_id   === movedId || el.attrs.end_node_id   === unprefixedNodeId;
+          if (!startMatch && !endMatch) continue;
+          const currentPipe = next.get(el.id) ?? el;
+          if (currentPipe.geometry !== 'line' && currentPipe.geometry !== 'spatial_line') continue;
+          const ln = currentPipe as LineElement;
+          const newStart = startMatch ? { x: ln.start.x + dx, y: ln.start.y + dy } : ln.start;
+          const newEnd   = endMatch   ? { x: ln.end.x   + dx, y: ln.end.y   + dy } : ln.end;
+          next.set(el.id, { ...ln, start: newStart, end: newEnd });
+          partialMoved.add(el.id);
+          changed = true;
+        }
+      }
       if (!changed) return state;
       if (preview) {
         return { ...state, document: { ...state.document, elements: next } };
@@ -323,6 +352,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
       for (const id of allIds) {
+        const pre = state.document.elements.get(id);
+        const post = next.get(id);
+        before.set(id, pre ?? null);
+        after.set(id, post ?? null);
+      }
+      // Partial-moved pipes also recorded so undo restores their endpoints.
+      for (const id of partialMoved) {
         const pre = state.document.elements.get(id);
         const post = next.get(id);
         before.set(id, pre ?? null);
