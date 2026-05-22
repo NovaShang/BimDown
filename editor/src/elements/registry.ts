@@ -15,9 +15,9 @@ const registry = new Map<string, AnyElementModule>();
  * explicit non-empty list to override.
  */
 export function registerElement(module: AnyElementModule): void {
-  if (registry.has(module.table)) {
-    throw new Error(`Element module already registered for table: ${module.table}`);
-  }
+  // Idempotent: under Vite HMR (and when a consumer imports the editor twice
+  // via different entry points) the same module file may execute more than
+  // once. Overwrite rather than throw — the latest definition wins.
   if (!module.propertyFields || module.propertyFields.length === 0) {
     (module as { propertyFields: PropertyField[] }).propertyFields =
       resolvePropertyFields(module.csvHeaders, module.drawingFields);

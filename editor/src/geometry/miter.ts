@@ -386,6 +386,53 @@ function aabbOverlap(a: AABB, b: AABB): boolean {
 }
 
 /**
+ * Per-wall variant of computeOuterEdges. Returns a map from wall id to its
+ * clipped outer edges, so each element module can render only its own share.
+ */
+export function computeOuterEdgesByEl(
+  polygons: WallPolygon[],
+  junctionKeys: Set<string>,
+): Map<string, [Pt, Pt][]> {
+  const out = new Map<string, [Pt, Pt][]>();
+  const polyBounds = polygons.map(p => polyAABB(p.corners));
+
+  for (let wi = 0; wi < polygons.length; wi++) {
+    const { id, corners, sideLen, startKey, endKey } = polygons[wi];
+    const collected: [Pt, Pt][] = [];
+    const sideEdges: [Pt, Pt][] = [];
+    for (let i = 0; i < sideLen - 1; i++) {
+      sideEdges.push([corners[i], corners[i + 1]]);
+      sideEdges.push([corners[sideLen + i], corners[sideLen + i + 1]]);
+    }
+    for (const [eA, eB] of sideEdges) {
+      let segments: [Pt, Pt][] = [[eA, eB]];
+      const edgeBounds = segAABB(eA, eB);
+      for (let wj = 0; wj < polygons.length; wj++) {
+        if (wj === wi) continue;
+        if (!aabbOverlap(edgeBounds, polyBounds[wj])) continue;
+        if (polygons[wj].sideLen !== 2) continue;
+        const otherPoly = polygons[wj].corners;
+        const next: [Pt, Pt][] = [];
+        for (const seg of segments) {
+          next.push(...clipSegOutside(seg[0], seg[1], otherPoly));
+        }
+        segments = next;
+        if (segments.length === 0) break;
+      }
+      collected.push(...segments);
+    }
+    if (!junctionKeys.has(startKey)) {
+      collected.push([corners[0], corners[2 * sideLen - 1]]);
+    }
+    if (!junctionKeys.has(endKey)) {
+      collected.push([corners[sideLen - 1], corners[sideLen]]);
+    }
+    out.set(id, collected);
+  }
+  return out;
+}
+
+/**
  * Given wall polygons, compute only the outer edge segments.
  * Only the two SIDE edges (p1→p2 and p4→p3) are clipped against other polygons.
  * End caps (p1↔p4 and p2↔p3) are only drawn at free endpoints.

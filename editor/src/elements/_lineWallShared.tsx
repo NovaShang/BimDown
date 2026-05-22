@@ -7,7 +7,14 @@ import type { ReactNode } from 'react';
 import { Shape, ExtrudeGeometry, type BufferGeometry } from 'three';
 import type { GeometryContext } from './archetypes.ts';
 import type { LineElement, Point } from '../model/elements.ts';
-import { computeCornerAdjustments, type WallSegment, type CornerAdjustment } from '../geometry/miter.ts';
+import {
+  computeCornerAdjustments,
+  computeOuterEdgesByEl,
+  ptKey,
+  type WallSegment,
+  type CornerAdjustment,
+  type WallPolygon,
+} from '../geometry/miter.ts';
 import { tessellateArc, pointOnArc, type ArcParams } from '../geometry/arc.ts';
 import { applyOpenings } from '../three/resolve/csg.ts';
 import type { SurfacePrimitive, ParametricOpening } from '../three/primitives/types.ts';
@@ -32,6 +39,10 @@ export interface LineWallFacts {
   centerline: { start: Point; end: Point; arc?: ArcParams; length: number };
   footprint: Point[];
   segments: Point[][];
+  /** Subset of footprint edges that face outside the wall network. Drawn as
+   *  the visible outline; inner edges at junctions are skipped so connected
+   *  walls render as a single contiguous shape. */
+  outerEdges: [Point, Point][];
   openings: WallOpening[];
   thickness: number;
   height: number;
@@ -56,6 +67,46 @@ export function getWallMiterAdjustments(
       arc: w.arc,
     }));
     return computeCornerAdjustments(segments).adjustments;
+  });
+}
+
+/**
+ * Per-table cache: for each wall in `table`, return the set of footprint
+ * edges that should be drawn as the visible outline. Edges shared with an
+ * adjacent wall (junction) are excluded — so connected walls visually
+ * merge into one contiguous shape.
+ */
+export function getWallOuterEdges(
+  ctx: GeometryContext,
+  table: string,
+): Map<string, [Point, Point][]> {
+  return ctx.memo(`${table}:outerEdges`, () => {
+    const walls = ctx.elementsByTable(table).filter(
+      (e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line',
+    );
+    if (walls.length === 0) return new Map();
+    const adj = getWallMiterAdjustments(ctx, table);
+    const polygons: WallPolygon[] = [];
+    for (const w of walls) {
+      const fp = buildLineWallFootprint(w, adj);
+      if (fp.length === 0) continue;
+      const sideLen = fp.length / 2;
+      polygons.push({
+        id: w.id,
+        corners: fp,
+        sideLen,
+        startKey: ptKey(w.start.x, w.start.y),
+        endKey: ptKey(w.end.x, w.end.y),
+      });
+    }
+    const epCount = new Map<string, number>();
+    for (const p of polygons) {
+      epCount.set(p.startKey, (epCount.get(p.startKey) ?? 0) + 1);
+      epCount.set(p.endKey, (epCount.get(p.endKey) ?? 0) + 1);
+    }
+    const junctionKeys = new Set<string>();
+    for (const [k, c] of epCount) if (c >= 2) junctionKeys.add(k);
+    return computeOuterEdgesByEl(polygons, junctionKeys);
   });
 }
 
@@ -192,6 +243,7 @@ export function wallGeometryFor(
   if (footprint.length === 0) return null;
   const openings = collectWallOpenings(el, ctx);
   const segments = buildWallSegments(el, openings, adj);
+  const outerEdges = getWallOuterEdges(ctx, table).get(el.id) ?? [];
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
   const chordLen = Math.sqrt(dx * dx + dy * dy);
@@ -202,6 +254,7 @@ export function wallGeometryFor(
     centerline: { start: el.start, end: el.end, arc: el.arc, length: chordLen },
     footprint,
     segments,
+    outerEdges,
     openings,
     thickness: el.strokeWidth,
     height: DEFAULT_HEIGHT,
@@ -217,6 +270,38 @@ export function wallDraw2D(
   strokeWidth: number,
 ): ReactNode {
   if (facts.segments.length === 0) return null;
+
+  // Common case: no openings → render fill polygon without stroke and use
+  // junction-clipped outerEdges for the outline. This makes connected walls
+  // visually merge at corners.
+  if (facts.openings.length === 0 && facts.outerEdges.length > 0) {
+    return (
+      <g data-id={facts.id}>
+        {facts.segments.map((seg, i) => (
+          <polygon
+            key={`f${i}`}
+            points={seg.map(p => `${p.x},${p.y}`).join(' ')}
+            fill={fill}
+            stroke="none"
+            data-id={facts.id}
+          />
+        ))}
+        {facts.outerEdges.map(([a, b], i) => (
+          <line
+            key={`e${i}`}
+            x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+            stroke={stroke}
+            strokeWidth={strokeWidth}
+            strokeLinecap="butt"
+            data-id={facts.id}
+          />
+        ))}
+      </g>
+    );
+  }
+
+  // Wall has openings: keep per-segment stroke (each segment has its own
+  // cap edges from the cuts). Junction cleanup for this branch is a TODO.
   return (
     <g data-id={facts.id}>
       {facts.segments.map((seg, i) => (

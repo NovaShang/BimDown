@@ -1,4 +1,9 @@
-// Public API for embedding editor components in other apps (e.g. web SaaS)
+// Public API for embedding editor components in other apps (e.g. web SaaS).
+// Side-effect import: populates the element-module registry so consumers
+// (e.g. the SaaS frontend) get a functional toolbar / renderer without
+// having to import registerAll themselves.
+import './elements/registerAll.ts';
+
 export { EditorProvider, useEditorState, useSelectionState, useEditorDispatch } from './state/EditorContext.tsx';
 export { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 export { createLocalDataSource } from './utils/dataSource.ts';
