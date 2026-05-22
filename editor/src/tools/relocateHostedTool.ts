@@ -2,9 +2,9 @@ import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { hostTablesFor, widthAttrFor } from '../model/elements.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
-import { resolveHostedGeometry, computeHostedPosition } from '../model/hosted.ts';
+import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
 import { toElementId } from '../model/ids.ts';
-import { nearestPointOnArc, arcLength } from '../utils/arcMath.ts';
+import { nearestPointOnArc, arcLength } from '../geometry/arc.ts';
 
 const HOST_SNAP_THRESHOLD = 1;
 

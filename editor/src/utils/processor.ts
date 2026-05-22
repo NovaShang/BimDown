@@ -1,5 +1,5 @@
 import type { CsvRow } from '../types.ts';
-import { computeCornerAdjustments, type WallSegment } from './wallMiter.ts';
+import { computeCornerAdjustments, type WallSegment } from '../geometry/miter.ts';
 import { parsePoints } from '../model/parse.ts';
 
 const parser = new DOMParser();

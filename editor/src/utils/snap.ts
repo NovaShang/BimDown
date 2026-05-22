@@ -1,6 +1,6 @@
 import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
 import type { GridData } from '../types.ts';
-import { nearestPointOnArc, pointOnArc as arcPointOnArc } from './arcMath.ts';
+import { nearestPointOnArc, pointOnArc as arcPointOnArc } from '../geometry/arc.ts';
 
 // ── Snap types ──
 

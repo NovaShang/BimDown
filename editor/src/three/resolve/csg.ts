@@ -1,7 +1,7 @@
 import { Shape, ExtrudeGeometry, BoxGeometry, CylinderGeometry, Matrix4, type BufferGeometry } from 'three';
 import { SUBTRACTION, Evaluator, Brush } from 'three-bvh-csg';
 import type { SurfacePrimitive, OpeningDecl } from '../primitives/types.ts';
-import { pointOnArc, arcLength } from '../../utils/arcMath.ts';
+import { pointOnArc, arcLength } from '../../geometry/arc.ts';
 
 const csgEvaluator = new Evaluator();
 

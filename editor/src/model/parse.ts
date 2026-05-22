@@ -1,7 +1,7 @@
 import type { LayerData, CsvRow } from '../types.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point, ArcParams } from './elements.ts';
 import { geometryTypeForTable, isHostedTable } from './elements.ts';
-import { resolveHostedGeometry } from './hosted.ts';
+import { resolveHostedGeometry } from '../geometry/hosted.ts';
 
 /** Tables that are CSV-only (no geometry file). */
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh']);

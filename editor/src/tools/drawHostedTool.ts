@@ -5,8 +5,8 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { nearestPointOnSegment } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
-import { resolveHostedGeometry, computeHostedPosition } from '../model/hosted.ts';
-import { nearestPointOnArc, arcLength } from '../utils/arcMath.ts';
+import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
+import { nearestPointOnArc, arcLength } from '../geometry/arc.ts';
 
 const HOST_SNAP_THRESHOLD = 1; // metres — max distance from cursor to wall centerline
 

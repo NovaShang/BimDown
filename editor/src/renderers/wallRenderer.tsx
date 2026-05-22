@@ -1,5 +1,5 @@
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
-import { tessellateArc, pointOnArc } from '../utils/arcMath.ts';
+import { tessellateArc, pointOnArc } from '../geometry/arc.ts';
 
 // ─── Shared 2D helpers ──────────────────────────────────────────────
 

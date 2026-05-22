@@ -5,7 +5,7 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../../state/EditorContext.tsx';
 import { snapPoint } from '../../utils/snap.ts';
-import { arcFromMidpoint, arcMidpoint, tessellateArc } from '../../utils/arcMath.ts';
+import { arcFromMidpoint, arcMidpoint, tessellateArc } from '../../geometry/arc.ts';
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;

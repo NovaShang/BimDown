@@ -1,5 +1,5 @@
 import type { SurfacePrimitive } from '../primitives/types.ts';
-import { computeCornerAdjustments, type WallSegment } from '../../utils/wallMiter.ts';
+import { computeCornerAdjustments, type WallSegment } from '../../geometry/miter.ts';
 
 /**
  * Apply miter joins to SurfacePrimitives that share a miterGroup.

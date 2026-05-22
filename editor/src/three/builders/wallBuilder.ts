@@ -2,7 +2,7 @@ import type { CanonicalElement, LineElement } from '../../model/elements.ts';
 import type { SurfacePrimitive, ParametricOpening } from '../primitives/types.ts';
 import { resolveBimMaterial } from '../utils/bimMaterials.ts';
 import { resolveHeight } from '../utils/elementTo3D.ts';
-import { tessellateArc, pointOnArc, nearestPointOnArc, arcLength } from '../../utils/arcMath.ts';
+import { tessellateArc, pointOnArc, nearestPointOnArc, arcLength } from '../../geometry/arc.ts';
 
 const DEFAULT_WALL_HEIGHT = 3.0;
 

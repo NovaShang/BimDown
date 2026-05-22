@@ -2,7 +2,7 @@ import { useCallback, useRef } from 'react';
 import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
-import { arcFromMidpoint, arcMidpoint, arcLength } from '../utils/arcMath.ts';
+import { arcFromMidpoint, arcMidpoint, arcLength } from '../geometry/arc.ts';
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;

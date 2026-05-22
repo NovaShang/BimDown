@@ -3,7 +3,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, P
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
-import { resolveHostedGeometry } from '../model/hosted.ts';
+import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import { isVerticalSpanTable } from '../model/tableRegistry.ts';
 import { serializeToGeoJson } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';

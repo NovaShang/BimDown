@@ -5,7 +5,7 @@ export { createLocalDataSource } from './utils/dataSource.ts';
 export type { DataSource } from './utils/dataSource.ts';
 export { loadProject, loadGrids, loadLayer, loadProjectMetadata } from './utils/loader.ts';
 export { parseLayer } from './model/parse.ts';
-export { resolveHostedGeometry } from './model/hosted.ts';
+export { resolveHostedGeometry } from './geometry/hosted.ts';
 export type { LineElement } from './model/elements.ts';
 export type { ProjectMetadata } from './types.ts';
 export { default as EditorShell } from './components/EditorShell.tsx';

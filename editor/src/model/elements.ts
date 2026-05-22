@@ -6,9 +6,9 @@ export {
   widthAttrFor,
 } from './tableRegistry.ts';
 export type { GeometryType, PlacementType } from './tableRegistry.ts';
-export type { ArcParams } from '../utils/arcMath.ts';
+export type { ArcParams } from '../geometry/arc.ts';
 
-import { arcBounds, type ArcParams } from '../utils/arcMath.ts';
+import { arcBounds, type ArcParams } from '../geometry/arc.ts';
 
 export type Point = { x: number; y: number };
 

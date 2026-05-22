@@ -3,7 +3,7 @@ import type { ReactNode, ErrorInfo } from 'react';
 import { EditorProvider, useEditorDispatch, useEditorState } from './state/EditorContext.tsx';
 import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
 import { parseLayer } from './model/parse.ts';
-import { resolveHostedGeometry } from './model/hosted.ts';
+import { resolveHostedGeometry } from './geometry/hosted.ts';
 import type { LineElement } from './model/elements.ts';
 import { createLocalDataSource } from './utils/dataSource.ts';
 import { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';

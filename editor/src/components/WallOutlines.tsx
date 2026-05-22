@@ -7,9 +7,9 @@ import {
   ptKey,
   type WallSegment,
   type WallPolygon,
-} from '../utils/wallMiter.ts';
+} from '../geometry/miter.ts';
 import { getMaterialFill } from '../renderers/wallRenderer.tsx';
-import { tessellateArc, pointOnArc } from '../utils/arcMath.ts';
+import { tessellateArc, pointOnArc } from '../geometry/arc.ts';
 import { hasElementModule } from '../elements/registry.ts';
 import { isPipelineV2 } from '../adapters/svg/context.tsx';
 
