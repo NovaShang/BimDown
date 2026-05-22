@@ -1,4 +1,5 @@
 import type { AnyElementModule, Archetype } from './archetypes.ts';
+import type { GeometryType, PlacementType } from '../model/tableRegistry.ts';
 
 // ─── Module registry ─────────────────────────────────────────────────────────
 
@@ -43,4 +44,47 @@ export function csvOnlyTables(): Set<string> {
 /** Tables that allow both GeoJSON features and CSV-only rows. */
 export function dualModeTables(): Set<string> {
   return new Set(allElementModules().filter(m => m.dualMode).map(m => m.table));
+}
+
+// ─── Archetype-derived metadata ──────────────────────────────────────────────
+
+/**
+ * Resolve the storage geometry type for an element module.
+ * Returns the explicit `geometryType` field if set, otherwise derives from archetype.
+ */
+export function geometryTypeOf(mod: AnyElementModule): GeometryType {
+  if (mod.geometryType) return mod.geometryType;
+  switch (mod.archetype) {
+    case 'line':
+    case 'hosted':
+      return 'line';
+    case 'spatial-line':
+    case 'topo-line':
+      return 'spatial_line';
+    case 'point':
+      return 'point';
+    case 'surface':
+      return 'polygon';
+  }
+}
+
+/**
+ * Resolve the placement type for an element module.
+ * Returns the explicit `placementType` field if set, otherwise derives from archetype.
+ */
+export function placementTypeOf(mod: AnyElementModule): PlacementType {
+  if (mod.placementType) return mod.placementType;
+  switch (mod.archetype) {
+    case 'line':
+      return 'free_line';
+    case 'hosted':
+      return 'hosted';
+    case 'spatial-line':
+    case 'topo-line':
+      return 'spatial_line';
+    case 'point':
+      return 'free_point';
+    case 'surface':
+      return 'free_polygon';
+  }
 }

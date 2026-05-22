@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
-import type { DrawingField, LayerStyle } from '../model/tableRegistry.ts';
+import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../model/tableRegistry.ts';
 import type { PropertyField } from '../model/propertyFields.ts';
 import type { Level } from '../types.ts';
 
@@ -107,6 +107,22 @@ export interface ElementModule<TFacts = unknown> {
   discipline: string;
   archetype: Archetype;
   prefix: string;
+
+  /**
+   * Storage geometry type. If omitted, derived from archetype:
+   *   line → 'line', spatial-line/topo-line → 'spatial_line', point → 'point',
+   *   hosted → 'line', surface → 'polygon'.
+   * Set explicitly for elements that don't follow the default (e.g. foundation: 'mixed').
+   */
+  geometryType?: GeometryType;
+
+  /**
+   * Placement type override. If omitted, derived from archetype:
+   *   line → 'free_line', spatial-line/topo-line → 'spatial_line',
+   *   point → 'free_point', hosted → 'hosted', surface → 'free_polygon'.
+   * Grid uses 'grid' explicitly.
+   */
+  placementType?: PlacementType;
 
   // ─── Schema (CSV) ──────────────────────────────────────────────────────────
   csvHeaders: string[];

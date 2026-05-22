@@ -54,6 +54,7 @@ export const foundationModule: ElementModule<FoundationFacts> = {
   table: 'foundation',
   discipline: 'structure',
   archetype: 'surface',
+  geometryType: 'mixed',
   prefix: 'f',
   csvHeaders: ['number', 'base_offset', 'thickness', 'width', 'length', 'material'],
   defaults: { base_offset: '0', material: 'concrete', thickness: `${DEFAULT_THICKNESS}` },

@@ -16,6 +16,7 @@ export const gridModule: ElementModule<GridFacts> = {
   table: 'grid',
   discipline: 'reference',
   archetype: 'line',
+  placementType: 'grid',
   prefix: 'gr',
   csvHeaders: ['number'],
   defaults: {},
