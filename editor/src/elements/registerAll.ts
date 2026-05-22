@@ -16,3 +16,4 @@ import './brace.tsx';
 import './ramp.tsx';
 import './ceiling.tsx';
 import './foundation.tsx';
+import './roof.tsx';
