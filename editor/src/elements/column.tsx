@@ -3,7 +3,7 @@ import { ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
-import { getBlockSvg } from '../renderers/blockLoader.ts';
+import { getBlockSvg } from './_blockLoader.ts';
 import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from '../model/tableRegistry.ts';

@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
-import { getBlockSvg } from '../renderers/blockLoader.ts';
+import { getBlockSvg } from './_blockLoader.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 
 export interface WindowFacts {

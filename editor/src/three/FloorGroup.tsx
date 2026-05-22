@@ -4,12 +4,7 @@ import { isDisciplineVisible } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { Level } from '../types.ts';
 import { parseFloorLayers } from '../model/parse.ts';
-import { resolveBimMaterial } from './utils/bimMaterials.ts';
-import { getRenderer } from './renderers/index.ts';
 import MeshInstances from './layers/MeshInstances.tsx';
-import './renderers/registerDefaults.ts';
-import { hasElementModule } from '../elements/registry.ts';
-import { isPipelineV2 } from '../adapters/svg/context.tsx';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import { ElementNode3D } from '../adapters/r3f/ElementNode3D.tsx';
 
@@ -136,68 +131,32 @@ function RenderElements({ elements, levelId, levelElevation, levelElevations, gh
     return map;
   }, [elements]);
 
-  // V2 geometry context (built once per floor render pass).
-  const v2Active = isPipelineV2();
+  // Geometry context, built once per floor render pass.
   const v2Ctx = useMemo(() => {
-    if (!v2Active) return null;
     const level: Level = { id: levelId, number: '', name: '', elevation: levelElevation };
     const allLevels: Level[] = Array.from(levelElevations.entries()).map(
       ([id, elevation]) => ({ id, number: '', name: '', elevation }),
     );
     return buildGeometryContext({ level, allLevels, allElements });
-  }, [v2Active, levelId, levelElevation, levelElevations, allElements]);
+  }, [levelId, levelElevation, levelElevations, allElements]);
 
-  // Split: mesh_file → MeshInstances, V2-handled → ElementNode3D, rest → V1 parametric.
-  const { meshElements, v2Elements, parametricGroups } = useMemo(() => {
+  // mesh_file elements always go to MeshInstances (loads external .glb);
+  // everything else goes through the V2 element-module path.
+  const { meshElements, v2Elements } = useMemo(() => {
     const meshEls: CanonicalElement[] = [];
     const v2Els: CanonicalElement[] = [];
-    const paramGroups = new Map<string, CanonicalElement[]>();
     for (const el of elements) {
-      if (el.attrs.mesh_file) {
-        meshEls.push(el);
-      } else if (v2Active && hasElementModule(el.tableName)) {
-        v2Els.push(el);
-      } else {
-        const list = paramGroups.get(el.tableName) ?? [];
-        list.push(el);
-        paramGroups.set(el.tableName, list);
-      }
+      if (el.attrs.mesh_file) meshEls.push(el);
+      else v2Els.push(el);
     }
-    return { meshElements: meshEls, v2Elements: v2Els, parametricGroups: paramGroups };
-  }, [elements, v2Active]);
+    return { meshElements: meshEls, v2Elements: v2Els };
+  }, [elements]);
 
   return (
     <>
-      {/* V2 element-module path */}
-      {v2Ctx && v2Elements.map(el => (
+      {v2Elements.map(el => (
         <ElementNode3D key={el.id} element={el} ctx={v2Ctx} />
       ))}
-      {/* Parametric renderers (V1) */}
-      {[...parametricGroups.entries()].map(([tableName, els]) => {
-        const config = getRenderer(tableName);
-        if (!config) return null;
-        const Component = config.component;
-
-        if (config.groupByMaterial) {
-          const byMat = new Map<string, CanonicalElement[]>();
-          for (const el of els) {
-            const mat = resolveBimMaterial(el.attrs.material, tableName);
-            const list = byMat.get(mat) ?? [];
-            list.push(el);
-            byMat.set(mat, list);
-          }
-          return [...byMat.entries()].map(([mat, matEls]) => (
-            <Component key={`${tableName}:${mat}`} elements={matEls}
-              tableName={tableName} materialName={mat}
-              levelElevation={levelElevation} levelElevations={levelElevations} ghost={ghost} allElements={allElements} />
-          ));
-        }
-
-        return <Component key={tableName} elements={els}
-          tableName={tableName} levelElevation={levelElevation}
-          levelElevations={levelElevations} ghost={ghost} allElements={allElements} />;
-      })}
-      {/* Mesh fallback — elements with mesh_file bypass parametric rendering */}
       {meshElements.length > 0 && (
         <Suspense fallback={null}>
           <MeshInstances elements={meshElements} tableName="__mesh__"
