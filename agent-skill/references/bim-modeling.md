@@ -89,6 +89,55 @@ Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `
 ### MEP (duct, pipe, cable_tray, conduit)
 Spatial 3D `LineString` elements. CSV: `shape` (rect/round), `size_x` (/`size_y`), `system_type`. Align endpoints to create connections. Run `bimdown resolve-topology` after all MEP placed.
 
+#### `system_type` standard abbreviations
+
+Use these tags for the `system_type` column. Editors will color MEP lines by
+system_type (consistent color per string). Stick to the canonical short form so
+elements at different scales / files keep the same color.
+
+**HVAC**
+| Tag | Meaning |
+|-----|---------|
+| SA  | Supply Air |
+| RA  | Return Air |
+| EA  | Exhaust Air |
+| OA  | Outdoor Air |
+| CHWS| Chilled Water Supply |
+| CHWR| Chilled Water Return |
+| HWS | Heating Hot Water Supply |
+| HWR | Heating Hot Water Return |
+| CWS | Condenser Water Supply |
+| CWR | Condenser Water Return |
+| RF  | Refrigerant |
+| SF  | Steam Feed |
+| GE  | General Exhaust |
+
+**Plumbing**
+| Tag | Meaning |
+|-----|---------|
+| DW  | Domestic Water (potable) |
+| DCW | Domestic Cold Water |
+| DHW | Domestic Hot Water |
+| DHWR| Domestic Hot Water Return |
+| SS  | Sanitary Sewer |
+| VENT| Vent Stack |
+| SD  | Storm Drain |
+| GAS | Natural Gas |
+
+**Electrical / Low-voltage**
+| Tag | Meaning |
+|-----|---------|
+| NP  | Normal Power |
+| EM  | Emergency Power |
+| LV  | Low Voltage |
+| HV  | High Voltage |
+| DATA| Data / Network |
+| FA  | Fire Alarm |
+| SEC | Security |
+
+Custom or project-specific systems are allowed (any short string), but reuse a
+single spelling across the project so the auto-coloring stays consistent.
+
 ### equipment & terminal
 Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan, pump, transformer, panelboard, generator, water_heater, tank, other. `terminal_type`: supply_air_diffuser, return_air_grille, exhaust_air_grille, sprinkler_head, fire_alarm_device, light_fixture, power_outlet, data_outlet, plumbing_fixture, other.
 

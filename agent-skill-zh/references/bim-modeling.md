@@ -89,6 +89,54 @@ Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `
 ### MEP (duct, pipe, cable_tray, conduit)
 Spatial 3D `LineString` elements. CSV: `shape` (rect/round), `size_x` (/`size_y`), `system_type`. Align endpoints to create connections. Run `bimdown resolve-topology` after all MEP placed.
 
+#### `system_type` 标准缩写
+
+`system_type` 列填以下标签。编辑器会按 `system_type` 字符串自动着色，同一字符串
+对应同一颜色。请固定使用规范短写，避免 "CHWS" 和 "Chilled Water Supply" 混用
+导致同一系统被着成多种颜色。
+
+**暖通（HVAC）**
+| 缩写 | 含义 |
+|------|------|
+| SA   | 送风 Supply Air |
+| RA   | 回风 Return Air |
+| EA   | 排风 Exhaust Air |
+| OA   | 新风 Outdoor Air |
+| CHWS | 冷冻水供 Chilled Water Supply |
+| CHWR | 冷冻水回 Chilled Water Return |
+| HWS  | 热水供 Heating Hot Water Supply |
+| HWR  | 热水回 Heating Hot Water Return |
+| CWS  | 冷却水供 Condenser Water Supply |
+| CWR  | 冷却水回 Condenser Water Return |
+| RF   | 冷媒 Refrigerant |
+| SF   | 蒸汽 Steam Feed |
+| GE   | 一般排风 General Exhaust |
+
+**给排水（Plumbing）**
+| 缩写 | 含义 |
+|------|------|
+| DW   | 生活给水 Domestic Water |
+| DCW  | 生活冷水 Domestic Cold Water |
+| DHW  | 生活热水 Domestic Hot Water |
+| DHWR | 生活热水回 Domestic Hot Water Return |
+| SS   | 卫生排水 Sanitary Sewer |
+| VENT | 通气立管 Vent Stack |
+| SD   | 雨水 Storm Drain |
+| GAS  | 燃气 Natural Gas |
+
+**电气 / 弱电**
+| 缩写 | 含义 |
+|------|------|
+| NP   | 普通电源 Normal Power |
+| EM   | 应急电源 Emergency Power |
+| LV   | 低压 Low Voltage |
+| HV   | 高压 High Voltage |
+| DATA | 数据 / 网络 |
+| FA   | 火灾报警 Fire Alarm |
+| SEC  | 安防 Security |
+
+允许自定义系统名，但同一项目内应保持唯一拼写。
+
 ### equipment & terminal
 Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan, pump, transformer, panelboard, generator, water_heater, tank, other. `terminal_type`: supply_air_diffuser, return_air_grille, exhaust_air_grille, sprinkler_head, fire_alarm_device, light_fixture, power_outlet, data_outlet, plumbing_fixture, other.
 
