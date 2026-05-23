@@ -23,6 +23,45 @@ export interface OverlayItem {
   content: ReactNode;
 }
 
+/** Compute bbox of selected elements, returning min/max in model coords. */
+function getSelectionBBox(
+  selectedIds: Set<string>,
+  document: DocumentState | null,
+): { minX: number; minY: number; maxX: number; maxY: number } | null {
+  if (!document || selectedIds.size === 0) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  let found = false;
+  for (const id of selectedIds) {
+    const el = document.elements.get(toElementId(id));
+    if (!el) continue;
+    found = true;
+    switch (el.geometry) {
+      case 'line':
+      case 'spatial_line':
+        minX = Math.min(minX, el.start.x, el.end.x);
+        minY = Math.min(minY, el.start.y, el.end.y);
+        maxX = Math.max(maxX, el.start.x, el.end.x);
+        maxY = Math.max(maxY, el.start.y, el.end.y);
+        break;
+      case 'point':
+        minX = Math.min(minX, el.position.x - el.width / 2);
+        minY = Math.min(minY, el.position.y - el.height / 2);
+        maxX = Math.max(maxX, el.position.x + el.width / 2);
+        maxY = Math.max(maxY, el.position.y + el.height / 2);
+        break;
+      case 'polygon':
+        for (const v of el.vertices) {
+          if (v.x < minX) minX = v.x;
+          if (v.y < minY) minY = v.y;
+          if (v.x > maxX) maxX = v.x;
+          if (v.y > maxY) maxY = v.y;
+        }
+        break;
+    }
+  }
+  return found ? { minX, minY, maxX, maxY } : null;
+}
+
 /** Polygon centroid (area-weighted), used as the visual anchor for elements
  *  whose label sits at the centroid rather than the bbox center (e.g. spaces). */
 function polygonCentroid(vertices: { x: number; y: number }[]): { x: number; y: number } {
@@ -115,13 +154,34 @@ export function useOverlayItems(
 ): OverlayItem[] {
   return useMemo(() => {
     if (!content) return [];
-    const center = getSelectionCenter(selectedIds, document);
-    if (!center) return [];
+
+    // Position priority:
+    //   1. Label-anchored single selection → label position (e.g. space).
+    //   2. Otherwise → element bbox top, centered horizontally — gives the
+    //      action bar room above the element instead of overlapping it.
+    let position: { x: number; y: number } | null = null;
+    let pushUp = 24;
+    if (selectedIds.size === 1) {
+      const id = [...selectedIds][0];
+      const el = document?.elements.get(toElementId(id));
+      if (el && el.tableName === 'space') {
+        if (el.geometry === 'polygon') position = polygonCentroid(el.vertices);
+        else if (el.geometry === 'point') position = { x: el.position.x, y: el.position.y };
+      }
+    }
+    if (!position) {
+      const bb = getSelectionBBox(selectedIds, document);
+      if (bb) {
+        position = { x: (bb.minX + bb.maxX) / 2, y: bb.maxY };
+        pushUp = 24;
+      }
+    }
+    if (!position) return [];
 
     return [{
       id: 'selection-actions',
-      position: center,
-      offset: { x: 0, y: -12 },
+      position,
+      offset: { x: 0, y: -pushUp },
       anchor: 'bottom-center',
       content,
     }];
