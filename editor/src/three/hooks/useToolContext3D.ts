@@ -5,6 +5,7 @@ import type { ToolContext, ToolStateSnapshot, TransformAction } from '../../tool
 import type { EditorAction } from '../../state/editorTypes.ts';
 import type { SnapResult } from '../../utils/snap.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
+import { isBackgroundDiscipline } from '../../state/selectors.ts';
 
 /** Resolve element ID from a raycast intersection (walks up object tree). */
 function resolveElementId(intersection: Intersection): string | null {
@@ -120,6 +121,8 @@ export function useToolContext3D(floorElevation: number) {
       project: s.project,
       grids: s.grids,
       currentLevel: s.currentLevel,
+      activeDiscipline: s.activeDiscipline,
+      showArchContext: s.showArchContext,
     };
   }, []);
 
@@ -131,8 +134,12 @@ export function useToolContext3D(floorElevation: number) {
     const ids: string[] = [];
     const tempVec = new Vector3();
     const canvasRect = gl.domElement.getBoundingClientRect();
+    const activeDisc = stateRef.current.activeDiscipline;
 
     for (const [id, el] of doc.elements) {
+      // Same predicate as SVGLayers / 2D marquee: a background-only layer is
+      // visible-as-context but not interactive, so it shouldn't be box-selectable.
+      if (isBackgroundDiscipline(el.discipline, activeDisc)) continue;
       // Get element center in model coords
       let cx: number, cy: number;
       if (el.geometry === 'line' || el.geometry === 'spatial_line') {

@@ -15,6 +15,19 @@ export function isDisciplineVisible(discipline: string, state: EditorState): boo
   return false;
 }
 
+/** A layer is "background" (dimmed + non-interactive) when its discipline is
+ *  visible only as context — architecture under another active discipline, or
+ *  reference (grids, levels) under any non-reference discipline. SVGLayers uses
+ *  the same predicate to gate pointer events; selection paths that bypass DOM
+ *  hit-testing (marquee) must re-apply it so users can't accidentally box-select
+ *  grid lines under the architecture / structure / mep disciplines. */
+export function isBackgroundDiscipline(discipline: string, activeDiscipline: string | null): boolean {
+  if (!activeDiscipline || activeDiscipline === 'all') return false;
+  if (discipline === 'architecture' && activeDiscipline !== 'architecture') return true;
+  if (discipline === 'reference' && activeDiscipline !== 'reference') return true;
+  return false;
+}
+
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
 }

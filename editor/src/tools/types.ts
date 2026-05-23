@@ -50,6 +50,11 @@ export interface ToolStateSnapshot {
   project: ProjectData | null;
   grids: readonly GridData[];
   currentLevel: string;
+  /** Mirrors EditorState.activeDiscipline so tools can replicate the discipline
+   *  filtering logic (e.g. marquee should skip background-only layers). */
+  activeDiscipline: string | null;
+  /** Mirrors EditorState.showArchContext for the same reason. */
+  showArchContext: boolean;
 }
 
 export interface ToolHandler {

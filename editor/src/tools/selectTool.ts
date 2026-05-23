@@ -3,6 +3,7 @@ import type { ToolHandler, ToolContext } from './types.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { toSelectionId, toElementId } from '../model/ids.ts';
 import { getProjectUnits } from '../utils/units.ts';
+import { isBackgroundDiscipline } from '../state/selectors.ts';
 
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
@@ -231,6 +232,9 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   const svg = ctx.svgRef.current;
   if (!svg) return;
 
+  const state = ctx.getState();
+  const docElements = state.document?.elements;
+
   const ids = new Set<string>();
   const elements = svg.querySelectorAll('[data-id]');
   for (const el of elements) {
@@ -263,10 +267,11 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
         elRect.y + elRect.h > marqueeRect.y
       ) {
         const rawId = el.getAttribute('data-id');
-        if (rawId) {
-          const state = ctx.getState();
-          ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);
-        }
+        if (!rawId) continue;
+        const elemId = toElementId(rawId);
+        const canonical = docElements?.get(elemId);
+        if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline)) continue;
+        ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);
       }
     } catch {
       // getBBox can throw for hidden elements

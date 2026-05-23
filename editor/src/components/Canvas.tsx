@@ -207,6 +207,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         project: s.project,
         grids: s.grids,
         currentLevel: s.currentLevel,
+        activeDiscipline: s.activeDiscipline,
+        showArchContext: s.showArchContext,
       };
     },
     screenToSvg,

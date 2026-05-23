@@ -128,6 +128,10 @@ function extractSnapTargets(
 
   for (const [id, el] of elements) {
     if (excludeIds.has(id)) continue;
+    // Grids participate in snap exclusively through the `grids` pass (gridline
+    // + grid intersection). Treating their line endpoints as snap targets too
+    // would spam "Endpoint" markers on top of every grid line.
+    if (el.tableName === 'grid') continue;
 
     if (el.geometry === 'line' || el.geometry === 'spatial_line') {
       const lineEl = el as LineElement | SpatialLineElement;
