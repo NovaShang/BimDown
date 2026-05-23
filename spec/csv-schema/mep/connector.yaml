@@ -1,0 +1,74 @@
+name: connector
+bases:
+  - element
+
+description: >
+  Connection port (socket) on an equipment / terminal / mep_node. Each row is
+  one port. The host element exposes the port via host_id; the port carries an
+  offset relative to the host's origin plus an outward direction unit vector
+  and a cross-section (shape + size). MEP curves connecting to this host snap
+  to connectors during drawing; the existing reverse-topology cascade
+  (start_node_id / end_node_id → host_id) keeps the link live during edits.
+
+  Phase 1 (this schema): connectors are present in CSV but the
+  drag-from-connector-to-connector workflow and auto-routing are NOT yet
+  implemented. They serve as snap targets during normal pipe / duct drawing.
+
+  CSV-only: connectors have no independent 2D geometry — their position is
+  derived from host + offsets at render time.
+
+fields:
+  - name: host_id
+    type: reference
+    reference: element
+    required: true
+    description: ID of the host equipment / terminal / mep_node.
+
+  - name: offset_x
+    type: float
+    default: 0
+    description: X offset from host origin, meters.
+
+  - name: offset_y
+    type: float
+    default: 0
+    description: Y offset from host origin, meters.
+
+  - name: offset_z
+    type: float
+    default: 0
+    description: Z offset from host origin (added to host base_offset), meters.
+
+  - name: dir_x
+    type: float
+    default: 1
+    description: Outward unit-vector X component (direction the pipe/duct exits).
+
+  - name: dir_y
+    type: float
+    default: 0
+    description: Outward unit-vector Y component.
+
+  - name: dir_z
+    type: float
+    default: 0
+    description: Outward unit-vector Z component.
+
+  - name: shape
+    type: enum
+    description: Cross-section shape of the port opening.
+    values:
+      - round
+      - rect
+
+  - name: size_w
+    type: float
+    description: Cross-section width (or diameter when shape=round), meters.
+
+  - name: size_h
+    type: float
+    description: Cross-section height (rect only), meters.
+
+  - name: system_type
+    type: string
+    description: System tag this port carries (e.g. "CHWS", "RA"). Used for color + system compatibility checks.
