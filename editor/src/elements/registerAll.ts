@@ -19,6 +19,7 @@ import './foundation.tsx';
 import './roof.tsx';
 import './stair.tsx';
 import './stair_landing.tsx';
+import './stair_run.tsx';
 import './railing.tsx';
 import './curtain_wall.tsx';
 import './mesh.tsx';
