@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, PolygonElement, Point } from '../model/elements.ts';
+import { BASE_OFFSET_FIELD } from './_options.ts';
 
 export interface SpaceFacts {
   id: string;
@@ -42,6 +43,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
   defaults: { base_offset: '0', x: '0', y: '0', name: '' },
   drawingFields: [
     { key: 'name', label: 'Name', type: 'text' },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Spaces', color: '#3a86ff', icon: '⬡', order: 6 },

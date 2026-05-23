@@ -5,7 +5,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
 import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 const OUTLINE_WIDTH = 0.02;  // world meters; constant regardless of column size
@@ -63,6 +63,7 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
       { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
       { key: 'shape', label: 'Shape', type: 'select', options: shapeOptions },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+      BASE_OFFSET_FIELD,
     ],
     propertyFields: [],
     layerStyle,

@@ -7,7 +7,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { MATERIAL_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
 import { slabGeometryFor, slabDraw2D, slabDraw3D, type SlabFacts } from './_slabShared.tsx';
 
 const DEFAULT_HEIGHT_OFFSET = -0.3;
@@ -22,6 +22,7 @@ export const ceilingModule: ElementModule<SlabFacts> = {
   drawingFields: [
     { key: 'height_offset', label: 'Drop', type: 'number', unit: 'm', step: 0.05 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Ceilings', color: '#b0bec5', icon: '▤', order: 7.8 },

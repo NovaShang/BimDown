@@ -146,6 +146,15 @@ export interface ElementModule<TFacts = unknown> {
   layerStyle: LayerStyle;
   renderZIndex: number;
 
+  /**
+   * If true, this element type is internal and should NOT appear in the
+   * placement toolbar. The element is still rendered when present in data,
+   * and is still listed in the layer panel for visibility toggling. Used
+   * for table types that users never create directly (e.g. mep_node —
+   * fittings materialize from MEP-line topology).
+   */
+  hiddenFromToolbar?: boolean;
+
   // ─── Geometry + render ────────────────────────────────────────────────────
 
   /**

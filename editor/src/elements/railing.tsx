@@ -10,6 +10,7 @@ import type {
   CanonicalElement, LineElement, SpatialLineElement, Point,
 } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { BASE_OFFSET_FIELD } from './_options.ts';
 
 const DEFAULT_RAILING_HEIGHT = 1.0;
 const BALUSTER_SPACING = 0.12;
@@ -38,6 +39,7 @@ export const railingModule: ElementModule<RailingFacts> = {
   defaults: { base_offset: '0', start_z: '0', end_z: '0', height: '1.0' },
   drawingFields: [
     { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Railings', color: '#546e7a', icon: '┃', order: 9.2 },

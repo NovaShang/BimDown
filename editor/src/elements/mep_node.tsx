@@ -150,6 +150,7 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
   propertyFields: [],
   layerStyle: { displayName: 'MEP Nodes', color: '#ff6b6b', icon: '●', order: 13.5 },
   renderZIndex: 92,
+  hiddenFromToolbar: true,  // Users don't place nodes directly — they materialize from pipe/duct topology.
 
   geometry(el: CanonicalElement, ctx: GeometryContext): MepNodeFacts | null {
     if (el.geometry !== 'point') return null;

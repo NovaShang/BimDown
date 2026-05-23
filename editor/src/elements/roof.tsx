@@ -12,7 +12,7 @@ import { createRoofGeometry } from '../three/utils/roofGeometry.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { applyOpenings } from '../three/resolve/csg.ts';
 import type { SurfacePrimitive, PolygonOpening } from '../three/primitives/types.ts';
-import { MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS } from './_options.ts';
 
 const DEFAULT_THICKNESS = 0.2;
 
@@ -169,6 +169,7 @@ export const roofModule: ElementModule<RoofFacts> = {
     { key: 'slope', label: 'Slope', type: 'number', unit: '°', min: 0, max: 60, step: 5 },
     { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Roofs', color: '#8d6e63', icon: '△', order: 7.5 },

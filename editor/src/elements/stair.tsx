@@ -11,6 +11,7 @@ import type {
   CanonicalElement, LineElement, SpatialLineElement, Point,
 } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { BASE_OFFSET_FIELD } from './_options.ts';
 
 const TREAD_THICKNESS = 0.03;
 
@@ -43,6 +44,7 @@ export const stairModule: ElementModule<StairFacts> = {
   drawingFields: [
     { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
     { key: 'step_count', label: 'Steps', type: 'number', min: 1, step: 1 },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Stairs', color: '#7b68ee', icon: '⊞', order: 9 },

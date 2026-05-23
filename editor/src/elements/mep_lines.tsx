@@ -10,7 +10,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement } from '../model/elements.ts';
-import { SHAPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, SHAPE_OPTIONS } from './_options.ts';
 import {
   mepLineGeometry, mepLineDraw2D, mepLineDraw3D, type MepLineFacts,
 } from './_mepLineShared.tsx';
@@ -77,6 +77,9 @@ export const ductModule = makeMepLineModule({
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
+    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
+    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
+    BASE_OFFSET_FIELD,
   ],
   defaultShape: 'rect',
   fill2D: '#00b4d815',
@@ -91,6 +94,9 @@ export const pipeModule = makeMepLineModule({
   defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: 'plumbing' },
   drawingFields: [
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
+    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
+    BASE_OFFSET_FIELD,
   ],
   defaultShape: 'round',
   fill2D: '#06d6a015',
@@ -105,6 +111,9 @@ export const conduitModule = makeMepLineModule({
   defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.025', size_y: '0.025', system_type: 'electrical' },
   drawingFields: [
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.005, step: 0.005 },
+    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
+    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
+    BASE_OFFSET_FIELD,
   ],
   defaultShape: 'round',
   fill2D: '#ffd16615',
@@ -120,6 +129,9 @@ export const cableTrayModule = makeMepLineModule({
   drawingFields: [
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
+    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
+    BASE_OFFSET_FIELD,
   ],
   defaultShape: 'rect',
   fill2D: '#ffd16615',

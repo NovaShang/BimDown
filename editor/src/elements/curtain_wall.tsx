@@ -8,7 +8,7 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 const MULLION_SIZE = 0.05;
@@ -67,6 +67,7 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     { key: 'v_grid_count', label: 'V Grids', type: 'number', min: 0, step: 1 },
     { key: 'material', label: 'Frame', type: 'select', options: MATERIAL_OPTIONS },
     { key: 'panel_material', label: 'Panel', type: 'text' },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Curtain Walls', color: '#7ec8e3', icon: '⊞', order: 1.5 },

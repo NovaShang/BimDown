@@ -14,7 +14,7 @@ import type {
   CanonicalElement, PointElement, LineElement, PolygonElement, Point,
 } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
 
 const DEFAULT_THICKNESS = 0.4;
 
@@ -61,6 +61,7 @@ export const foundationModule: ElementModule<FoundationFacts> = {
   drawingFields: [
     { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Foundations', color: '#8d6e63', icon: '▨', order: 8.1 },

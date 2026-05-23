@@ -6,6 +6,19 @@
  */
 import type { DrawingField } from '../model/tableRegistry.ts';
 
+/** Standard "base offset" field appended to the placement toolbar for any
+ *  element where the user may want to lift the element off the host level
+ *  (or sink it). Default 0 = on level. Step 0.1m. */
+export const BASE_OFFSET_FIELD: DrawingField = {
+  key: 'base_offset', label: 'Base Offset', type: 'number', unit: 'm', step: 0.1,
+};
+
+/** Window-specific base offset, labelled as "Sill Height" for clarity.
+ *  Sill defaults to 0.9m at the module level. */
+export const SILL_HEIGHT_FIELD: DrawingField = {
+  key: 'base_offset', label: 'Sill Height', type: 'number', unit: 'm', min: 0, step: 0.1,
+};
+
 /** Spec v3 materialized.material enum */
 export const MATERIAL_OPTIONS: DrawingField['options'] = [
   { value: 'concrete', label: 'Concrete' },

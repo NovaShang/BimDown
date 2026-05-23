@@ -2,6 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
+import { BASE_OFFSET_FIELD } from './_options.ts';
 
 export interface RoomSeparatorFacts {
   id: string;
@@ -16,7 +17,7 @@ export const roomSeparatorModule: ElementModule<RoomSeparatorFacts> = {
   prefix: 'rs',
   csvHeaders: ['number', 'base_offset'],
   defaults: { base_offset: '0' },
-  drawingFields: [],
+  drawingFields: [BASE_OFFSET_FIELD],
   propertyFields: [],
   layerStyle: { displayName: 'Room Separators', color: '#adb5bd', icon: '╌', order: 6.5 },
   renderZIndex: 15,

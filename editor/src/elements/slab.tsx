@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
 import { slabGeometryFor, slabDraw2D, slabDraw3D, type SlabFacts } from './_slabShared.tsx';
 
 function makeSlabModule(opts: {
@@ -27,6 +27,7 @@ function makeSlabModule(opts: {
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
       { key: 'function', label: 'Function', type: 'select', options: opts.functionOptions },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+      BASE_OFFSET_FIELD,
     ],
     propertyFields: [],
     layerStyle: opts.layerStyle,

@@ -5,7 +5,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 
 export interface BeamFacts {
   id: string;
@@ -32,8 +32,11 @@ export const beamModule: ElementModule<BeamFacts> = {
   drawingFields: [
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
+    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
+    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'shape', label: 'Shape', type: 'select', options: STRUCTURAL_SHAPE_OPTIONS },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Beams', color: '#8d6e63', icon: '━', order: 16 },

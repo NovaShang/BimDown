@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
-import { MATERIAL_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
 import {
   wallGeometryFor, wallDraw2D, wallDraw3D, wallFillFor,
   type LineWallFacts,
@@ -19,6 +19,7 @@ export const structureWallModule: ElementModule<LineWallFacts> = {
   drawingFields: [
     { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Str. Walls', color: '#4a3728', icon: '▬', order: 2 },

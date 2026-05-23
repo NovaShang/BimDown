@@ -7,7 +7,7 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { EQUIPMENT_TYPE_OPTIONS, TERMINAL_TYPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, EQUIPMENT_TYPE_OPTIONS, TERMINAL_TYPE_OPTIONS } from './_options.ts';
 
 const DEFAULT_POINT_HEIGHT = 0.5;
 
@@ -114,7 +114,10 @@ export const equipmentModule = makeEquipmentModule({
   table: 'equipment', prefix: 'eq', color: '#e63946',
   csvHeaders: ['number', 'base_offset', 'system_type', 'equipment_type'],
   defaults: { base_offset: '0', system_type: '', equipment_type: 'other' },
-  drawingFields: [{ key: 'equipment_type', label: 'Type', type: 'select', options: EQUIPMENT_TYPE_OPTIONS }],
+  drawingFields: [
+    { key: 'equipment_type', label: 'Type', type: 'select', options: EQUIPMENT_TYPE_OPTIONS },
+    BASE_OFFSET_FIELD,
+  ],
   layerStyle: { displayName: 'Equipment', color: '#e63946', icon: '⚙', order: 12 },
   renderZIndex: 90,
 });
@@ -126,6 +129,7 @@ export const terminalModule = makeEquipmentModule({
   drawingFields: [
     { key: 'terminal_type', label: 'Type', type: 'select', options: TERMINAL_TYPE_OPTIONS },
     { key: 'system_type', label: 'System', type: 'text' },
+    BASE_OFFSET_FIELD,
   ],
   layerStyle: { displayName: 'Terminals', color: '#f77f00', icon: '◆', order: 13 },
   renderZIndex: 91,

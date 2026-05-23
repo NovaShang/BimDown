@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { LAYER_STYLES, DISCIPLINE_TABLES, DISCIPLINE_COLORS } from '../types.ts';
 import { placementTypeForTable } from '../model/elements.ts';
+import { getElementModule } from '../elements/registry.ts';
 import type { Tool } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Separator } from './ui/separator';
@@ -253,9 +254,13 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
 
   const tools = state.viewMode === '3d' ? TOOLS_3D : TOOLS_2D;
 
-  // Grid has its own standalone button, skip it from discipline tools
+  // Grid has its own standalone button; modules can also opt out of the
+  // toolbar (e.g. mep_node — users never place those directly).
   const disciplineTables = activeDiscipline
-    ? (DISCIPLINE_TABLES[activeDiscipline] || []).filter(t => t !== 'grid')
+    ? (DISCIPLINE_TABLES[activeDiscipline] || []).filter(t => {
+        if (t === 'grid') return false;
+        return !getElementModule(t)?.hiddenFromToolbar;
+      })
     : [];
   const disciplineColor = activeDiscipline ? (DISCIPLINE_COLORS[activeDiscipline] || '#888') : '#888';
 
