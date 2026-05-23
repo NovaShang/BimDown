@@ -262,6 +262,7 @@ export function computeSnap(
   anchor?: Point,
   angleIncrement: number = 45,
   grids?: readonly GridData[],
+  extraEndpoints?: readonly Point[],
 ): SnapResult {
   const threshold = pixelSize * SNAP_THRESHOLD_PX;
   const guides: SnapGuide[] = [];
@@ -275,6 +276,13 @@ export function computeSnap(
   let bestEdge: { target: SnapTarget; dist: number } | null = null;
 
   const targets = elements ? extractSnapTargets(elements, excludeIds, input) : [];
+  // Mix in extra endpoints (e.g. polygon vertices being drawn but not yet
+  // committed to the document) as high-priority snap targets.
+  if (extraEndpoints && extraEndpoints.length > 0) {
+    for (const p of extraEndpoints) {
+      targets.push({ x: p.x, y: p.y, type: 'endpoint', priority: 1 });
+    }
+  }
 
   // ── Pass 0: Grid line (轴网) targets ──
   if (grids && grids.length > 0) {
@@ -605,7 +613,8 @@ export function snapPoint(
   anchor?: Point,
   angleIncrement?: number,
   grids?: readonly GridData[],
+  extraEndpoints?: readonly Point[],
 ): SnapResult {
   const pixelSize = computePixelSize(screenToSvg);
-  return computeSnap(raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement, grids);
+  return computeSnap(raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement, grids, extraEndpoints);
 }
