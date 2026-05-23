@@ -189,7 +189,7 @@ public class SampleProjectExportTests : RevitApiTest
         {
             ["format_version"] = "3.0",
             ["project_name"] = doc.Title ?? "",
-            ["units"] = "meters",
+            ["units"] = "m",
             ["source"] = $"Revit {doc.Application.VersionNumber}"
         };
         var json = System.Text.Json.JsonSerializer.Serialize(metadata,

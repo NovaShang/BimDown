@@ -405,7 +405,7 @@ public class ExportCommand : IExternalCommand
             {
                 ["format_version"] = "2",
                 ["project_name"] = doc.Title ?? "",
-                ["units"] = "meters",
+                ["units"] = "m",
                 ["source"] = $"Revit {doc.Application.VersionNumber}"
             };
             var json = System.Text.Json.JsonSerializer.Serialize(metadata,

@@ -38,7 +38,7 @@ metadata:
 
 ## 核心架构
 
-- **单位是米**：所有坐标和尺寸必须使用米。
+- **单位由项目声明** —— 读 `project_metadata.json::units`(`m` / `ft` / `in` / `mm`,缺省为 `m`)。详见下文 [Units](#units) 章节。CSV / GeoJSON 中的所有坐标和尺寸都直接以该单位存储,**没有任何内部规范化或自动换算**。
 - **CSV 存属性**(material、thickness、尺寸、外键、枚举)；**GeoJSON 存几何**(Point / LineString / Polygon),并通过可选的 properties 携带数值几何提示(`base_offset`、`top_offset`、`arc`、`rotation`)。
 - **计算字段只读**：`length`、`area`、`height`、`start_x/y/z`、`end_x/y/z`、`x`、`y`、`rotation`、`points`、`volume`、`bbox_*`、`level_id` 都由 CLI 自动计算,**任何文件都不要写入**。
 - **CSV 行与 GeoJSON Feature 通过 `id` 关联**(GeoJSON 中通过 `properties.id`)。
@@ -70,6 +70,25 @@ project/
 **分区规则**：
 - 元素的 `base_level_id` **始终等于其所在目录的层级**。跨层元素(例如跨 lv-1→lv-3 的墙)必须放到 `global/`。
 - 空间(spatial)元素(梁、坡道、风管、水管…)放在它主要归属的楼层目录里。只有真正跨多层的实例(立管、跨多层楼梯)放 `global/`。
+
+## Units(单位)
+
+BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐标、长度、厚度、position、offset,都直接以 `project_metadata.json::units` 字段声明的单位存储,**没有内部规范单位、也不会自动换算**。
+
+**文件级不变量** —— 一旦项目声明 `"units": "ft"`,所有 `0.3` 都表示 0.3 英尺;同一个数在 `"units": "m"` 项目里则表示 0.3 米。
+
+**在写入或修改任何数值前,先读取 `project_metadata.json` 确认当前单位。** 本文档下方所有"典型值"表均以米为基准,使用其它单位时请按比例换算(例如 0.15 m 的隔墙 ≈ 0.49 ft / 5.9 in / 150 mm)。
+
+**允许的取值**(枚举):
+
+| 值 | 含义 | 说明 |
+|---|---|---|
+| `m` | 米 | 字段缺失时的默认值 —— 保持所有旧项目不变 |
+| `ft` | 英尺(十进制) | 帝国单位,十进制 —— `1.25` 表示 1.25 ft,**不是** 1'-3" |
+| `in` | 英寸 | 帝国单位,小尺度 |
+| `mm` | 毫米 | 公制小尺度(亚洲 / 欧洲施工图常用) |
+
+**修改 `units` 字段时不要随意改动数据本身。** 单位字段改变但数值不动,意味着项目的物理尺寸被重新解释。后续会有 `bimdown convert --to <unit>` 流程负责真正的换算。
 
 ## Z 轴处理(重要 —— 仔细阅读)
 
@@ -188,7 +207,7 @@ project/
 
 ## 生成建议
 
-### 典型值(米)
+### 典型值(米 —— 按项目 `units` 换算)
 | 元素 | 字段 | 范围 |
 |---|---|---|
 | 隔墙 | thickness | 0.1 – 0.15 |

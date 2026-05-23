@@ -1,6 +1,6 @@
 {
   "format_version": 2,
   "project_name": "rac_advanced_sample_project",
-  "units": "meters",
+  "units": "m",
   "source": "Revit 2026"
 }

@@ -12,9 +12,14 @@ fields:
     description: Human-readable project name
 
   - name: units
-    type: string
-    description: Coordinate unit system (always "meters")
-    default: meters
+    type: enum
+    values: [m, ft, in, mm]
+    description: |
+      Unit system for all coordinates and dimensions in this project's CSV/GeoJSON
+      files (store-as-displayed model — no internal canonical unit, every numeric
+      value is in this unit). Defaults to "m" when missing to preserve existing
+      projects. Abbreviations: m = meter, ft = foot, in = inch, mm = millimeter.
+    default: m
 
   - name: source
     type: string

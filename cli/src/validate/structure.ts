@@ -133,6 +133,14 @@ export function validateStructure(dir: string): string[] {
             issues.push(`project_metadata.json  unknown field "${key}"`);
           }
         }
+        if (metadata.units !== undefined) {
+          const validUnits = ['m', 'ft', 'in', 'mm'];
+          if (typeof metadata.units !== 'string' || !validUnits.includes(metadata.units)) {
+            issues.push(
+              `project_metadata.json  invalid "units": ${JSON.stringify(metadata.units)} — must be one of ${validUnits.join(', ')}`,
+            );
+          }
+        }
       }
     } catch (e) {
       issues.push(`project_metadata.json  failed to parse: ${(e as Error).message}`);

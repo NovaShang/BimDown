@@ -43,7 +43,7 @@ BimDown is an open-source, AI-native building data format using **CSV for attrib
 
 ## Core Architecture
 
-- **Units are METERS** for all coordinates and dimensions.
+- **Units are project-declared** — read `project_metadata.json::units` (`m` / `ft` / `in` / `mm`; defaults to `m` when absent). See the [Units](#units) section below. Every coordinate and dimension in CSV / GeoJSON is in that unit — there is no internal canonical conversion.
 - **CSV holds attributes** (material, thickness, sizes, FKs, enums). **GeoJSON holds geometry** (Point / LineString / Polygon) plus optional numeric hints (`base_offset`, `top_offset`, `arc`, `rotation`).
 - **Computed fields are READ-ONLY**: `length`, `area`, `height`, `start_x/y/z`, `end_x/y/z`, `x`, `y`, `rotation`, `points`, `volume`, `bbox_*`, `level_id`. Never write them anywhere — the CLI hydrates them at query time.
 - **The `id` field links CSV row ↔ GeoJSON `properties.id`** for each element.
@@ -75,6 +75,25 @@ project/
 **Key partition rules**:
 - An element's `base_level_id` is **always** the containing directory's level. To express a multi-level element (e.g. a wall spanning lv-1 → lv-3), place it in `global/`.
 - Spatial elements (beam, ramp, duct, pipe…) live in the level they primarily belong to. Only true cross-level instances (vertical risers, multi-flight stairs) go in `global/`.
+
+## Units
+
+BimDown is **store-as-displayed**: every coordinate, length, thickness, position, and offset in every CSV / GeoJSON file is written in the unit declared by `project_metadata.json::units`. There is no internal canonical unit and no implicit conversion.
+
+**File-level invariant** — once a project declares `"units": "ft"`, every `0.3` you read or write is 0.3 feet. The same number in a `"units": "m"` project is 0.3 meters.
+
+**Before writing or editing any numeric value, read `project_metadata.json` and note the unit.** All the "typical values" tables below assume meters; multiply by the appropriate factor when working in another unit (e.g. a 0.15 m partition wall is ~0.49 ft, ~5.9 in, ~150 mm).
+
+**Allowed values** (enum):
+
+| Value | Meaning | Notes |
+|---|---|---|
+| `m` | meter | default when field is missing — preserves all pre-units projects |
+| `ft` | foot (decimal) | imperial, decimal — `1.25` means 1.25 ft, not 1'-3" |
+| `in` | inch | imperial small-scale |
+| `mm` | millimeter | metric small-scale (typical in Asia/EU construction docs) |
+
+**Do not convert existing data when changing the unit field.** Switching `units` without converting the numeric payload changes the physical meaning of the project. A separate `bimdown convert --to <unit>` workflow (future) is the only correct way to re-scale.
 
 ## Z-Axis Handling (Important — read carefully)
 
@@ -194,7 +213,7 @@ You can write any of these equivalent forms; `bimdown build` normalizes to canon
 
 ## Generation Tips
 
-### Typical values (meters)
+### Typical values (meters — scale to project's `units`)
 | Element | Field | Range |
 |---|---|---|
 | Wall (partition) | thickness | 0.1 – 0.15 |
