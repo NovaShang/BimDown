@@ -57,6 +57,9 @@ export interface DrawingState {
   points: { x: number; y: number }[];  // placed points so far
   cursor: { x: number; y: number } | null;  // current mouse position in SVG coords
   baseOffset?: number;  // computed elevation offset for hosted element preview
+  /** If the first placed point was snapped to a connector port, remember the
+   *  host id so the finished line can wire start_node_id to it. */
+  startNodeId?: string;
 }
 
 export type EditorAction =

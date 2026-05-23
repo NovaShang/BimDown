@@ -1,7 +1,8 @@
 import type { DrawingState, Tool } from '../state/editorTypes.ts';
-import type { Point } from '../model/elements.ts';
+import type { CanonicalElement, Point } from '../model/elements.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
+import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
@@ -46,10 +47,59 @@ interface DrawingOverlayProps {
   scale: number;
   drawingAttrs: Record<string, string>;
   tableName: string | null;
+  /** Document elements — used to surface connector dots as snap targets. */
+  elements?: ReadonlyMap<string, CanonicalElement> | null;
 }
 
-export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName }: DrawingOverlayProps) {
+/** Subtle preview ring for an available connector port. Rendered when the
+ *  MEP line tool is active so the user can see snap targets ahead of time. */
+function ConnectorHints({
+  elements, scale,
+}: { elements: ReadonlyMap<string, CanonicalElement> | null | undefined; scale: number }) {
+  const ports = gatherConnectorSnapPoints(elements);
+  if (ports.length === 0) return null;
+  const r = 0.07;
+  const tickLen = 0.13;
+  const sw = 0.025 / Math.max(scale, 0.01);
+  return (
+    <g opacity={0.5}>
+      {ports.map((p, i) => (
+        <g key={i}>
+          <circle
+            cx={p.pos.x} cy={p.pos.y} r={r}
+            fill="none" stroke="#4fc3f7" strokeWidth={sw}
+          />
+          <line
+            x1={p.pos.x} y1={p.pos.y}
+            x2={p.pos.x + p.dir.x * tickLen}
+            y2={p.pos.y + p.dir.y * tickLen}
+            stroke="#4fc3f7" strokeWidth={sw}
+          />
+        </g>
+      ))}
+    </g>
+  );
+}
+
+export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName, elements }: DrawingOverlayProps) {
   const { points, cursor } = drawingState;
+  const showConnectorHints = activeTool === 'draw_line' && isMepLineTable(tableName);
+
+  // When drawing an MEP line, render connector hint dots as a background
+  // layer underneath whatever per-mode preview the rest of this function
+  // builds. The hints layer stays on screen even when no start point has
+  // been clicked yet, so the user can see ports before placing the first
+  // point.
+  const connectorHintsLayer = showConnectorHints ? (
+    <g className="drawing-overlay drawing-overlay-connector-hints" transform="scale(1,-1)">
+      <ConnectorHints elements={elements} scale={scale} />
+    </g>
+  ) : null;
+
+  const wrap = (body: React.ReactNode): React.ReactNode => {
+    if (!connectorHintsLayer) return body;
+    return <>{connectorHintsLayer}{body}</>;
+  };
 
   if (activeTool === 'draw_line') {
     // Multi-click stair (L / U) — show dots at each clicked point, plus
@@ -113,7 +163,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
         }
       }
 
-      return (
+      return wrap(
         <g className="drawing-overlay" transform="scale(1,-1)">
           {landingRect && (
             <polygon
@@ -167,7 +217,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     if (drawingAttrs.__vertical_mode === 'true' && cursor) {
       const thickness = tableName ? (resolveLineStrokeWidth(tableName, drawingAttrs) ?? 0) : 0;
       const r = thickness > 0 ? thickness / 2 : Math.max(0.4 / scale, 0.05);
-      return (
+      return wrap(
         <g className="drawing-overlay" transform="scale(1,-1)">
           <circle
             cx={cursor.x} cy={cursor.y} r={r}
@@ -184,7 +234,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
       // Show real thickness for walls/ducts/pipes
       const thickness = tableName ? (resolveLineStrokeWidth(tableName, drawingAttrs) ?? 0) : 0;
       const showThick = thickness > 0;
-      return (
+      return wrap(
         <g className="drawing-overlay" transform="scale(1,-1)">
           {showThick ? (
             <line
@@ -205,7 +255,9 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
         </g>
       );
     }
-    return null;
+    // Even with no points placed and no cursor preview, surface the
+    // connector hints so the user sees ports right after activating the tool.
+    return wrap(null);
   }
 
   if (activeTool === 'rotate') {

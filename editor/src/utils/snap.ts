@@ -4,7 +4,7 @@ import { nearestPointOnArc, pointOnArc as arcPointOnArc } from '../geometry/arc.
 
 // ── Snap types ──
 
-export type SnapType = 'endpoint' | 'center' | 'gridline' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid';
+export type SnapType = 'endpoint' | 'center' | 'gridline' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid' | 'connector';
 
 export type SnapGuideType = 'point' | 'vline' | 'hline' | 'edge_segment' | 'angle_line' | 'length_ring';
 
@@ -38,6 +38,16 @@ export interface SnapResult {
   nearestGridX?: GridDistanceInfo;
   /** Distance to nearest grid line in Y direction (perpendicular) */
   nearestGridY?: GridDistanceInfo;
+  /** If the result snapped to a connector, info about which one.
+   *  The drawing tool uses `hostId` to wire start_node_id / end_node_id. */
+  connectorHit?: { hostId: string };
+}
+
+/** A connector snap target supplied by the drawing tool. */
+export interface ConnectorSnapPoint {
+  pos: Point;
+  dir: { x: number; y: number };
+  hostId: string;
 }
 
 // ── Grid spacing ──
@@ -263,9 +273,36 @@ export function computeSnap(
   angleIncrement: number = 45,
   grids?: readonly GridData[],
   extraEndpoints?: readonly Point[],
+  connectorPoints?: readonly ConnectorSnapPoint[],
 ): SnapResult {
   const threshold = pixelSize * SNAP_THRESHOLD_PX;
   const guides: SnapGuide[] = [];
+
+  // ── Connector pass: priority 0.5, beats everything else. ──
+  // Done up front because a successful connector snap short-circuits the
+  // rest of the snap pipeline (no axis-aligned point snaps, no length /
+  // angle suggestions wandering off the port).
+  if (connectorPoints && connectorPoints.length > 0) {
+    let bestConn: { cp: ConnectorSnapPoint; dist: number } | null = null;
+    for (const cp of connectorPoints) {
+      const d = dist2D(input, cp.pos);
+      if (d < threshold && (!bestConn || d < bestConn.dist)) {
+        bestConn = { cp, dist: d };
+      }
+    }
+    if (bestConn) {
+      const { cp } = bestConn;
+      guides.push({ type: 'point', x: cp.pos.x, y: cp.pos.y, snapType: 'connector' });
+      return {
+        point: { x: cp.pos.x, y: cp.pos.y },
+        snapX: { type: 'connector', value: cp.pos.x },
+        snapY: { type: 'connector', value: cp.pos.y },
+        guides,
+        dominantType: 'connector',
+        connectorHit: { hostId: cp.hostId },
+      };
+    }
+  }
 
   let snapX: { type: SnapType; value: number; priority: number } | null = null;
   let snapY: { type: SnapType; value: number; priority: number } | null = null;
@@ -672,7 +709,11 @@ export function snapPoint(
   angleIncrement?: number,
   grids?: readonly GridData[],
   extraEndpoints?: readonly Point[],
+  connectorPoints?: readonly ConnectorSnapPoint[],
 ): SnapResult {
   const pixelSize = computePixelSize(screenToSvg);
-  return computeSnap(raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement, grids, extraEndpoints);
+  return computeSnap(
+    raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement,
+    grids, extraEndpoints, connectorPoints,
+  );
 }

@@ -8,6 +8,7 @@ import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
 import { variantDefaults } from './variantDefaults.ts';
+import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 
 /** When true, the multi-click stair placement tool handles this event instead
  *  of the regular line-creation flow. Straight stairs and every other table
@@ -43,7 +44,10 @@ export const drawLineTool: ToolHandler = {
 
     const state = ctx.getState();
     const anchor = state.drawingState?.points[0] ?? undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids);
+    const connectors = isMepLineTable(state.drawingTarget?.tableName)
+      ? gatherConnectorSnapPoints(state.document?.elements)
+      : undefined;
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors);
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -60,10 +64,10 @@ export const drawLineTool: ToolHandler = {
     const points = state.drawingState?.points || [];
 
     if (points.length === 0) {
-      // First click — set start point
+      // First click — set start point, remember connector hostId (if any).
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { points: [pt], cursor: pt },
+        state: { points: [pt], cursor: pt, startNodeId: snap.connectorHit?.hostId },
       });
     } else {
       // Second click — create element
@@ -86,6 +90,17 @@ export const drawLineTool: ToolHandler = {
       const mergedAttrs: Record<string, string> = { ...baseAttrs, ...vDefaults, ...da, id };
       // Strip the reserved UI flag from the persisted attrs.
       delete mergedAttrs[VERTICAL_MODE_KEY];
+
+      // Connector wiring: when the user dropped the start or end on a connector
+      // port, attach start_node_id / end_node_id to the connector's host so the
+      // existing reverse-topology cascade (host move → line endpoint move)
+      // keeps the line glued to the equipment. Only applies to MEP line tables.
+      if (isMepLineTable(target.tableName)) {
+        const startHostId = state.drawingState?.startNodeId;
+        const endHostId = snap.connectorHit?.hostId;
+        if (startHostId) mergedAttrs.start_node_id = startHostId;
+        if (endHostId) mergedAttrs.end_node_id = endHostId;
+      }
 
       const geo = geometryTypeForTable(target.tableName);
       const element: CanonicalElement = geo === 'spatial_line'
@@ -129,7 +144,10 @@ export const drawLineTool: ToolHandler = {
 
     const state = ctx.getState();
     const anchor = state.drawingState?.points[0] ?? undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids);
+    const connectors = isMepLineTable(state.drawingTarget?.tableName)
+      ? gatherConnectorSnapPoints(state.document?.elements)
+      : undefined;
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors);
     const pt = snap.point;
 
     if (isVerticalMode(state.drawingAttrs)) {

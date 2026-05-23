@@ -504,7 +504,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <SnapOverlay snap={activeSnap} scale={scale} />
 
         {state.drawingState && (
-          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} />
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} elements={state.document?.elements ?? null} />
         )}
       </svg>
 
