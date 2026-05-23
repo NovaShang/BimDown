@@ -1,6 +1,15 @@
 import type { ToolHandler, ToolContext } from './types.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
+import { toElementId } from '../model/ids.ts';
+
+/** Strip the `level:` prefix from selection ids so they match the raw keys
+ *  used by `snapPoint`'s exclusion set. */
+function toRawIdSet(ids: Set<string>): Set<string> {
+  const raw = new Set<string>();
+  ids.forEach(id => raw.add(toElementId(id)));
+  return raw;
+}
 
 /**
  * Relocate tool: precise move/copy via click-start, click-end.
@@ -22,7 +31,7 @@ export const relocateTool: ToolHandler = {
 
     const state = ctx.getState();
     const anchor = state.drawingState?.points[0] ?? undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, state.selectedIds, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state));
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, toRawIdSet(state.selectedIds), anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state));
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -62,7 +71,7 @@ export const relocateTool: ToolHandler = {
 
     const state = ctx.getState();
     const anchor = state.drawingState?.points[0] ?? undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, state.selectedIds, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state));
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, toRawIdSet(state.selectedIds), anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state));
     const pt = snap.point;
 
     if (state.drawingState && state.drawingState.points.length > 0) {

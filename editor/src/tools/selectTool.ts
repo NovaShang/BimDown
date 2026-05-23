@@ -125,7 +125,13 @@ export const selectTool: ToolHandler = {
             // Snap the anchor point's would-be position
             const anchorTarget = { x: gesture.moveAnchor.x + rawDx, y: gesture.moveAnchor.y + rawDy };
             const state = ctx.getState();
-            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state));
+            // Exclude the elements being dragged so the snap algorithm doesn't
+            // try to align them to their own endpoints / centers. selectedIds
+            // carry the `level:` prefix; collectTargets keys are raw ids — strip
+            // the prefix so the exclusion actually matches.
+            const excludeRawIds = new Set<string>();
+            state.selectedIds.forEach(id => excludeRawIds.add(toElementId(id)));
+            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, excludeRawIds, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state));
             ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
 
             const snappedDx = snap.point.x - gesture.moveAnchor.x;

@@ -64,12 +64,13 @@ function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint, labelText
   labelText: string;
 }) {
   const color = colorForSnapType(snapType);
-  // Model-unit radius (≈ 0.08m) for the filled circle as requested.
-  const r = 0.08;
-  // Label positioned a bit to the upper-right of the marker.
+  // All marker dimensions are kept constant in *screen* pixels by dividing
+  // by `scale` (SVG units per screen pixel). Otherwise model-unit sizes
+  // would balloon visually as the user zooms in.
+  const r = 0.4 / scale;
   const labelSize = 0.7 / scale;
-  const labelDx = r + 0.05;
-  const labelDy = -(r + 0.05);
+  const labelDx = r + 0.05 / scale;
+  const labelDy = -(r + 0.05 / scale);
 
   // Common label rendering (flipped because parent group has scale(1,-1)).
   const label = labelText ? (
@@ -89,10 +90,9 @@ function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint, labelText
 
   switch (snapType) {
     case 'endpoint': {
-      // Filled circle (radius ~0.08m) + cyan ring. When the resulting
-      // position lands exactly on the endpoint, show a larger ring + X
-      // so the user can't miss the alignment.
-      const bigR = 0.12;
+      // Filled circle + cyan ring. When the resulting position lands exactly
+      // on the endpoint, show a larger ring + X so the user can't miss it.
+      const bigR = 0.6 / scale;
       return (
         <g opacity={0.95}>
           {emphasizeEndpoint && (
@@ -131,7 +131,7 @@ function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint, labelText
       );
     case 'gridline': {
       // Crosshair through the snap point + small label.
-      const t = 0.18;
+      const t = 0.9 / scale;
       return (
         <g opacity={0.95}>
           <line x1={x - t} y1={y} x2={x + t} y2={y} stroke={color} strokeWidth={sw * 1.6} />
