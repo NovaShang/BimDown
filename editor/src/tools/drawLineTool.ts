@@ -7,6 +7,7 @@ import { snapPoint } from '../utils/snap.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
+import { variantDefaults } from './variantDefaults.ts';
 
 /** When true, the multi-click stair placement tool handles this event instead
  *  of the regular line-creation flow. Straight stairs and every other table
@@ -81,7 +82,8 @@ export const drawLineTool: ToolHandler = {
 
       // Merge drawingAttrs into element attrs
       const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-      const mergedAttrs = { ...baseAttrs, ...da, id };
+      const vDefaults = variantDefaults(target.tableName, target.variantId);
+      const mergedAttrs: Record<string, string> = { ...baseAttrs, ...vDefaults, ...da, id };
       // Strip the reserved UI flag from the persisted attrs.
       delete mergedAttrs[VERTICAL_MODE_KEY];
 
@@ -149,7 +151,7 @@ export const drawLineTool: ToolHandler = {
 function createVerticalElement(
   ctx: ToolContext,
   state: ReturnType<ToolContext['getState']>,
-  target: { tableName: string; discipline: string },
+  target: { tableName: string; discipline: string; variantId?: string },
   pt: { x: number; y: number },
 ) {
   const existingIds = new Set(state.document?.elements.keys() ?? []);
@@ -157,7 +159,8 @@ function createVerticalElement(
   const da = state.drawingAttrs;
   const strokeWidth = resolveLineStrokeWidth(target.tableName, da) ?? FALLBACK_STROKE[target.tableName] ?? 0.1;
   const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-  const mergedAttrs = { ...baseAttrs, ...da, id };
+  const vDefaults = variantDefaults(target.tableName, target.variantId);
+  const mergedAttrs: Record<string, string> = { ...baseAttrs, ...vDefaults, ...da, id };
   // Strip the reserved UI flag from the persisted attrs.
   delete mergedAttrs[VERTICAL_MODE_KEY];
 

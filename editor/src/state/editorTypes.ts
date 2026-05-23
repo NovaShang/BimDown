@@ -46,7 +46,7 @@ export interface EditorState {
   document: DocumentState | null;
   history: HistoryState;
   editMode: boolean;
-  drawingTarget: { tableName: string; discipline: string } | null;
+  drawingTarget: { tableName: string; discipline: string; variantId?: string } | null;
   drawingAttrs: Record<string, string>;  // editable properties for the next element to create
   drawingState: DrawingState | null;
   documentVersion: number;  // bumped on every mutation, triggers auto-persist
@@ -88,7 +88,7 @@ export type EditorAction =
   | { type: 'COMMIT_PREVIEW'; description: string; before: Map<string, CanonicalElement | null>; after: Map<string, CanonicalElement | null> }
   | { type: 'SET_EDIT_MODE'; active: boolean }
   | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }
-  | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string } | null }
+  | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string; variantId?: string } | null }
   | { type: 'SET_DRAWING_ATTRS'; attrs: Record<string, string> }
   | { type: 'DUPLICATE_ELEMENTS'; ids: string[]; offset: { dx: number; dy: number } }
   | { type: 'RELOAD_ELEMENTS'; elements: CanonicalElement[] }

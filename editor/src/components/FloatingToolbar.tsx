@@ -4,6 +4,8 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { LAYER_STYLES, DISCIPLINE_TABLES, DISCIPLINE_COLORS } from '../types.ts';
 import { placementTypeForTable } from '../model/elements.ts';
 import { getElementModule } from '../elements/registry.ts';
+import type { PlacementType } from '../model/tableRegistry.ts';
+import type { ToolbarVariant } from '../elements/archetypes.ts';
 import type { Tool } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Separator } from './ui/separator';
@@ -95,13 +97,7 @@ const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
   { tools: ['stair', 'ramp', 'railing'] },
 ];
 
-function getDrawTool(tableName: string): Tool {
-  // V2 element modules declare their archetype, but DrawingOverlay still
-  // checks specific tool names ('draw_line', etc.) to render the right
-  // placement preview. So we keep the named-tool dispatch here; the new
-  // archetype × operation lookup (tools/archetypes/index.ts) is the
-  // architectural artifact, used by callers that don't need overlay support.
-  const placement = placementTypeForTable(tableName);
+function toolForPlacement(placement: PlacementType): Tool {
   switch (placement) {
     case 'hosted': return 'draw_hosted';
     case 'free_line': return 'draw_line';
@@ -110,6 +106,50 @@ function getDrawTool(tableName: string): Tool {
     case 'free_polygon': return 'draw_polygon';
     case 'grid': return 'draw_grid';
   }
+}
+
+function getDrawTool(tableName: string, variantId?: string): Tool {
+  // V2 element modules declare their archetype, but DrawingOverlay still
+  // checks specific tool names ('draw_line', etc.) to render the right
+  // placement preview. So we keep the named-tool dispatch here; the new
+  // archetype × operation lookup (tools/archetypes/index.ts) is the
+  // architectural artifact, used by callers that don't need overlay support.
+  if (variantId) {
+    const mod = getElementModule(tableName);
+    const variant = mod?.toolbarVariants?.find(v => v.id === variantId);
+    if (variant) return toolForPlacement(variant.placementType);
+  }
+  return toolForPlacement(placementTypeForTable(tableName));
+}
+
+/** One entry in the toolbar — either a plain table or a variant of a table. */
+interface ToolbarEntry {
+  /** Stable react key. */
+  key: string;
+  /** Table name written to CSV. */
+  table: string;
+  /** Variant id (only set when this entry is one of a module's toolbarVariants). */
+  variantId?: string;
+  /** Resolved variant (for label/icon rendering); undefined for plain entries. */
+  variant?: ToolbarVariant;
+}
+
+/** Expand a flat list of table names into toolbar entries, splitting tables
+ *  that declare toolbarVariants into one entry per variant. */
+function expandToolbarEntries(tables: string[]): ToolbarEntry[] {
+  const out: ToolbarEntry[] = [];
+  for (const table of tables) {
+    const mod = getElementModule(table);
+    const variants = mod?.toolbarVariants;
+    if (variants && variants.length > 0) {
+      for (const v of variants) {
+        out.push({ key: `${table}:${v.id}`, table, variantId: v.id, variant: v });
+      }
+    } else {
+      out.push({ key: table, table });
+    }
+  }
+  return out;
 }
 
 // ─── ToolGroupButton ─────────────────────────────────────────────────────────
@@ -264,18 +304,22 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
     : [];
   const disciplineColor = activeDiscipline ? (DISCIPLINE_COLORS[activeDiscipline] || '#888') : '#888';
 
-  const handleDrawToolClick = useCallback((tableName: string, discipline: string) => {
+  const handleDrawToolClick = useCallback((tableName: string, discipline: string, variantId?: string) => {
     const currentTarget = state.drawingTarget;
-    if (currentTarget?.tableName === tableName && currentTarget?.discipline === discipline) {
+    if (
+      currentTarget?.tableName === tableName
+      && currentTarget?.discipline === discipline
+      && (currentTarget?.variantId ?? undefined) === variantId
+    ) {
       dispatch({ type: 'SET_TOOL', tool: 'select' });
       dispatch({ type: 'SET_DRAWING_TARGET', target: null });
       dispatch({ type: 'SET_DRAWING_STATE', state: null });
       return;
     }
 
-    const drawTool = getDrawTool(tableName);
+    const drawTool = getDrawTool(tableName, variantId);
     dispatch({ type: 'SET_TOOL', tool: drawTool });
-    dispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline } });
+    dispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline, variantId } });
     dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
   }, [state.drawingTarget, dispatch]);
 
@@ -310,6 +354,12 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   }
 
   const activeTable = state.drawingTarget?.tableName ?? null;
+  const activeVariantId = state.drawingTarget?.variantId ?? null;
+
+  // Expand variants into per-variant pseudo-entries for the flat (non-architecture)
+  // rendering branch. Architecture groups never include variant-bearing modules
+  // today (foundation lives in 'structure'), so we leave the group path alone.
+  const flatEntries = expandToolbarEntries(disciplineTables);
 
   return (
     <div data-tour="toolbar" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -407,17 +457,21 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
               )}
             </>
           ) : (
-            // Non-architecture: flat list
-            disciplineTables.map(table => {
-              const style = LAYER_STYLES[table];
+            // Non-architecture: flat list (with variant expansion)
+            flatEntries.map(entry => {
+              const style = LAYER_STYLES[entry.table];
               if (!style) return null;
+              const isActive = activeTable === entry.table
+                && state.drawingTarget?.discipline === activeDiscipline
+                && (activeVariantId ?? undefined) === entry.variantId;
               return (
                 <SingleToolButton
-                  key={table}
-                  table={table}
+                  key={entry.key}
+                  table={entry.table}
+                  variant={entry.variant}
                   discipline={activeDiscipline!}
                   disciplineColor={disciplineColor}
-                  isActive={activeTable === table && state.drawingTarget?.discipline === activeDiscipline}
+                  isActive={isActive}
                   onClick={handleDrawToolClick}
                 />
               );
@@ -472,15 +526,23 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
 
 // ─── SingleToolButton ────────────────────────────────────────────────────────
 
-function SingleToolButton({ table, discipline, disciplineColor, isActive, onClick }: {
+function SingleToolButton({ table, variant, discipline, disciplineColor, isActive, onClick }: {
   table: string;
+  /** When present, this button represents one toolbarVariant of `table`. */
+  variant?: ToolbarVariant;
   discipline: string;
   disciplineColor: string;
   isActive: boolean;
-  onClick: (table: string, discipline: string) => void;
+  onClick: (table: string, discipline: string, variantId?: string) => void;
 }) {
   const { t } = useTranslation();
   const style = LAYER_STYLES[table];
+
+  // Variant entries use the variant's single-char icon (rendered as plain text)
+  // and the variant's label/tooltip; no keyboard shortcut.
+  const isVariant = !!variant;
+  const shortcut = isVariant ? null : TABLE_SHORTCUT[table];
+  const labelKey = variant?.label ?? SHORT_LABEL_KEYS[table] ?? `layer.${table}`;
 
   return (
     <Tooltip>
@@ -495,16 +557,21 @@ function SingleToolButton({ table, discipline, disciplineColor, isActive, onClic
           '--tool-color': disciplineColor,
           background: isActive ? `color-mix(in srgb, ${disciplineColor} 20%, transparent)` : undefined,
         } as React.CSSProperties}
-        onClick={() => onClick(table, discipline)}
+        onClick={() => onClick(table, discipline, variant?.id)}
       >
         <span className="relative text-base leading-none">
-          <Icon name={iconForTable(table)} />
-          {TABLE_SHORTCUT[table] && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{TABLE_SHORTCUT[table]}</kbd>}
+          {isVariant
+            ? <span className="inline-flex items-center justify-center" style={{ width: 22, height: 22, fontSize: 18, lineHeight: 1 }}>{variant!.icon}</span>
+            : <Icon name={iconForTable(table)} />}
+          {shortcut && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{shortcut}</kbd>}
         </span>
-        <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
+        <span className="whitespace-nowrap text-[9px] leading-none">{t(labelKey)}</span>
       </TooltipTrigger>
       <TooltipContent side="top">
-        {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : table}{TABLE_SHORTCUT[table] ? ` (${TABLE_SHORTCUT[table]})` : ''}
+        {isVariant
+          ? t('draw.tooltip', { name: t(labelKey) })
+          : (style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : table)}
+        {shortcut ? ` (${shortcut})` : ''}
       </TooltipContent>
     </Tooltip>
   );

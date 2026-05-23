@@ -4,6 +4,7 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
+import { variantDefaults } from './variantDefaults.ts';
 
 export const drawPointTool: ToolHandler = {
   cursor: 'crosshair',
@@ -23,7 +24,8 @@ export const drawPointTool: ToolHandler = {
 
     const da = state.drawingAttrs;
     const baseDefaults = defaultAttrs(target.tableName, resolveNextLevelId(state));
-    const mergedAttrs = { ...baseDefaults, ...da };
+    const vDefaults = variantDefaults(target.tableName, target.variantId);
+    const mergedAttrs = { ...baseDefaults, ...vDefaults, ...da };
 
     const w = parseFloat(mergedAttrs.size_x || '0.3');
     const h = parseFloat(mergedAttrs.size_y || '0.3');

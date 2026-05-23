@@ -155,6 +155,14 @@ export interface ElementModule<TFacts = unknown> {
    */
   hiddenFromToolbar?: boolean;
 
+  /**
+   * Optional: multiple toolbar entries for this module, each placing a
+   * different geometry kind into the same CSV table. See `ToolbarVariant`.
+   * When set, the toolbar renders N entries (one per variant) instead of
+   * the single default entry derived from `archetype`/`placementType`.
+   */
+  toolbarVariants?: ToolbarVariant[];
+
   // ─── Geometry + render ────────────────────────────────────────────────────
 
   /**
@@ -175,3 +183,30 @@ export interface ElementModule<TFacts = unknown> {
 
 /** Type-erased module for the registry. */
 export type AnyElementModule = ElementModule<unknown>;
+
+// ─── Toolbar variants ────────────────────────────────────────────────────────
+
+/**
+ * One toolbar entry for a module that declares multiple placement variants.
+ * Example: foundation has three variants (isolated/point, strip/line, raft/polygon)
+ * that all write to the same `foundation` table but use different geometries.
+ *
+ * When a module declares `toolbarVariants`, the FloatingToolbar shows N entries
+ * (one per variant) instead of the module's default single entry. Picking a
+ * variant carries its `id` forward through `state.drawingTarget.variantId`,
+ * which the drawing tools use to:
+ *   - pick the correct placement tool (via `placementType`)
+ *   - merge variant-specific `defaults` into the new element's attrs.
+ */
+export interface ToolbarVariant {
+  /** Unique within this module, e.g. 'isolated' / 'strip' / 'raft'. */
+  id: string;
+  /** Toolbar short label. Plain text or i18n key — resolved at render time. */
+  label: string;
+  /** Single-char icon shown in the toolbar (matches LayerStyle.icon style). */
+  icon: string;
+  /** Placement type for this variant — overrides module's default placement. */
+  placementType: PlacementType;
+  /** Default attrs merged on top of `module.defaults` when this variant is used. */
+  defaults?: Record<string, string>;
+}
