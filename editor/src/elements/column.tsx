@@ -69,6 +69,7 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
       { key: 'flange', label: 'Flange Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
       { key: 'web', label: 'Web Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+      { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15 },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
       BASE_OFFSET_FIELD,
     ],
