@@ -552,7 +552,10 @@ export function computeSnap(
       const lenDiff = Math.abs(along - alongSnapped);
       const lenThreshold = gridSpacingLen * 0.3;
 
-      if (Math.abs(along) > 1e-9 && lenDiff < lenThreshold && lenDiff < threshold) {
+      // Drop the pixel-threshold gate here: the cursor is already locked onto
+      // the gridline (perpendicular distance ≈ 0), so all wiggle room can go
+      // into along-line pull. 30% of grid spacing is the natural pull range.
+      if (Math.abs(along) > 1e-9 && lenDiff < lenThreshold) {
         const tNew = tAnchor + alongSnapped;
         const newX = lineA.x + tNew * ux;
         const newY = lineA.y + tNew * uy;

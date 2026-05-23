@@ -40,7 +40,12 @@ export interface ToolStateSnapshot {
   hoveredId: string | null;
   drawingTarget: { tableName: string; discipline: string; variantId?: string } | null;
   drawingAttrs: Record<string, string>;
-  drawingState: { points: { x: number; y: number }[]; cursor: { x: number; y: number } | null } | null;
+  drawingState: {
+    points: { x: number; y: number }[];
+    cursor: { x: number; y: number } | null;
+    /** Host id of a connector the first click snapped onto (MEP line tools). */
+    startNodeId?: string;
+  } | null;
   document: DocumentState | null;
   project: ProjectData | null;
   grids: readonly GridData[];

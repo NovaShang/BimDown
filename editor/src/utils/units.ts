@@ -6,7 +6,6 @@
 // display formatting so callers don't have to read state.project.metadata
 // inline.
 
-import type { EditorState } from '../state/editorTypes.ts';
 import type { ProjectUnit } from '../types.ts';
 
 const VALID_UNITS: readonly ProjectUnit[] = ['m', 'ft', 'in', 'mm'];
