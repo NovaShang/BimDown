@@ -3,6 +3,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import { triggerDownload } from './download.ts';
+import { formatLength, getProjectUnits } from '../utils/units.ts';
 
 // Color palette matching cli/src/render.ts
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
@@ -106,6 +107,7 @@ function buildFloorSvg(elements: CanonicalElement[]): { svg: string; width: numb
 }
 
 export async function exportPdf(project: ProjectData, modelName: string): Promise<void> {
+  const projectUnit = getProjectUnits({ project });
   const { jsPDF } = await import('jspdf');
   await import('svg2pdf.js');
 
@@ -138,7 +140,7 @@ export async function exportPdf(project: ProjectData, modelName: string): Promis
     pdf.text(`${modelName} — ${level.name || level.id}`, marginLR, 10);
     pdf.setFontSize(8);
     pdf.setTextColor(120, 120, 120);
-    pdf.text(`Elevation: ${level.elevation.toFixed(2)}m | ${new Date().toLocaleDateString()}`, pageW - marginLR, 10, { align: 'right' });
+    pdf.text(`Elevation: ${formatLength(level.elevation, projectUnit)} | ${new Date().toLocaleDateString()}`, pageW - marginLR, 10, { align: 'right' });
 
     // Draw border
     pdf.setDrawColor(200, 200, 200);

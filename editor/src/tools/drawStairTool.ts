@@ -33,6 +33,7 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
+import { getProjectUnits } from '../utils/units.ts';
 
 /** Stair types that need more than 2 clicks. Everything else falls back to
  *  straight 2-click placement. */
@@ -63,6 +64,7 @@ export const drawStairTool: ToolHandler = {
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
     const snap = snapPoint(
       svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids,
+      undefined, undefined, getProjectUnits(state),
     );
     const pt = snap.point;
     ctx.setSnap(snap);
@@ -104,6 +106,7 @@ export const drawStairTool: ToolHandler = {
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
     const snap = snapPoint(
       svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids,
+      undefined, undefined, getProjectUnits(state),
     );
     const pt = snap.point;
     if (points.length > 0) {

@@ -11,6 +11,7 @@ import { Icon } from './Icons.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
+import { formatLength, getProjectUnits } from '../utils/units.ts';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -144,7 +145,9 @@ export default function LeftPanel({
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
-  const { activeDiscipline, selectedIds, readonly, project } = useEditorState();
+  const editorState = useEditorState();
+  const { activeDiscipline, selectedIds, readonly, project } = editorState;
+  const projectUnit = getProjectUnits(editorState);
   const mepSystems: SystemDef[] = project?.mepSystems ?? [];
   const [showAddLevel, setShowAddLevel] = useState(false);
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
@@ -200,14 +203,14 @@ export default function LeftPanel({
                 e.preventDefault();
                 if (!readonly) setContextMenu({ x: e.clientX, y: e.clientY, level });
               }}
-              title={`${level.name} (${level.elevation}m)`}
+              title={`${level.name} (${formatLength(level.elevation, projectUnit)})`}
             >
               <span className="flex-1 truncate">{level.name || level.id}</span>
               <span className={cn(
                 'ml-2 text-[9px] tabular-nums',
                 currentLevel === level.id ? 'text-[var(--color-accent)] opacity-60' : 'text-muted-foreground'
               )}>
-                {level.elevation.toFixed(1)}m
+                {formatLength(level.elevation, projectUnit)}
               </span>
             </button>
           ))}

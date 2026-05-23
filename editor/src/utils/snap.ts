@@ -1,6 +1,7 @@
 import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
-import type { GridData } from '../types.ts';
+import type { GridData, ProjectUnit } from '../types.ts';
 import { nearestPointOnArc, pointOnArc as arcPointOnArc } from '../geometry/arc.ts';
+import { formatLength } from './units.ts';
 
 // ── Snap types ──
 
@@ -70,14 +71,6 @@ export function adaptiveGridSpacing(pixelSize: number): number {
     }
   }
   return best;
-}
-
-// ── Formatting ──
-
-function formatLength(meters: number): string {
-  if (meters < 0.01) return `${(meters * 1000).toFixed(1)} mm`;
-  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
-  return `${meters.toFixed(3)} m`;
 }
 
 // ── Geometry utilities ──
@@ -274,6 +267,7 @@ export function computeSnap(
   grids?: readonly GridData[],
   extraEndpoints?: readonly Point[],
   connectorPoints?: readonly ConnectorSnapPoint[],
+  projectUnit: ProjectUnit = 'm',
 ): SnapResult {
   const threshold = pixelSize * SNAP_THRESHOLD_PX;
   const guides: SnapGuide[] = [];
@@ -588,7 +582,7 @@ export function computeSnap(
           x: originX, y: originY,
           x2: Math.abs(alongSnapped),
           snapType: 'length',
-          label: formatLength(Math.abs(alongSnapped)),
+          label: formatLength(Math.abs(alongSnapped), projectUnit),
         });
       }
     }
@@ -631,7 +625,7 @@ export function computeSnap(
             x: anchor.x, y: anchor.y,
             x2: snappedLen, // abuse x2 to carry radius
             snapType: 'length',
-            label: formatLength(snappedLen),
+            label: formatLength(snappedLen, projectUnit),
           });
         }
       }
@@ -745,10 +739,11 @@ export function snapPoint(
   grids?: readonly GridData[],
   extraEndpoints?: readonly Point[],
   connectorPoints?: readonly ConnectorSnapPoint[],
+  projectUnit: ProjectUnit = 'm',
 ): SnapResult {
   const pixelSize = computePixelSize(screenToSvg);
   return computeSnap(
     raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement,
-    grids, extraEndpoints, connectorPoints,
+    grids, extraEndpoints, connectorPoints, projectUnit,
   );
 }

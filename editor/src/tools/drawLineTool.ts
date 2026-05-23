@@ -4,6 +4,7 @@ import { geometryTypeForTable } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
+import { getProjectUnits } from '../utils/units.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
@@ -47,7 +48,7 @@ export const drawLineTool: ToolHandler = {
     const connectors = isMepLineTable(state.drawingTarget?.tableName)
       ? gatherConnectorSnapPoints(state.document?.elements)
       : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state));
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -147,7 +148,7 @@ export const drawLineTool: ToolHandler = {
     const connectors = isMepLineTable(state.drawingTarget?.tableName)
       ? gatherConnectorSnapPoints(state.document?.elements)
       : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state));
     const pt = snap.point;
 
     if (isVerticalMode(state.drawingAttrs)) {

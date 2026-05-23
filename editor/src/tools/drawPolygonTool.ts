@@ -5,6 +5,7 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
+import { getProjectUnits } from '../utils/units.ts';
 
 /** Minimum 3 vertices to form a polygon */
 const MIN_VERTICES = 3;
@@ -23,7 +24,7 @@ export const drawPolygonTool: ToolHandler = {
     const state = ctx.getState();
     const points = state.drawingState?.points || [];
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, points);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, points, undefined, getProjectUnits(state));
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -53,7 +54,7 @@ export const drawPolygonTool: ToolHandler = {
     const state = ctx.getState();
     const points = state.drawingState?.points || [];
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, points);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, points, undefined, getProjectUnits(state));
     const pt = snap.point;
 
     ctx.dispatch({

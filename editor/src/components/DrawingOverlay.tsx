@@ -1,16 +1,13 @@
 import type { DrawingState, Tool } from '../state/editorTypes.ts';
 import type { CanonicalElement, Point } from '../model/elements.ts';
+import type { ProjectUnit } from '../types.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
-
-function formatLength(meters: number): string {
-  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
-  return `${meters.toFixed(3)} m`;
-}
+import { formatLength } from '../utils/units.ts';
 
 /** Length label positioned at the midpoint of a line, offset perpendicular to it */
-function LengthLabel({ from, to, scale }: { from: Point; to: Point; scale: number }) {
+function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point; scale: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -36,7 +33,7 @@ function LengthLabel({ from, to, scale }: { from: Point; to: Point; scale: numbe
       transform="scale(1,-1)"
       opacity={0.9}
     >
-      {formatLength(len)}
+      {formatLength(len, projectUnit)}
     </text>
   );
 }
@@ -49,6 +46,8 @@ interface DrawingOverlayProps {
   tableName: string | null;
   /** Document elements — used to surface connector dots as snap targets. */
   elements?: ReadonlyMap<string, CanonicalElement> | null;
+  /** Project unit so length previews honor ft / in / mm. */
+  projectUnit: ProjectUnit;
 }
 
 /** Subtle preview ring for an available connector port. Rendered when the
@@ -81,7 +80,7 @@ function ConnectorHints({
   );
 }
 
-export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName, elements }: DrawingOverlayProps) {
+export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName, elements, projectUnit }: DrawingOverlayProps) {
   const { points, cursor } = drawingState;
   const showConnectorHints = activeTool === 'draw_line' && isMepLineTable(tableName);
 
@@ -251,7 +250,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           />
           <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="#4fc3f7" />
           <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#4fc3f7" opacity="0.6" />
-          <LengthLabel from={points[0]} to={cursor} scale={scale} />
+          <LengthLabel from={points[0]} to={cursor} scale={scale} projectUnit={projectUnit} />
         </g>
       );
     }
@@ -327,7 +326,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           />
           <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="#ffa726" />
           <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#ffa726" opacity="0.6" />
-          <LengthLabel from={points[0]} to={cursor} scale={scale} />
+          <LengthLabel from={points[0]} to={cursor} scale={scale} projectUnit={projectUnit} />
         </g>
       );
     }
@@ -392,7 +391,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           />
           <circle cx={points[0].x} cy={points[0].y} r={0.3 / scale} fill="#4fc3f7" opacity="0.7" />
           <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#4fc3f7" opacity="0.7" />
-          <LengthLabel from={points[0]} to={cursor} scale={scale} />
+          <LengthLabel from={points[0]} to={cursor} scale={scale} projectUnit={projectUnit} />
         </g>
       );
     }

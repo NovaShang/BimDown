@@ -2,6 +2,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import type { ToolHandler, ToolContext } from './types.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { toSelectionId, toElementId } from '../model/ids.ts';
+import { getProjectUnits } from '../utils/units.ts';
 
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
@@ -123,7 +124,7 @@ export const selectTool: ToolHandler = {
             // Snap the anchor point's would-be position
             const anchorTarget = { x: gesture.moveAnchor.x + rawDx, y: gesture.moveAnchor.y + rawDy };
             const state = ctx.getState();
-            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds, undefined, undefined, state.grids);
+            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, state.selectedIds, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state));
             ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
 
             const snappedDx = snap.point.x - gesture.moveAnchor.x;

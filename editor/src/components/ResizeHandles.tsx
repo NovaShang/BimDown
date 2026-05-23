@@ -77,7 +77,8 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
     const elements = stateRef.current.document?.elements ?? null;
     const exclude = new Set([element.id]);
     const grids = stateRef.current.grids;
-    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids);
+    const unit = getProjectUnits(stateRef.current);
+    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, undefined, unit);
     onSnap?.(snap.snapX || snap.snapY ? snap : null);
     return snap.point;
   }, [screenToSvg, element.id, onSnap]);

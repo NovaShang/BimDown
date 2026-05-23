@@ -6,13 +6,10 @@ import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '.
 import { useEditorDispatch, useEditorState } from '../../state/EditorContext.tsx';
 import { snapPoint } from '../../utils/snap.ts';
 import { arcFromMidpoint, arcMidpoint, tessellateArc } from '../../geometry/arc.ts';
+import { formatLength, getProjectUnits } from '../../utils/units.ts';
+import type { ProjectUnit } from '../../types.ts';
 
-function formatLength(meters: number): string {
-  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
-  return `${meters.toFixed(3)} m`;
-}
-
-function LengthLabel3D({ from, to, elevation }: { from: Point; to: Point; elevation: number }) {
+function LengthLabel3D({ from, to, elevation, projectUnit }: { from: Point; to: Point; elevation: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -38,7 +35,7 @@ function LengthLabel3D({ from, to, elevation }: { from: Point; to: Point; elevat
       }}
       center
     >
-      {formatLength(len)}
+      {formatLength(len, projectUnit)}
     </Html>
   );
 }
@@ -61,6 +58,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   stateRef.current = state;
   const beforeRef = useRef<CanonicalElement | null>(null);
   const { gl } = useThree();
+  const projectUnit = getProjectUnits(state);
 
   const snapModelPoint = useCallback((clientX: number, clientY: number) => {
     const raw = screenToSvg(clientX, clientY);
@@ -68,7 +66,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
     const elements = stateRef.current.document?.elements ?? null;
     const exclude = new Set([element.id]);
     const grids = stateRef.current.grids;
-    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids);
+    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, undefined, getProjectUnits(stateRef.current));
     return snap.point;
   }, [element.id, screenToSvg]);
 
@@ -142,7 +140,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
             const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y: yy });
             dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
           })} />
-        <LengthLabel3D from={element.start} to={element.end} elevation={elevation} />
+        <LengthLabel3D from={element.start} to={element.end} elevation={elevation} projectUnit={projectUnit} />
       </group>
     );
   }

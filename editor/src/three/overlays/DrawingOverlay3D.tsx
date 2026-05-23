@@ -5,6 +5,8 @@ import { useEditorState } from '../../state/EditorContext.tsx';
 import { resolveLineStrokeWidth } from '../../utils/geometry.ts';
 import { resolveHeight } from '../utils/elementTo3D.ts';
 import { createExtrudeGeometry } from '../utils/extrudePolygon.ts';
+import { formatLength, getProjectUnits } from '../../utils/units.ts';
+import type { ProjectUnit } from '../../types.ts';
 import type { Point } from '../../model/elements.ts';
 
 // ─── Shared geometries & materials ───────────────────────────────────────────
@@ -43,12 +45,7 @@ function resolveHeightFallback(tableName: string, attrs: Record<string, string>)
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-function formatLength(meters: number): string {
-  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
-  return `${meters.toFixed(3)} m`;
-}
-
-function LengthLabel3D({ from, to, elevation }: { from: Point; to: Point; elevation: number }) {
+function LengthLabel3D({ from, to, elevation, projectUnit }: { from: Point; to: Point; elevation: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const len = Math.sqrt(dx * dx + dy * dy);
@@ -74,7 +71,7 @@ function LengthLabel3D({ from, to, elevation }: { from: Point; to: Point; elevat
       }}
       center
     >
-      {formatLength(len)}
+      {formatLength(len, projectUnit)}
     </Html>
   );
 }
@@ -127,7 +124,9 @@ interface DrawingOverlay3DProps {
 }
 
 export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
-  const { drawingState, activeTool, drawingAttrs, drawingTarget, project } = useEditorState();
+  const state = useEditorState();
+  const { drawingState, activeTool, drawingAttrs, drawingTarget, project } = state;
+  const projectUnit = getProjectUnits(state);
 
   const levelElevations = useMemo(() => {
     const map = new Map<string, number>();
@@ -267,7 +266,7 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
           <mesh position={toWorld(points[0].x, points[0].y, elevation)} geometry={SPHERE_GEO_LG} material={DOT_MATERIAL} />
           {/* Cursor dot */}
           <mesh position={toWorld(cursor.x, cursor.y, elevation)} geometry={SPHERE_GEO_SM} material={DOT_MATERIAL_FADED} />
-          <LengthLabel3D from={points[0]} to={cursor} elevation={elevation} />
+          <LengthLabel3D from={points[0]} to={cursor} elevation={elevation} projectUnit={projectUnit} />
         </group>
       );
     }

@@ -3,6 +3,7 @@ import type { PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
+import { getProjectUnits } from '../utils/units.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
 
@@ -16,7 +17,7 @@ export const drawPointTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state));
     const pt = snap.point;
 
     const target = state.drawingTarget;
@@ -53,7 +54,7 @@ export const drawPointTool: ToolHandler = {
     if (!svgPt) return;
 
     const state = ctx.getState();
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids);
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state));
     const pt = snap.point;
 
     ctx.dispatch({

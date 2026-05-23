@@ -19,6 +19,7 @@ import { REVERSE_PREFIX_MAP, toSelectionId, toElementId } from '../model/ids.ts'
 import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
 import { SVGGeometryProvider } from '../adapters/svg/context.tsx';
+import { getProjectUnits } from '../utils/units.ts';
 
 import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
@@ -504,7 +505,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <SnapOverlay snap={activeSnap} scale={scale} />
 
         {state.drawingState && (
-          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} elements={state.document?.elements ?? null} />
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} elements={state.document?.elements ?? null} projectUnit={getProjectUnits(state)} />
         )}
       </svg>
 
