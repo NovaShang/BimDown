@@ -11,7 +11,7 @@ import type {
   CanonicalElement, LineElement, SpatialLineElement, Point,
 } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { BASE_OFFSET_FIELD } from './_options.ts';
+import { BASE_OFFSET_FIELD, STAIR_TYPE_OPTIONS } from './_options.ts';
 
 const TREAD_THICKNESS = 0.03;
 
@@ -36,12 +36,13 @@ export const stairModule: ElementModule<StairFacts> = {
   archetype: 'spatial-line',
   prefix: 'st',
   hasVerticalSpan: true,
-  csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'start_z', 'end_z', 'width', 'step_count'],
+  csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'start_z', 'end_z', 'width', 'step_count', 'stair_type'],
   defaults: {
     base_offset: '0', top_level_id: '', top_offset: '0',
-    start_z: '0', end_z: '3', width: '1.2', step_count: '18',
+    start_z: '0', end_z: '3', width: '1.2', step_count: '18', stair_type: 'straight',
   },
   drawingFields: [
+    { key: 'stair_type', label: 'Type', type: 'select', options: STAIR_TYPE_OPTIONS },
     { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
     { key: 'step_count', label: 'Steps', type: 'number', min: 1, step: 1 },
     BASE_OFFSET_FIELD,

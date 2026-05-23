@@ -46,6 +46,17 @@ export const OPERATION_OPTIONS: DrawingField['options'] = [
   { value: 'revolving', label: 'Revolving' },
 ];
 
+/** Stair overall shape — subset of IfcStairTypeEnum. */
+export const STAIR_TYPE_OPTIONS: DrawingField['options'] = [
+  { value: 'straight', label: 'Straight' },
+  { value: 'quarter_turn', label: 'L-Shape' },
+  { value: 'half_turn', label: 'U-Shape' },
+  { value: 'winder', label: 'Winder' },
+  { value: 'spiral', label: 'Spiral' },
+  { value: 'curved', label: 'Curved' },
+  { value: 'double_return', label: 'Double Return' },
+];
+
 /** Window operation enum — mirrors IFC IfcWindowTypePartitioningEnum subset. */
 export const WINDOW_OPERATION_OPTIONS: DrawingField['options'] = [
   { value: 'fixed', label: 'Fixed' },
