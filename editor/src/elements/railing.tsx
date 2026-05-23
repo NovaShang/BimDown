@@ -77,13 +77,37 @@ export const railingModule: ElementModule<RailingFacts> = {
 
   draw2D(facts, drawCtx): ReactNode {
     const stroke = drawCtx.selected ? '#3a7bff' : '#546e7a';
+    // Top rail line + baluster tick marks every BALUSTER_SPACING. The ticks
+    // sit perpendicular to the rail at a small length, so the rail visually
+    // reads as "a railing" rather than just a thick line.
+    const dx = facts.end.x - facts.start.x;
+    const dy = facts.end.y - facts.start.y;
+    const len = facts.horLen;
+    const ux = dx / len, uy = dy / len;
+    const nx = -uy, ny = ux;
+    const tickHalf = 0.06;
+    const ticks: ReactNode[] = [];
+    const count = Math.max(2, Math.floor(len / BALUSTER_SPACING));
+    for (let i = 0; i <= count; i++) {
+      const t = (i / count) * len;
+      const cx = facts.start.x + ux * t;
+      const cy = facts.start.y + uy * t;
+      ticks.push(
+        <line key={i}
+          x1={cx + nx * tickHalf} y1={cy + ny * tickHalf}
+          x2={cx - nx * tickHalf} y2={cy - ny * tickHalf}
+          stroke={stroke} strokeWidth={0.015} />,
+      );
+    }
     return (
-      <line
-        x1={facts.start.x} y1={facts.start.y}
-        x2={facts.end.x} y2={facts.end.y}
-        stroke={stroke} strokeWidth={0.04}
-        data-id={facts.id}
-      />
+      <g data-id={facts.id}>
+        <line
+          x1={facts.start.x} y1={facts.start.y}
+          x2={facts.end.x} y2={facts.end.y}
+          stroke={stroke} strokeWidth={0.025}
+        />
+        {ticks}
+      </g>
     );
   },
 

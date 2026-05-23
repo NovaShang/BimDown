@@ -120,23 +120,51 @@ export const foundationModule: ElementModule<FoundationFacts> = {
   },
 
   draw2D(facts, drawCtx): ReactNode {
-    const stroke = drawCtx.selected ? '#3a7bff' : '#8d6e63';
+    const stroke = drawCtx.selected ? '#3a7bff' : '#5d4037';
+    const fill = 'rgba(141,110,99,0.15)';
+    // Foundations are drawn with a hatched outline to read as "below-ground concrete":
+    // solid outline + dashed inner outline at a small inset.
+    const innerInset = 0.06;
     if (facts.kind === 'point') {
+      const w = facts.width, h = facts.depth;
+      const iw = Math.max(0.05, w - innerInset * 2);
+      const ih = Math.max(0.05, h - innerInset * 2);
       return (
         <g data-id={facts.id}
           transform={`translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`}>
-          <rect x={-facts.width / 2} y={-facts.depth / 2} width={facts.width} height={facts.depth}
-            fill="rgba(141,110,99,0.08)" stroke={stroke} strokeWidth={0.025} />
+          <rect x={-w / 2} y={-h / 2} width={w} height={h}
+            fill={fill} stroke={stroke} strokeWidth={0.03} />
+          <rect x={-iw / 2} y={-ih / 2} width={iw} height={ih}
+            fill="none" stroke={stroke} strokeWidth={0.015} strokeDasharray="0.1 0.05" />
+          <line x1={-w / 2} y1={-h / 2} x2={w / 2} y2={h / 2}
+            stroke={stroke} strokeWidth={0.012} opacity={0.5} />
+          <line x1={w / 2} y1={-h / 2} x2={-w / 2} y2={h / 2}
+            stroke={stroke} strokeWidth={0.012} opacity={0.5} />
         </g>
       );
     }
     if (facts.kind === 'line') {
       const points = facts.footprint2D.map(p => `${p.x},${p.y}`).join(' ');
-      return <polygon points={points} fill="rgba(141,110,99,0.08)" stroke={stroke} strokeWidth={0.025} data-id={facts.id} />;
+      return (
+        <g data-id={facts.id}>
+          <polygon points={points} fill={fill} stroke={stroke} strokeWidth={0.03} />
+          <line x1={facts.start.x} y1={facts.start.y} x2={facts.end.x} y2={facts.end.y}
+            stroke={stroke} strokeWidth={0.015} strokeDasharray="0.15 0.08" opacity={0.7} />
+        </g>
+      );
     }
-    // polygon
+    // polygon (raft / mat)
     const points = facts.vertices.map(v => `${v.x},${v.y}`).join(' ');
-    return <polygon points={points} fill="rgba(141,110,99,0.08)" stroke={stroke} strokeWidth={0.025} data-id={facts.id} />;
+    return (
+      <g data-id={facts.id}>
+        <polygon points={points} fill={fill} stroke={stroke} strokeWidth={0.03} />
+        {/* Hatch diagonals: a thin pair of lines across the polygon bbox to
+            read as "below-ground" — full hatching across an arbitrary polygon
+            is overkill for plan-view density. */}
+        <polygon points={points} fill="none" stroke={stroke} strokeWidth={0.015}
+          strokeDasharray="0.15 0.08" opacity={0.7} />
+      </g>
+    );
   },
 
   draw3D(facts, drawCtx): ReactNode {

@@ -81,7 +81,41 @@ export const rampModule: ElementModule<RampFacts> = {
   draw2D(facts, drawCtx): ReactNode {
     const points = facts.footprint2D.map(p => `${p.x},${p.y}`).join(' ');
     const stroke = drawCtx.selected ? '#3a7bff' : '#7b68ee';
-    return <polygon points={points} fill="#e8e8e8" stroke={stroke} strokeWidth={0.02} data-id={facts.id} />;
+    // Up arrow along ramp axis to show slope direction, plus "UP" label.
+    const goingUp = facts.endZ > facts.startZ;
+    const dx = facts.end.x - facts.start.x;
+    const dy = facts.end.y - facts.start.y;
+    const ux = dx / facts.length, uy = dy / facts.length;
+    const nx = -uy, ny = ux;
+    const arrowFromT = goingUp ? 0.2 : 0.8;
+    const arrowToT = goingUp ? 0.8 : 0.2;
+    const dir = goingUp ? 1 : -1;
+    const headSize = Math.min(facts.width * 0.4, facts.length * 0.1);
+    const ax0 = facts.start.x + ux * facts.length * arrowFromT;
+    const ay0 = facts.start.y + uy * facts.length * arrowFromT;
+    const ax1 = facts.start.x + ux * facts.length * arrowToT;
+    const ay1 = facts.start.y + uy * facts.length * arrowToT;
+    const back = { x: ax1 - ux * headSize * dir, y: ay1 - uy * headSize * dir };
+    const headPts = `${ax1},${ay1} ${back.x + nx * headSize * 0.4},${back.y + ny * headSize * 0.4} ${back.x - nx * headSize * 0.4},${back.y - ny * headSize * 0.4}`;
+    const labelPos = { x: facts.start.x + ux * facts.length * 0.5, y: facts.start.y + uy * facts.length * 0.5 };
+    const slopePct = facts.length > 0.01 ? Math.abs((facts.endZ - facts.startZ) / facts.length) * 100 : 0;
+    return (
+      <g data-id={facts.id}>
+        <polygon points={points} fill="#e8e8e8" stroke={stroke} strokeWidth={0.02} />
+        <line x1={ax0} y1={ay0} x2={ax1} y2={ay1} stroke={stroke} strokeWidth={0.025} />
+        <polygon points={headPts} fill={stroke} stroke="none" />
+        {slopePct > 0.01 && (
+          <text
+            x={labelPos.x} y={labelPos.y + 0.3}
+            fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={500}
+            fill={stroke} textAnchor="middle" dominantBaseline="central"
+            transform={`translate(${labelPos.x},${labelPos.y + 0.3}) scale(1,-1) translate(${-labelPos.x},${-(labelPos.y + 0.3)})`}
+          >
+            {`UP ${slopePct.toFixed(1)}%`}
+          </text>
+        )}
+      </g>
+    );
   },
 
   draw3D(facts, drawCtx): ReactNode {

@@ -94,8 +94,55 @@ export const stairModule: ElementModule<StairFacts> = {
   draw2D(facts, drawCtx): ReactNode {
     const points = facts.footprint2D.map(p => `${p.x},${p.y}`).join(' ');
     const stroke = drawCtx.selected ? '#3a7bff' : '#7b68ee';
+
+    // Tread lines: (stepCount-1) lines perpendicular to the stair axis.
+    const ux = (facts.end.x - facts.start.x) / facts.horLen;
+    const uy = (facts.end.y - facts.start.y) / facts.horLen;
+    const nx = -uy, ny = ux;
+    const hw = facts.width / 2;
+    const treadDepth = facts.horLen / facts.stepCount;
+    const treadLines: ReactNode[] = [];
+    for (let i = 1; i < facts.stepCount; i++) {
+      const t = i * treadDepth;
+      const cxA = facts.start.x + ux * t;
+      const cyA = facts.start.y + uy * t;
+      treadLines.push(
+        <line key={i}
+          x1={cxA + nx * hw} y1={cyA + ny * hw}
+          x2={cxA - nx * hw} y2={cyA - ny * hw}
+          stroke={stroke} strokeWidth={0.015} />,
+      );
+    }
+
+    // UP arrow along the stair axis: shaft + triangular head, plus "UP" label.
+    const goingUp = facts.endZ > facts.startZ;
+    const arrowStart = goingUp ? 0.2 : 0.8;
+    const arrowEnd = goingUp ? 0.8 : 0.2;
+    const ax0 = facts.start.x + ux * facts.horLen * arrowStart;
+    const ay0 = facts.start.y + uy * facts.horLen * arrowStart;
+    const ax1 = facts.start.x + ux * facts.horLen * arrowEnd;
+    const ay1 = facts.start.y + uy * facts.horLen * arrowEnd;
+    const headSize = Math.min(facts.width * 0.4, treadDepth * 1.5);
+    const dir = goingUp ? 1 : -1;
+    const back = { x: ax1 - ux * headSize * dir, y: ay1 - uy * headSize * dir };
+    const headPts = `${ax1},${ay1} ${back.x + nx * headSize * 0.4},${back.y + ny * headSize * 0.4} ${back.x - nx * headSize * 0.4},${back.y - ny * headSize * 0.4}`;
+    const labelPos = { x: facts.start.x + ux * facts.horLen * 0.5, y: facts.start.y + uy * facts.horLen * 0.5 };
+
     return (
-      <polygon points={points} fill="rgba(123,104,238,0.10)" stroke={stroke} strokeWidth={0.025} data-id={facts.id} />
+      <g data-id={facts.id}>
+        <polygon points={points} fill="rgba(123,104,238,0.10)" stroke={stroke} strokeWidth={0.025} />
+        {treadLines}
+        <line x1={ax0} y1={ay0} x2={ax1} y2={ay1} stroke={stroke} strokeWidth={0.025} />
+        <polygon points={headPts} fill={stroke} stroke="none" />
+        <text
+          x={labelPos.x} y={labelPos.y + 0.3}
+          fontSize={0.28} fontFamily="Inter, sans-serif" fontWeight={600}
+          fill={stroke} textAnchor="middle" dominantBaseline="central"
+          transform={`translate(${labelPos.x},${labelPos.y + 0.3}) scale(1,-1) translate(${-labelPos.x},${-(labelPos.y + 0.3)})`}
+        >
+          UP
+        </text>
+      </g>
     );
   },
 

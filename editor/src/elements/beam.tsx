@@ -87,7 +87,15 @@ export const beamModule: ElementModule<BeamFacts> = {
     const fill = facts.material.toLowerCase().includes('concrete') ? '#d4d4d4' : '#e8e8e8';
     const stroke = drawCtx.selected ? '#3a7bff' : '#8d6e63';
     return (
-      <polygon points={points} fill={fill} stroke={stroke} strokeWidth={0.02} data-id={facts.id} />
+      <g data-id={facts.id}>
+        <polygon points={points} fill={fill} stroke={stroke} strokeWidth={0.03} strokeLinejoin="miter" />
+        {/* Beam centerline — common CAD convention for structural members. */}
+        <line
+          x1={facts.start.x} y1={facts.start.y}
+          x2={facts.end.x} y2={facts.end.y}
+          stroke={stroke} strokeWidth={0.015} strokeDasharray="0.2 0.08 0.04 0.08" opacity={0.7}
+        />
+      </g>
     );
   },
 
