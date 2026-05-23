@@ -257,7 +257,7 @@ public static class ArchitectureTableExporters
         [BuiltInCategory.OST_Windows],
         new CompositeExtractor(
             [..CompositeExtractor.ExpandHostedElement(), new MaterializedExtractor()],
-            ["width", "height"],
+            ["width", "height", "operation"],
             e =>
             {
                 var fields = new Dictionary<string, string?>();
@@ -269,8 +269,61 @@ public static class ArchitectureTableExporters
                      ?? Extractors.ParameterUtils.FindDoubleParameterByNames(e, "height", "depth", "h", "d", "高", "深");
                 fields["width"] = w is { } wv ? UnitConverter.FormatDouble(UnitConverter.Length(wv)) : null;
                 fields["height"] = h is { } hv ? UnitConverter.FormatDouble(UnitConverter.Length(hv)) : null;
+                fields["operation"] = MapWindowOperation(e);
                 return fields;
             }));
+
+    /// <summary>
+    /// Map Revit window family name / "Operation" parameter onto the BimDown
+    /// `window.operation` enum. Family naming is the most reliable signal in
+    /// practice; fall back to an explicit Operation parameter if present.
+    /// </summary>
+    static string? MapWindowOperation(Element e)
+    {
+        var explicitOp = Extractors.ParameterUtils.FindStringParameterByNames(e, "operation", "Operation", "开启方式");
+        if (!string.IsNullOrWhiteSpace(explicitOp))
+        {
+            var normalized = NormalizeOperation(explicitOp!);
+            if (normalized is not null) return normalized;
+        }
+
+        var familyName = e.Symbol?.FamilyName ?? string.Empty;
+        return InferOperationFromFamilyName(familyName);
+    }
+
+    static string? NormalizeOperation(string raw)
+    {
+        var key = raw.Trim().ToLowerInvariant().Replace('-', '_').Replace(' ', '_');
+        return key switch
+        {
+            "fixed" or "固定" => "fixed",
+            "casement" or "平开" or "外平开" or "内平开" => "casement",
+            "sliding" or "推拉" => "sliding",
+            "awning" or "上悬" => "awning",
+            "hopper" or "下悬" => "hopper",
+            "pivot" or "中悬" => "pivot",
+            "double_hung" or "上下推拉" => "double_hung",
+            "single_hung" => "single_hung",
+            "tilt_and_turn" or "内开内倒" => "tilt_and_turn",
+            _ => null,
+        };
+    }
+
+    static string? InferOperationFromFamilyName(string familyName)
+    {
+        if (string.IsNullOrWhiteSpace(familyName)) return null;
+        var name = familyName.ToLowerInvariant();
+        if (name.Contains("fixed") || name.Contains("固定")) return "fixed";
+        if (name.Contains("casement") || name.Contains("平开")) return "casement";
+        if (name.Contains("sliding") || name.Contains("slider") || name.Contains("推拉")) return "sliding";
+        if (name.Contains("awning") || name.Contains("上悬")) return "awning";
+        if (name.Contains("hopper") || name.Contains("下悬")) return "hopper";
+        if (name.Contains("pivot") || name.Contains("中悬")) return "pivot";
+        if (name.Contains("double_hung") || name.Contains("double hung")) return "double_hung";
+        if (name.Contains("single_hung") || name.Contains("single hung")) return "single_hung";
+        if (name.Contains("tilt") && name.Contains("turn")) return "tilt_and_turn";
+        return null;
+    }
 
     public static ITableExporter Stair() => new TableExporter(
         "stair",

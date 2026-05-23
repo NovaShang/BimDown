@@ -11,3 +11,17 @@ fields:
 
   - name: height
     type: float
+
+  - name: operation
+    type: enum
+    description: How the window opens. Mirrors IFC IfcWindowTypePartitioningEnum.
+    values:
+      - fixed
+      - casement
+      - sliding
+      - awning
+      - hopper
+      - pivot
+      - double_hung
+      - single_hung
+      - tilt_and_turn
