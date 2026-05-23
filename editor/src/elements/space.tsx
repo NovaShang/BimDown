@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
-import type { CanonicalElement, PointElement, PolygonElement, Point } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, PointElement, PolygonElement, Point } from '../model/elements.ts';
 import { BASE_OFFSET_FIELD } from './_options.ts';
+import { deriveSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
 
 export interface SpaceFacts {
   id: string;
@@ -49,11 +50,32 @@ export const spaceModule: ElementModule<SpaceFacts> = {
   layerStyle: { displayName: 'Spaces', color: '#3a86ff', icon: '⬡', order: 6 },
   renderZIndex: 10,
 
-  geometry(el: CanonicalElement, _ctx: GeometryContext): SpaceFacts | null {
+  geometry(el: CanonicalElement, ctx: GeometryContext): SpaceFacts | null {
     const number = el.attrs.number || '';
     const name = el.attrs.name || '';
     if (el.geometry === 'point') {
       const pt = el as PointElement;
+      // Try to derive a boundary polygon from surrounding walls. Shared once
+      // per render pass across all space elements via ctx.memo (keyed on the
+      // boundary-table contents) so the half-edge structure is built only
+      // once per pass even when many seeds live on the same level.
+      const walls = ctx.memo<LineElement[]>('space-boundary:walls', () => {
+        const collected: LineElement[] = [];
+        for (const table of BOUNDARY_TABLES) {
+          for (const e of ctx.elementsByTable(table)) {
+            if (e.geometry === 'line') collected.push(e as LineElement);
+          }
+        }
+        return collected;
+      });
+      const derived = ctx.memo<Point[] | null>(`space-boundary:${el.id}`, () =>
+        deriveSpaceBoundary(pt.position, walls),
+      );
+      if (derived && derived.length >= 3) {
+        // CSV row remains a point seed; facts upgrade to polygon so draw2D
+        // can render the derived outline + filled interior.
+        return { id: el.id, kind: 'polygon', anchor: centroid(derived), vertices: derived, number, name };
+      }
       return { id: el.id, kind: 'point', anchor: pt.position, number, name };
     }
     if (el.geometry === 'polygon') {
