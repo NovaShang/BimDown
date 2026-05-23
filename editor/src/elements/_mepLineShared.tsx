@@ -141,18 +141,64 @@ export function mepLineGeometry(
   };
 }
 
+/** Curated colors for the canonical MEP system_type abbreviations (see
+ *  agent-skill/references/bim-modeling.md). Anything not in this table falls
+ *  back to a deterministic hash of system_type below — so the user always sees
+ *  a consistent color per system, even before a project-level system table
+ *  exists. */
+const SYSTEM_COLORS: Record<string, string> = {
+  // HVAC: blues/teals = air; warm = heating; cool = cooling
+  SA: '#3b82f6', RA: '#60a5fa', EA: '#a855f7', OA: '#22d3ee', GE: '#7c3aed',
+  CHWS: '#06b6d4', CHWR: '#0891b2',
+  HWS: '#f97316', HWR: '#ea580c',
+  CWS: '#10b981', CWR: '#059669',
+  RF: '#ec4899', SF: '#fb923c',
+  // Plumbing: blue cold, red hot, brown drain
+  DW: '#1d4ed8', DCW: '#3b82f6', DHW: '#dc2626', DHWR: '#b91c1c',
+  SS: '#92400e', VENT: '#a16207', SD: '#0369a1', GAS: '#facc15',
+  // Electrical
+  NP: '#fde047', EM: '#f43f5e', LV: '#eab308', HV: '#ca8a04',
+  DATA: '#22c55e', FA: '#ef4444', SEC: '#a3a3a3',
+};
+
+/** Stable color hash for unknown system_type strings — same string always
+ *  produces the same color across the project. HSL with fixed saturation /
+ *  lightness keeps results readable. */
+function hashSystemColor(s: string): string {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  const hue = h % 360;
+  return `hsl(${hue}, 60%, 50%)`;
+}
+
+function resolveSystemColor(systemType: string, fallback: string): string {
+  const key = systemType.trim();
+  if (!key) return fallback;
+  if (key in SYSTEM_COLORS) return SYSTEM_COLORS[key];
+  return hashSystemColor(key);
+}
+
 export function mepLineDraw2D(
   facts: MepLineFacts,
   fill: string,
   stroke: string,
   strokeWidth: number,
+  selected = false,
 ): ReactNode {
   const points = facts.footprint.map(p => `${p.x},${p.y}`).join(' ');
+  // When system_type is set (and the element isn't currently selected),
+  // override the table's default colors so MEP lines visually group by system
+  // instead of by table. Selection always wins so the highlight stays visible.
+  const sysColor = !selected && facts.systemType.trim()
+    ? resolveSystemColor(facts.systemType, stroke)
+    : null;
+  const actualStroke = sysColor ?? stroke;
+  const actualFill = sysColor ? sysColor + '22' : fill;
   return (
     <polygon
       points={points}
-      fill={fill}
-      stroke={stroke}
+      fill={actualFill}
+      stroke={actualStroke}
       strokeWidth={strokeWidth}
       strokeLinejoin="miter"
       data-id={facts.id}

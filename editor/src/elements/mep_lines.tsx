@@ -50,7 +50,7 @@ function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
 
     draw2D(facts, drawCtx): ReactNode {
       const stroke = drawCtx.selected ? '#3a7bff' : opts.stroke2D;
-      return mepLineDraw2D(facts, opts.fill2D, stroke, opts.strokeWidth2D);
+      return mepLineDraw2D(facts, opts.fill2D, stroke, opts.strokeWidth2D, drawCtx.selected);
     },
 
     draw3D(facts, drawCtx): ReactNode {
