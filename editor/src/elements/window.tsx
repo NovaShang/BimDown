@@ -4,7 +4,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import { getBlockSvg } from './_blockLoader.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { SILL_HEIGHT_FIELD } from './_options.ts';
+import { SILL_HEIGHT_FIELD, WINDOW_OPERATION_OPTIONS } from './_options.ts';
 
 export interface WindowFacts {
   id: string;
@@ -31,14 +31,15 @@ export const windowModule: ElementModule<WindowFacts> = {
   hostType: 'wall',
   hostTables: ['wall', 'curtain_wall', 'structure_wall'],
   widthAttr: 'width',
-  csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height'],
+  csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height', 'operation'],
   defaults: {
     base_offset: `${DEFAULT_SILL}`, host_id: '', position: '0.5',
-    material: '', width: '1.2', height: `${DEFAULT_HEIGHT}`,
+    material: '', width: '1.2', height: `${DEFAULT_HEIGHT}`, operation: 'fixed',
   },
   drawingFields: [
     { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
     { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+    { key: 'operation', label: 'Operation', type: 'select', options: WINDOW_OPERATION_OPTIONS },
     SILL_HEIGHT_FIELD,
   ],
   propertyFields: [],

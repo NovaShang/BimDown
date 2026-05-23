@@ -46,6 +46,19 @@ export const OPERATION_OPTIONS: DrawingField['options'] = [
   { value: 'revolving', label: 'Revolving' },
 ];
 
+/** Window operation enum — mirrors IFC IfcWindowTypePartitioningEnum subset. */
+export const WINDOW_OPERATION_OPTIONS: DrawingField['options'] = [
+  { value: 'fixed', label: 'Fixed' },
+  { value: 'casement', label: 'Casement' },
+  { value: 'sliding', label: 'Sliding' },
+  { value: 'awning', label: 'Awning' },
+  { value: 'hopper', label: 'Hopper' },
+  { value: 'pivot', label: 'Pivot' },
+  { value: 'double_hung', label: 'Double Hung' },
+  { value: 'single_hung', label: 'Single Hung' },
+  { value: 'tilt_and_turn', label: 'Tilt & Turn' },
+];
+
 export const HINGE_OPTIONS: DrawingField['options'] = [
   { value: 'start', label: 'Start' },
   { value: 'end', label: 'End' },
