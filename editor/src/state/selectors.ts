@@ -127,10 +127,15 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
   // Rebuild per discipline: merge by tableName, rekey csvRows with selection-ID prefix.
   // This dedupes floor + global entries for the same table and makes LeftPanel
   // selection IDs match the rest of the app (Canvas/3D use prefixed IDs).
+  //
+  // tablePrefix tracks which scope each tableName lives in so we can later
+  // refresh csvRows from the live document with the correct selection-ID prefix.
+  const tablePrefix = new Map<string, string>();
   const result = new Map<string, LayerData[]>();
   for (const [disc, entries] of byDiscipline) {
     const merged = new Map<string, LayerData>();
     for (const { layer, prefix } of entries) {
+      tablePrefix.set(layer.tableName, prefix);
       const existing = merged.get(layer.tableName);
       const combined = new Map(existing?.csvRows ?? []);
       for (const [rawId, row] of layer.csvRows) {
@@ -139,6 +144,27 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
       merged.set(layer.tableName, { ...(existing ?? layer), csvRows: combined });
     }
     result.set(disc, Array.from(merged.values()));
+  }
+
+  // Replace each layer's csvRows with the live document state so the panel
+  // reflects CREATE / DELETE / UPDATE_ATTRS immediately rather than waiting
+  // for a project reload. Falls through to the merged CSV-derived rows for
+  // any table not present in the document (e.g. when project hasn't fully
+  // hydrated yet).
+  if (state.document) {
+    const liveByTable = new Map<string, Map<string, Record<string, string>>>();
+    for (const el of state.document.elements.values()) {
+      let m = liveByTable.get(el.tableName);
+      if (!m) { m = new Map(); liveByTable.set(el.tableName, m); }
+      const prefix = tablePrefix.get(el.tableName) ?? state.currentLevel;
+      m.set(`${prefix}:${el.id}`, el.attrs);
+    }
+    for (const [, layers] of result) {
+      for (let i = 0; i < layers.length; i++) {
+        const live = liveByTable.get(layers[i].tableName);
+        if (live) layers[i] = { ...layers[i], csvRows: live };
+      }
+    }
   }
 
   return allDisciplines.map(discipline => ({

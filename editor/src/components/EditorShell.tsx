@@ -192,7 +192,14 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   // ensures elements beyond the viewBox are still rendered.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const viewBox = useMemo(() => getComputedViewBox(state), [state.project, state.currentLevel]);
-  const layerGroups = useMemo(() => getLayerGroups(state), [state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline]);
+  const layerGroups = useMemo(
+    () => getLayerGroups(state),
+    // documentVersion bumps on every CREATE / DELETE / UPDATE_ATTRS / MOVE /
+    // RESIZE — needed so the panel's counts + element list track live edits
+    // instead of waiting for a project reload.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline, state.document, state.documentVersion],
+  );
   const selectedData = useMemo(() => getSelectedElementData(state), [state.selectedIds, state.project, state.currentLevel, state.document, state.documentVersion]);
   const activeDiscipline = state.activeDiscipline;
 
