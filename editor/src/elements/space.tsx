@@ -190,12 +190,18 @@ export const spaceModule: ElementModule<SpaceFacts> = {
     return { x: 0, y: 0 };
   },
 
-  selectionHandles(facts): SelectionHandle[] {
-    // A room is conceptually a named seed — no width/height to resize. Show
-    // one move handle parked on the visible name label.
+  selectionHandles(_facts, el): SelectionHandle[] {
+    // Anchor the handle to the seed (offset by the label distance), not to
+    // facts.anchor — facts.anchor is the derived polygon centroid, which is
+    // invariant to small seed movements within the same room. Pinning the
+    // handle to that centroid makes it look "stuck" while the user drags
+    // inside the room. The seed always tracks the cursor 1:1.
+    if (el.geometry !== 'point') return [];
+    const seedX = el.position.x;
+    const seedY = el.position.y;
     return [{
       id: 'move',
-      position: { x: facts.anchor.x, y: facts.anchor.y - NAME_LABEL_OFFSET },
+      position: { x: seedX, y: seedY - NAME_LABEL_OFFSET },
       cursor: 'move',
       onDrag(snapped, dragStart, snapshot) {
         if (snapshot.geometry !== 'point') return {};

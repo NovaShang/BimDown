@@ -34,6 +34,14 @@ export const drawPointTool: ToolHandler = {
     const existingIds = new Set(state.document?.elements.keys() ?? []);
     const id = generateId(target.tableName, existingIds);
 
+    // Sync x/y attrs from the placement coordinate when the table declares
+    // those CSV columns (e.g. space, where x/y *are* the persisted position).
+    // For tables that don't (column, equipment, …), the keys aren't in
+    // mergedAttrs so this is a no-op.
+    const attrs: Record<string, string> = { ...mergedAttrs, id, size_x: String(w), size_y: String(h) };
+    if ('x' in attrs) attrs.x = String(pt.x);
+    if ('y' in attrs) attrs.y = String(pt.y);
+
     const element: PointElement = {
       id,
       tableName: target.tableName,
@@ -42,7 +50,7 @@ export const drawPointTool: ToolHandler = {
       position: { x: pt.x, y: pt.y },
       width: w,
       height: h,
-      attrs: { ...mergedAttrs, id, size_x: String(w), size_y: String(h) },
+      attrs,
     };
 
     ctx.dispatch({ type: 'CREATE_ELEMENT', element });

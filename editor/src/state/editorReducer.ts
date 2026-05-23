@@ -809,11 +809,14 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
         start: { x: el.start.x + dx, y: el.start.y + dy },
         end: { x: el.end.x + dx, y: el.end.y + dy },
       };
-    case 'point':
-      return {
-        ...el,
-        position: { x: el.position.x + dx, y: el.position.y + dy },
-      };
+    case 'point': {
+      const newPos = { x: el.position.x + dx, y: el.position.y + dy };
+      // Sync x/y attrs for tables that persist position via CSV columns (space).
+      const attrs = { ...el.attrs };
+      if ('x' in attrs) attrs.x = String(newPos.x);
+      if ('y' in attrs) attrs.y = String(newPos.y);
+      return { ...el, position: newPos, attrs };
+    }
     case 'polygon':
       return {
         ...el,
@@ -898,13 +901,18 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
     case 'point': {
       const newW = 'width' in changes ? (changes as Partial<PointElement>).width! : el.width;
       const newH = 'height' in changes ? (changes as Partial<PointElement>).height! : el.height;
-      // Sync size_x/size_y attrs so property panel and CSV stay in sync with SVG geometry
+      const newPos = 'position' in changes ? (changes as Partial<PointElement>).position! : el.position;
+      // Sync size_x/size_y/x/y attrs so property panel + CSV stay in sync with geometry.
+      // For CSV-only tables like `space`, x/y *are* the persisted position columns —
+      // without this sync the element re-loads at (0,0) after refresh.
       const pointAttrs = { ...el.attrs };
       if ('width' in changes && 'size_x' in pointAttrs) pointAttrs.size_x = String(newW);
       if ('height' in changes && 'size_y' in pointAttrs) pointAttrs.size_y = String(newH);
+      if ('position' in changes && 'x' in pointAttrs) pointAttrs.x = String(newPos.x);
+      if ('position' in changes && 'y' in pointAttrs) pointAttrs.y = String(newPos.y);
       return {
         ...el,
-        position: 'position' in changes ? (changes as Partial<PointElement>).position! : el.position,
+        position: newPos,
         width: newW,
         height: newH,
         attrs: pointAttrs,
