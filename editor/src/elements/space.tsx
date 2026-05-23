@@ -83,8 +83,11 @@ export const spaceModule: ElementModule<SpaceFacts> = {
       );
       if (derived && derived.length >= 3) {
         // CSV row remains a point seed; facts upgrade to polygon so draw2D
-        // can render the derived outline + filled interior.
-        return { id: el.id, kind: 'polygon', anchor: centroid(derived), vertices: derived, number, name };
+        // can render the derived outline + filled interior. The anchor stays
+        // on the seed (not the polygon centroid) so the label, the move
+        // handle and the user's click point all line up — moving the seed
+        // visually moves everything together.
+        return { id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name };
       }
       return { id: el.id, kind: 'point', anchor: pt.position, number, name };
     }
