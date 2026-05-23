@@ -100,6 +100,38 @@ export interface Bounds {
   x: number; y: number; w: number; h: number;
 }
 
+// ─── Selection handles ───────────────────────────────────────────────────────
+
+/**
+ * A draggable handle a module exposes for the selection UI. Replaces the
+ * built-in "line endpoints / point bbox / polygon vertices" defaults when an
+ * element type has parameters that don't fit those shapes (e.g. a round
+ * column's radius, a room's move-only seed at the label).
+ */
+export interface SelectionHandle {
+  /** Stable id within the element. Used as React key + drag identification. */
+  id: string;
+  /** Visible position in model coords. */
+  position: { x: number; y: number };
+  /** CSS cursor when hovering. Defaults to `move`. */
+  cursor?: string;
+  /** Optional fill color override (default: cyan). */
+  color?: string;
+  /**
+   * Called on each pointermove during a drag. Receives the snapped pointer
+   * position in model coords, the pointer position at pointerdown (for
+   * delta-based "translate" handles), and the element snapshot taken at
+   * drag-start (stable origin to compute from — avoids drift from
+   * mid-drag preview updates). Returns the partial element to merge via
+   * RESIZE_ELEMENT { preview: true }.
+   */
+  onDrag(
+    snapped: { x: number; y: number },
+    dragStart: { x: number; y: number },
+    snapshot: CanonicalElement,
+  ): Partial<CanonicalElement>;
+}
+
 // ─── ElementModule contract ──────────────────────────────────────────────────
 
 /**
@@ -188,6 +220,34 @@ export interface ElementModule<TFacts = unknown> {
 
   /** Optional: model-space bounds (used for viewBox, marquee, etc.). */
   bbox?(facts: TFacts): Bounds | null;
+
+  // ─── Selection UI ─────────────────────────────────────────────────────────
+
+  /**
+   * Anchor for the floating action bar / selection overlay. Pure function on
+   * the canonical element so it can be called outside the geometry provider
+   * (e.g. EditorShell-level useOverlayItems). Default: bbox center derived
+   * from geometry. Override when the visual focus of an element diverges
+   * from its geometric bbox center (e.g. a room's label position).
+   */
+  selectionAnchor?(element: CanonicalElement): { x: number; y: number };
+
+  /**
+   * Selection handles for this element. When omitted, ResizeHandles renders
+   * the built-in geometry-based defaults (line endpoints + arc midpoint,
+   * point bbox corners, polygon vertices). Return `undefined` to fall through
+   * to the default; `[]` to render no handles. Override to express
+   * element-specific edits (round column diameter, room move-on-label, etc.).
+   */
+  selectionHandles?(facts: TFacts, element: CanonicalElement): SelectionHandle[] | undefined;
+
+  /**
+   * Called when the placement tool for this table activates. Receives the
+   * count of existing elements of this table in the loaded document; returned
+   * attrs are merged on top of `getDefaultDrawingAttrs` so the toolbar shows
+   * them pre-populated. Used for sequential defaults like "Room N".
+   */
+  autoFillOnPlace?(existingCount: number): Record<string, string>;
 }
 
 /** Type-erased module for the registry. */

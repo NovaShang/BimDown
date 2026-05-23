@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import type { ReactNode } from 'react';
 import type { DocumentState } from '../model/document.ts';
 import { toElementId } from '../model/ids.ts';
+import { getElementModule } from '../elements/registry.ts';
 
 /**
  * Anchor point for positioning the overlay element relative to the computed screen position.
@@ -62,34 +63,9 @@ function getSelectionBBox(
   return found ? { minX, minY, maxX, maxY } : null;
 }
 
-/** Polygon centroid (area-weighted), used as the visual anchor for elements
- *  whose label sits at the centroid rather than the bbox center (e.g. spaces). */
-function polygonCentroid(vertices: { x: number; y: number }[]): { x: number; y: number } {
-  let area = 0, cx = 0, cy = 0;
-  const n = vertices.length;
-  for (let i = 0; i < n; i++) {
-    const a = vertices[i], b = vertices[(i + 1) % n];
-    const cross = a.x * b.y - b.x * a.y;
-    area += cross;
-    cx += (a.x + b.x) * cross;
-    cy += (a.y + b.y) * cross;
-  }
-  area /= 2;
-  if (Math.abs(area) < 1e-10) {
-    const sx = vertices.reduce((s, v) => s + v.x, 0) / n;
-    const sy = vertices.reduce((s, v) => s + v.y, 0) / n;
-    return { x: sx, y: sy };
-  }
-  return { x: cx / (6 * area), y: cy / (6 * area) };
-}
-
-/** Tables whose overlay anchor is the label, not the bbox center. For these
- *  the action bar sticks to where the user's eye is — the room label. */
-const LABEL_ANCHORED_TABLES = new Set(['space']);
-
-/** Compute the overlay anchor point for the current selection. Returns the
- *  label centroid when a single label-anchored element is selected; otherwise
- *  falls back to the bbox center of all selected elements. */
+/** Compute the overlay anchor point for the current selection. When a single
+ *  element is selected and its module exposes a `selectionAnchor`, that wins;
+ *  otherwise falls back to the bbox center of all selected elements. */
 export function getSelectionCenter(
   selectedIds: Set<string>,
   document: DocumentState | null,
@@ -99,10 +75,8 @@ export function getSelectionCenter(
   if (selectedIds.size === 1) {
     const id = [...selectedIds][0];
     const el = document.elements.get(toElementId(id));
-    if (el && LABEL_ANCHORED_TABLES.has(el.tableName)) {
-      if (el.geometry === 'polygon') return polygonCentroid(el.vertices);
-      if (el.geometry === 'point') return { x: el.position.x, y: el.position.y };
-    }
+    const anchor = el && getElementModule(el.tableName)?.selectionAnchor?.(el);
+    if (anchor) return anchor;
   }
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -156,7 +130,7 @@ export function useOverlayItems(
     if (!content) return [];
 
     // Position priority:
-    //   1. Label-anchored single selection → label position (e.g. space).
+    //   1. Module-supplied selectionAnchor for single selection.
     //   2. Otherwise → element bbox top, centered horizontally — gives the
     //      action bar room above the element instead of overlapping it.
     let position: { x: number; y: number } | null = null;
@@ -164,10 +138,8 @@ export function useOverlayItems(
     if (selectedIds.size === 1) {
       const id = [...selectedIds][0];
       const el = document?.elements.get(toElementId(id));
-      if (el && el.tableName === 'space') {
-        if (el.geometry === 'polygon') position = polygonCentroid(el.vertices);
-        else if (el.geometry === 'point') position = { x: el.position.x, y: el.position.y };
-      }
+      const anchor = el && getElementModule(el.tableName)?.selectionAnchor?.(el);
+      if (anchor) position = anchor;
     }
     if (!position) {
       const bb = getSelectionBBox(selectedIds, document);

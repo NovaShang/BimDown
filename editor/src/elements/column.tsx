@@ -176,6 +176,38 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
         w: bb.w, h: bb.d,
       };
     },
+
+    selectionHandles(facts, el) {
+      // Round columns have a single radius parameter — the bbox-4-corner
+      // default would let the user stretch them into ellipses. Expose
+      // center + one edge handle instead. Rectangular + structural sections
+      // (I / T / L / C / cross) fall through to the default bbox handles
+      // until each gets its own per-parameter expression.
+      if (el.geometry !== 'point') return undefined;
+      if (facts.section.family.id !== 'round') return undefined;
+      const c = facts.position;
+      const r = el.width / 2;
+      return [
+        {
+          id: 'center', position: c, cursor: 'move',
+          onDrag(snapped) { return { position: snapped }; },
+        },
+        {
+          id: 'radius',
+          position: { x: c.x + r, y: c.y },
+          cursor: 'ew-resize',
+          onDrag(snapped, _ds, snapshot) {
+            if (snapshot.geometry !== 'point') return {};
+            const dx = snapped.x - snapshot.position.x;
+            const dy = snapped.y - snapshot.position.y;
+            const newD = Math.max(0.05, 2 * Math.sqrt(dx * dx + dy * dy));
+            // applyResize syncs attrs.size_x / size_y automatically when
+            // width / height change; no need to mutate attrs here.
+            return { width: newD, height: newD };
+          },
+        },
+      ];
+    },
   };
 }
 

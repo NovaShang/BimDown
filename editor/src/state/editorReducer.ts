@@ -8,7 +8,7 @@ import { isVerticalSpanTable } from '../model/tableRegistry.ts';
 import { serializeToGeoJson } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
-import i18n from '../i18n/i18n.ts';
+import { getElementModule } from '../elements/registry.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -690,15 +690,16 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       let attrs: Record<string, string> = {};
       if (action.target) {
         attrs = getDefaultDrawingAttrs(action.target.tableName, state.currentLevel, state.project?.levels);
-        // Auto-fill sequential default name for rooms so the user doesn't have
-        // to type one to make a placement visible. Counts existing space
-        // elements in the document; the next placement bumps the counter.
-        if (action.target.tableName === 'space' && state.document) {
+        // Modules opt in to sequential defaults / other tool-activation
+        // auto-fills via `autoFillOnPlace`. Counts existing elements of this
+        // table so each placement bumps the next default value.
+        const mod = getElementModule(action.target.tableName);
+        if (mod?.autoFillOnPlace && state.document) {
           let count = 0;
           for (const el of state.document.elements.values()) {
-            if (el.tableName === 'space') count++;
+            if (el.tableName === action.target.tableName) count++;
           }
-          attrs.name = i18n.t('space.defaultName', { n: count + 1, defaultValue: `Room ${count + 1}` });
+          Object.assign(attrs, mod.autoFillOnPlace(count));
         }
       }
       return { ...state, drawingTarget: action.target, drawingAttrs: attrs };

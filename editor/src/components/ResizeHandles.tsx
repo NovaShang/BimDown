@@ -5,6 +5,8 @@ import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { arcFromMidpoint, arcMidpoint, arcLength } from '../geometry/arc.ts';
 import { formatLength, getProjectUnits } from '../utils/units.ts';
 import type { ProjectUnit } from '../types.ts';
+import { getElementModule } from '../elements/registry.ts';
+import { useGeometryContext } from '../adapters/svg/context.tsx';
 
 function LengthLabel({ from, to, scale, length, projectUnit }: { from: Point; to: Point; scale: number; length?: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
@@ -58,6 +60,9 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   stateRef.current = state;
   const projectUnit = getProjectUnits(state);
   const beforeRef = useRef<CanonicalElement | null>(null);
+  /** Pointer position at the moment the current drag started. Custom handles
+   *  read this so "translate" behavior can compute deltas without drift. */
+  const dragStartRef = useRef<Point>({ x: 0, y: 0 });
 
   const screenToSvg = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -94,6 +99,10 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
 
       // Snapshot before drag starts
       beforeRef.current = stateRef.current.document?.elements.get(element.id) ?? null;
+      // Remember pointerdown position in model coords so module-defined
+      // handles can compute drag deltas from a stable origin.
+      const startPt = screenToSvg(e.clientX, e.clientY);
+      dragStartRef.current = startPt ?? { x: 0, y: 0 };
 
       const moveHandler = (me: PointerEvent) => {
         const pt = snapSvgPoint(me.clientX, me.clientY);
@@ -120,7 +129,45 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
       target.addEventListener('pointermove', moveHandler);
       target.addEventListener('pointerup', upHandler);
     };
-  }, [snapSvgPoint, element.id, dispatch, onSnap]);
+  }, [snapSvgPoint, screenToSvg, element.id, dispatch, onSnap]);
+
+  // ─── Module-defined handles ─────────────────────────────────────────────────
+  // When the element's module declares `selectionHandles`, that overrides the
+  // built-in geometry-based defaults (line endpoints, point bbox corners,
+  // polygon vertices). Returning `undefined` from the module falls through to
+  // the defaults; returning `[]` hides handles entirely.
+  const geometryCtx = useGeometryContext();
+  const mod = getElementModule(element.tableName);
+  if (mod && geometryCtx && mod.selectionHandles) {
+    const facts = mod.geometry(element, geometryCtx);
+    if (facts != null) {
+      const customHandles = mod.selectionHandles(facts, element);
+      if (customHandles !== undefined) {
+        return (
+          <g className="resize-handles" transform="scale(1,-1)">
+            {customHandles.map(h => (
+              <circle
+                key={h.id}
+                cx={h.position.x} cy={h.position.y}
+                r={r * (h.id === 'move' || h.id === 'center' ? 1.3 : 1)}
+                fill={h.color ?? '#06b6d4'} stroke="white" strokeWidth={sw}
+                cursor={h.cursor ?? 'move'}
+                onPointerDown={handleDrag((x, y) => {
+                  const snapshot = beforeRef.current;
+                  if (!snapshot) return;
+                  const changes = h.onDrag({ x, y }, dragStartRef.current, snapshot);
+                  if (Object.keys(changes).length === 0) return;
+                  dispatch({
+                    type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes,
+                  });
+                })}
+              />
+            ))}
+          </g>
+        );
+      }
+    }
+  }
 
   if (element.geometry === 'line' || element.geometry === 'spatial_line') {
     const lineEl = element as LineElement | SpatialLineElement;
@@ -168,35 +215,6 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   }
 
   if (element.geometry === 'point') {
-    // Spaces are conceptually a single named seed — no width/height to resize.
-    // Render one move handle at the room label so the affordance lands on the
-    // visible text rather than at an empty bbox center. The name label is
-    // drawn 0.45m below the seed in space.draw2D; mirror that offset here so
-    // the handle visually coincides with whichever label is showing.
-    if (element.tableName === 'space') {
-      const { position } = element;
-      const NAME_LABEL_OFFSET = 0.45;
-      const handleY = element.attrs.name ? position.y - NAME_LABEL_OFFSET : position.y;
-      return (
-        <g className="resize-handles" transform="scale(1,-1)">
-          <circle
-            cx={position.x} cy={handleY}
-            r={r * 1.3}
-            fill="#06b6d4" stroke="white" strokeWidth={sw}
-            cursor="move"
-            onPointerDown={handleDrag((x, y) => {
-              // Convert the dragged handle coord back to the seed by undoing the
-              // label offset so the underlying position tracks the cursor 1:1.
-              const seedY = element.attrs.name ? y + NAME_LABEL_OFFSET : y;
-              dispatch({
-                type: 'RESIZE_ELEMENT', id: element.id, preview: true,
-                changes: { position: { x, y: seedY } },
-              });
-            })}
-          />
-        </g>
-      );
-    }
     const { position, width, height, attrs } = element;
     const hw = width / 2;
     const hh = height / 2;

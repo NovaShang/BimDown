@@ -1,9 +1,15 @@
 import type { ReactNode } from 'react';
-import type { ElementModule, GeometryContext } from './archetypes.ts';
+import type { ElementModule, GeometryContext, SelectionHandle } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, PointElement, PolygonElement, Point } from '../model/elements.ts';
 import { BASE_OFFSET_FIELD } from './_options.ts';
 import { deriveSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
+import i18n from '../i18n/i18n.ts';
+
+/** Vertical offset (in model units) between the seed and the rendered name
+ *  label. Same number is used by both draw2D and the selection handle so the
+ *  user's eye lands exactly on the visible text. */
+const NAME_LABEL_OFFSET = 0.45;
 
 export interface SpaceFacts {
   id: string;
@@ -133,9 +139,9 @@ export const spaceModule: ElementModule<SpaceFacts> = {
           </text>
         )}
         {facts.name && (
-          <text x={x} y={y - 0.45} textAnchor="middle" dominantBaseline="central"
+          <text x={x} y={y - NAME_LABEL_OFFSET} textAnchor="middle" dominantBaseline="central"
             fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={500} fill="#5a9fff"
-            transform={`translate(${x},${y - 0.45}) scale(1,-1) translate(${-x},${-(y - 0.45)})`}>
+            transform={`translate(${x},${y - NAME_LABEL_OFFSET}) scale(1,-1) translate(${-x},${-(y - NAME_LABEL_OFFSET)})`}>
             {facts.name}
           </text>
         )}
@@ -146,6 +152,59 @@ export const spaceModule: ElementModule<SpaceFacts> = {
   draw3D(): ReactNode {
     // V1: spaces don't render visible 3D mesh (they're labels in 2D).
     return null;
+  },
+
+  selectionAnchor(el) {
+    // Pure on raw element so the overlay bar can be computed without running
+    // geometry (useOverlayItems lives above the geometry provider). For
+    // polygon-stored spaces we still hit the polygon centroid; the common
+    // case is point-stored with derived polygon, which lands on the seed
+    // (matches where the labels are drawn).
+    if (el.geometry === 'polygon' && el.vertices.length >= 3) {
+      // Inline area-weighted centroid (same formula as space.geometry's centroid()).
+      let area = 0, cx = 0, cy = 0;
+      const n = el.vertices.length;
+      for (let i = 0; i < n; i++) {
+        const a = el.vertices[i], b = el.vertices[(i + 1) % n];
+        const cross = a.x * b.y - b.x * a.y;
+        area += cross;
+        cx += (a.x + b.x) * cross;
+        cy += (a.y + b.y) * cross;
+      }
+      area /= 2;
+      const ax = Math.abs(area) < 1e-10
+        ? el.vertices.reduce((s, v) => s + v.x, 0) / n
+        : cx / (6 * area);
+      const ay = Math.abs(area) < 1e-10
+        ? el.vertices.reduce((s, v) => s + v.y, 0) / n
+        : cy / (6 * area);
+      return { x: ax, y: ay - NAME_LABEL_OFFSET };
+    }
+    if (el.geometry === 'point') {
+      return { x: el.position.x, y: el.position.y - NAME_LABEL_OFFSET };
+    }
+    return { x: 0, y: 0 };
+  },
+
+  selectionHandles(facts): SelectionHandle[] {
+    // A room is conceptually a named seed — no width/height to resize. Show
+    // one move handle parked on the visible name label.
+    return [{
+      id: 'move',
+      position: { x: facts.anchor.x, y: facts.anchor.y - NAME_LABEL_OFFSET },
+      cursor: 'move',
+      onDrag(snapped, dragStart, snapshot) {
+        if (snapshot.geometry !== 'point') return {};
+        const dx = snapped.x - dragStart.x;
+        const dy = snapped.y - dragStart.y;
+        return { position: { x: snapshot.position.x + dx, y: snapshot.position.y + dy } };
+      },
+    }];
+  },
+
+  autoFillOnPlace(existingCount) {
+    const n = existingCount + 1;
+    return { name: i18n.t('space.defaultName', { n, defaultValue: `Room ${n}` }) };
   },
 };
 
