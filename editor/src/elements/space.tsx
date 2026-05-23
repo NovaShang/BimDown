@@ -83,13 +83,26 @@ export const spaceModule: ElementModule<SpaceFacts> = {
       />
     ) : null;
 
+    // Point space marker — always render a small dot so the seed is visible
+    // even when the user hasn't named the room yet. Otherwise placing a
+    // space looks like "no reaction" (rooms only become visible once a
+    // boundary is derived from surrounding walls).
+    const marker = facts.kind === 'point' ? (
+      <circle
+        cx={facts.anchor.x} cy={facts.anchor.y} r={0.12}
+        fill="rgba(58,134,255,0.2)" stroke={highlight ? '#3a7bff' : '#3a86ff'}
+        strokeWidth={0.025} strokeDasharray="0.05 0.03"
+      />
+    ) : null;
+
     if (!facts.number && !facts.name) {
-      return <g data-id={facts.id}>{outline}</g>;
+      return <g data-id={facts.id}>{outline}{marker}</g>;
     }
     const { x, y } = facts.anchor;
     return (
       <g data-id={facts.id}>
         {outline}
+        {marker}
         {facts.number && (
           <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
             fontSize={0.4} fontFamily="Inter, sans-serif" fontWeight={700} fill="#3a86ff"
