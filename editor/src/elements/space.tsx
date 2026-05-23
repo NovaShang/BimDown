@@ -4,7 +4,11 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, PointElement, PolygonElement, Point } from '../model/elements.ts';
 import { BASE_OFFSET_FIELD } from './_options.ts';
 import { deriveSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
-import i18n from '../i18n/i18n.ts';
+// Pull the i18next singleton directly. Importing `../i18n/i18n.ts` instead
+// would drag the editor's bootstrap `.init()` call into any host that
+// imports this module — and the host (e.g. the BimClaw web app) has its
+// own merged resources, so a second init wipes them out.
+import i18n from 'i18next';
 
 /** Vertical offset (in model units) between the seed and the rendered name
  *  label. Same number is used by both draw2D and the selection handle so the
