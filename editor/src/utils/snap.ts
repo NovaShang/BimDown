@@ -275,6 +275,10 @@ export function computeSnap(
   // Track edge snap separately (needs 2D coherent snap)
   let bestEdge: { target: SnapTarget; dist: number } | null = null;
 
+  // Tangent direction of the gridline that captured the cursor (Pass 0b),
+  // used by Pass 5 to keep along-line integer snapping ON the line.
+  let gridLineDir: { ux: number; uy: number; a: Point } | null = null;
+
   const targets = elements ? extractSnapTargets(elements, excludeIds, input) : [];
   // Mix in extra endpoints (e.g. polygon vertices being drawn but not yet
   // committed to the document) as high-priority snap targets.
@@ -325,7 +329,7 @@ export function computeSnap(
 
     // Pass 0b: Nearest point on grid line — priority 1.5
     if (!bestIntersection) {
-      let bestGridLine: { target: SnapTarget; dist: number } | null = null;
+      let bestGridLine: { target: SnapTarget; dist: number; line: { a: Point; b: Point } } | null = null;
       for (const line of extLines) {
         const np = nearestPointOnSegment(input, line.a, line.b);
         const d = dist2D(input, np);
@@ -333,6 +337,7 @@ export function computeSnap(
           bestGridLine = {
             target: { x: np.x, y: np.y, type: 'gridline', priority: 1.5, edgeFrom: line.a, edgeTo: line.b },
             dist: d,
+            line,
           };
         }
       }
@@ -345,6 +350,15 @@ export function computeSnap(
             type: 'edge_segment', x: t.edgeFrom.x, y: t.edgeFrom.y,
             x2: t.edgeTo.x, y2: t.edgeTo.y, snapType: 'gridline',
           });
+        }
+        // Remember the gridline tangent so Pass 5 can do along-line integer snap.
+        const lineA = bestGridLine.line.a;
+        const lineB = bestGridLine.line.b;
+        const ldx = lineB.x - lineA.x;
+        const ldy = lineB.y - lineA.y;
+        const llen = Math.sqrt(ldx * ldx + ldy * ldy);
+        if (llen > 1e-9) {
+          gridLineDir = { ux: ldx / llen, uy: ldy / llen, a: lineA };
         }
       }
     }
@@ -479,31 +493,75 @@ export function computeSnap(
   if (anchor) {
     const preX = snapX ? snapX.value : input.x;
     const preY = snapY ? snapY.value : input.y;
-    const adx = preX - anchor.x;
-    const ady = preY - anchor.y;
-    const rawLen = Math.sqrt(adx * adx + ady * ady);
 
-    if (rawLen > 1e-9) {
+    // Special case: cursor captured by a gridline (Pass 0b). Snap the
+    // along-line distance from the anchor's projection to integer multiples
+    // so the resulting point STAYS on the gridline. (Generic length-snap
+    // scaling below would push the point off the line.)
+    if (
+      gridLineDir &&
+      snapX?.type === 'gridline' &&
+      snapY?.type === 'gridline'
+    ) {
+      const { ux, uy, a: lineA } = gridLineDir;
+      // Project anchor onto the gridline (param along u from lineA).
+      const tAnchor = (anchor.x - lineA.x) * ux + (anchor.y - lineA.y) * uy;
+      // Project the current snapped point onto the same line.
+      const tP = (preX - lineA.x) * ux + (preY - lineA.y) * uy;
+      const along = tP - tAnchor;
+
       const gridSpacingLen = adaptiveGridSpacing(pixelSize);
-      const snappedLen = Math.round(rawLen / gridSpacingLen) * gridSpacingLen;
-      const lenDiff = Math.abs(rawLen - snappedLen);
+      const alongSnapped = Math.round(along / gridSpacingLen) * gridSpacingLen;
+      const lenDiff = Math.abs(along - alongSnapped);
       const lenThreshold = gridSpacingLen * 0.3;
 
-      if (snappedLen > 0 && lenDiff < lenThreshold && lenDiff < threshold) {
-        const scale = snappedLen / rawLen;
-        const newX = anchor.x + adx * scale;
-        const newY = anchor.y + ady * scale;
-        snapX = { type: snapX?.type ?? 'length', value: newX, priority: snapX?.priority ?? 3.5 };
-        snapY = { type: snapY?.type ?? 'length', value: newY, priority: snapY?.priority ?? 3.5 };
+      if (Math.abs(along) > 1e-9 && lenDiff < lenThreshold && lenDiff < threshold) {
+        const tNew = tAnchor + alongSnapped;
+        const newX = lineA.x + tNew * ux;
+        const newY = lineA.y + tNew * uy;
+        // Keep type 'gridline' so we don't fall through to general length snap
+        // and so downstream styling stays consistent.
+        snapX = { type: 'gridline', value: newX, priority: snapX.priority };
+        snapY = { type: 'gridline', value: newY, priority: snapY.priority };
 
-        // Add length ring guide (circle at snapped radius)
+        // Length ring (radius = absolute along-line distance) for visual cue.
         guides.push({
           type: 'length_ring',
           x: anchor.x, y: anchor.y,
-          x2: snappedLen, // abuse x2 to carry radius
+          x2: Math.abs(alongSnapped),
           snapType: 'length',
-          label: formatLength(snappedLen),
+          label: formatLength(Math.abs(alongSnapped)),
         });
+      }
+      // Either way, do not run the generic length-scale logic below — it
+      // would move the cursor off the gridline.
+    } else {
+      const adx = preX - anchor.x;
+      const ady = preY - anchor.y;
+      const rawLen = Math.sqrt(adx * adx + ady * ady);
+
+      if (rawLen > 1e-9) {
+        const gridSpacingLen = adaptiveGridSpacing(pixelSize);
+        const snappedLen = Math.round(rawLen / gridSpacingLen) * gridSpacingLen;
+        const lenDiff = Math.abs(rawLen - snappedLen);
+        const lenThreshold = gridSpacingLen * 0.3;
+
+        if (snappedLen > 0 && lenDiff < lenThreshold && lenDiff < threshold) {
+          const scale = snappedLen / rawLen;
+          const newX = anchor.x + adx * scale;
+          const newY = anchor.y + ady * scale;
+          snapX = { type: snapX?.type ?? 'length', value: newX, priority: snapX?.priority ?? 3.5 };
+          snapY = { type: snapY?.type ?? 'length', value: newY, priority: snapY?.priority ?? 3.5 };
+
+          // Add length ring guide (circle at snapped radius)
+          guides.push({
+            type: 'length_ring',
+            x: anchor.x, y: anchor.y,
+            x2: snappedLen, // abuse x2 to carry radius
+            snapType: 'length',
+            label: formatLength(snappedLen),
+          });
+        }
       }
     }
   }

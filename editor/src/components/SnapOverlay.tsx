@@ -1,4 +1,5 @@
 import type { SnapResult, SnapType, GridDistanceInfo } from '../utils/snap.ts';
+import type { Point } from '../model/elements.ts';
 
 interface SnapOverlayProps {
   snap: SnapResult | null;
@@ -7,58 +8,139 @@ interface SnapOverlayProps {
 
 const GUIDE_EXTENT = 500;
 
-// Colors by snap category
-const OBJECT_COLOR = '#ff6b6b';
-const EDGE_COLOR = '#4ecdc4';
-const ANGLE_COLOR = '#a8e6cf';
-const GRID_COLOR = '#ffd166';
-const GRIDLINE_COLOR = '#ef476f';
+// Distinct colors per snap type so the user can tell snaps apart at a glance.
+const ENDPOINT_COLOR = '#06b6d4'; // cyan
+const CENTER_COLOR = '#f59e0b';   // orange
+const MIDPOINT_COLOR = '#a855f7'; // purple
+const GRIDLINE_COLOR = '#fbbf24'; // amber/yellow
+const EDGE_COLOR = '#4ecdc4';     // teal (legacy)
+const ANGLE_COLOR = '#a8e6cf';    // mint (legacy)
+const GRID_COLOR = '#ffd166';     // pale yellow (perpendicular grid-distance)
+const OBJECT_COLOR = '#ff6b6b';   // fallback
 
 function colorForSnapType(t?: SnapType): string {
   if (!t) return OBJECT_COLOR;
+  if (t === 'endpoint') return ENDPOINT_COLOR;
+  if (t === 'center') return CENTER_COLOR;
+  if (t === 'midpoint') return MIDPOINT_COLOR;
+  if (t === 'gridline') return GRIDLINE_COLOR;
   if (t === 'edge') return EDGE_COLOR;
   if (t === 'angle') return ANGLE_COLOR;
-  if (t === 'gridline') return GRIDLINE_COLOR;
   if (t === 'grid') return GRID_COLOR;
   return OBJECT_COLOR;
 }
 
+function snapTypeAbbrev(t?: SnapType): string | null {
+  if (t === 'endpoint') return 'E';
+  if (t === 'center') return 'C';
+  if (t === 'midpoint') return 'M';
+  if (t === 'gridline') return 'G';
+  return null;
+}
+
+/**
+ * Distance from snap point to the closest endpoint among point guides.
+ * Used to emphasize the marker when the cursor result lands exactly on an
+ * endpoint target.
+ */
+function isOnEndpoint(point: Point, guides: readonly { type: string; x: number; y: number; snapType?: SnapType }[]): boolean {
+  for (const g of guides) {
+    if (g.type === 'point' && g.snapType === 'endpoint') {
+      const dx = g.x - point.x;
+      const dy = g.y - point.y;
+      if (dx * dx + dy * dy < 1e-12) return true;
+    }
+  }
+  return false;
+}
+
 /** Render the snap-point marker based on snap type */
-function SnapMarker({ x, y, snapType, s, sw }: {
+function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint }: {
   x: number; y: number; snapType?: SnapType; s: number; sw: number;
+  scale: number;
+  emphasizeEndpoint?: boolean;
 }) {
   const color = colorForSnapType(snapType);
+  const abbrev = snapTypeAbbrev(snapType);
+  // Model-unit radius (≈ 0.08m) for the filled circle as requested.
+  const r = 0.08;
+  // Label positioned a bit to the upper-right of the marker.
+  const labelSize = 0.7 / scale;
+  const labelDx = r + 0.05;
+  const labelDy = -(r + 0.05);
+
+  // Common label rendering (flipped because parent group has scale(1,-1)).
+  const label = abbrev ? (
+    <text
+      x={x + labelDx}
+      y={-(y - labelDy)}
+      fill={color}
+      fontSize={labelSize}
+      fontFamily="monospace"
+      fontWeight="bold"
+      transform="scale(1,-1)"
+      opacity={0.95}
+    >
+      {abbrev}
+    </text>
+  ) : null;
 
   switch (snapType) {
-    case 'endpoint':
-      // Filled square
+    case 'endpoint': {
+      // Filled circle (radius ~0.08m) + cyan ring. When the resulting
+      // position lands exactly on the endpoint, show a larger ring + X
+      // so the user can't miss the alignment.
+      const bigR = 0.12;
       return (
-        <rect
-          x={x - s * 0.7} y={y - s * 0.7}
-          width={s * 1.4} height={s * 1.4}
-          fill={color} opacity={0.9}
-        />
+        <g opacity={0.95}>
+          {emphasizeEndpoint && (
+            <>
+              <circle cx={x} cy={y} r={bigR} fill="none" stroke={color} strokeWidth={sw * 2.2} />
+              <line
+                x1={x - bigR * 0.7} y1={y - bigR * 0.7}
+                x2={x + bigR * 0.7} y2={y + bigR * 0.7}
+                stroke={color} strokeWidth={sw * 2}
+              />
+              <line
+                x1={x - bigR * 0.7} y1={y + bigR * 0.7}
+                x2={x + bigR * 0.7} y2={y - bigR * 0.7}
+                stroke={color} strokeWidth={sw * 2}
+              />
+            </>
+          )}
+          <circle cx={x} cy={y} r={r} fill={color} stroke={color} strokeWidth={sw} />
+          {label}
+        </g>
       );
+    }
     case 'center':
-      // Diamond (45-degree rotated square)
       return (
-        <rect
-          x={x - s * 0.7} y={y - s * 0.7}
-          width={s * 1.4} height={s * 1.4}
-          fill="none" stroke={color} strokeWidth={sw * 1.5}
-          transform={`rotate(45, ${x}, ${y})`}
-          opacity={0.9}
-        />
+        <g opacity={0.95}>
+          <circle cx={x} cy={y} r={r} fill={color} stroke={color} strokeWidth={sw} />
+          {label}
+        </g>
       );
-    case 'midpoint': {
-      // Triangle pointing up
-      const h = s * 1.2;
-      const hw = s * 0.8;
-      const points = `${x},${y - h} ${x - hw},${y + h * 0.5} ${x + hw},${y + h * 0.5}`;
-      return <polygon points={points} fill={color} opacity={0.9} />;
+    case 'midpoint':
+      return (
+        <g opacity={0.95}>
+          <circle cx={x} cy={y} r={r} fill={color} stroke={color} strokeWidth={sw} />
+          {label}
+        </g>
+      );
+    case 'gridline': {
+      // Crosshair through the snap point + small label.
+      const t = 0.18;
+      return (
+        <g opacity={0.95}>
+          <line x1={x - t} y1={y} x2={x + t} y2={y} stroke={color} strokeWidth={sw * 1.6} />
+          <line x1={x} y1={y - t} x2={x} y2={y + t} stroke={color} strokeWidth={sw * 1.6} />
+          <circle cx={x} cy={y} r={r * 0.6} fill={color} />
+          {label}
+        </g>
+      );
     }
     case 'edge': {
-      // Crosshair tick mark
+      // Crosshair tick mark (legacy)
       const t = s * 1.0;
       return (
         <g opacity={0.9}>
@@ -162,7 +244,12 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
   const sw = 0.06 / scale;
   const dashLen = 0.6 / scale;
   const gapLen = 0.4 / scale;
+  // Slightly bolder stroke for axis-alignment guides so they're easier to see.
+  const axisSw = sw * 1.5;
+  const axisDash = `${dashLen * 1.2},${gapLen * 0.8}`;
   const markerSize = 0.3 / scale;
+
+  const endpointHit = isOnEndpoint(snap.point, guides) && snap.dominantType === 'endpoint';
 
   return (
     <g className="snap-overlay" transform="scale(1,-1)">
@@ -174,9 +261,9 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
               x1={g.x} y1={g.y - GUIDE_EXTENT}
               x2={g.x} y2={g.y + GUIDE_EXTENT}
               stroke={colorForSnapType(g.snapType)}
-              strokeWidth={sw}
-              strokeDasharray={`${dashLen},${gapLen}`}
-              opacity={0.7}
+              strokeWidth={axisSw}
+              strokeDasharray={axisDash}
+              opacity={0.85}
             />
           );
         }
@@ -187,13 +274,18 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
               x1={g.x - GUIDE_EXTENT} y1={g.y}
               x2={g.x + GUIDE_EXTENT} y2={g.y}
               stroke={colorForSnapType(g.snapType)}
-              strokeWidth={sw}
-              strokeDasharray={`${dashLen},${gapLen}`}
-              opacity={0.7}
+              strokeWidth={axisSw}
+              strokeDasharray={axisDash}
+              opacity={0.85}
             />
           );
         }
         if (g.type === 'point') {
+          const isEndpointMarker = g.snapType === 'endpoint';
+          const emphasize = isEndpointMarker
+            && endpointHit
+            && Math.abs(g.x - snap.point.x) < 1e-9
+            && Math.abs(g.y - snap.point.y) < 1e-9;
           return (
             <SnapMarker
               key={i}
@@ -201,6 +293,8 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
               snapType={g.snapType}
               s={markerSize}
               sw={sw}
+              scale={scale}
+              emphasizeEndpoint={emphasize}
             />
           );
         }
@@ -210,9 +304,9 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
               key={i}
               x1={g.x} y1={g.y}
               x2={g.x2} y2={g.y2}
-              stroke={EDGE_COLOR}
+              stroke={colorForSnapType(g.snapType)}
               strokeWidth={sw * 2}
-              opacity={0.5}
+              opacity={0.55}
             />
           );
         }
