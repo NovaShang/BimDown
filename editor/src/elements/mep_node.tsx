@@ -55,6 +55,8 @@ export interface MepNodeFacts {
   shape: string;
   sizeW: number;
   sizeH: number;
+  /** Rotation around the world Z axis, in degrees CCW. */
+  rotationDeg: number;
 }
 
 function findConnected(node: PointElement, ctx: GeometryContext): ConnectedPipe[] {
@@ -144,8 +146,8 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
   discipline: 'mep',
   archetype: 'point',
   prefix: 'mn',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'kind', 'family', 'shape', 'size_w', 'size_h'],
-  defaults: { base_offset: '0', system_type: '', kind: '', family: '', shape: '', size_w: '', size_h: '' },
+  csvHeaders: ['number', 'base_offset', 'system_type', 'kind', 'family', 'shape', 'size_w', 'size_h', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', kind: '', family: '', shape: '', size_w: '', size_h: '', rotation: '0' },
   drawingFields: [],
   propertyFields: [],
   layerStyle: { displayName: 'MEP Nodes', color: '#ff6b6b', icon: '●', order: 13.5 },
@@ -171,6 +173,7 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
       shape: p.attrs.shape || '',
       sizeW: parseFloat(p.attrs.size_w || '0') || 0,
       sizeH: parseFloat(p.attrs.size_h || '0') || 0,
+      rotationDeg: parseFloat(p.attrs.rotation || '0') || 0,
     };
   },
 
@@ -212,9 +215,11 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
     const size = facts.sizeW > 0 ? facts.sizeW : 0.12;
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'mep_node'));
     const isHL = drawCtx.selected || drawCtx.hovered;
+    const rotY = -(facts.rotationDeg * Math.PI) / 180;
     return (
       <mesh
         position={[facts.position.x, facts.baseY, -facts.position.y]}
+        rotation={[0, rotY, 0]}
         scale={[size, size, size]}
         material={isHL ? undefined : material}
         userData={{ elementId: facts.id }}

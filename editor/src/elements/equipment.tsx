@@ -112,10 +112,11 @@ function makeEquipmentModule(opts: {
 
 export const equipmentModule = makeEquipmentModule({
   table: 'equipment', prefix: 'eq', color: '#e63946',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'equipment_type'],
-  defaults: { base_offset: '0', system_type: '', equipment_type: 'other' },
+  csvHeaders: ['number', 'base_offset', 'system_type', 'equipment_type', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', equipment_type: 'other', rotation: '0' },
   drawingFields: [
     { key: 'equipment_type', label: 'Type', type: 'select', options: EQUIPMENT_TYPE_OPTIONS },
+    { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15 },
     BASE_OFFSET_FIELD,
   ],
   layerStyle: { displayName: 'Equipment', color: '#e63946', icon: '⚙', order: 12 },
@@ -124,11 +125,12 @@ export const equipmentModule = makeEquipmentModule({
 
 export const terminalModule = makeEquipmentModule({
   table: 'terminal', prefix: 'tm', color: '#f77f00',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'terminal_type'],
-  defaults: { base_offset: '0', system_type: '', terminal_type: 'other' },
+  csvHeaders: ['number', 'base_offset', 'system_type', 'terminal_type', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', terminal_type: 'other', rotation: '0' },
   drawingFields: [
     { key: 'terminal_type', label: 'Type', type: 'select', options: TERMINAL_TYPE_OPTIONS },
     { key: 'system_type', label: 'System', type: 'text' },
+    { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15 },
     BASE_OFFSET_FIELD,
   ],
   layerStyle: { displayName: 'Terminals', color: '#f77f00', icon: '◆', order: 13 },
