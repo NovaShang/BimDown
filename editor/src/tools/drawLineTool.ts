@@ -7,6 +7,14 @@ import { snapPoint } from '../utils/snap.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 
+/** Reserved drawingAttrs key (double underscore prefix to avoid CSV-field collision)
+ *  enabling single-click vertical-pipe placement for MEP topo-line elements. */
+export const VERTICAL_MODE_KEY = '__vertical_mode';
+
+function isVerticalMode(attrs: Record<string, string>): boolean {
+  return attrs[VERTICAL_MODE_KEY] === 'true';
+}
+
 export const drawLineTool: ToolHandler = {
   cursor: 'crosshair',
 
@@ -21,6 +29,16 @@ export const drawLineTool: ToolHandler = {
     const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids);
     const pt = snap.point;
     ctx.setSnap(snap);
+
+    // Vertical placement: single-click → create a spatial_line at start.xy == end.xy
+    // using start_z / end_z from drawingAttrs. Only valid for spatial_line geometry.
+    if (isVerticalMode(state.drawingAttrs)) {
+      const target = state.drawingTarget;
+      if (!target) return;
+      if (geometryTypeForTable(target.tableName) !== 'spatial_line') return;
+      createVerticalElement(ctx, state, target, pt);
+      return;
+    }
 
     const points = state.drawingState?.points || [];
 
@@ -48,6 +66,8 @@ export const drawLineTool: ToolHandler = {
       // Merge drawingAttrs into element attrs
       const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
       const mergedAttrs = { ...baseAttrs, ...da, id };
+      // Strip the reserved UI flag from the persisted attrs.
+      delete mergedAttrs[VERTICAL_MODE_KEY];
 
       const geo = geometryTypeForTable(target.tableName);
       const element: CanonicalElement = geo === 'spatial_line'
@@ -89,7 +109,13 @@ export const drawLineTool: ToolHandler = {
     const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids);
     const pt = snap.point;
 
-    if (state.drawingState && state.drawingState.points.length > 0) {
+    if (isVerticalMode(state.drawingAttrs)) {
+      // Vertical mode: keep cursor preview alive even without a placed start point.
+      ctx.dispatch({
+        type: 'SET_DRAWING_STATE',
+        state: { points: [], cursor: pt },
+      });
+    } else if (state.drawingState && state.drawingState.points.length > 0) {
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
         state: { ...state.drawingState, cursor: pt },
@@ -98,6 +124,49 @@ export const drawLineTool: ToolHandler = {
     ctx.setSnap(snap);
   },
 };
+
+function createVerticalElement(
+  ctx: ToolContext,
+  state: ReturnType<ToolContext['getState']>,
+  target: { tableName: string; discipline: string },
+  pt: { x: number; y: number },
+) {
+  const existingIds = new Set(state.document?.elements.keys() ?? []);
+  const id = generateId(target.tableName, existingIds);
+  const da = state.drawingAttrs;
+  const strokeWidth = resolveLineStrokeWidth(target.tableName, da) ?? FALLBACK_STROKE[target.tableName] ?? 0.1;
+  const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
+  const mergedAttrs = { ...baseAttrs, ...da, id };
+  // Strip the reserved UI flag from the persisted attrs.
+  delete mergedAttrs[VERTICAL_MODE_KEY];
+
+  let startZ = parseFloat(da.start_z ?? baseAttrs.start_z ?? '0');
+  let endZ = parseFloat(da.end_z ?? baseAttrs.end_z ?? '0');
+  if (!isFinite(startZ)) startZ = 0;
+  if (!isFinite(endZ)) endZ = 0;
+  // Fall back to ±1m around start_z if start_z == end_z so the pipe is visible.
+  if (Math.abs(endZ - startZ) < 1e-6) {
+    endZ = startZ + 1;
+  }
+
+  const element: SpatialLineElement = {
+    id,
+    tableName: target.tableName,
+    discipline: target.discipline,
+    geometry: 'spatial_line',
+    start: pt,
+    end: pt,
+    startZ,
+    endZ,
+    strokeWidth,
+    attrs: mergedAttrs,
+  };
+
+  ctx.dispatch({ type: 'CREATE_ELEMENT', element });
+  // Keep vertical mode active; just clear the drawing scratch state.
+  ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: pt } });
+  ctx.setSnap(null);
+}
 
 const FALLBACK_STROKE: Record<string, number> = {
   wall: 0.2, curtain_wall: 0.05, structure_wall: 0.2,

@@ -9,6 +9,9 @@ import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
 import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
+import { getElementModule } from '../elements/registry.ts';
+import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
+import { cn } from '../lib/utils.ts';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
@@ -30,6 +33,19 @@ export default function DrawingPropertiesBar() {
 
   const handleChange = (key: string, value: string) => {
     dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...attrs, [key]: value } });
+  };
+
+  // Vertical-pipe toggle: only for MEP topo-line tables (duct / pipe / conduit / cable_tray).
+  const elMod = getElementModule(target.tableName);
+  const supportsVertical = elMod?.archetype === 'topo-line';
+  const verticalOn = attrs[VERTICAL_MODE_KEY] === 'true';
+  const toggleVertical = () => {
+    const next = { ...attrs };
+    if (verticalOn) delete next[VERTICAL_MODE_KEY];
+    else next[VERTICAL_MODE_KEY] = 'true';
+    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: next });
+    // Reset any in-progress 2-click placement so we don't leave a dangling start point.
+    dispatch({ type: 'SET_DRAWING_STATE', state: null });
   };
 
   return (
@@ -88,6 +104,26 @@ export default function DrawingPropertiesBar() {
           )}
         </div>
       ))}
+      {supportsVertical && (
+        <>
+          <Separator orientation="vertical" className="h-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-7 rounded-md px-2 text-[10px] font-medium uppercase tracking-wide',
+              verticalOn
+                ? 'bg-[var(--dp-color)]/20 text-[var(--dp-color)] hover:bg-[var(--dp-color)]/30 hover:text-[var(--dp-color)]'
+                : 'text-muted-foreground',
+            )}
+            onClick={toggleVertical}
+            title={verticalOn ? t('drawing.verticalOn', 'Vertical mode — single click places a vertical pipe') : t('drawing.verticalOff', 'Switch to single-click vertical placement')}
+            aria-pressed={verticalOn}
+          >
+            {t('drawing.vertical', 'Vertical')}
+          </Button>
+        </>
+      )}
       <Separator orientation="vertical" className="h-4" />
       <Button
         variant="ghost"

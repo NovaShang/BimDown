@@ -51,6 +51,24 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   const { points, cursor } = drawingState;
 
   if (activeTool === 'draw_line') {
+    // Vertical-pipe single-click mode: render a single cursor circle marker
+    // (cross-section of the vertical pipe) instead of the 2-point preview.
+    if (drawingAttrs.__vertical_mode === 'true' && cursor) {
+      const thickness = tableName ? (resolveLineStrokeWidth(tableName, drawingAttrs) ?? 0) : 0;
+      const r = thickness > 0 ? thickness / 2 : Math.max(0.4 / scale, 0.05);
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <circle
+            cx={cursor.x} cy={cursor.y} r={r}
+            fill="#4fc3f7" fillOpacity="0.25"
+            stroke="#4fc3f7" strokeWidth={0.08 / scale}
+          />
+          <circle cx={cursor.x} cy={cursor.y} r={0.18 / scale} fill="#4fc3f7" />
+          <line x1={cursor.x - r - (0.3 / scale)} y1={cursor.y} x2={cursor.x + r + (0.3 / scale)} y2={cursor.y} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
+          <line x1={cursor.x} y1={cursor.y - r - (0.3 / scale)} x2={cursor.x} y2={cursor.y + r + (0.3 / scale)} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
+        </g>
+      );
+    }
     if (points.length === 1 && cursor) {
       // Show real thickness for walls/ducts/pipes
       const thickness = tableName ? (resolveLineStrokeWidth(tableName, drawingAttrs) ?? 0) : 0;

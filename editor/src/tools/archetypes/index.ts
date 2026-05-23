@@ -49,7 +49,9 @@ const ARCHETYPE_HANDLERS: Record<Archetype, ArchetypeOps> = {
   },
   'topo-line': {
     // Same placement tool today; sldeditor-style connector snap is a future
-    // upgrade slotted in here.
+    // upgrade slotted in here. drawLineTool also detects the
+    // `__vertical_mode` drawingAttrs flag and switches to single-click
+    // vertical-pipe placement (MEP duct/pipe/conduit/cable_tray).
     place: drawLineTool,
     move: relocateTool,
   },
