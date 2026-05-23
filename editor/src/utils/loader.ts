@@ -1,4 +1,4 @@
-import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata } from '../types.ts';
+import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata, SystemDef } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import type { DataSource } from './dataSource.ts';
 
@@ -180,8 +180,28 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     });
   }
 
+  // Project-level MEP system definitions (optional file)
+  const mepSystems = await loadMepSystems(ds);
+
   const metadata = await metadataPromise;
-  return { levels, floors, globalLayers, metadata };
+  return { levels, floors, globalLayers, mepSystems, metadata };
+}
+
+/** Load `global/mep_system.csv` if present. Returns [] when the file is
+ *  missing or empty so existing projects keep their auto-coloring behavior. */
+export async function loadMepSystems(ds: DataSource): Promise<SystemDef[]> {
+  const text = await ds.fetchText('global/mep_system.csv');
+  if (!text) return [];
+  const rows = parseCsv(text);
+  return rows
+    .filter(r => r.id || r.system_type)
+    .map(r => ({
+      id: r.id || '',
+      system_type: r.system_type || '',
+      name: r.name || '',
+      color: r.color || '',
+      discipline: r.discipline || '',
+    }));
 }
 
 export async function loadGrids(ds: DataSource): Promise<GridData[]> {

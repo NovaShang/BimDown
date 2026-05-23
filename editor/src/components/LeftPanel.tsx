@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { Level, CsvRow } from '../types.ts';
+import type { Level, CsvRow, SystemDef } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { csvHeadersForTable } from '../model/tableRegistry.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
@@ -10,6 +10,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Icon } from './Icons.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
+import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -143,7 +144,8 @@ export default function LeftPanel({
 }: LeftPanelProps) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
-  const { activeDiscipline, selectedIds, readonly } = useEditorState();
+  const { activeDiscipline, selectedIds, readonly, project } = useEditorState();
+  const mepSystems: SystemDef[] = project?.mepSystems ?? [];
   const [showAddLevel, setShowAddLevel] = useState(false);
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
@@ -265,6 +267,42 @@ export default function LeftPanel({
             </div>
         </ScrollArea>
       </div>
+
+      {/* MEP Systems Legend — read-only, shown only when global/mep_system.csv has rows */}
+      {mepSystems.length > 0 && (
+        <div className="glass-panel flex shrink-0 max-h-[30%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+          <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              {t('panel.mepSystems', 'MEP Systems')}
+            </span>
+            <span className="text-[9px] text-muted-foreground tabular-nums">{mepSystems.length}</span>
+          </div>
+          <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
+            <div className="flex flex-col gap-px">
+              {mepSystems.map(sys => {
+                const color = resolveMepSystemColor(sys.system_type, sys.color);
+                const label = sys.name || sys.id || sys.system_type;
+                return (
+                  <div
+                    key={sys.id || `${sys.system_type}-${sys.name}`}
+                    className="flex items-center gap-2 rounded px-2 py-[3px] text-[11px] text-muted-foreground"
+                    title={sys.discipline ? `${label} · ${sys.discipline}` : label}
+                  >
+                    <span
+                      className="size-3 shrink-0 rounded-sm border border-black/20"
+                      style={{ backgroundColor: color }}
+                    />
+                    <span className="flex-1 truncate">{label}</span>
+                    <span className="shrink-0 text-[9px] uppercase tracking-[0.05em] text-muted-foreground/70 tabular-nums">
+                      {sys.system_type}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </ScrollArea>
+        </div>
+      )}
 
       {/* Add Level Dialog */}
       <AddLevelDialog

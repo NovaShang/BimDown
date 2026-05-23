@@ -30,11 +30,29 @@ export interface ProjectMetadata {
   source?: string;
 }
 
+/** One row of the project-level `global/mep_system.csv` lookup table. Lets users
+ *  override the editor's curated MEP system color and give each system a
+ *  human-readable name. See `_mepLineShared.tsx::resolveSystemColor` for how
+ *  these are consulted at draw time. */
+export interface SystemDef {
+  id: string;
+  system_type: string;
+  name: string;
+  /** Hex color (e.g. `#06b6d4`). Empty string → editor falls back to its
+   *  curated SYSTEM_COLORS / hash color for `system_type`. */
+  color: string;
+  /** One of `hvac` / `plumbing` / `electrical` / `other`. */
+  discipline: string;
+}
+
 export interface ProjectData {
   levels: Level[];
   floors: Map<string, FloorData>;
   /** Element layers from global/ directory (multi-story elements spanning >1 level) */
   globalLayers: LayerData[];
+  /** Project-level MEP system definitions from `global/mep_system.csv`.
+   *  Empty array when the file is absent — auto-coloring stays in effect. */
+  mepSystems: SystemDef[];
   metadata: ProjectMetadata;
 }
 

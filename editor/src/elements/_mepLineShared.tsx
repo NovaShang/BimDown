@@ -34,6 +34,10 @@ export interface MepLineFacts {
   baseY: number;
   material: string;
   systemType: string;
+  /** User-defined color from the project's `global/mep_system.csv` row matching
+   *  `systemType`, or '' if no row matches / has no color. When non-empty, this
+   *  overrides the editor's curated SYSTEM_COLORS table in 2D. */
+  projectSystemColor: string;
   /** Miter-adjusted 2D footprint (plan view). */
   footprint: Point[];
   /** Chord length in plan view. */
@@ -134,6 +138,24 @@ export function mepLineGeometry(
     endZ = parseFloat(ln.attrs.end_z || `${baseOffset}`) || baseOffset;
   }
 
+  const systemType = ln.attrs.system_type || '';
+  // Look up project-level mep_system row override for this system_type. First
+  // matching row wins; only non-empty `color` participates so an unset color
+  // still falls through to SYSTEM_COLORS / hash.
+  let projectSystemColor = '';
+  if (systemType) {
+    const systems = ctx.projectSystems();
+    if (systems.length > 0) {
+      const trimmed = systemType.trim();
+      for (const s of systems) {
+        if (s.system_type.trim() === trimmed && s.color && s.color.trim()) {
+          projectSystemColor = s.color.trim();
+          break;
+        }
+      }
+    }
+  }
+
   return {
     id: ln.id,
     table,
@@ -144,7 +166,8 @@ export function mepLineGeometry(
     shape,
     baseY: ctx.levelElevation,
     material: ln.attrs.material || '',
-    systemType: ln.attrs.system_type || '',
+    systemType,
+    projectSystemColor,
     footprint,
     horLen,
   };
@@ -209,9 +232,24 @@ function hashSystemColor(s: string): string {
   return `hsl(${hue}, 60%, 50%)`;
 }
 
-function resolveSystemColor(systemType: string, fallback: string): string {
+/** Resolution order for an MEP line's system color:
+ *    1. Project-level `mep_system.csv` row whose `system_type` matches and has
+ *       a non-empty `color` (passed in as `projectOverride`, pre-resolved by
+ *       `mepLineGeometry` via `ctx.projectSystems()`).
+ *    2. Editor's curated `SYSTEM_COLORS` table.
+ *    3. Deterministic hash of `system_type`.
+ *  Empty `systemType` short-circuits to the caller's `fallback` color. */
+/** Public wrapper around `resolveSystemColor` for UI callers (e.g. the
+ *  MEP Systems legend in LeftPanel) that need to render the same color the
+ *  geometry pass would pick. Does NOT consult selection-override behavior. */
+export function resolveMepSystemColor(systemType: string, projectOverride?: string): string {
+  return resolveSystemColor(systemType, '#888', projectOverride);
+}
+
+function resolveSystemColor(systemType: string, fallback: string, projectOverride?: string): string {
   const key = systemType.trim();
   if (!key) return fallback;
+  if (projectOverride && projectOverride.trim()) return projectOverride.trim();
   if (key in SYSTEM_COLORS) return SYSTEM_COLORS[key];
   return hashSystemColor(key);
 }
@@ -228,7 +266,7 @@ export function mepLineDraw2D(
   // override the table's default colors so MEP lines visually group by system
   // instead of by table. Selection always wins so the highlight stays visible.
   const sysColor = !selected && facts.systemType.trim()
-    ? resolveSystemColor(facts.systemType, stroke)
+    ? resolveSystemColor(facts.systemType, stroke, facts.projectSystemColor)
     : null;
   const actualStroke = sysColor ?? stroke;
   const actualFill = sysColor ? sysColor + '22' : fill;

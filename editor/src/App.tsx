@@ -1,7 +1,7 @@
 import { Component, useEffect, useMemo, useRef } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { EditorProvider, useEditorDispatch, useEditorState } from './state/EditorContext.tsx';
-import { loadProject, loadGrids, loadLayer } from './utils/loader.ts';
+import { loadProject, loadGrids, loadLayer, loadMepSystems } from './utils/loader.ts';
 import { parseLayer } from './model/parse.ts';
 import { resolveHostedGeometry } from './geometry/hosted.ts';
 import type { LineElement } from './model/elements.ts';
@@ -86,6 +86,11 @@ function AppInner() {
       if (levelId === 'global' && fileName === 'grid.csv') {
         const grids = await loadGrids(ds);
         if (active) dispatch({ type: 'UPDATE_GRIDS', grids });
+        return;
+      }
+      if (levelId === 'global' && fileName === 'mep_system.csv') {
+        const mepSystems = await loadMepSystems(ds);
+        if (active) dispatch({ type: 'UPDATE_MEP_SYSTEMS', mepSystems });
         return;
       }
 

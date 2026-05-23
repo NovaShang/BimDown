@@ -1,11 +1,13 @@
 import type { CanonicalElement } from '../../model/elements.ts';
-import type { Level } from '../../types.ts';
+import type { Level, SystemDef } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
 
 interface BuildGeometryContextOpts {
   level: Level;
   allLevels: Level[];
   allElements: Map<string, CanonicalElement>;
+  /** Project-level MEP system definitions; default [] when project has none. */
+  mepSystems?: SystemDef[];
 }
 
 /**
@@ -14,7 +16,7 @@ interface BuildGeometryContextOpts {
  * element map or level changes.
  */
 export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryContext {
-  const { level, allLevels, allElements } = opts;
+  const { level, allLevels, allElements, mepSystems = [] } = opts;
 
   const levelElevations = new Map<string, number>();
   for (const l of allLevels) levelElevations.set(l.id, l.elevation);
@@ -63,5 +65,6 @@ export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryCo
       memoStore.set(key, v);
       return v;
     },
+    projectSystems: () => mepSystems,
   };
 }

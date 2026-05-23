@@ -1,4 +1,4 @@
-import type { Level, ProjectData, GridData, FloorData, LayerData } from '../types.ts';
+import type { Level, ProjectData, GridData, FloorData, LayerData, SystemDef } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { HistoryState } from '../model/history.ts';
@@ -96,6 +96,7 @@ export type EditorAction =
   | { type: 'UNDO' }
   | { type: 'REDO' }
   | { type: 'UPDATE_GRIDS'; grids: GridData[] }
+  | { type: 'UPDATE_MEP_SYSTEMS'; mepSystems: SystemDef[] }
   | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData }
   | { type: 'ADD_LEVEL'; level: Level }
   | { type: 'REMOVE_LEVEL'; levelId: string }

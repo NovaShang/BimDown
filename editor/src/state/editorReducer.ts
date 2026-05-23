@@ -151,6 +151,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'UPDATE_GRIDS':
       return { ...state, grids: action.grids };
 
+    case 'UPDATE_MEP_SYSTEMS': {
+      if (!state.project) return state;
+      return { ...state, project: { ...state.project, mepSystems: action.mepSystems } };
+    }
+
     case 'UPDATE_LAYER': {
       if (!state.project) return state;
       const { levelId, layer } = action;

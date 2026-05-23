@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../model/tableRegistry.ts';
 import type { PropertyField } from './_propertyFields.ts';
-import type { Level } from '../types.ts';
+import type { Level, SystemDef } from '../types.ts';
 
 // ─── Archetype ───────────────────────────────────────────────────────────────
 
@@ -51,6 +51,15 @@ export interface GeometryContext {
    * Use for cross-element solvers (e.g. miter for all walls on a level).
    */
   memo<T>(key: string, factory: () => T): T;
+
+  /**
+   * Project-level MEP system definitions from `global/mep_system.csv`.
+   * Empty array when the file is absent. Consumers (today: MEP line geometry)
+   * use this to override the editor's curated system color with a user-defined
+   * one. Stored on the context so geometry passes don't have to reach into
+   * editor state.
+   */
+  projectSystems(): SystemDef[];
 }
 
 // ─── Draw contexts ───────────────────────────────────────────────────────────

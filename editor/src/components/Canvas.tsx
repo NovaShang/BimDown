@@ -428,7 +428,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   const t = transformRef.current;
 
   return (
-    <SVGGeometryProvider level={currentLevelData} allLevels={allLevels} allElements={allElements}>
+    <SVGGeometryProvider level={currentLevelData} allLevels={allLevels} allElements={allElements} mepSystems={state.project?.mepSystems}>
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
