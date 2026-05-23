@@ -168,6 +168,35 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   }
 
   if (element.geometry === 'point') {
+    // Spaces are conceptually a single named seed — no width/height to resize.
+    // Render one move handle at the room label so the affordance lands on the
+    // visible text rather than at an empty bbox center. The name label is
+    // drawn 0.45m below the seed in space.draw2D; mirror that offset here so
+    // the handle visually coincides with whichever label is showing.
+    if (element.tableName === 'space') {
+      const { position } = element;
+      const NAME_LABEL_OFFSET = 0.45;
+      const handleY = element.attrs.name ? position.y - NAME_LABEL_OFFSET : position.y;
+      return (
+        <g className="resize-handles" transform="scale(1,-1)">
+          <circle
+            cx={position.x} cy={handleY}
+            r={r * 1.3}
+            fill="#06b6d4" stroke="white" strokeWidth={sw}
+            cursor="move"
+            onPointerDown={handleDrag((x, y) => {
+              // Convert the dragged handle coord back to the seed by undoing the
+              // label offset so the underlying position tracks the cursor 1:1.
+              const seedY = element.attrs.name ? y + NAME_LABEL_OFFSET : y;
+              dispatch({
+                type: 'RESIZE_ELEMENT', id: element.id, preview: true,
+                changes: { position: { x, y: seedY } },
+              });
+            })}
+          />
+        </g>
+      );
+    }
     const { position, width, height, attrs } = element;
     const hw = width / 2;
     const hh = height / 2;

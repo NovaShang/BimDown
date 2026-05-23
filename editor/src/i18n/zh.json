@@ -20,6 +20,8 @@
   "snap.midpoint": "中点",
   "snap.gridline": "轴线",
 
+  "space.defaultName": "房间 {{n}}",
+
   "layer.wall": "墙",
   "layer.curtain_wall": "幕墙",
   "layer.column": "柱",

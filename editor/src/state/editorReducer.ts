@@ -8,6 +8,7 @@ import { isVerticalSpanTable } from '../model/tableRegistry.ts';
 import { serializeToGeoJson } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
+import i18n from '../i18n/i18n.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -685,14 +686,23 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_DRAWING_STATE':
       return { ...state, drawingState: action.state };
 
-    case 'SET_DRAWING_TARGET':
-      return {
-        ...state,
-        drawingTarget: action.target,
-        drawingAttrs: action.target
-          ? getDefaultDrawingAttrs(action.target.tableName, state.currentLevel, state.project?.levels)
-          : {},
-      };
+    case 'SET_DRAWING_TARGET': {
+      let attrs: Record<string, string> = {};
+      if (action.target) {
+        attrs = getDefaultDrawingAttrs(action.target.tableName, state.currentLevel, state.project?.levels);
+        // Auto-fill sequential default name for rooms so the user doesn't have
+        // to type one to make a placement visible. Counts existing space
+        // elements in the document; the next placement bumps the counter.
+        if (action.target.tableName === 'space' && state.document) {
+          let count = 0;
+          for (const el of state.document.elements.values()) {
+            if (el.tableName === 'space') count++;
+          }
+          attrs.name = i18n.t('space.defaultName', { n: count + 1, defaultValue: `Room ${count + 1}` });
+        }
+      }
+      return { ...state, drawingTarget: action.target, drawingAttrs: attrs };
+    }
 
     case 'SET_DRAWING_ATTRS':
       return { ...state, drawingAttrs: action.attrs };

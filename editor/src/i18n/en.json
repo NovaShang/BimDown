@@ -20,6 +20,8 @@
   "snap.midpoint": "Midpoint",
   "snap.gridline": "Grid",
 
+  "space.defaultName": "Room {{n}}",
+
   "layer.wall": "Wall",
   "layer.curtain_wall": "CW",
   "layer.column": "Column",
