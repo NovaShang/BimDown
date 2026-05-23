@@ -1,0 +1,24 @@
+name: stair_landing
+bases:
+  - polygon_element
+  - materialized
+description: >
+  Landing platform between two stair runs. Hosted on a `stair` row via host_id.
+  Stored as a polygon (the landing's plan footprint) plus a single elevation
+  (`base_offset` above level). Multiple landings can host on the same stair
+  for U / W / switchback configurations.
+
+fields:
+  - name: host_id
+    type: reference
+    reference: element
+    required: true
+    description: ID of the parent stair row.
+
+  - name: base_offset
+    type: float
+    description: Top elevation of the landing relative to the stair's level (m).
+
+  - name: thickness
+    type: float
+    description: Slab thickness of the landing (m). Defaults to 0.15 if blank.

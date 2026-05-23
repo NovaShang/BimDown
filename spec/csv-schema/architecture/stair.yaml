@@ -2,6 +2,15 @@ name: stair
 bases:
   - spatial_line_element
   - vertical_span
+description: >
+  A stair. Today represented as a single spatial line (a straight run) plus an
+  overall stair_type hint. Multi-run shapes (L / U) are composed by combining
+  a stair with one or more `stair_landing` rows hosted on it. Long-term plan
+  (FAMILY_VISION.md) is a Revit-aligned component model where each stair owns
+  an ordered list of runs and landings — `stair_type` will then be derivable
+  from that structure rather than declared.
+
+  Subset of IFC IfcStairTypeEnum used here for the shape hint.
 
 fields:
   - name: width
@@ -9,3 +18,15 @@ fields:
 
   - name: step_count
     type: int
+
+  - name: stair_type
+    type: enum
+    description: Overall shape of the stair. Subset of IfcStairTypeEnum.
+    values:
+      - straight
+      - quarter_turn      # L-shape, one 90° landing
+      - half_turn         # U-shape, two 90° landings or one 180° landing
+      - winder            # turning steps (no landing)
+      - spiral
+      - curved
+      - double_return
