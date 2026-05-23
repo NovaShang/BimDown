@@ -527,54 +527,86 @@ export function computeSnap(
   }
 
   // ── Pass 5: Length snap (adjust distance from anchor to round values) ──
-  if (anchor) {
-    const preX = snapX ? snapX.value : input.x;
-    const preY = snapY ? snapY.value : input.y;
+  // ── Pass 5a: along-gridline integer snap relative to nearest perpendicular gridline ──
+  //
+  // When the cursor is locked onto gridline A, the user wants to know "I'm
+  // N meters from gridline B" (a perpendicular axis). Pull the along-A
+  // position to integer multiples of grid spacing, measured from the
+  // intersection of A and the nearest other gridline. This is independent
+  // of any drag anchor — it works while hovering, while drawing, etc.
+  if (
+    gridLineDir &&
+    snapX?.type === 'gridline' &&
+    snapY?.type === 'gridline' &&
+    grids && grids.length > 0
+  ) {
+    const { ux, uy, a: lineA } = gridLineDir;
+    const preX = snapX.value;
+    const preY = snapY.value;
+    const tCursor = (preX - lineA.x) * ux + (preY - lineA.y) * uy;
 
-    // Special case: cursor captured by a gridline (Pass 0b). Snap the
-    // along-line distance from the anchor's projection to integer multiples
-    // so the resulting point STAYS on the gridline. (Generic length-snap
-    // scaling below would push the point off the line.)
-    if (
-      gridLineDir &&
-      snapX?.type === 'gridline' &&
-      snapY?.type === 'gridline'
-    ) {
-      const { ux, uy, a: lineA } = gridLineDir;
-      // Project anchor onto the gridline (param along u from lineA).
-      const tAnchor = (anchor.x - lineA.x) * ux + (anchor.y - lineA.y) * uy;
-      // Project the current snapped point onto the same line.
-      const tP = (preX - lineA.x) * ux + (preY - lineA.y) * uy;
-      const along = tP - tAnchor;
+    let bestOriginT: number | null = null;
+    let bestOriginDist = Infinity;
+    for (const g of grids) {
+      const gdx = g.x2 - g.x1, gdy = g.y2 - g.y1;
+      const glen = Math.sqrt(gdx * gdx + gdy * gdy);
+      if (glen < 1e-9) continue;
+      const gux = gdx / glen, guy = gdy / glen;
+      // Skip if parallel to A (no intersection, or same line).
+      const dot = ux * gux + uy * guy;
+      if (Math.abs(Math.abs(dot) - 1) < 1e-3) continue;
+      // Intersect parametric line A (lineA + t * u) with line g (g.start + s * gu).
+      // Solve 2x2: tA*ux - tg*gux = g.x1 - lineA.x ; tA*uy - tg*guy = g.y1 - lineA.y
+      const det = -ux * guy + uy * gux;
+      if (Math.abs(det) < 1e-9) continue;
+      const tA = ((g.x1 - lineA.x) * (-guy) - (g.y1 - lineA.y) * (-gux)) / det;
+      const distAlongA = Math.abs(tCursor - tA);
+      if (distAlongA < bestOriginDist) {
+        bestOriginDist = distAlongA;
+        bestOriginT = tA;
+      }
+    }
 
+    if (bestOriginT !== null) {
+      const along = tCursor - bestOriginT;
       const gridSpacingLen = adaptiveGridSpacing(pixelSize);
       const alongSnapped = Math.round(along / gridSpacingLen) * gridSpacingLen;
       const lenDiff = Math.abs(along - alongSnapped);
       const lenThreshold = gridSpacingLen * 0.3;
-
-      // Drop the pixel-threshold gate here: the cursor is already locked onto
-      // the gridline (perpendicular distance ≈ 0), so all wiggle room can go
-      // into along-line pull. 30% of grid spacing is the natural pull range.
+      // Pull range is 30% of grid spacing — generous because cursor is
+      // already perpendicular-locked onto A, so all wiggle is along the line.
       if (Math.abs(along) > 1e-9 && lenDiff < lenThreshold) {
-        const tNew = tAnchor + alongSnapped;
+        const tNew = bestOriginT + alongSnapped;
         const newX = lineA.x + tNew * ux;
         const newY = lineA.y + tNew * uy;
-        // Keep type 'gridline' so we don't fall through to general length snap
-        // and so downstream styling stays consistent.
         snapX = { type: 'gridline', value: newX, priority: snapX.priority };
         snapY = { type: 'gridline', value: newY, priority: snapY.priority };
-
-        // Length ring (radius = absolute along-line distance) for visual cue.
+        const originX = lineA.x + bestOriginT * ux;
+        const originY = lineA.y + bestOriginT * uy;
         guides.push({
           type: 'length_ring',
-          x: anchor.x, y: anchor.y,
+          x: originX, y: originY,
           x2: Math.abs(alongSnapped),
           snapType: 'length',
           label: formatLength(Math.abs(alongSnapped)),
         });
       }
-      // Either way, do not run the generic length-scale logic below — it
-      // would move the cursor off the gridline.
+    }
+  }
+
+  if (anchor) {
+    const preX = snapX ? snapX.value : input.x;
+    const preY = snapY ? snapY.value : input.y;
+
+    // When the cursor is on a gridline, the anchor-based length-scale logic
+    // below would push the point off the line — skip it. Pass 5a above
+    // already handled along-line integer snapping relative to other grids.
+    if (
+      gridLineDir &&
+      snapX?.type === 'gridline' &&
+      snapY?.type === 'gridline'
+    ) {
+      // nothing to do — Pass 5a already produced the right point.
     } else {
       const adx = preX - anchor.x;
       const ady = preY - anchor.y;
