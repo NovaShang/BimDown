@@ -1,7 +1,7 @@
 name: mep_node
 bases:
   - point_element
-  - mep_system
+  - mep_system_tag
 
 # mep_node represents an MEP fitting/accessory in the physical sense
 # (Revit's MEPFamilyInstance): a tee, elbow, coupling, valve, damper, etc.

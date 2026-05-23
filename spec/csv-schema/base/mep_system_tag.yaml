@@ -1,0 +1,12 @@
+name: mep_system_tag
+abstract: true
+
+# Tags an element with its MEP system classification. The concrete project-level
+# `mep_system` table (see mep/mep_system.yaml) holds human-readable system
+# definitions; this base just stamps each individual MEP element (pipe, duct,
+# equipment, ...) with the matching `system_type` short tag.
+
+fields:
+  - name: system_type
+    type: string
+    description: Revit system classification (e.g. "CHWS", "CHR", "SA", "RA", "DW")

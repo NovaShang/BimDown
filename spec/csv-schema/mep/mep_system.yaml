@@ -1,0 +1,21 @@
+name: mep_system
+bases:
+  - element
+
+fields:
+  - name: system_type
+    type: string
+    required: true
+    description: Short system tag (e.g. "CHWS", "RA", "SA"). Multiple rows can share a tag for sub-systems.
+
+  - name: name
+    type: string
+    description: Human-readable label (e.g. "Main Chilled Water Supply").
+
+  - name: color
+    type: string
+    description: Optional hex color (e.g. "#06b6d4"). When empty, the editor falls back to its curated/hash color for system_type.
+
+  - name: discipline
+    type: string
+    description: One of "hvac" / "plumbing" / "electrical" / "other".

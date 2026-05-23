@@ -13,8 +13,9 @@ export function validateIdFormat(
     const id = data.rows[i].id;
     if (!id) continue; // caught by required check
 
-    // grid and level allow any non-empty string after prefix; others require digits only
-    const freeformTables = new Set(['grid', 'level']);
+    // grid/level/mep_system allow any non-empty string after prefix (human-readable
+    // identifiers like "sys-chws-main"); other tables require digits only.
+    const freeformTables = new Set(['grid', 'level', 'mep_system']);
     const pattern = freeformTables.has(table.name) ? `^${prefix}-.+$` : `^${prefix}-\\d+$`;
     const regex = new RegExp(pattern);
     if (!regex.test(id)) {

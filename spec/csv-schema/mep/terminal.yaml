@@ -1,7 +1,7 @@
 name: terminal
 bases:
   - point_element
-  - mep_system
+  - mep_system_tag
 
 fields:
   - name: terminal_type

@@ -1,7 +1,0 @@
-name: mep_system
-abstract: true
-
-fields:
-  - name: system_type
-    type: string
-    description: Revit system classification (e.g. "CHWS", "CHR", "SA", "RA", "DW")

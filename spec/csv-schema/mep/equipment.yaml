@@ -1,7 +1,7 @@
 name: equipment
 bases:
   - point_element
-  - mep_system
+  - mep_system_tag
 
 fields:
   - name: equipment_type
