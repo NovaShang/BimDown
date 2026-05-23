@@ -15,6 +15,11 @@
   "topbar.archContextShort": "Arch",
   "topbar.projectUnit": "Project unit (set in project_metadata.json)",
 
+  "snap.endpoint": "Endpoint",
+  "snap.center": "Center",
+  "snap.midpoint": "Midpoint",
+  "snap.gridline": "Grid",
+
   "layer.wall": "Wall",
   "layer.curtain_wall": "CW",
   "layer.column": "Column",

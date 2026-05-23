@@ -15,6 +15,11 @@
   "topbar.archContextShort": "建筑",
   "topbar.projectUnit": "项目单位(在 project_metadata.json 中设置)",
 
+  "snap.endpoint": "端点",
+  "snap.center": "圆心",
+  "snap.midpoint": "中点",
+  "snap.gridline": "轴线",
+
   "layer.wall": "墙",
   "layer.curtain_wall": "幕墙",
   "layer.column": "柱",

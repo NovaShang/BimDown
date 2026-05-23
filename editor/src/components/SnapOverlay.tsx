@@ -1,3 +1,4 @@
+import { useTranslation } from 'react-i18next';
 import type { SnapResult, SnapType, GridDistanceInfo } from '../utils/snap.ts';
 import type { Point } from '../model/elements.ts';
 
@@ -30,11 +31,11 @@ function colorForSnapType(t?: SnapType): string {
   return OBJECT_COLOR;
 }
 
-function snapTypeAbbrev(t?: SnapType): string | null {
-  if (t === 'endpoint') return 'E';
-  if (t === 'center') return 'C';
-  if (t === 'midpoint') return 'M';
-  if (t === 'gridline') return 'G';
+function snapTypeI18nKey(t?: SnapType): string | null {
+  if (t === 'endpoint') return 'snap.endpoint';
+  if (t === 'center') return 'snap.center';
+  if (t === 'midpoint') return 'snap.midpoint';
+  if (t === 'gridline') return 'snap.gridline';
   return null;
 }
 
@@ -55,13 +56,14 @@ function isOnEndpoint(point: Point, guides: readonly { type: string; x: number; 
 }
 
 /** Render the snap-point marker based on snap type */
-function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint }: {
+function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint, labelText }: {
   x: number; y: number; snapType?: SnapType; s: number; sw: number;
   scale: number;
   emphasizeEndpoint?: boolean;
+  /** Localized word for this snap type — empty string disables the label. */
+  labelText: string;
 }) {
   const color = colorForSnapType(snapType);
-  const abbrev = snapTypeAbbrev(snapType);
   // Model-unit radius (≈ 0.08m) for the filled circle as requested.
   const r = 0.08;
   // Label positioned a bit to the upper-right of the marker.
@@ -70,7 +72,7 @@ function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint }: {
   const labelDy = -(r + 0.05);
 
   // Common label rendering (flipped because parent group has scale(1,-1)).
-  const label = abbrev ? (
+  const label = labelText ? (
     <text
       x={x + labelDx}
       y={-(y - labelDy)}
@@ -81,7 +83,7 @@ function SnapMarker({ x, y, snapType, s, sw, scale, emphasizeEndpoint }: {
       transform="scale(1,-1)"
       opacity={0.95}
     >
-      {abbrev}
+      {labelText}
     </text>
   ) : null;
 
@@ -235,6 +237,7 @@ function GridDimension({ from, info, scale }: {
 }
 
 export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
+  const { t } = useTranslation();
   if (!snap) return null;
   const { guides } = snap;
   const hasGuides = guides.length > 0;
@@ -295,6 +298,7 @@ export default function SnapOverlay({ snap, scale }: SnapOverlayProps) {
               sw={sw}
               scale={scale}
               emphasizeEndpoint={emphasize}
+              labelText={(() => { const k = snapTypeI18nKey(g.snapType); return k ? t(k) : ''; })()}
             />
           );
         }
