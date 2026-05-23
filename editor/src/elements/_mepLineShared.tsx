@@ -105,11 +105,23 @@ export function mepLineGeometry(
   const dx = ln.end.x - ln.start.x;
   const dy = ln.end.y - ln.start.y;
   const horLen = Math.sqrt(dx * dx + dy * dy);
-  if (horLen < 0.001) return null;
 
-  const adj = getMepMiterAdjustments(ctx, table);
-  const footprint = buildLineWallFootprint(ln, adj);
-  if (footprint.length === 0) return null;
+  const sizeX = parseFloat(ln.attrs.size_x || '0.2') || 0.2;
+  const sizeY = parseFloat(ln.attrs.size_y || '0.2') || 0.2;
+  const shape = ln.attrs.shape || defaultShape;
+
+  let footprint: Point[];
+  if (horLen < 0.001) {
+    // Vertical run (start.xy == end.xy): no chord direction, so the regular
+    // miter-aware footprint builder bails out. Synthesize a small square /
+    // diamond at the point so the riser is visible in plan view.
+    footprint = buildVerticalRiserFootprint(ln.start, sizeX, sizeY, shape);
+    if (footprint.length === 0) return null;
+  } else {
+    const adj = getMepMiterAdjustments(ctx, table);
+    footprint = buildLineWallFootprint(ln, adj);
+    if (footprint.length === 0) return null;
+  }
 
   const baseOffset = parseFloat(ln.attrs.base_offset || '0') || 0;
   let startZ = baseOffset, endZ = baseOffset;
@@ -122,9 +134,6 @@ export function mepLineGeometry(
     endZ = parseFloat(ln.attrs.end_z || `${baseOffset}`) || baseOffset;
   }
 
-  const sizeX = parseFloat(ln.attrs.size_x || '0.2') || 0.2;
-  const sizeY = parseFloat(ln.attrs.size_y || '0.2') || 0.2;
-
   return {
     id: ln.id,
     table,
@@ -132,13 +141,42 @@ export function mepLineGeometry(
     end: ln.end,
     startZ, endZ,
     sizeX, sizeY,
-    shape: ln.attrs.shape || defaultShape,
+    shape,
     baseY: ctx.levelElevation,
     material: ln.attrs.material || '',
     systemType: ln.attrs.system_type || '',
     footprint,
     horLen,
   };
+}
+
+/** Build a small centered footprint for a vertical riser (start.xy == end.xy).
+ *  Round profiles get an octagonal approximation of a circle of diameter sizeX;
+ *  rectangular profiles get a rotated rectangle of size sizeX × sizeY. */
+function buildVerticalRiserFootprint(
+  center: Point,
+  sizeX: number,
+  sizeY: number,
+  shape: string,
+): Point[] {
+  if (shape === 'round') {
+    const r = Math.max(sizeX, 0.01) / 2;
+    const pts: Point[] = [];
+    const N = 16;
+    for (let i = 0; i < N; i++) {
+      const a = (i / N) * Math.PI * 2;
+      pts.push({ x: center.x + Math.cos(a) * r, y: center.y + Math.sin(a) * r });
+    }
+    return pts;
+  }
+  const hx = Math.max(sizeX, 0.01) / 2;
+  const hy = Math.max(sizeY, 0.01) / 2;
+  return [
+    { x: center.x - hx, y: center.y - hy },
+    { x: center.x + hx, y: center.y - hy },
+    { x: center.x + hx, y: center.y + hy },
+    { x: center.x - hx, y: center.y + hy },
+  ];
 }
 
 /** Curated colors for the canonical MEP system_type abbreviations (see

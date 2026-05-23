@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
-import { useCoreEditorState } from '../state/EditorContext.tsx';
+import { useCoreEditorState, useEditorState } from '../state/EditorContext.tsx';
 import type { Tool } from '../state/editorTypes.ts';
+import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
 
 const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_line:    'hint.line',
@@ -16,13 +17,22 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
 export default function DrawingHints() {
   const { t } = useTranslation();
   const { activeTool, drawingState } = useCoreEditorState();
+  const drawingAttrs = useEditorState().drawingAttrs;
 
   const hintKey = HINT_KEYS[activeTool];
   if (!hintKey) return null;
 
+  // Vertical mode short-circuits the line hint with a single-click prompt.
+  const isVerticalLine =
+    (activeTool === 'draw_line' || activeTool === 'draw_grid')
+    && drawingAttrs[VERTICAL_MODE_KEY] === 'true';
   // For polygon, show a different hint once we have 3+ points
   const isPolygonClosable = activeTool === 'draw_polygon' && drawingState && drawingState.points.length >= 3;
-  const text = isPolygonClosable ? t('hint.polygonClose') : t(hintKey);
+  const text = isVerticalLine
+    ? t('hint.vertical')
+    : isPolygonClosable
+      ? t('hint.polygonClose')
+      : t(hintKey);
 
   return (
     <div className="absolute top-16 left-1/2 z-20 -translate-x-1/2 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-200">

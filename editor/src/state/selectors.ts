@@ -223,11 +223,19 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
 /**
  * Append globalLayers (cross-level elements stored in global/ directory) to the result.
  * Elements get "global:" ID prefix for consistency with 3D FloorGroup.
+ * If a ProcessedLayer with the same `discipline/tableName` key already exists
+ * (e.g. the current floor also has wall.csv), the global elements are merged
+ * into that layer's `elements` array rather than appended as a duplicate entry
+ * — duplicate entries would (a) produce repeated React keys in <SVGLayers /> and
+ * (b) cause the same global element to be rendered in two <g> nodes.
  * Result is re-sorted by render z-index after merging.
  */
 function appendGlobalLayers(state: EditorState, result: ProcessedLayer[]): void {
   const globalLayers = state.project?.globalLayers;
   if (!globalLayers || globalLayers.length === 0) return;
+
+  const byKey = new Map<string, ProcessedLayer>();
+  for (const layer of result) byKey.set(layer.key, layer);
 
   for (const gl of globalLayers) {
     const key = `${gl.discipline}/${gl.tableName}`;
@@ -235,7 +243,14 @@ function appendGlobalLayers(state: EditorState, result: ProcessedLayer[]): void 
     if (!isDisciplineVisible(gl.discipline, state)) continue;
     const elements = parseLayer(gl).map(el => ({ ...el, id: `global:${el.id}` }));
     if (elements.length === 0) continue;
-    result.push({ key, tableName: gl.tableName, discipline: gl.discipline, elements });
+    const existing = byKey.get(key);
+    if (existing) {
+      existing.elements = [...existing.elements, ...elements];
+    } else {
+      const layer: ProcessedLayer = { key, tableName: gl.tableName, discipline: gl.discipline, elements };
+      result.push(layer);
+      byKey.set(key, layer);
+    }
   }
 
   result.sort((a, b) => getRenderZIndex(a.tableName) - getRenderZIndex(b.tableName));
