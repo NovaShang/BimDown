@@ -21,6 +21,20 @@ function clampAndRound(val: number, step: number, min?: number, max?: number) {
   return v;
 }
 
+/** Format the displayed value to match the step's precision. Avoids surfacing
+ *  things like "0.30000000000000004" caused by upstream float arithmetic.
+ *  Keeps the raw string if it's still being edited (tracked separately by
+ *  pendingValue). */
+function formatForDisplay(raw: string, step: number): string {
+  if (raw === '' || raw === '-') return raw;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return raw;
+  const decimals = (step.toString().split('.')[1] || '').length;
+  // Trim trailing zeros after the decimal point so "0.300" reads as "0.3".
+  const fixed = n.toFixed(decimals);
+  return decimals > 0 ? fixed.replace(/\.?0+$/, '') || '0' : fixed;
+}
+
 export function NumberInput({ value, onChange, step = 1, min, max, className }: NumberInputProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
@@ -74,7 +88,9 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
     if (v === '' || v === '-' || !isNaN(Number(v))) onChange(v);
   }, [onChange]);
 
-  const displayValue = pendingValue ?? value;
+  // While editing (focused), show whatever the user has typed verbatim;
+  // otherwise format to step precision so float artifacts don't leak through.
+  const displayValue = pendingValue ?? (focused ? value : formatForDisplay(value, step));
 
   return (
     <Tooltip open={focused}>
