@@ -16,6 +16,7 @@ const BLOCK_MAP: Record<string, string> = {
   double_swing: 'door_double_swing',
   sliding: 'door_sliding',
   folding: 'door_folding',
+  revolving: 'door_revolving',
 };
 
 export interface DoorFacts {

@@ -6,6 +6,18 @@ import { getBlockSvg } from './_blockLoader.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { SILL_HEIGHT_FIELD, WINDOW_OPERATION_OPTIONS } from './_options.ts';
 
+const BLOCK_MAP: Record<string, string> = {
+  fixed: 'window_fixed',
+  casement: 'window_casement',
+  sliding: 'window_sliding',
+  awning: 'window_awning',
+  hopper: 'window_hopper',
+  pivot: 'window_pivot',
+  double_hung: 'window_double_hung',
+  single_hung: 'window_single_hung',
+  tilt_and_turn: 'window_tilt_and_turn',
+};
+
 export interface WindowFacts {
   id: string;
   start: Point;
@@ -17,6 +29,7 @@ export interface WindowFacts {
   baseY: number;
   width: number;
   material: string;
+  blockName: string;
 }
 
 const DEFAULT_HEIGHT = 1.5;
@@ -57,6 +70,7 @@ export const windowModule: ElementModule<WindowFacts> = {
     const baseOffset = parseFloat(w.attrs.base_offset || `${DEFAULT_SILL}`);
     const height = parseFloat(w.attrs.height || `${DEFAULT_HEIGHT}`) || DEFAULT_HEIGHT;
 
+    const operation = w.attrs.operation || 'fixed';
     return {
       id: w.id,
       start: w.start,
@@ -68,11 +82,12 @@ export const windowModule: ElementModule<WindowFacts> = {
       baseY: ctx.levelElevation + baseOffset,
       width: parseFloat(w.attrs.width || '1.2') || 1.2,
       material: w.attrs.material || '',
+      blockName: BLOCK_MAP[operation] ?? 'window_fixed',
     };
   },
 
   draw2D(facts): ReactNode {
-    const svg = getBlockSvg('window');
+    const svg = getBlockSvg(facts.blockName) ?? getBlockSvg('window_fixed');
     if (!svg) return null;
     const hw = facts.strokeWidth / 2;
     const transform =

@@ -168,7 +168,14 @@ export const drawHostedTool: ToolHandler = {
     const id = generateId(target.tableName, existingIds);
     const position = placement.t.toFixed(3);
 
-    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: placement.wall.id, position, base_offset: String(placement.baseOffset) };
+    // Toolbar input wins over the raycast-derived base offset. In 2D the
+    // placement defaults to 0 because there's no Z component to derive from,
+    // and silently overriding the user's typed sill height makes the field
+    // look broken.
+    const baseOffsetStr = da.base_offset != null && da.base_offset !== ''
+      ? da.base_offset
+      : String(placement.baseOffset);
+    const mergedAttrs = { ...baseAttrs, ...da, id, host_id: placement.wall.id, position, base_offset: baseOffsetStr };
 
     const element: LineElement = {
       id,
