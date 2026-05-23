@@ -23,10 +23,15 @@ export interface FloorData {
   layers: LayerData[];
 }
 
+/** Project-declared unit system. Every coordinate in CSV/GeoJSON is expressed
+ *  in this unit — no internal canonical unit, no implicit conversion. */
+export type ProjectUnit = 'm' | 'ft' | 'in' | 'mm';
+
 export interface ProjectMetadata {
   format_version: string;
   project_name?: string;
-  units?: string;
+  /** Coordinate / dimension unit. When missing, treat as `'m'` (existing projects). */
+  units?: ProjectUnit;
   source?: string;
 }
 

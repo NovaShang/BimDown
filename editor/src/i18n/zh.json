@@ -13,6 +13,7 @@
   "discipline.reference": "参照",
   "topbar.archContext": "显示建筑专业作为参照",
   "topbar.archContextShort": "建筑",
+  "topbar.projectUnit": "项目单位(在 project_metadata.json 中设置)",
 
   "layer.wall": "墙",
   "layer.curtain_wall": "幕墙",

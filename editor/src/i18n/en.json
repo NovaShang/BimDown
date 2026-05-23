@@ -13,6 +13,7 @@
   "discipline.reference": "Reference",
   "topbar.archContext": "Show architecture as context",
   "topbar.archContextShort": "Arch",
+  "topbar.projectUnit": "Project unit (set in project_metadata.json)",
 
   "layer.wall": "Wall",
   "layer.curtain_wall": "CW",

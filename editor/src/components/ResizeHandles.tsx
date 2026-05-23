@@ -3,13 +3,10 @@ import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '.
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { arcFromMidpoint, arcMidpoint, arcLength } from '../geometry/arc.ts';
+import { formatLength, getProjectUnits } from '../utils/units.ts';
+import type { ProjectUnit } from '../types.ts';
 
-function formatLength(meters: number): string {
-  if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
-  return `${meters.toFixed(3)} m`;
-}
-
-function LengthLabel({ from, to, scale, length }: { from: Point; to: Point; scale: number; length?: number }) {
+function LengthLabel({ from, to, scale, length, projectUnit }: { from: Point; to: Point; scale: number; length?: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
   const dy = to.y - from.y;
   const chordLen = Math.sqrt(dx * dx + dy * dy);
@@ -37,7 +34,7 @@ function LengthLabel({ from, to, scale, length }: { from: Point; to: Point; scal
       opacity={0.9}
       pointerEvents="none"
     >
-      {formatLength(len)}
+      {formatLength(len, projectUnit)}
     </text>
   );
 }
@@ -59,6 +56,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   const state = useEditorState();
   const stateRef = useRef(state);
   stateRef.current = state;
+  const projectUnit = getProjectUnits(state);
   const beforeRef = useRef<CanonicalElement | null>(null);
 
   const screenToSvg = useCallback((clientX: number, clientY: number) => {
@@ -163,7 +161,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
           })}
         />
-        <LengthLabel from={element.start} to={element.end} scale={scale} length={displayLen} />
+        <LengthLabel from={element.start} to={element.end} scale={scale} length={displayLen} projectUnit={projectUnit} />
       </g>
     );
   }

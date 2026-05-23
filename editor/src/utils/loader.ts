@@ -1,8 +1,19 @@
-import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata, SystemDef } from '../types.ts';
+import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata, ProjectUnit, SystemDef } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import type { DataSource } from './dataSource.ts';
 
-const DEFAULT_METADATA: ProjectMetadata = { format_version: '3.0' };
+const VALID_UNITS: ReadonlySet<ProjectUnit> = new Set(['m', 'ft', 'in', 'mm']);
+
+const DEFAULT_METADATA: ProjectMetadata = { format_version: '3.0', units: 'm' };
+
+function normalizeUnits(raw: unknown): ProjectUnit {
+  if (typeof raw === 'string' && VALID_UNITS.has(raw as ProjectUnit)) {
+    return raw as ProjectUnit;
+  }
+  // Tolerate legacy "meters" spelling that used to be the default.
+  if (raw === 'meters') return 'm';
+  return 'm';
+}
 
 export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetadata> {
   const text = await ds.fetchText('project_metadata.json');
@@ -12,7 +23,7 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
     return {
       format_version: json.format_version ?? '3.0',
       project_name: json.project_name,
-      units: json.units,
+      units: normalizeUnits(json.units),
       source: json.source,
     };
   } catch {

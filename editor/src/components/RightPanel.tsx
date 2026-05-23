@@ -2,9 +2,11 @@ import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
-import { useEditorDispatch } from '../state/EditorContext.tsx';
+import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { PROPERTY_GROUPS, type PropertyField } from '../elements/_propertyFields.ts';
+import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
+import type { ProjectUnit } from '../types.ts';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
@@ -42,6 +44,8 @@ export default function RightPanel({ selectedData, levels, offsetRight: _, reado
 function PropertiesContent({ selectedData, levels, readonly }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>; levels: Level[]; readonly?: boolean }) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
+  const state = useEditorState();
+  const projectUnit = getProjectUnits(state);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const [firstId, firstData] = selectedData.entries().next().value!;
@@ -144,6 +148,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
                         value={csv[f.key] ?? ''}
                         editable={!readonly && isSingleSelection && f.type !== 'readonly'}
                         onChange={handleChange}
+                        projectUnit={projectUnit}
                         t={(key: string, fallback?: string) => t(key, { defaultValue: fallback }) as string}
                       />
                     ))}
@@ -165,15 +170,22 @@ function PropertyRow({
   value,
   editable,
   onChange,
+  projectUnit,
   t,
 }: {
   field: PropertyField;
   value: string;
   editable: boolean;
   onChange: (key: string, value: string) => void;
+  projectUnit: ProjectUnit;
   t: (key: string, fallback?: string) => string;
 }) {
   const label = t(`field.${f.label}`, f.label);
+  // Length fields are tagged with `unit: 'm'` in the registry; substitute the
+  // project's declared unit at render time. Non-length units (°, etc.) pass
+  // through unchanged. Underlying CSV values are NOT converted — they're
+  // interpreted as the project unit per BimDown's store-as-displayed model.
+  const renderedUnit = f.unit === 'm' ? getUnitSuffix(projectUnit).trim() : f.unit;
 
   return (
     <div className="flex items-center gap-2 py-[3px]">
@@ -213,7 +225,7 @@ function PropertyRow({
               min={f.min}
               max={f.max}
             />
-            {f.unit && <span className="shrink-0 text-[9px] text-muted-foreground/60 select-none">{f.unit}</span>}
+            {renderedUnit && <span className="shrink-0 text-[9px] text-muted-foreground/60 select-none">{renderedUnit}</span>}
           </>
         ) : (
           <Input

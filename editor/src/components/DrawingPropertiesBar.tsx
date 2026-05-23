@@ -11,6 +11,7 @@ import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
+import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import { cn } from '../lib/utils.ts';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
@@ -26,6 +27,9 @@ export default function DrawingPropertiesBar() {
   const levels = state.project?.levels ?? [];
   const fields = getDrawingFields(target.tableName, levels);
   if (fields.length === 0) return null;
+
+  const projectUnit = getProjectUnits(state);
+  const projectUnitLabel = getUnitSuffix(projectUnit).trim();
 
   const style = LAYER_STYLES[target.tableName];
   const disciplineColor = DISCIPLINE_COLORS[target.discipline] || '#888';
@@ -91,7 +95,7 @@ export default function DrawingPropertiesBar() {
                 min={f.min}
                 max={f.max}
               />
-              {f.unit && <span className="text-[9px] text-muted-foreground select-none">{f.unit}</span>}
+              {f.unit && <span className="text-[9px] text-muted-foreground select-none">{f.unit === 'm' ? projectUnitLabel : f.unit}</span>}
             </div>
           ) : (
             <Input

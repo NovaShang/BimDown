@@ -5,10 +5,13 @@ import type { ViewMode } from '../state/editorTypes.ts';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
+import { getProjectUnits } from '../utils/units.ts';
 
 export default function TopBar() {
   const { t } = useTranslation();
-  const { viewMode, activeDiscipline, showArchContext } = useEditorState();
+  const state = useEditorState();
+  const { viewMode, activeDiscipline, showArchContext } = state;
+  const projectUnit = getProjectUnits(state);
   const dispatch = useEditorDispatch();
 
   const showArchToggle = activeDiscipline !== 'architecture' && activeDiscipline !== 'all';
@@ -44,6 +47,16 @@ export default function TopBar() {
           {t('topbar.archContextShort', 'Arch')}
         </button>
       )}
+
+      <Separator orientation="vertical" className="mx-0.5 self-stretch" />
+
+      {/* Project unit indicator (read-only in phase 1) */}
+      <div
+        className="flex h-8 select-none items-center px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+        title={t('topbar.projectUnit', 'Project unit (set in project_metadata.json)')}
+      >
+        {projectUnit}
+      </div>
 
       <Separator orientation="vertical" className="mx-0.5 self-stretch" />
 
