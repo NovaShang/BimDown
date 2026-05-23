@@ -14,7 +14,12 @@ import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { shapeFromAttrs, createProfile } from '../three/primitives/profiles.ts';
-import { getWallMiterAdjustments, buildLineWallFootprint } from './_lineWallShared.tsx';
+import { buildLineWallFootprint } from './_lineWallShared.tsx';
+import {
+  computeCornerAdjustments,
+  type WallSegment as WallMiterSegment,
+  type CornerAdjustment,
+} from '../geometry/miter.ts';
 
 export interface MepLineFacts {
   id: string;
@@ -35,6 +40,60 @@ export interface MepLineFacts {
   horLen: number;
 }
 
+/** Read (startZ, endZ) for an MEP line in the same way the geometry pass does. */
+function readZ(ln: LineElement): { startZ: number; endZ: number } {
+  const baseOffset = parseFloat(ln.attrs.base_offset || '0') || 0;
+  if ((ln as unknown as { geometry: string }).geometry === 'spatial_line') {
+    const sp = ln as unknown as SpatialLineElement;
+    return { startZ: sp.startZ, endZ: sp.endZ };
+  }
+  return {
+    startZ: parseFloat(ln.attrs.start_z || `${baseOffset}`) || baseOffset,
+    endZ: parseFloat(ln.attrs.end_z || `${baseOffset}`) || baseOffset,
+  };
+}
+
+/**
+ * MEP miter cache. Like the wall variant, but buckets lines by (startZ, endZ)
+ * — two MEP segments that happen to share a 2D endpoint but live at different
+ * Z elevations are NOT actually connected in 3D, so they must not share a
+ * miter join in plan view. Within a single Z bucket the miter logic is the
+ * same as for walls.
+ */
+function getMepMiterAdjustments(
+  ctx: GeometryContext,
+  table: string,
+): Map<string, CornerAdjustment> {
+  return ctx.memo(`${table}:mep-miter`, () => {
+    const lines = ctx.elementsByTable(table).filter(
+      (e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line',
+    );
+    const buckets = new Map<string, LineElement[]>();
+    for (const ln of lines) {
+      const { startZ, endZ } = readZ(ln);
+      // Quantize to 1mm to avoid floating-point bucket splits.
+      const key = `${Math.round(startZ * 1000)}/${Math.round(endZ * 1000)}`;
+      const list = buckets.get(key) ?? [];
+      list.push(ln);
+      buckets.set(key, list);
+    }
+    const merged = new Map<string, CornerAdjustment>();
+    for (const list of buckets.values()) {
+      const segments: WallMiterSegment[] = list.map(w => ({
+        id: w.id,
+        x1: w.start.x, y1: w.start.y,
+        x2: w.end.x, y2: w.end.y,
+        halfWidth: w.strokeWidth / 2,
+        fill: '',
+        arc: w.arc,
+      }));
+      const adj = computeCornerAdjustments(segments).adjustments;
+      for (const [k, v] of adj) merged.set(k, v);
+    }
+    return merged;
+  });
+}
+
 export function mepLineGeometry(
   el: CanonicalElement,
   ctx: GeometryContext,
@@ -48,7 +107,7 @@ export function mepLineGeometry(
   const horLen = Math.sqrt(dx * dx + dy * dy);
   if (horLen < 0.001) return null;
 
-  const adj = getWallMiterAdjustments(ctx, table);
+  const adj = getMepMiterAdjustments(ctx, table);
   const footprint = buildLineWallFootprint(ln, adj);
   if (footprint.length === 0) return null;
 
