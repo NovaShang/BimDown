@@ -1,5 +1,20 @@
 name: structural_section_profile
 abstract: true
+description: >
+  Structural cross-section profile. The editor treats each shape as a small
+  parametric family (FAMILY_VISION.md): `shape` selects the family, the
+  remaining fields are that family's parameters. Not all shapes use all
+  fields — values left blank fall back to a proportional default derived
+  from `size_x` / `size_y`.
+
+  Per-shape parameter usage:
+    rect:    size_x = width, size_y = depth
+    round:   size_x = diameter (size_y unused)
+    i_shape: size_x = flange width, size_y = total depth, flange + web thicknesses
+    t_shape: size_x = flange width, size_y = total depth, flange + web thicknesses
+    l_shape: size_x = leg X length, size_y = leg Y length, thickness = leg thk
+    c_shape: size_x = flange width, size_y = total depth, flange + web thicknesses
+    cross:   size_x = arm length X, size_y = arm length Y, thickness = arm thk
 
 fields:
   - name: shape
@@ -19,3 +34,15 @@ fields:
 
   - name: size_y
     type: float
+
+  - name: flange
+    type: float
+    description: Flange thickness — used by i_shape / t_shape / c_shape.
+
+  - name: web
+    type: float
+    description: Web thickness — used by i_shape / t_shape / c_shape.
+
+  - name: thickness
+    type: float
+    description: Leg / arm thickness — used by l_shape / cross.
