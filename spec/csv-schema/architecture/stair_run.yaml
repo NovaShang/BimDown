@@ -1,0 +1,24 @@
+name: stair_run
+bases:
+  - spatial_line_element
+  - materialized
+description: >
+  One straight run (a flight of steps) within a stair. Hosted on the parent
+  `stair` row via host_id; multi-run stairs (L / U / switchback) are composed
+  of two or more stair_run rows separated by stair_landing rows.
+
+  For straight single-run stairs the parent `stair` row's own spatial_line is
+  the run — stair_run is only needed when the stair has more than one flight.
+
+fields:
+  - name: host_id
+    type: reference
+    reference: element
+    required: true
+    description: ID of the parent stair row.
+
+  - name: width
+    type: float
+
+  - name: step_count
+    type: int
