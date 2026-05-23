@@ -138,51 +138,48 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
   const result = new Map<string, { tableName: string; discipline: string; csv: CsvRow }>();
   if (state.selectedIds.size === 0) return result;
 
-  // All Floors mode: IDs are prefixed as "levelId:elementId"
-  // Handle prefixed IDs from 3D multi-floor mode (format: "levelId:elementId")
-  if (state.project) {
-    for (const prefixedId of state.selectedIds) {
-      const colonIdx = prefixedId.indexOf(':');
-      if (colonIdx === -1) continue;
-      const levelId = prefixedId.slice(0, colonIdx);
-      const rawId = prefixedId.slice(colonIdx + 1);
-      // Check floor layers or global layers depending on prefix
-      const layers = levelId === 'global'
-        ? state.project.globalLayers
-        : state.project.floors.get(levelId)?.layers;
-      if (!layers) continue;
-      for (const layer of layers) {
-        const csv = layer.csvRows.get(rawId);
-        if (csv) {
-          result.set(prefixedId, { tableName: layer.tableName, discipline: layer.discipline, csv });
-          break;
-        }
-      }
-    }
-    if (result.size > 0) return result;
-  }
+  // Source priority: document (live edits) → project (raw CSV) → visible floor.
+  // The document is the canonical post-edit state; falling back to project's
+  // CSV rows would surface stale data after UPDATE_ATTRS.
+  for (const sid of state.selectedIds) {
+    const colonIdx = sid.indexOf(':');
+    const rawId = colonIdx >= 0 ? sid.slice(colonIdx + 1) : sid;
+    const levelId = colonIdx >= 0 ? sid.slice(0, colonIdx) : null;
 
-  // When document model exists, read from it (reflects edits)
-  if (state.document) {
-    for (const sid of state.selectedIds) {
-      const rawId = sid.includes(':') ? sid.slice(sid.indexOf(':') + 1) : sid;
+    if (state.document) {
       const el = state.document.elements.get(rawId);
       if (el) {
         result.set(sid, { tableName: el.tableName, discipline: el.discipline, csv: el.attrs });
+        continue;
       }
     }
-    return result;
-  }
 
-  const floor = getVisibleFloor(state);
-  if (!floor) return result;
+    if (state.project && levelId) {
+      const layers = levelId === 'global'
+        ? state.project.globalLayers
+        : state.project.floors.get(levelId)?.layers;
+      if (layers) {
+        let found = false;
+        for (const layer of layers) {
+          const csv = layer.csvRows.get(rawId);
+          if (csv) {
+            result.set(sid, { tableName: layer.tableName, discipline: layer.discipline, csv });
+            found = true;
+            break;
+          }
+        }
+        if (found) continue;
+      }
+    }
 
-  for (const layer of floor.layers) {
-    for (const sid of state.selectedIds) {
-      const rawId = sid.includes(':') ? sid.slice(sid.indexOf(':') + 1) : sid;
-      const csv = layer.csvRows.get(rawId);
-      if (csv) {
-        result.set(sid, { tableName: layer.tableName, discipline: layer.discipline, csv });
+    const floor = getVisibleFloor(state);
+    if (floor) {
+      for (const layer of floor.layers) {
+        const csv = layer.csvRows.get(rawId);
+        if (csv) {
+          result.set(sid, { tableName: layer.tableName, discipline: layer.discipline, csv });
+          break;
+        }
       }
     }
   }

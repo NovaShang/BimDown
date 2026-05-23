@@ -485,6 +485,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         if ('size_y' in action.attrs) pt.height = parseFloat(action.attrs.size_y) || pt.height;
       }
 
+      // Sync thickness attr → LineElement/SpatialLineElement strokeWidth.
+      // Without this, wall/beam/duct geometry stays at the old thickness even
+      // though the CSV row shows the new value.
+      if ((updated.geometry === 'line' || updated.geometry === 'spatial_line') && 'thickness' in action.attrs) {
+        const t = parseFloat(action.attrs.thickness);
+        if (Number.isFinite(t) && t > 0) (updated as LineElement).strokeWidth = t;
+      }
+
       // Re-resolve hosted geometry when position, width, or host_id changes
       if (updated.hostId && updated.geometry === 'line' && ('position' in action.attrs || 'width' in action.attrs || 'host_id' in action.attrs)) {
         const hostWall = state.document.elements.get(action.attrs.host_id ?? updated.hostId ?? '');

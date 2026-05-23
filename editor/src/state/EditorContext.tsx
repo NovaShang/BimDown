@@ -1,26 +1,43 @@
 import { createContext, useContext, useReducer, useMemo, type ReactNode, type Dispatch } from 'react';
 import type { EditorState, EditorAction } from './editorTypes.ts';
 import { editorReducer, initialState } from './editorReducer.ts';
+import { toElementId } from '../model/ids.ts';
 
 /** Selection-only slice — changes here do NOT trigger re-renders in document consumers. */
 interface SelectionState {
+  /** Raw selection IDs (may carry a "levelId:" prefix in multi-floor mode). */
   selectedIds: Set<string>;
+  /** Raw element IDs after stripping level prefix — for fast per-element
+   *  `selectedRawIds.has(element.id)` checks in render paths. */
+  selectedRawIds: Set<string>;
   hoveredId: string | null;
+  /** Raw hovered element ID (level prefix stripped), or null. */
+  hoveredRawId: string | null;
 }
 
 const StateContext = createContext<EditorState>(initialState);
 const CoreStateContext = createContext<EditorState>(initialState);
-const SelectionContext = createContext<SelectionState>({ selectedIds: new Set(), hoveredId: null });
+const SelectionContext = createContext<SelectionState>({
+  selectedIds: new Set(), selectedRawIds: new Set(), hoveredId: null, hoveredRawId: null,
+});
 const DispatchContext = createContext<Dispatch<EditorAction>>(() => {});
 
 export function EditorProvider({ children, readonly }: { children: ReactNode; readonly?: boolean }) {
   const [state, dispatch] = useReducer(editorReducer, { ...initialState, readonly: readonly ?? false });
 
-  // Stable selection reference — only changes when selectedIds/hoveredId actually change
-  const selection = useMemo<SelectionState>(
-    () => ({ selectedIds: state.selectedIds, hoveredId: state.hoveredId }),
-    [state.selectedIds, state.hoveredId],
-  );
+  // Stable selection reference — only changes when selectedIds/hoveredId actually change.
+  // selectedRawIds is pre-computed here so per-element render paths can do an
+  // O(1) `has(element.id)` check without rebuilding the raw set per node.
+  const selection = useMemo<SelectionState>(() => {
+    const selectedRawIds = new Set<string>();
+    for (const sid of state.selectedIds) selectedRawIds.add(toElementId(sid));
+    return {
+      selectedIds: state.selectedIds,
+      selectedRawIds,
+      hoveredId: state.hoveredId,
+      hoveredRawId: state.hoveredId !== null ? toElementId(state.hoveredId) : null,
+    };
+  }, [state.selectedIds, state.hoveredId]);
 
   // Core state — excludes hoveredId so high-frequency hover events don't trigger
   // re-renders in heavy components like Canvas.
