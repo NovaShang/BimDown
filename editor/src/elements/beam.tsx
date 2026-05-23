@@ -3,9 +3,11 @@ import { ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
-import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
+import { createProfile } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { resolveSection } from '../families/sections/index.ts';
+import type { SectionFamily, SectionParams } from '../families/sections/index.ts';
 
 export interface BeamFacts {
   id: string;
@@ -13,12 +15,10 @@ export interface BeamFacts {
   end: Point;
   startZ: number;
   endZ: number;
-  sizeX: number;
-  sizeY: number;
-  shape: string;
+  section: { family: SectionFamily; params: SectionParams };
   baseY: number;
   material: string;
-  /** SVG line strip 4-corner footprint (rect cross-section projected to 2D). */
+  /** Plan-view rectangular strip footprint (width = section bbox width). */
   footprint2D: Point[];
 }
 
@@ -27,14 +27,20 @@ export const beamModule: ElementModule<BeamFacts> = {
   discipline: 'structure',
   archetype: 'spatial-line',
   prefix: 'bm',
-  csvHeaders: ['number', 'base_offset', 'start_z', 'end_z', 'shape', 'size_x', 'size_y', 'material'],
+  csvHeaders: [
+    'number', 'base_offset', 'start_z', 'end_z',
+    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material',
+  ],
   defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'rect', size_x: '0.3', size_y: '0.5', material: 'steel' },
   drawingFields: [
-    { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
-    { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.1, step: 0.05 },
+    { key: 'shape', label: 'Shape', type: 'select', options: STRUCTURAL_SHAPE_OPTIONS },
+    { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'flange', label: 'Flange Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+    { key: 'web', label: 'Web Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+    { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
     { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
-    { key: 'shape', label: 'Shape', type: 'select', options: STRUCTURAL_SHAPE_OPTIONS },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
     BASE_OFFSET_FIELD,
   ],
@@ -49,8 +55,6 @@ export const beamModule: ElementModule<BeamFacts> = {
     const dy = ln.end.y - ln.start.y;
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.001) return null;
-    const sizeX = parseFloat(ln.attrs.size_x || '0.3') || 0.3;
-    const sizeY = parseFloat(ln.attrs.size_y || '0.5') || 0.5;
     const baseOffset = parseFloat(ln.attrs.base_offset || '0') || 0;
     let startZ = baseOffset, endZ = baseOffset;
     if (el.geometry === 'spatial_line') {
@@ -61,9 +65,11 @@ export const beamModule: ElementModule<BeamFacts> = {
       startZ = parseFloat(ln.attrs.start_z || `${baseOffset}`) || baseOffset;
       endZ = parseFloat(ln.attrs.end_z || `${baseOffset}`) || baseOffset;
     }
-    // 2D footprint: rectangle of width sizeX (in plan view) along beam centerline.
+    const section = resolveSection(ln.attrs.shape || 'rect', ln.attrs);
+    // 2D footprint: rectangle in plan view, width = section's plan-view extent.
+    const planWidth = section.family.bbox(section.params).w;
     const nx = -dy / len, ny = dx / len;
-    const hw = sizeX / 2;
+    const hw = planWidth / 2;
     const footprint2D: Point[] = [
       { x: ln.start.x + nx * hw, y: ln.start.y + ny * hw },
       { x: ln.end.x   + nx * hw, y: ln.end.y   + ny * hw },
@@ -74,8 +80,7 @@ export const beamModule: ElementModule<BeamFacts> = {
       id: ln.id,
       start: ln.start, end: ln.end,
       startZ, endZ,
-      sizeX, sizeY,
-      shape: ln.attrs.shape || 'rect',
+      section,
       baseY: ctx.levelElevation,
       material: ln.attrs.material || 'steel',
       footprint2D,
@@ -108,7 +113,7 @@ export const beamModule: ElementModule<BeamFacts> = {
     const horLen = Math.sqrt(dx * dx + dy * dy);
     if (horLen < 0.001) return null;
 
-    const profile = shapeFromAttrs(facts.shape, facts.sizeX, facts.sizeY);
+    const profile = facts.section.family.shape3D(facts.section.params);
     const shape = createProfile(profile);
     // Profile in XY → extrude by horLen along Z (will be rotated to align with beam axis).
     const geo = new ExtrudeGeometry(shape, { depth: horLen, bevelEnabled: false });

@@ -131,62 +131,32 @@ export function createProfile(spec: Shape2D): Shape {
   return shape;
 }
 
+import { resolveSection } from '../../families/sections/index.ts';
+
 /**
- * Builds a Shape2D from a CSV shape string and dimensional attributes.
- * Falls back to rect if shape unknown.
+ * Backward-compat shim: builds a Shape2D from a shape string + width/depth
+ * numbers. New code should use `resolveSection(shape, attrs)` directly so the
+ * caller can pass explicit web/flange/thickness params; this wrapper synthesizes
+ * the numbers into the `size_x` / `size_y` attrs the families expect.
  */
 export function shapeFromAttrs(
   shape: string | undefined,
   sizeX: number,
   sizeY: number,
 ): Shape2D {
-  switch (shape) {
-    case 'round':
-      return { kind: 'round', radius: Math.max(sizeX, sizeY) / 2 };
-    case 'i_shape':
-    case 'i':
-      return {
-        kind: 'i',
-        width: sizeX,
-        depth: sizeY,
-        flange: Math.min(sizeY * 0.15, 0.025),
-        web: Math.min(sizeX * 0.15, 0.015),
-      };
-    case 't_shape':
-    case 't':
-      return {
-        kind: 't',
-        width: sizeX,
-        depth: sizeY,
-        flange: Math.min(sizeY * 0.2, 0.03),
-        web: Math.min(sizeX * 0.2, 0.02),
-      };
-    case 'l_shape':
-    case 'l':
-      return {
-        kind: 'l',
-        width: sizeX,
-        depth: sizeY,
-        thickness: Math.min(sizeX, sizeY) * 0.15,
-      };
-    case 'c_shape':
-    case 'c':
-      return {
-        kind: 'c',
-        width: sizeX,
-        depth: sizeY,
-        flange: Math.min(sizeY * 0.15, 0.025),
-        web: Math.min(sizeX * 0.2, 0.02),
-      };
-    case 'cross':
-      return {
-        kind: 'cross',
-        width: sizeX,
-        depth: sizeY,
-        thickness: Math.min(sizeX, sizeY) * 0.25,
-      };
-    case 'rect':
-    default:
-      return { kind: 'rect', width: sizeX, depth: sizeY };
-  }
+  const { family, params } = resolveSection(shape, {
+    size_x: String(sizeX),
+    size_y: String(sizeY),
+  });
+  return family.shape3D(params);
+}
+
+/** Preferred API: resolve a Shape2D from the element's full attrs map so
+ *  explicit per-section parameters (flange, web, thickness, …) flow through. */
+export function shapeFromSectionAttrs(
+  shape: string | undefined,
+  attrs: Record<string, string>,
+): Shape2D {
+  const { family, params } = resolveSection(shape, attrs);
+  return family.shape3D(params);
 }

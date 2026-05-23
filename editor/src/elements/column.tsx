@@ -3,9 +3,11 @@ import { ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
-import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
+import { createProfile } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { resolveSection } from '../families/sections/index.ts';
+import type { SectionFamily, SectionParams } from '../families/sections/index.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 const OUTLINE_WIDTH = 0.02;  // world meters; constant regardless of column size
@@ -23,10 +25,9 @@ function columnFill(material: string): string {
 export interface ColumnFacts {
   id: string;
   position: Point;
-  width: number;
-  height: number;     // 2D footprint depth
   rotationDeg: number;
-  shape: string;      // rect | round | i | t | l | c | cross
+  /** Resolved section family + params — drives both 2D outline and 3D shape. */
+  section: { family: SectionFamily; params: SectionParams };
   material: string;
   baseY: number;
   extrudeHeight: number;  // 3D extrusion height
@@ -56,12 +57,18 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
     archetype: 'point',
     prefix: table === 'structure_column' ? 'sc' : 'c',
     hasVerticalSpan: true,
-    csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'shape', 'size_x', 'size_y', 'rotation'],
+    csvHeaders: [
+      'number', 'base_offset', 'top_level_id', 'top_offset', 'material',
+      'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'rotation',
+    ],
     defaults,
     drawingFields: [
+      { key: 'shape', label: 'Shape', type: 'select', options: shapeOptions },
       { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
       { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-      { key: 'shape', label: 'Shape', type: 'select', options: shapeOptions },
+      { key: 'flange', label: 'Flange Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+      { key: 'web', label: 'Web Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
       BASE_OFFSET_FIELD,
     ],
@@ -72,16 +79,20 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
     geometry(el: CanonicalElement, ctx: GeometryContext): ColumnFacts | null {
       if (el.geometry !== 'point') return null;
       const p = el as PointElement;
-      const sizeX = parseFloat(p.attrs.size_x || '0') || p.width || 0.3;
-      const sizeY = parseFloat(p.attrs.size_y || '0') || p.height || sizeX;
+      // Resolve section family from `shape` + raw attrs. Backfill size_x/size_y
+      // from the PointElement footprint when missing so legacy data still works.
+      const attrsForSection: Record<string, string> = {
+        ...p.attrs,
+        size_x: p.attrs.size_x || String(p.width || 0.3),
+        size_y: p.attrs.size_y || String(p.height || p.width || 0.3),
+      };
+      const section = resolveSection(p.attrs.shape || 'rect', attrsForSection);
       const { height: extrudeHeight, baseOffset } = resolveLevelHeight(p.attrs, ctx.levelElevation, ctx.levelElevations);
       return {
         id: p.id,
         position: p.position,
-        width: sizeX,
-        height: sizeY,
         rotationDeg: parseFloat(p.attrs.rotation || '0') || 0,
-        shape: p.attrs.shape || 'rect',
+        section,
         material: p.attrs.material || defaults.material,
         baseY: ctx.levelElevation + baseOffset,
         extrudeHeight,
@@ -91,14 +102,14 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
     draw2D(facts, drawCtx): ReactNode {
       const fill = columnFill(facts.material);
       const stroke = drawCtx.selected ? '#3a7bff' : (drawCtx.hovered ? '#06b6d4' : '#333');
-      const hw = facts.width / 2;
-      const hh = facts.height / 2;
       const transform = `translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`;
+      const { family, params } = facts.section;
+      const bb = family.bbox(params);
+      const hw = bb.w / 2;
+      const hh = bb.d / 2;
 
-      if (facts.shape === 'round') {
-        // X must fit inside the ellipse, not the bounding box. The largest
-        // inscribed rectangle has corners at (rx·√½, ry·√½); the margin keeps
-        // the cross visibly inside the outline.
+      // Round: ellipse + X (inscribed in ellipse).
+      if (family.id === 'round') {
         const xx = hw * Math.SQRT1_2 * CROSS_MARGIN;
         const yy = hh * Math.SQRT1_2 * CROSS_MARGIN;
         return (
@@ -109,18 +120,28 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
           </g>
         );
       }
+      // Rect: outline + diagonal X (standard plan symbol).
+      if (family.id === 'rect') {
+        return (
+          <g data-id={facts.id} transform={transform}>
+            <rect x={-hw} y={-hh} width={bb.w} height={bb.d}
+              fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+            <line x1={-hw} y1={-hh} x2={hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+            <line x1={hw} y1={-hh} x2={-hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+          </g>
+        );
+      }
+      // Structural sections (I/T/L/C/cross): render the actual outline.
+      const points = family.outline2D(params).map(pt => `${pt.x},${pt.y}`).join(' ');
       return (
         <g data-id={facts.id} transform={transform}>
-          <rect x={-hw} y={-hh} width={facts.width} height={facts.height}
-            fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
-          <line x1={-hw} y1={-hh} x2={hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
-          <line x1={hw} y1={-hh} x2={-hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+          <polygon points={points} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
         </g>
       );
     },
 
     draw3D(facts, drawCtx): ReactNode {
-      const profile = shapeFromAttrs(facts.shape, facts.width, facts.height);
+      const profile = facts.section.family.shape3D(facts.section.params);
       const shape = createProfile(profile);
       const geo = new ExtrudeGeometry(shape, { depth: facts.extrudeHeight, bevelEnabled: false });
       geo.rotateX(-Math.PI / 2);
@@ -147,9 +168,12 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
     },
 
     bbox(facts) {
-      const hw = facts.width / 2;
-      const hh = facts.height / 2;
-      return { x: facts.position.x - hw, y: facts.position.y - hh, w: facts.width, h: facts.height };
+      const bb = facts.section.family.bbox(facts.section.params);
+      return {
+        x: facts.position.x - bb.w / 2,
+        y: facts.position.y - bb.d / 2,
+        w: bb.w, h: bb.d,
+      };
     },
   };
 }

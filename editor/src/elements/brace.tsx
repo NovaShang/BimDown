@@ -7,9 +7,11 @@ import { ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
-import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
+import { createProfile } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { resolveSection } from '../families/sections/index.ts';
+import type { SectionFamily, SectionParams } from '../families/sections/index.ts';
 
 export interface BraceFacts {
   id: string;
@@ -17,9 +19,7 @@ export interface BraceFacts {
   end: Point;
   startZ: number;
   endZ: number;
-  sizeX: number;
-  sizeY: number;
-  shape: string;
+  section: { family: SectionFamily; params: SectionParams };
   baseY: number;
   material: string;
   footprint2D: Point[];
@@ -30,14 +30,20 @@ export const braceModule: ElementModule<BraceFacts> = {
   discipline: 'structure',
   archetype: 'spatial-line',
   prefix: 'br',
-  csvHeaders: ['number', 'base_offset', 'start_z', 'end_z', 'shape', 'size_x', 'size_y', 'material'],
+  csvHeaders: [
+    'number', 'base_offset', 'start_z', 'end_z',
+    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material',
+  ],
   defaults: { base_offset: '0', start_z: '0', end_z: '3', shape: 'rect', size_x: '0.2', size_y: '0.2', material: 'steel' },
   drawingFields: [
-    { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-    { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'shape', label: 'Shape', type: 'select', options: STRUCTURAL_SHAPE_OPTIONS },
+    { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'size_y', label: 'Depth', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'flange', label: 'Flange Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+    { key: 'web', label: 'Web Thk', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
+    { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
     { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
-    { key: 'shape', label: 'Shape', type: 'select', options: STRUCTURAL_SHAPE_OPTIONS },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
     BASE_OFFSET_FIELD,
   ],
@@ -60,13 +66,13 @@ export const braceModule: ElementModule<BraceFacts> = {
       startZ = parseFloat(ln.attrs.start_z || `${baseOffset}`) || baseOffset;
       endZ = parseFloat(ln.attrs.end_z || `${baseOffset}`) || baseOffset;
     }
-    const sizeX = parseFloat(ln.attrs.size_x || '0.2') || 0.2;
-    const sizeY = parseFloat(ln.attrs.size_y || '0.2') || 0.2;
+    const section = resolveSection(ln.attrs.shape || 'rect', ln.attrs);
+    const planWidth = section.family.bbox(section.params).w;
 
     // 2D footprint: even for pure vertical brace (dx=dy=0), give a small marker.
     let footprint2D: Point[];
     if (len < 0.001) {
-      const r = sizeX / 2;
+      const r = planWidth / 2;
       footprint2D = [
         { x: ln.start.x - r, y: ln.start.y - r },
         { x: ln.start.x + r, y: ln.start.y - r },
@@ -75,7 +81,7 @@ export const braceModule: ElementModule<BraceFacts> = {
       ];
     } else {
       const nx = -dy / len, ny = dx / len;
-      const hw = sizeX / 2;
+      const hw = planWidth / 2;
       footprint2D = [
         { x: ln.start.x + nx * hw, y: ln.start.y + ny * hw },
         { x: ln.end.x   + nx * hw, y: ln.end.y   + ny * hw },
@@ -87,8 +93,7 @@ export const braceModule: ElementModule<BraceFacts> = {
       id: ln.id,
       start: ln.start, end: ln.end,
       startZ, endZ,
-      sizeX, sizeY,
-      shape: ln.attrs.shape || 'rect',
+      section,
       baseY: ctx.levelElevation,
       material: ln.attrs.material || 'steel',
       footprint2D,
@@ -107,7 +112,7 @@ export const braceModule: ElementModule<BraceFacts> = {
     const dy = facts.end.y - facts.start.y;
     const horLen = Math.sqrt(dx * dx + dy * dy);
     if (horLen < 0.001) return null;
-    const profile = shapeFromAttrs(facts.shape, facts.sizeX, facts.sizeY);
+    const profile = facts.section.family.shape3D(facts.section.params);
     const shape = createProfile(profile);
     const geo = new ExtrudeGeometry(shape, { depth: horLen, bevelEnabled: false });
     const angleY = Math.atan2(-dy, dx);
