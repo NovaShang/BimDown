@@ -3,17 +3,22 @@ import { ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
-import { getBlockSvg } from './_blockLoader.ts';
 import { createProfile, shapeFromAttrs } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 
-const BLOCK_MAP: Record<string, string> = {
-  rect: 'column_rectangular',
-  round: 'column_round',
-};
-
 const DEFAULT_HEIGHT = 3.0;
+const OUTLINE_WIDTH = 0.02;  // world meters; constant regardless of column size
+const CROSS_WIDTH = 0.015;
+const CROSS_MARGIN = 0.9;    // X stays inside the column outline with a 10% margin
+
+function columnFill(material: string): string {
+  const m = (material || '').toLowerCase();
+  if (m.includes('concrete')) return '#d4d4d4';
+  if (m.includes('steel') || m.includes('metal')) return '#c8d4e0';
+  if (m.includes('wood') || m.includes('clt')) return '#d8c0a0';
+  return '#e0e0e0';
+}
 
 export interface ColumnFacts {
   id: string;
@@ -82,15 +87,34 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
       };
     },
 
-    draw2D(facts): ReactNode {
-      const blockName = BLOCK_MAP[facts.shape] ?? 'column_rectangular';
-      const svg = getBlockSvg(blockName);
-      if (!svg) return null;
-      const transform =
-        `translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg}) ` +
-        `translate(${-facts.width / 2},${-facts.height / 2}) scale(${facts.width},${facts.height})`;
+    draw2D(facts, drawCtx): ReactNode {
+      const fill = columnFill(facts.material);
+      const stroke = drawCtx.selected ? '#3a7bff' : (drawCtx.hovered ? '#06b6d4' : '#333');
+      const hw = facts.width / 2;
+      const hh = facts.height / 2;
+      const transform = `translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`;
+
+      if (facts.shape === 'round') {
+        // X must fit inside the ellipse, not the bounding box. The largest
+        // inscribed rectangle has corners at (rx·√½, ry·√½); the margin keeps
+        // the cross visibly inside the outline.
+        const xx = hw * Math.SQRT1_2 * CROSS_MARGIN;
+        const yy = hh * Math.SQRT1_2 * CROSS_MARGIN;
+        return (
+          <g data-id={facts.id} transform={transform}>
+            <ellipse cx={0} cy={0} rx={hw} ry={hh} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+            <line x1={-xx} y1={-yy} x2={xx} y2={yy} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+            <line x1={xx} y1={-yy} x2={-xx} y2={yy} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+          </g>
+        );
+      }
       return (
-        <g data-id={facts.id} transform={transform} dangerouslySetInnerHTML={{ __html: svg }} />
+        <g data-id={facts.id} transform={transform}>
+          <rect x={-hw} y={-hh} width={facts.width} height={facts.height}
+            fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+          <line x1={-hw} y1={-hh} x2={hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+          <line x1={hw} y1={-hh} x2={-hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+        </g>
       );
     },
 
