@@ -1,6 +1,7 @@
 import type { DrawingState, Tool } from '../state/editorTypes.ts';
 import type { Point } from '../model/elements.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
+import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
 
 function formatLength(meters: number): string {
   if (meters < 1) return `${(meters * 1000).toFixed(0)} mm`;
@@ -51,6 +52,116 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   const { points, cursor } = drawingState;
 
   if (activeTool === 'draw_line') {
+    // Multi-click stair (L / U) — show dots at each clicked point, plus
+    // a dashed segment from the last point to the cursor.
+    if (tableName === 'stair' && isMultiClickStair(drawingAttrs.stair_type)) {
+      const need = clicksRequired(drawingAttrs.stair_type);
+      const r1 = 0.45 / scale;
+      const r2 = 0.3 / scale;
+      const width = parseFloat(drawingAttrs.width || '1.2') || 1.2;
+      const hw = width / 2;
+
+      // Preview thick band for the current segment (the run-in-progress).
+      let bandLine: { from: Point; to: Point } | null = null;
+      if (points.length > 0 && cursor) {
+        bandLine = { from: points[points.length - 1], to: cursor };
+      }
+
+      // Tentative landing footprint preview at the 2nd-click position
+      // (corner of an L stair).
+      let landingRect: string | null = null;
+      if (drawingAttrs.stair_type === 'quarter_turn' && points.length === 2 && cursor) {
+        // a = corner, runStart = first click, runEnd = cursor
+        const a = points[1];
+        const inDx = a.x - points[0].x, inDy = a.y - points[0].y;
+        const outDx = cursor.x - a.x, outDy = cursor.y - a.y;
+        const inLen = Math.hypot(inDx, inDy) || 1;
+        const outLen = Math.hypot(outDx, outDy) || 1;
+        const ix = inDx / inLen, iy = inDy / inLen;
+        const ox = outDx / outLen, oy = outDy / outLen;
+        let bx = ix + ox, by = iy + oy;
+        let blen = Math.hypot(bx, by);
+        if (blen < 1e-6) { bx = ix; by = iy; blen = 1; }
+        bx /= blen; by /= blen;
+        const nx = -by, ny = bx;
+        const verts = [
+          { x: a.x + bx * hw + nx * hw, y: a.y + by * hw + ny * hw },
+          { x: a.x + bx * hw - nx * hw, y: a.y + by * hw - ny * hw },
+          { x: a.x - bx * hw - nx * hw, y: a.y - by * hw - ny * hw },
+          { x: a.x - bx * hw + nx * hw, y: a.y - by * hw + ny * hw },
+        ];
+        landingRect = verts.map(v => `${v.x},${v.y}`).join(' ');
+      }
+      // Tentative landing footprint for the U stair — spans points[1] → points[2].
+      if (drawingAttrs.stair_type === 'half_turn' && points.length >= 2) {
+        const a = points[1];
+        const b = points.length >= 3 ? points[2] : cursor;
+        if (b) {
+          const dx = b.x - a.x, dy = b.y - a.y;
+          const span = Math.hypot(dx, dy);
+          if (span > 1e-6) {
+            const ux = dx / span, uy = dy / span;
+            const nx = -uy, ny = ux;
+            const verts = [
+              { x: a.x + nx * hw, y: a.y + ny * hw },
+              { x: b.x + nx * hw, y: b.y + ny * hw },
+              { x: b.x - nx * hw, y: b.y - ny * hw },
+              { x: a.x - nx * hw, y: a.y - ny * hw },
+            ];
+            landingRect = verts.map(v => `${v.x},${v.y}`).join(' ');
+          }
+        }
+      }
+
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          {landingRect && (
+            <polygon
+              points={landingRect}
+              fill="rgba(123,104,238,0.15)"
+              stroke="#7b68ee" strokeWidth={0.06 / scale}
+              strokeDasharray={`${0.3 / scale},${0.15 / scale}`}
+            />
+          )}
+          {bandLine && (
+            <line
+              x1={bandLine.from.x} y1={bandLine.from.y}
+              x2={bandLine.to.x} y2={bandLine.to.y}
+              stroke="#4fc3f7" strokeWidth={width} strokeLinecap="butt" opacity="0.25"
+            />
+          )}
+          {/* Lines between placed points */}
+          {points.map((p, i) => {
+            const next = i < points.length - 1 ? points[i + 1] : cursor;
+            if (!next) return null;
+            return (
+              <line key={i}
+                x1={p.x} y1={p.y} x2={next.x} y2={next.y}
+                stroke="#4fc3f7" strokeWidth={0.12 / scale}
+                strokeDasharray={i === points.length - 1 ? `${0.6 / scale},${0.3 / scale}` : undefined}
+              />
+            );
+          })}
+          {points.map((p, i) => (
+            <circle key={`pt-${i}`} cx={p.x} cy={p.y} r={r1} fill="#4fc3f7" />
+          ))}
+          {cursor && (
+            <circle cx={cursor.x} cy={cursor.y} r={r2} fill="#4fc3f7" opacity="0.6" />
+          )}
+          {/* Click counter hint */}
+          {cursor && (
+            <text
+              x={cursor.x} y={-(cursor.y - 0.6 / scale)}
+              fill="#4fc3f7" fontSize={0.9 / scale} fontFamily="monospace"
+              textAnchor="middle" transform="scale(1,-1)" opacity="0.85"
+            >
+              {`${points.length + 1}/${need}`}
+            </text>
+          )}
+        </g>
+      );
+    }
+
     // Vertical-pipe single-click mode: render a single cursor circle marker
     // (cross-section of the vertical pipe) instead of the 2-point preview.
     if (drawingAttrs.__vertical_mode === 'true' && cursor) {

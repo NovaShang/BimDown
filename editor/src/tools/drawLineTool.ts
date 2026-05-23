@@ -6,6 +6,15 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
+import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
+
+/** When true, the multi-click stair placement tool handles this event instead
+ *  of the regular line-creation flow. Straight stairs and every other table
+ *  still go through the line path unchanged. */
+function shouldDelegateToStairTool(state: { drawingTarget: { tableName: string } | null; drawingAttrs: Record<string, string> }): boolean {
+  return state.drawingTarget?.tableName === 'stair'
+    && isMultiClickStair(state.drawingAttrs.stair_type);
+}
 
 /** Reserved drawingAttrs key (double underscore prefix to avoid CSV-field collision)
  *  enabling single-click vertical-pipe placement for MEP topo-line elements. */
@@ -20,6 +29,13 @@ export const drawLineTool: ToolHandler = {
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
+
+    // Stair tool intercept: L / U / multi-click stair shapes use a dedicated
+    // tool that lays down stair + stair_landing + stair_run in one placement.
+    if (shouldDelegateToStairTool(ctx.getState())) {
+      drawStairTool.onPointerDown?.(ctx, e);
+      return;
+    }
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
@@ -101,6 +117,11 @@ export const drawLineTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
+    if (shouldDelegateToStairTool(ctx.getState())) {
+      drawStairTool.onPointerMove?.(ctx, e);
+      return;
+    }
+
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
 
