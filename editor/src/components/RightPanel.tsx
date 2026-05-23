@@ -224,6 +224,7 @@ function PropertyRow({
               step={f.step}
               min={f.min}
               max={f.max}
+              parseImperial={f.unit === 'm' && (projectUnit === 'ft' || projectUnit === 'in') ? projectUnit : undefined}
             />
             {renderedUnit && <span className="shrink-0 text-[9px] text-muted-foreground/60 select-none">{renderedUnit}</span>}
           </>

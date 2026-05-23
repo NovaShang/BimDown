@@ -94,6 +94,7 @@ export default function DrawingPropertiesBar() {
                 step={f.step}
                 min={f.min}
                 max={f.max}
+                parseImperial={f.unit === 'm' && (projectUnit === 'ft' || projectUnit === 'in') ? projectUnit : undefined}
               />
               {f.unit && <span className="text-[9px] text-muted-foreground select-none">{f.unit === 'm' ? projectUnitLabel : f.unit}</span>}
             </div>

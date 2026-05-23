@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { Input } from './ui/input';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { cn } from '../lib/utils';
+import { parseImperialLength } from '../utils/units';
 
 interface NumberInputProps {
   value: string;
@@ -11,6 +12,10 @@ interface NumberInputProps {
   min?: number;
   max?: number;
   className?: string;
+  /** When set, accept imperial notation (`5'-6"`, `6"`, `5'`) on top of decimal
+   *  input. The parsed decimal value is in the chosen unit (`'ft'` or `'in'`),
+   *  matching the project unit so we never convert behind the user's back. */
+  parseImperial?: 'ft' | 'in';
 }
 
 function clampAndRound(val: number, step: number, min?: number, max?: number) {
@@ -35,7 +40,7 @@ function formatForDisplay(raw: string, step: number): string {
   return decimals > 0 ? fixed.replace(/\.?0+$/, '') || '0' : fixed;
 }
 
-export function NumberInput({ value, onChange, step = 1, min, max, className }: NumberInputProps) {
+export function NumberInput({ value, onChange, step = 1, min, max, className, parseImperial }: NumberInputProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -85,8 +90,25 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
+    if (parseImperial) {
+      // Defer parse to blur so the user can keep typing `5'-6"` without us
+      // rejecting intermediate states. Pending string drives the display.
+      setPendingValue(v);
+      return;
+    }
     if (v === '' || v === '-' || !isNaN(Number(v))) onChange(v);
-  }, [onChange]);
+  }, [onChange, parseImperial]);
+
+  const handleBlur = useCallback(() => {
+    setFocused(false);
+    if (parseImperial && pendingValue != null) {
+      const parsed = parseImperialLength(pendingValue, parseImperial);
+      if (parsed != null && Number.isFinite(parsed)) {
+        onChange(String(parsed));
+      }
+      setPendingValue(null);
+    }
+  }, [parseImperial, pendingValue, onChange]);
 
   // While editing (focused), show whatever the user has typed verbatim;
   // otherwise format to step precision so float artifacts don't leak through.
@@ -105,7 +127,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className }: 
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}
-            onBlur={() => setFocused(false)}
+            onBlur={handleBlur}
           />
         }
       />

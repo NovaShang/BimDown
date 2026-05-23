@@ -31,6 +31,34 @@ export function getUnitSuffix(unit: ProjectUnit): string {
   }
 }
 
+/** Parse user input that may be imperial notation (`5'-6"`, `5'6"`, `5' 6"`,
+ *  `5'`, `6"`, `5.5'`) and return the numeric value in `target` units. Plain
+ *  decimal strings (no `'` or `"`) fall through to a normal float parse so the
+ *  caller can stay agnostic.
+ *
+ *  Returns `null` for empty / unparsable input.
+ */
+export function parseImperialLength(raw: string, target: 'ft' | 'in'): number | null {
+  const trimmed = raw.trim();
+  if (trimmed === '' || trimmed === '-') return null;
+  let sign = 1;
+  let body = trimmed;
+  if (body.startsWith('-') && (body.includes("'") || body.includes('"'))) {
+    sign = -1;
+    body = body.slice(1).trim();
+  }
+  if (!body.includes("'") && !body.includes('"')) {
+    const n = parseFloat(trimmed);
+    return Number.isFinite(n) ? n : null;
+  }
+  const m = body.match(/^(?:(\d+(?:\.\d+)?)\s*')?\s*-?\s*(?:(\d+(?:\.\d+)?)\s*")?$/);
+  if (!m || (!m[1] && !m[2])) return null;
+  const feet = m[1] ? parseFloat(m[1]) : 0;
+  const inches = m[2] ? parseFloat(m[2]) : 0;
+  const totalInches = feet * 12 + inches;
+  return sign * (target === 'ft' ? totalInches / 12 : totalInches);
+}
+
 /** Format a numeric length already expressed in `unit` (no conversion). Phase 1
  *  uses straight decimal display with unit-appropriate precision:
  *
