@@ -27,13 +27,15 @@ export const roomSeparatorModule: ElementModule<RoomSeparatorFacts> = {
     return { id: ln.id, start: ln.start, end: ln.end };
   },
 
-  draw2D(facts): ReactNode {
+  draw2D(facts, drawCtx): ReactNode {
+    const stroke = drawCtx.selected ? '#3a7bff' : (drawCtx.hovered ? '#06b6d4' : '#000');
     return (
       <line
         x1={facts.start.x} y1={facts.start.y}
         x2={facts.end.x} y2={facts.end.y}
-        stroke="#000" strokeWidth={0.02}
-        strokeDasharray="0.08 0.06"
+        stroke={stroke} strokeWidth={0.03}
+        strokeDasharray="0.15 0.08"
+        strokeLinecap="butt"
         data-id={facts.id}
       />
     );

@@ -67,15 +67,17 @@ export const spaceModule: ElementModule<SpaceFacts> = {
     return null;
   },
 
-  draw2D(facts): ReactNode {
-    // Polygon spaces: dashed outline. Point spaces: no marker.
+  draw2D(facts, drawCtx): ReactNode {
+    // Polygon spaces: dashed outline. Selection turns the boundary solid
+    // and fills the interior to make the room's extent obvious.
+    const highlight = drawCtx.selected;
     const outline = facts.kind === 'polygon' && facts.vertices ? (
       <polygon
         points={facts.vertices.map(v => `${v.x},${v.y}`).join(' ')}
-        fill="rgba(58,134,255,0.06)"
-        stroke="#3a86ff"
-        strokeWidth={0.03}
-        strokeDasharray="0.15,0.08"
+        fill={highlight ? 'rgba(58,134,255,0.18)' : 'rgba(58,134,255,0.06)'}
+        stroke={highlight ? '#3a7bff' : '#3a86ff'}
+        strokeWidth={highlight ? 0.05 : 0.03}
+        strokeDasharray={highlight ? undefined : '0.15,0.08'}
       />
     ) : null;
 
