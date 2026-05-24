@@ -1,7 +1,9 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
+import { HexColorPicker } from 'react-colorful';
 import { cn } from '../lib/utils';
 import { Input } from './ui/input';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import type { SystemDef } from '../types.ts';
 
 interface MepSystemDialogProps {
@@ -101,32 +103,49 @@ export default function MepSystemDialog({ open, onClose, onConfirm, initial }: M
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {t('dialog.mepSystem.discipline', 'Discipline')}
         </label>
-        <select
-          className="mb-3 h-7 w-full rounded border border-input bg-transparent px-2 text-[12px] focus-visible:border-ring focus-visible:outline-none"
-          value={discipline}
-          onChange={e => setDiscipline(e.target.value)}
-        >
-          {DISCIPLINE_OPTIONS.map(opt => (
-            <option key={opt.value} value={opt.value}>{opt.label}</option>
-          ))}
-        </select>
+        <Select value={discipline} onValueChange={(v) => { if (v) setDiscipline(v); }}>
+          <SelectTrigger className="mb-3 h-7 w-full rounded border border-input bg-transparent px-2 text-[12px]">
+            <span className="truncate">
+              {DISCIPLINE_OPTIONS.find(o => o.value === discipline)?.label ?? discipline}
+            </span>
+          </SelectTrigger>
+          <SelectContent>
+            {DISCIPLINE_OPTIONS.map(opt => (
+              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
 
         <label className="mb-1 block text-[10px] font-medium uppercase tracking-wide text-muted-foreground">
           {t('dialog.mepSystem.color', 'Color')}
         </label>
-        <div className="mb-4 flex items-center gap-2">
-          <input
-            type="color"
-            className="h-7 w-12 cursor-pointer rounded border border-input bg-transparent"
-            value={color}
-            onChange={e => setColor(e.target.value)}
+        <div className="mb-4 flex flex-col gap-2">
+          {/* react-colorful: dependency-free, ~3kb, gives a real saturation
+              square + hue strip rather than a native popout that varies by OS. */}
+          <HexColorPicker
+            color={color}
+            onChange={setColor}
+            className="!w-full"
           />
-          <Input
-            className="h-7 flex-1 font-mono text-[12px]"
-            value={color}
-            onChange={e => setColor(e.target.value)}
-            placeholder="#3b82f6"
-          />
+          <div className="flex items-center gap-2">
+            <span
+              className="size-7 shrink-0 rounded border border-border"
+              style={{ backgroundColor: color }}
+            />
+            <Input
+              className="h-7 flex-1 font-mono text-[12px]"
+              value={color}
+              onChange={(e) => {
+                const v = e.target.value;
+                // Accept whatever the user types; only push to the swatch when
+                // it's a valid 3- or 6-digit hex so the picker doesn't jump
+                // around mid-type.
+                if (/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(v)) setColor(v.toLowerCase());
+                else setColor(v);
+              }}
+              placeholder="#3b82f6"
+            />
+          </div>
         </div>
 
         <div className="flex justify-end gap-2">
