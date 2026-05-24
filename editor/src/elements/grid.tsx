@@ -44,17 +44,26 @@ export const gridModule: ElementModule<GridFacts> = {
   },
 
   draw2D(facts): ReactNode {
+    const color = '#ef476f';
     return (
       <g data-id={facts.id}>
+        {/* Dash-dot pattern: long dash, gap, dot, gap — standard architectural
+            convention. Stroke a touch thicker + higher opacity than before so
+            grids actually read as reference lines instead of ghosts. */}
         <line x1={facts.ex1} y1={facts.ey1} x2={facts.ex2} y2={facts.ey2}
-          stroke="#ef476f" strokeWidth={0.03} strokeDasharray="0.2 0.15" opacity="0.4" />
+          stroke={color} strokeWidth={0.04}
+          strokeDasharray="0.6 0.12 0.04 0.12" opacity={0.85} />
+        {/* Transparent fat hit line for selection. */}
         <line x1={facts.ex1} y1={facts.ey1} x2={facts.ex2} y2={facts.ey2}
           stroke="transparent" strokeWidth={0.6} data-id={facts.id} />
+        {/* Bubble label at the start endpoint — Revit-style filled circle so
+            the grid id pops against the floor plan instead of blending in. */}
         <g transform={`translate(${facts.startLabel.x},${facts.startLabel.y}) scale(1,-1)`}>
-          <circle cx={0} cy={0} r={0.4} fill="none" stroke="#ef476f" strokeWidth={0.03} opacity="0.5" />
+          <circle cx={0} cy={0} r={0.5} fill="#ffffff" stroke={color}
+            strokeWidth={0.05} opacity={0.95} />
           <text x={0} y={0} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.35} fontFamily="Inter, sans-serif" fontWeight="600"
-            fill="#ef476f" opacity="0.6">
+            fontSize={0.45} fontFamily="Inter, sans-serif" fontWeight="700"
+            fill={color}>
             {facts.label}
           </text>
         </g>
