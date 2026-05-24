@@ -16,7 +16,7 @@
   "topbar.projectUnit": "项目单位(在 project_metadata.json 中设置)",
 
   "snap.endpoint": "端点",
-  "snap.center": "圆心",
+  "snap.center": "中心",
   "snap.midpoint": "中点",
   "snap.gridline": "轴线",
 
