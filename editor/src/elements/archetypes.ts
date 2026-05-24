@@ -248,6 +248,15 @@ export interface ElementModule<TFacts = unknown> {
    * them pre-populated. Used for sequential defaults like "Room N".
    */
   autoFillOnPlace?(existingCount: number): Record<string, string>;
+
+  /**
+   * Whether instances of this element type should participate as targets in
+   * cursor snap (endpoint / center / edge / midpoint). Default true. Set
+   * `false` for abstract markers — grids, rooms, future annotations — whose
+   * positions are conceptual labels rather than geometric features users
+   * want to align other objects to.
+   */
+  isSnapTarget?: boolean;
 }
 
 /** Type-erased module for the registry. */

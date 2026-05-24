@@ -24,6 +24,7 @@ export const gridModule: ElementModule<GridFacts> = {
   propertyFields: [],
   layerStyle: { displayName: 'Grids', color: '#ef476f', icon: '┼', order: 0 },
   renderZIndex: 1,
+  isSnapTarget: false,
 
   geometry(el: CanonicalElement, _ctx: GeometryContext): GridFacts | null {
     if (el.geometry !== 'line') return null;

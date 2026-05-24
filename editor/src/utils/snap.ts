@@ -2,6 +2,7 @@ import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '.
 import type { GridData, ProjectUnit } from '../types.ts';
 import { nearestPointOnArc, pointOnArc as arcPointOnArc } from '../geometry/arc.ts';
 import { formatLength } from './units.ts';
+import { getElementModule } from '../elements/registry.ts';
 
 // ── Snap types ──
 
@@ -128,10 +129,11 @@ function extractSnapTargets(
 
   for (const [id, el] of elements) {
     if (excludeIds.has(id)) continue;
-    // Grids participate in snap exclusively through the `grids` pass (gridline
-    // + grid intersection). Treating their line endpoints as snap targets too
-    // would spam "Endpoint" markers on top of every grid line.
-    if (el.tableName === 'grid') continue;
+    // Modules opt out of snap-target participation via `isSnapTarget: false`
+    // for abstract markers (grids, rooms, annotations). Grids additionally
+    // have their own snap pass via the `grids` parameter, so excluding them
+    // here avoids double-counting their endpoints as generic "Endpoint" hits.
+    if (getElementModule(el.tableName)?.isSnapTarget === false) continue;
 
     if (el.geometry === 'line' || el.geometry === 'spatial_line') {
       const lineEl = el as LineElement | SpatialLineElement;

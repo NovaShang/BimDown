@@ -59,6 +59,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
   propertyFields: [],
   layerStyle: { displayName: 'Spaces', color: '#3a86ff', icon: '⬡', order: 6 },
   renderZIndex: 10,
+  isSnapTarget: false,
 
   geometry(el: CanonicalElement, ctx: GeometryContext): SpaceFacts | null {
     const number = el.attrs.number || '';
