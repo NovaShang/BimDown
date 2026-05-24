@@ -22,6 +22,17 @@
 
   "space.defaultName": "房间 {{n}}",
 
+  "panel.addMepSystem": "添加 MEP 系统",
+  "panel.mepSystem.empty": "还没有系统——点 + 添加。",
+  "panel.mepSystem.delete": "删除系统",
+  "panel.mepSystem.deleteConfirm": "确定删除这个 MEP 系统？",
+  "dialog.addMepSystem": "添加 MEP 系统",
+  "dialog.editMepSystem": "编辑 MEP 系统",
+  "dialog.save": "保存",
+  "dialog.mepSystem.code": "系统代号",
+  "dialog.mepSystem.discipline": "专业",
+  "dialog.mepSystem.color": "颜色",
+
   "layer.wall": "墙",
   "layer.curtain_wall": "幕墙",
   "layer.column": "柱",

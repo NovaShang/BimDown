@@ -22,6 +22,17 @@
 
   "space.defaultName": "Room {{n}}",
 
+  "panel.addMepSystem": "Add MEP system",
+  "panel.mepSystem.empty": "No systems yet — click + to add one.",
+  "panel.mepSystem.delete": "Delete system",
+  "panel.mepSystem.deleteConfirm": "Delete this MEP system?",
+  "dialog.addMepSystem": "Add MEP System",
+  "dialog.editMepSystem": "Edit MEP System",
+  "dialog.save": "Save",
+  "dialog.mepSystem.code": "System Code",
+  "dialog.mepSystem.discipline": "Discipline",
+  "dialog.mepSystem.color": "Color",
+
   "layer.wall": "Wall",
   "layer.curtain_wall": "CW",
   "layer.column": "Column",

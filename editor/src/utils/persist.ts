@@ -1,5 +1,5 @@
 import type { DocumentState } from '../model/document.ts';
-import type { Level, GridData } from '../types.ts';
+import type { Level, GridData, SystemDef } from '../types.ts';
 import { groupByLayer, serializeToGeoJson, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
 import type { DataSource } from './dataSource.ts';
 
@@ -74,6 +74,21 @@ export async function persistGrids(grids: GridData[], ds: DataSource): Promise<v
   const header = 'id,number,start_x,start_y,end_x,end_y';
   const rows = grids.map(g => `${g.id},${g.number},${g.x1},${g.y1},${g.x2},${g.y2}`);
   await ds.saveFile('global/grid.csv', [header, ...rows].join('\n') + '\n');
+}
+
+/** Write the project-level MEP system list back to global/mep_system.csv.
+ *  Mirrors the column order used by loadMepSystems() so the round-trip is
+ *  loss-free. */
+export async function persistMepSystems(systems: SystemDef[], ds: DataSource): Promise<void> {
+  const header = 'id,system_type,name,color,discipline';
+  const rows = systems.map(s => [
+    s.id,
+    s.system_type,
+    csvEscape(s.name),
+    s.color,
+    s.discipline,
+  ].join(','));
+  await ds.saveFile('global/mep_system.csv', [header, ...rows].join('\n') + '\n');
 }
 
 function csvEscape(value: string): string {

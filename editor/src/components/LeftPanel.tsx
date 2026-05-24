@@ -10,8 +10,11 @@ import { ScrollArea } from './ui/scroll-area';
 import { Icon } from './Icons.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
+import MepSystemDialog from './MepSystemDialog.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { formatLength, getProjectUnits } from '../utils/units.ts';
+import { useDataSource } from '../utils/DataSourceContext.tsx';
+import { persistMepSystems } from '../utils/persist.ts';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -149,10 +152,46 @@ export default function LeftPanel({
   const { activeDiscipline, selectedIds, readonly, project } = editorState;
   const projectUnit = getProjectUnits(editorState);
   const mepSystems: SystemDef[] = project?.mepSystems ?? [];
+  const ds = useDataSource();
   const [showAddLevel, setShowAddLevel] = useState(false);
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Level | null>(null);
+  /** When non-null, opens the MEP system dialog. `null` slot is the add path;
+   *  passing an existing SystemDef opens it in edit mode. */
+  const [mepSystemDialog, setMepSystemDialog] = useState<{ open: boolean; initial?: SystemDef }>({ open: false });
+
+  // Persist any change to MEP systems via the data source. Dispatch updates
+  // local state immediately so the legend re-renders before the file write
+  // completes; the file-watcher loop in App.tsx re-syncs on disk change.
+  const saveMepSystems = (next: SystemDef[]) => {
+    dispatch({ type: 'UPDATE_MEP_SYSTEMS', mepSystems: next });
+    persistMepSystems(next, ds).catch(err => console.error('Persist MEP systems failed:', err));
+  };
+
+  const handleMepSystemSubmit = (system: SystemDef) => {
+    if (system.id) {
+      // Edit: replace by id.
+      saveMepSystems(mepSystems.map(s => s.id === system.id ? system : s));
+    } else {
+      // Add: generate the next sys-N id.
+      const existing = new Set(mepSystems.map(s => s.id));
+      let n = 1;
+      while (existing.has(`sys-${n}`)) n++;
+      saveMepSystems([...mepSystems, { ...system, id: `sys-${n}` }]);
+    }
+  };
+
+  const handleMepSystemDelete = (id: string) => {
+    if (!confirm(t('panel.mepSystem.deleteConfirm', 'Delete this MEP system?'))) return;
+    saveMepSystems(mepSystems.filter(s => s.id !== id));
+  };
+
+  // The systems legend is relevant when the user is working in MEP, OR when
+  // any system has already been defined (so other disciplines can still see
+  // the legend's colors as reference). Read-only sessions still see the
+  // legend; the add/edit/delete affordances are gated on !readonly below.
+  const showMepSystemsPanel = activeDiscipline === 'mep' || mepSystems.length > 0;
 
   const currentGroupLayers = (() => {
     let layers: typeof layerGroups[0]['layers'];
@@ -271,41 +310,83 @@ export default function LeftPanel({
         </ScrollArea>
       </div>
 
-      {/* MEP Systems Legend — read-only, shown only when global/mep_system.csv has rows */}
-      {mepSystems.length > 0 && (
+      {/* MEP Systems Legend + editor. Header "+" adds a new system; each row
+          has hover-revealed edit / delete actions. */}
+      {showMepSystemsPanel && (
         <div className="glass-panel flex shrink-0 max-h-[30%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
           <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
             <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               {t('panel.mepSystems', 'MEP Systems')}
             </span>
-            <span className="text-[9px] text-muted-foreground tabular-nums">{mepSystems.length}</span>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] text-muted-foreground tabular-nums">{mepSystems.length}</span>
+              {!readonly && (
+                <button
+                  className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={() => setMepSystemDialog({ open: true })}
+                  title={t('panel.addMepSystem', 'Add system')}
+                >
+                  +
+                </button>
+              )}
+            </div>
           </div>
           <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
-            <div className="flex flex-col gap-px">
-              {mepSystems.map(sys => {
-                const color = resolveMepSystemColor(sys.system_type, sys.color);
-                const label = sys.name || sys.id || sys.system_type;
-                return (
-                  <div
-                    key={sys.id || `${sys.system_type}-${sys.name}`}
-                    className="flex items-center gap-2 rounded px-2 py-[3px] text-[11px] text-muted-foreground"
-                    title={sys.discipline ? `${label} · ${sys.discipline}` : label}
-                  >
-                    <span
-                      className="size-3 shrink-0 rounded-sm border border-black/20"
-                      style={{ backgroundColor: color }}
-                    />
-                    <span className="flex-1 truncate">{label}</span>
-                    <span className="shrink-0 text-[9px] uppercase tracking-[0.05em] text-muted-foreground/70 tabular-nums">
-                      {sys.system_type}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            {mepSystems.length === 0 ? (
+              <div className="px-2 py-3 text-center text-[10px] text-muted-foreground/70">
+                {t('panel.mepSystem.empty', 'No systems yet — click + to add one.')}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-px">
+                {mepSystems.map(sys => {
+                  const color = resolveMepSystemColor(sys.system_type, sys.color);
+                  const label = sys.name || sys.id || sys.system_type;
+                  return (
+                    <div
+                      key={sys.id || `${sys.system_type}-${sys.name}`}
+                      className="group flex items-center gap-2 rounded px-2 py-[3px] text-[11px] text-muted-foreground hover:bg-accent"
+                      title={sys.discipline ? `${label} · ${sys.discipline}` : label}
+                    >
+                      <span
+                        className="size-3 shrink-0 rounded-sm border border-black/20"
+                        style={{ backgroundColor: color }}
+                      />
+                      <button
+                        type="button"
+                        className="flex-1 truncate text-left bg-transparent border-none p-0 cursor-pointer text-inherit hover:text-foreground"
+                        onClick={() => !readonly && setMepSystemDialog({ open: true, initial: sys })}
+                        disabled={readonly}
+                      >
+                        {label}
+                      </button>
+                      <span className="shrink-0 text-[9px] uppercase tracking-[0.05em] text-muted-foreground/70 tabular-nums">
+                        {sys.system_type}
+                      </span>
+                      {!readonly && (
+                        <button
+                          type="button"
+                          className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive cursor-pointer bg-transparent border-none p-0 text-[11px] leading-none"
+                          onClick={(e) => { e.stopPropagation(); handleMepSystemDelete(sys.id); }}
+                          title={t('panel.mepSystem.delete', 'Delete system')}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </ScrollArea>
         </div>
       )}
+
+      <MepSystemDialog
+        open={mepSystemDialog.open}
+        initial={mepSystemDialog.initial}
+        onClose={() => setMepSystemDialog({ open: false })}
+        onConfirm={handleMepSystemSubmit}
+      />
 
       {/* Add Level Dialog */}
       <AddLevelDialog
