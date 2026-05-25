@@ -11,7 +11,8 @@ namespace BimDown.RevitAddin.Extractors;
 public class MepCurveGeometryExtractor : IFieldExtractor
 {
     public IReadOnlyList<string> FieldNames { get; } = ["start_x", "start_y", "end_x", "end_y", "length", "start_z", "end_z", "_svg_d"];
-    public IReadOnlyList<string> ComputedFieldNames { get; } = ["start_x", "start_y", "end_x", "end_y", "length", "_svg_d"];
+    // start_z/end_z are folded into the 3D GeoJSON coordinates — geometry, not CSV columns.
+    public IReadOnlyList<string> ComputedFieldNames { get; } = ["start_x", "start_y", "end_x", "end_y", "length", "start_z", "end_z", "_svg_d"];
 
     public Dictionary<string, string?> Extract(Element element)
     {

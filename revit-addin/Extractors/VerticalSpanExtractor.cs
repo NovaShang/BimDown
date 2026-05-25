@@ -7,6 +7,9 @@ public class VerticalSpanExtractor : IFieldExtractor
     public IReadOnlyList<string> FieldNames { get; } = ["base_level_id", "top_level_id", "top_offset", "height"];
     public IReadOnlyList<string> ComputedFieldNames { get; } = ["height"];
 
+    // top_offset lives in the GeoJSON Feature properties (schema storage: geojson_property).
+    public IReadOnlyList<string> GeoJsonPropertyFieldNames { get; } = ["top_offset"];
+
     public Dictionary<string, string?> Extract(Element element)
     {
         var fields = new Dictionary<string, string?>();

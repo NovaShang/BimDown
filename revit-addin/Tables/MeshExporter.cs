@@ -123,6 +123,10 @@ class MeshExporter : ITableExporter
             }
         }
 
+        // mesh_file is required — drop rows whose GLB could not be produced
+        // (no geometry / export failure) so the table stays schema-valid.
+        rows.RemoveAll(r => string.IsNullOrWhiteSpace(r.GetValueOrDefault("mesh_file")));
+
         if (fail > 0 || noUid > 0 || noElem > 0)
             errors.Insert(0, $"GLB: {ok} ok, {noGeom} no geometry, {noUid} no UID, {noElem} no element, {fail} failed (of {rows.Count})");
         return errors;

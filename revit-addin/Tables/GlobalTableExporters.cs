@@ -11,18 +11,30 @@ public class LevelTableExporter : ITableExporter
 
     public List<Dictionary<string, string?>> Export(Document doc)
     {
-        var rows = new List<Dictionary<string, string?>>();
-        var collector = new FilteredElementCollector(doc)
+        var levels = new FilteredElementCollector(doc)
             .OfCategory(BuiltInCategory.OST_Levels)
-            .WhereElementIsNotElementType();
+            .WhereElementIsNotElementType()
+            .OfType<Level>()
+            .ToList();
 
-        foreach (var element in collector.OrderBy(e => e.Id.Value))
+        // number is required. Prefer the level's Mark; otherwise assign a 1-based
+        // floor number ordered by elevation (lowest = 1).
+        var rankByElevation = levels
+            .OrderBy(l => l.Elevation)
+            .Select((l, i) => (l.Id, Rank: i + 1))
+            .ToDictionary(x => x.Id, x => x.Rank);
+
+        var rows = new List<Dictionary<string, string?>>();
+        foreach (var level in levels.OrderBy(e => e.Id.Value))
         {
-            if (element is not Level level) continue;
+            var mark = level.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString();
+            var number = string.IsNullOrWhiteSpace(mark)
+                ? rankByElevation[level.Id].ToString()
+                : mark;
             rows.Add(new Dictionary<string, string?>
             {
                 ["id"] = level.UniqueId,
-                ["number"] = level.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString(),
+                ["number"] = number,
                 ["name"] = level.Name,
                 ["elevation"] = UnitConverter.FormatDouble(UnitConverter.Length(level.Elevation)),
             });

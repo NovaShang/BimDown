@@ -28,7 +28,7 @@ public class ShareCommand : IExternalCommand
 
             // Export on main thread (Revit API requirement)
             var settings = CreateShareSettings();
-            var (tableCount, errors) = ExportCommand.RunExport(doc, settings, tempDir);
+            var (tableCount, errors) = ExportPipeline.RunExport(doc, settings, tempDir);
 
             if (tableCount == 0)
             {

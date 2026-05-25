@@ -41,6 +41,10 @@ public class StructuralSectionProfileExtractor : IFieldExtractor
         if (height is { } h && h > 0)
             fields["size_y"] = UnitConverter.FormatDouble(UnitConverter.Length(h));
 
+        // shape is required. When Revit exposes no STRUCTURAL_SECTION_SHAPE and the
+        // section isn't round, fall back to the generic rectangular profile.
+        fields.TryAdd("shape", "rect");
+
         return fields;
     }
 

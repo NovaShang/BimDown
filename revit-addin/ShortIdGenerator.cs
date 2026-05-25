@@ -38,7 +38,14 @@ class ShortIdGenerator
         ["room_separator"] = "rs",
     };
 
-    static readonly string[] ReferenceFields = ["level_id", "host_id", "top_level_id", "start_node_id", "end_node_id"];
+    // References that point at level rows (global, assigned first). Resolved early so
+    // partition directories can be derived from the short level id.
+    static readonly string[] LevelReferenceFields = ["level_id", "base_level_id", "top_level_id"];
+    // References that may point at any partitioned table. Resolved last, after every
+    // id has been assigned, so forward references (e.g. opening → structure_wall,
+    // duct → mep_node) resolve instead of nulling out.
+    static readonly string[] OtherReferenceFields = ["host_id", "start_node_id", "end_node_id"];
+    static readonly string[] ReferenceFields = [.. LevelReferenceFields, .. OtherReferenceFields];
 
     // Counters scoped by (directory, prefix)
     readonly Dictionary<string, Dictionary<string, int>> _dirCounters = new();
@@ -124,15 +131,33 @@ class ShortIdGenerator
         }
     }
 
-    void ResolveReferences(Dictionary<string, string?> row)
+    void ResolveReferences(Dictionary<string, string?> row) => ResolveReferences(row, ReferenceFields);
+
+    void ResolveReferences(Dictionary<string, string?> row, string[] fields)
     {
-        foreach (var field in ReferenceFields)
+        foreach (var field in fields)
         {
             var refUid = row.GetValueOrDefault(field);
             if (refUid is not null)
                 row[field] = Resolve(refUid);
         }
     }
+
+    /// <summary>Assigns a short id to a single row (no reference resolution).</summary>
+    internal void AssignRowId(string tableName, Dictionary<string, string?> row, string directory)
+    {
+        var uid = row.GetValueOrDefault("id");
+        if (uid is not null)
+            row["id"] = GetOrAssign(tableName, uid, directory);
+    }
+
+    /// <summary>Resolves level references (level_id, base_level_id, top_level_id) only.</summary>
+    internal void ResolveLevelReferences(Dictionary<string, string?> row) =>
+        ResolveReferences(row, LevelReferenceFields);
+
+    /// <summary>Resolves non-level references (host_id, node ids) only.</summary>
+    internal void ResolveOtherReferences(Dictionary<string, string?> row) =>
+        ResolveReferences(row, OtherReferenceFields);
 
     /// <summary>
     /// Returns all mappings with directory info for _IdMap.csv.

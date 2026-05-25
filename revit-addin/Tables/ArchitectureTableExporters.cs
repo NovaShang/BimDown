@@ -73,11 +73,15 @@ public static class ArchitectureTableExporters
                 var thickness = e.get_Parameter(BuiltInParameter.ROOF_ATTR_THICKNESS_PARAM)?.AsDouble();
                 fields["thickness"] = thickness is { } t ? UnitConverter.FormatDouble(UnitConverter.Length(t)) : null;
 
-                // Polygon override: FootPrintRoof sketch gives the true plan-view footprint.
-                // If unavailable, PolygonElementExtractor's top-face result stays (approximate).
+                // Polygon override:
+                //   1. FootPrintRoof → sketch profile (exact plan-view footprint)
+                //   2. Otherwise (or if sketch fails) → derive outline from solid's top faces
+                //
+                // PolygonElementExtractor's single-largest-top-face result is wrong
+                // for multi-slope roofs (gable/hip/complex C-shapes), so we override.
                 try
                 {
-                    var footprint = GetRoofFootprint(e);
+                    var footprint = GetRoofFootprint(e) ?? GetRoofOutlineFromSolid(e);
                     if (footprint is not null)
                     {
                         fields["points"] = GeometryUtils.SerializePolygon(footprint.Value.Points);
@@ -92,7 +96,13 @@ public static class ArchitectureTableExporters
 
     /// <summary>
     /// Classifies a roof by its per-edge slope definitions.
-    /// Returns (roof_type, max slope in degrees).
+    /// Returns (roof_type, dominant slope in degrees, signed).
+    ///
+    /// Revit's FootPrintRoof.get_SlopeAngle(mc) returns the slope as a
+    /// tangent (rise/run), NOT radians — despite the name. Negative values
+    /// mean the slope descends from that edge (inverted roof). We pick the
+    /// edge with the largest |tangent| and convert it back to degrees
+    /// using Atan, preserving the sign.
     /// </summary>
     static (string RoofType, double SlopeDeg) ClassifyRoof(Element element)
     {
@@ -103,7 +113,7 @@ public static class ArchitectureTableExporters
         {
             var profiles = fpRoof.GetProfiles();
             int total = 0, sloped = 0;
-            double maxSlopeRad = 0;
+            double dominantTan = 0;
 
             foreach (ModelCurveArray profile in profiles)
             {
@@ -113,13 +123,14 @@ public static class ArchitectureTableExporters
                     if (fpRoof.get_DefinesSlope(mc))
                     {
                         sloped++;
-                        var angle = fpRoof.get_SlopeAngle(mc);
-                        if (angle > maxSlopeRad) maxSlopeRad = angle;
+                        var tan = fpRoof.get_SlopeAngle(mc);
+                        if (Math.Abs(tan) > Math.Abs(dominantTan))
+                            dominantTan = tan;
                     }
                 }
             }
 
-            var slopeDeg = maxSlopeRad * 180.0 / Math.PI;
+            var slopeDeg = Math.Atan(dominantTan) * 180.0 / Math.PI;
             string type;
             if (sloped == 0) type = "flat";
             else if (sloped == total) type = "hip";
@@ -192,6 +203,136 @@ public static class ArchitectureTableExporters
         return points.Count >= 3 ? (points, hasCurvedEdges) : null;
     }
 
+    /// <summary>
+    /// Derives a roof's plan-view outline from its solid geometry by:
+    ///   1. collecting every upward-facing PlanarFace,
+    ///   2. counting each edge (keyed by XY-projected endpoints),
+    ///   3. keeping edges that appear exactly once (boundary; shared edges
+    ///      between two top faces are ridges/hips and are internal),
+    ///   4. chaining boundary edges into closed loops and returning the
+    ///      largest loop by bounding-box area.
+    ///
+    /// Works for any roof type (FootPrintRoof, ExtrusionRoof, base RoofBase
+    /// with tapered insulation, curved sketches, etc.). Used as a fallback
+    /// when GetRoofFootprint can't read a sketch.
+    /// </summary>
+    static (IList<XYZ> Points, bool HasCurvedEdges)? GetRoofOutlineFromSolid(Element element)
+    {
+        var opt = new Options { ComputeReferences = false, DetailLevel = ViewDetailLevel.Coarse };
+        var geom = element.get_Geometry(opt);
+        if (geom is null) return null;
+
+        // 1. Collect top-facing planar faces from all solids.
+        var topFaces = new List<PlanarFace>();
+        foreach (var obj in geom)
+        {
+            var solid = obj as Solid ?? (obj as GeometryInstance)?.GetInstanceGeometry()
+                .OfType<Solid>().FirstOrDefault(s => s.Faces.Size > 0);
+            if (solid is null) continue;
+            foreach (Face face in solid.Faces)
+                if (face is PlanarFace planar && planar.FaceNormal.Z > 0.1)
+                    topFaces.Add(planar);
+        }
+        if (topFaces.Count == 0) return null;
+
+        // 2+3. Count edges; boundary = appears exactly once across all top faces.
+        var edgeMap = new Dictionary<string, (XYZ Start, XYZ End, bool IsCurved, int Count)>();
+        foreach (var face in topFaces)
+        {
+            foreach (var loop in face.GetEdgesAsCurveLoops())
+            {
+                foreach (var curve in loop)
+                {
+                    var a = curve.GetEndPoint(0);
+                    var b = curve.GetEndPoint(1);
+                    var key = MakeEdgeKey(a, b);
+                    if (edgeMap.TryGetValue(key, out var existing))
+                        edgeMap[key] = (existing.Start, existing.End, existing.IsCurved, existing.Count + 1);
+                    else
+                        edgeMap[key] = (a, b, curve is not Line, 1);
+                }
+            }
+        }
+
+        // Project boundary edges to XY.
+        var boundary = edgeMap.Values
+            .Where(v => v.Count == 1)
+            .Select(v => (Start: new XYZ(v.Start.X, v.Start.Y, 0),
+                          End: new XYZ(v.End.X, v.End.Y, 0),
+                          v.IsCurved))
+            .ToList();
+        if (boundary.Count < 3) return null;
+
+        // 4. Chain into closed loops. A complex roof may yield multiple
+        // disconnected loops (outer boundary + holes / tiny artifacts).
+        const double tol = 1e-3;
+        var used = new bool[boundary.Count];
+        var loops = new List<(List<XYZ> Points, bool HasCurved)>();
+
+        while (true)
+        {
+            var startIdx = -1;
+            for (var i = 0; i < boundary.Count; i++) if (!used[i]) { startIdx = i; break; }
+            if (startIdx < 0) break;
+
+            var points = new List<XYZ> { boundary[startIdx].Start };
+            var current = boundary[startIdx].End;
+            var hasCurved = boundary[startIdx].IsCurved;
+            used[startIdx] = true;
+
+            while (true)
+            {
+                points.Add(current);
+                var found = -1;
+                var reversed = false;
+                for (var i = 0; i < boundary.Count; i++)
+                {
+                    if (used[i]) continue;
+                    if (boundary[i].Start.DistanceTo(current) < tol) { found = i; reversed = false; break; }
+                    if (boundary[i].End.DistanceTo(current) < tol) { found = i; reversed = true; break; }
+                }
+                if (found < 0) break;
+                used[found] = true;
+                if (boundary[found].IsCurved) hasCurved = true;
+                current = reversed ? boundary[found].Start : boundary[found].End;
+                if (current.DistanceTo(points[0]) < tol) break;
+            }
+            if (points.Count >= 3) loops.Add((points, hasCurved));
+        }
+
+        if (loops.Count == 0) return null;
+
+        // Return the loop with the largest XY bounding-box area (outer boundary).
+        var best = loops.OrderByDescending(l =>
+        {
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
+            foreach (var p in l.Points)
+            {
+                if (p.X < minX) minX = p.X;
+                if (p.X > maxX) maxX = p.X;
+                if (p.Y < minY) minY = p.Y;
+                if (p.Y > maxY) maxY = p.Y;
+            }
+            return (maxX - minX) * (maxY - minY);
+        }).First();
+
+        return (best.Points, best.HasCurved);
+    }
+
+    /// <summary>
+    /// Creates a direction-independent key for an edge based on its XY-projected
+    /// endpoints. Rounds to 0.001 ft (~0.3mm) to absorb floating-point drift
+    /// between coincident vertices on adjacent faces.
+    /// </summary>
+    static string MakeEdgeKey(XYZ a, XYZ b)
+    {
+        var ci = System.Globalization.CultureInfo.InvariantCulture;
+        var s1 = Math.Round(a.X, 3).ToString("F3", ci) + "," + Math.Round(a.Y, 3).ToString("F3", ci);
+        var s2 = Math.Round(b.X, 3).ToString("F3", ci) + "," + Math.Round(b.Y, 3).ToString("F3", ci);
+        return string.Compare(s1, s2, StringComparison.Ordinal) < 0 ? s1 + "|" + s2 : s2 + "|" + s1;
+    }
+
     public static ITableExporter Ceiling() => new TableExporter(
         "ceiling",
         [BuiltInCategory.OST_Ceilings],
@@ -223,7 +364,10 @@ public static class ArchitectureTableExporters
                     fields["y"] = UnitConverter.FormatDouble(UnitConverter.Length(lp.Point.Y));
                 }
                 return fields;
-            }));
+            }),
+        // Required seed point (x,y) comes from the room's LocationPoint. Unplaced /
+        // unenclosed rooms have no location and no boundary — skip them.
+        filter: e => e.Location is LocationPoint);
 
     public static ITableExporter Door() => new TableExporter(
         "door",
@@ -287,7 +431,7 @@ public static class ArchitectureTableExporters
             if (normalized is not null) return normalized;
         }
 
-        var familyName = e.Symbol?.FamilyName ?? string.Empty;
+        var familyName = (e as FamilyInstance)?.Symbol?.FamilyName ?? string.Empty;
         return InferOperationFromFamilyName(familyName);
     }
 

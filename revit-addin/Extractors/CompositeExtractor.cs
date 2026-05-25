@@ -52,20 +52,24 @@ public class CompositeExtractor(
 
     static List<string> BuildCsvColumns(IFieldExtractor[] extractors, string[]? inlineFieldNames, string[]? computedInlineFieldNames)
     {
-        var computed = new HashSet<string>();
+        // Both computed (CLI-derived) and geojson_property (stored in the paired
+        // GeoJSON Feature properties) fields are kept out of the CSV.
+        var excluded = new HashSet<string>();
         foreach (var ex in extractors)
         {
             foreach (var name in ex.ComputedFieldNames)
-                computed.Add(name);
+                excluded.Add(name);
+            foreach (var name in ex.GeoJsonPropertyFieldNames)
+                excluded.Add(name);
         }
         if (computedInlineFieldNames is not null)
         {
             foreach (var name in computedInlineFieldNames)
-                computed.Add(name);
+                excluded.Add(name);
         }
 
         var allFields = BuildFieldNames(extractors, inlineFieldNames);
-        return allFields.Where(f => !computed.Contains(f)).ToList();
+        return allFields.Where(f => !excluded.Contains(f)).ToList();
     }
 
     // Static helpers to expand base chains into flat extractor arrays

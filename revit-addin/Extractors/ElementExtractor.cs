@@ -19,6 +19,9 @@ public class ElementExtractor : IFieldExtractor
         "bbox_max_x", "bbox_max_y", "bbox_max_z"
     ];
 
+    // base_offset lives in the GeoJSON Feature properties (schema storage: geojson_property).
+    public IReadOnlyList<string> GeoJsonPropertyFieldNames { get; } = ["base_offset"];
+
     public Dictionary<string, string?> Extract(Element element)
     {
         var fields = new Dictionary<string, string?>

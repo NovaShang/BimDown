@@ -20,9 +20,11 @@ public class OpeningTableExporter : ITableExporter
         "host_id", "position", "width", "height", "shape", "points", "area",
     ];
 
+    // level_id is computed; base_offset is a geojson_property — both kept out of CSV.
+    // (base_offset stays in the row dict so slab-opening polygons can carry it in GeoJSON.)
     static readonly string[] CsvOnly =
     [
-        "id", "number", "level_id", "base_offset", "mesh_file",
+        "id", "number", "mesh_file",
         "host_id", "position", "width", "height", "shape",
     ];
 
@@ -51,6 +53,9 @@ public class OpeningTableExporter : ITableExporter
                 {
                     var row = elementExtractor.Extract(element);
                     ExtractOpeningFields(element, row);
+                    // host_id is required (opening schema). Shaft/standalone openings
+                    // with no host can't be represented as an opening — skip them.
+                    if (string.IsNullOrEmpty(row.GetValueOrDefault("host_id"))) continue;
                     rows.Add(row);
                 }
                 catch { }

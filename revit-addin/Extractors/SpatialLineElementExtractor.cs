@@ -6,6 +6,10 @@ public class SpatialLineElementExtractor : IFieldExtractor
 {
     public IReadOnlyList<string> FieldNames { get; } = ["start_z", "end_z"];
 
+    // start_z/end_z are folded into the 3D GeoJSON coordinates, like start_x/y (see
+    // LineElementExtractor) — geometry, not CSV columns.
+    public IReadOnlyList<string> ComputedFieldNames { get; } = ["start_z", "end_z"];
+
     public Dictionary<string, string?> Extract(Element element)
     {
         var fields = new Dictionary<string, string?>();

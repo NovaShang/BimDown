@@ -1,6 +1,5 @@
 using Autodesk.Revit.DB;
 using BimDown.RevitAddin;
-using BimDown.RevitAddin.Svg;
 using BimDown.RevitAddin.Tables;
 using Nice3point.TUnit.Revit;
 
@@ -70,150 +69,33 @@ public class SampleProjectExportTests : RevitApiTest
         return app.OpenDocumentFile(path);
     }
 
+    /// <summary>
+    /// Runs the REAL export pipeline (ExportCommand.RunExport) against an opened
+    /// document and writes the result to <paramref name="outputDir"/>. This keeps
+    /// the end-to-end test honest: it exercises the same GeoJSON + format_version 2
+    /// path the Revit add-in uses in production, instead of a duplicate.
+    /// </summary>
     static void ExportModel(Document doc, string outputDir)
     {
         if (Directory.Exists(outputDir))
             Directory.Delete(outputDir, true);
         Directory.CreateDirectory(outputDir);
 
-        var exporters = AllExporters();
-        var idGen = new ShortIdGenerator();
-        var errors = new List<string>();
-
-        // Pass 1: export all tables
-        var exported = new List<(ITableExporter Exporter, List<Dictionary<string, string?>> Rows)>();
-        foreach (var exporter in exporters)
+        var settings = new ExportSettings
         {
-            try
-            {
-                var rows = exporter.Export(doc);
-                if (rows.Count > 0)
-                    exported.Add((exporter, rows));
-            }
-            catch (Exception ex)
-            {
-                errors.Add($"{exporter.TableName}: {ex.Message}");
-            }
-        }
-
-        // Pass 2: remap IDs
-        foreach (var (exporter, rows) in exported)
-        {
-            if (exporter.IsGlobal)
-                idGen.RemapGlobalRows(exporter.TableName, rows);
-            else
-                idGen.RemapPartitionedRows(exporter.TableName, rows, _ => "lv-1");
-
-            var (_, rtRows) = RevitTestHelper.RoundTripCsv(exporter.CsvColumns, rows);
-            if (rtRows.Count != rows.Count)
-                errors.Add($"{exporter.TableName}: CSV round-trip row count mismatch ({rows.Count} -> {rtRows.Count})");
-        }
-
-        // Build level index for partitioning
-        var levelData = exported.FirstOrDefault(e => e.Exporter.TableName == "level");
-        var levelIndex = new Dictionary<string, int>();
-        if (levelData.Rows is not null)
-        {
-            var sorted = levelData.Rows
-                .Where(r => r.GetValueOrDefault("id") is not null && r.GetValueOrDefault("elevation") is not null)
-                .OrderBy(r => double.Parse(r["elevation"]!, System.Globalization.CultureInfo.InvariantCulture))
-                .ToList();
-            for (var i = 0; i < sorted.Count; i++)
-                levelIndex[sorted[i]["id"]!] = i;
-        }
-
-        // Pass 3: export GLB mesh files (before CSV so mesh_file field is populated)
-        var meshData = exported.FirstOrDefault(e => e.Exporter is MeshExporter);
-        if (meshData.Exporter is MeshExporter meshExporter && meshData.Rows is not null)
-        {
-            errors.AddRange(meshExporter.ExportGlbFiles(outputDir, meshData.Rows, idGen.Mappings));
-        }
-
-        // Write CSVs
-        foreach (var (exporter, rows) in exported)
-        {
-            if (exporter.IsGlobal)
-            {
-                var globalDir = Path.Combine(outputDir, "global");
-                Directory.CreateDirectory(globalDir);
-                CsvWriter.Write(Path.Combine(globalDir, $"{exporter.TableName}.csv"), exporter.CsvColumns, rows);
-            }
-            else
-            {
-                var levelRows = new Dictionary<string, List<Dictionary<string, string?>>>();
-
-                foreach (var row in rows)
-                {
-                    var levelId = row.GetValueOrDefault("level_id");
-                    var topLevelId = row.GetValueOrDefault("top_level_id");
-
-                    var isMultiStory = false;
-                    if (levelId is not null && topLevelId is not null
-                        && levelIndex.TryGetValue(levelId, out var baseIdx)
-                        && levelIndex.TryGetValue(topLevelId, out var topIdx))
-                    {
-                        isMultiStory = topIdx - baseIdx > 1;
-                    }
-
-                    var dirName = (isMultiStory || levelId is null) ? "global" : levelId;
-
-                    if (!levelRows.TryGetValue(dirName, out var list))
-                    {
-                        list = [];
-                        levelRows[dirName] = list;
-                    }
-                    list.Add(row);
-                }
-
-                foreach (var (dirName, groupRows) in levelRows)
-                {
-                    var dir = Path.Combine(outputDir, dirName);
-                    Directory.CreateDirectory(dir);
-                    CsvWriter.Write(Path.Combine(dir, $"{exporter.TableName}.csv"), exporter.CsvColumns, groupRows);
-                }
-            }
-        }
-
-        // Write _IdMap.csv
-        var globalFolder = Path.Combine(outputDir, "global");
-        Directory.CreateDirectory(globalFolder);
-        var idMapRows = idGen.Mappings.Select(kvp => new Dictionary<string, string?>
-        {
-            ["id"] = kvp.Value,
-            ["uuid"] = kvp.Key
-        }).ToList();
-        CsvWriter.Write(Path.Combine(globalFolder, "_IdMap.csv"), ["id", "uuid"], idMapRows);
-
-        // Write project_metadata.json
-        var metadata = new Dictionary<string, string>
-        {
-            ["format_version"] = "3.0",
-            ["project_name"] = doc.Title ?? "",
-            ["units"] = "m",
-            ["source"] = $"Revit {doc.Application.VersionNumber}"
+            // Enable every table the add-in knows about (derive from AllExporters
+            // so the set stays in sync as exporters are added/removed).
+            EnabledTables = [.. AllExporters().Select(e => e.TableName)],
+            ExportMesh = true,
+            WriteIdsToModel = false,
+            Confirmed = true,
         };
-        var json = System.Text.Json.JsonSerializer.Serialize(metadata,
-            new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-        File.WriteAllText(Path.Combine(outputDir, "project_metadata.json"), json);
 
-        // Pass 4: write SVG geometry layer
-        if (levelData.Rows is not null)
-        {
-            try
-            {
-                SvgWriter.WriteAll(outputDir,
-                    exported.Select(e => (e.Exporter.TableName, e.Rows)).ToList(),
-                    levelData.Rows);
-            }
-            catch (Exception ex)
-            {
-                errors.Add($"SVG export: {ex.Message}");
-            }
-        }
+        var (_, errors) = ExportPipeline.RunExport(doc, settings, outputDir);
 
         if (errors.Count > 0)
             throw new Exception(
-                $"Export failed:\n" +
+                "Export failed:\n" +
                 string.Join("\n", errors));
     }
 
