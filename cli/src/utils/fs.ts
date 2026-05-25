@@ -13,7 +13,8 @@ export function discoverLayout(dir: string): ProjectLayout {
 
   if (existsSync(dir) && statSync(dir).isDirectory()) {
     for (const entry of readdirSync(dir)) {
-      if (entry === 'global' || entry.startsWith('.')) continue;
+      // 'mesh' is the GLB asset directory (mesh.mesh_file paths), not a level.
+      if (entry === 'global' || entry === 'mesh' || entry.startsWith('.')) continue;
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) {
         levelDirs.push({ name: entry, path: full });
