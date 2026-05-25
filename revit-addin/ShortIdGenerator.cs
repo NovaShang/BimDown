@@ -52,6 +52,10 @@ class ShortIdGenerator
     readonly Dictionary<string, string> _uidToShort = new();
     // Track directory for each short ID (for _IdMap)
     readonly Dictionary<string, string> _shortToDir = new();
+    // Per directory: short id -> owning uid. Lets the counter skip ids already
+    // claimed (e.g. seeded from stale BimDown_Id tags) while staying idempotent for
+    // repeat calls with the same uid.
+    readonly Dictionary<string, Dictionary<string, string>> _usedByDir = new();
 
     internal void SeedFromModel(IList<Element> elements)
     {
@@ -71,8 +75,26 @@ class ShortIdGenerator
 
     internal string GetOrAssign(string tableName, string uniqueId, string directory = "global")
     {
+        if (!_usedByDir.TryGetValue(directory, out var used))
+        {
+            used = new Dictionary<string, string>();
+            _usedByDir[directory] = used;
+        }
+
+        // Reuse a previously assigned/seeded id: claim it if free here, return it if we
+        // already own it (idempotent), or fall through to reassign if another element in
+        // this directory already took it (e.g. a stale duplicate BimDown_Id tag).
         if (_uidToShort.TryGetValue(uniqueId, out var existing))
-            return existing;
+        {
+            if (!used.TryGetValue(existing, out var owner))
+            {
+                used[existing] = uniqueId;
+                _shortToDir[existing] = directory;
+                return existing;
+            }
+            if (owner == uniqueId)
+                return existing;
+        }
 
         var prefix = PrefixMap[tableName];
 
@@ -82,11 +104,16 @@ class ShortIdGenerator
             _dirCounters[directory] = counters;
         }
 
-        counters.TryGetValue(prefix, out var counter);
-        counter++;
-        counters[prefix] = counter;
+        string shortId;
+        do
+        {
+            counters.TryGetValue(prefix, out var counter);
+            counter++;
+            counters[prefix] = counter;
+            shortId = $"{prefix}-{counter}";
+        } while (used.ContainsKey(shortId));
 
-        var shortId = $"{prefix}-{counter}";
+        used[shortId] = uniqueId;
         _uidToShort[uniqueId] = shortId;
         _shortToDir[shortId] = directory;
         return shortId;

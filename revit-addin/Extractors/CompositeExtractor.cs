@@ -6,10 +6,12 @@ public class CompositeExtractor(
     IFieldExtractor[] extractors,
     string[]? inlineFieldNames = null,
     Func<Element, Dictionary<string, string?>>? inlineExtract = null,
-    string[]? computedInlineFieldNames = null)
+    string[]? computedInlineFieldNames = null,
+    string[]? geoJsonInlineFieldNames = null)
 {
     public IReadOnlyList<string> FieldNames { get; } = BuildFieldNames(extractors, inlineFieldNames);
-    public IReadOnlyList<string> CsvColumns { get; } = BuildCsvColumns(extractors, inlineFieldNames, computedInlineFieldNames);
+    public IReadOnlyList<string> CsvColumns { get; } = BuildCsvColumns(extractors, inlineFieldNames,
+        [.. computedInlineFieldNames ?? [], .. geoJsonInlineFieldNames ?? []]);
 
     public Dictionary<string, string?> Extract(Element element)
     {

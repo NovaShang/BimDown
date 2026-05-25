@@ -345,7 +345,9 @@ public static class ArchitectureTableExporters
                 var offset = e.get_Parameter(BuiltInParameter.CEILING_HEIGHTABOVELEVEL_PARAM)?.AsDouble();
                 fields["height_offset"] = offset is { } o ? UnitConverter.FormatDouble(UnitConverter.Length(o)) : null;
                 return fields;
-            }));
+            },
+            // height_offset is a geojson_property (stored in the GeoJSON Feature props).
+            geoJsonInlineFieldNames: ["height_offset"]));
 
     public static ITableExporter Opening() => new OpeningTableExporter();
 
