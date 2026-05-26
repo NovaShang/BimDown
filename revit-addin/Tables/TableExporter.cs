@@ -74,13 +74,16 @@ public class TableExporter(
             }
         }
 
-        // C1-C3: Curved polygon edges
+        // Curved polygon edges (slab/roof/ceiling with arc segments)
         if (row.GetValueOrDefault("_has_curved_edges") == "true")
             MeshFallback.Add(element.Id, "curved_edges");
 
-        // D: Point-based ramps/railings (no LocationCurve → geometry fields empty)
-        if (tableName is "ramp" or "railing" && element.Location is not LocationCurve)
-            MeshFallback.Add(element.Id, "point_based");
+        // Point-located MEP elements: the schema only stores location + system + type,
+        // so the actual 3D family must be carried as a GLB (deduped by TypeId in
+        // ExportPipeline). mep_node / stair / ramp / railing intentionally stay
+        // mesh-free — the consumer reconstructs them from topology / path + dims.
+        if (tableName is "equipment" or "terminal")
+            MeshFallback.Add(element.Id, "point_only");
     }
 
     /// <summary>

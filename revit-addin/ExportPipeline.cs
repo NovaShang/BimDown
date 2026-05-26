@@ -328,6 +328,11 @@ internal static class ExportPipeline
             }
         }
 
+        // Dedup loadable-family meshes by TypeId so e.g. 500 instances of the same
+        // air diffuser share one GLB. System families (walls, slabs) keep per-instance
+        // world-coord meshes because each carries a unique sketch/profile.
+        var typeToMeshPath = new Dictionary<ElementId, string?>();
+
         RunStep("Mesh fallback GLB", errors, () =>
         {
             foreach (var (elementId, _) in meshFallback.Elements)
@@ -338,8 +343,30 @@ internal static class ExportPipeline
 
                 try
                 {
-                    // No origin → world coords; no type dedup (each instance is unique)
-                    var meshPath = GlbExporter.ExportElement(element, outputDir, entry.ShortId);
+                    string? meshPath;
+                    if (element is FamilyInstance)
+                    {
+                        var typeId = element.GetTypeId();
+                        if (typeId != ElementId.InvalidElementId
+                            && typeToMeshPath.TryGetValue(typeId, out var cached))
+                        {
+                            meshPath = cached;
+                        }
+                        else
+                        {
+                            // Local coords (origin + rotation from LocationPoint/Curve)
+                            // so the typed row's x/y/z/rotation place the GLB.
+                            var (origin, rotationRad) = MeshExporter.GetPlacement(element);
+                            meshPath = GlbExporter.ExportElement(element, outputDir, entry.ShortId, origin, rotationRad);
+                            if (typeId != ElementId.InvalidElementId)
+                                typeToMeshPath[typeId] = meshPath;
+                        }
+                    }
+                    else
+                    {
+                        // System families (Wall, Floor, …): per-instance world coords.
+                        meshPath = GlbExporter.ExportElement(element, outputDir, entry.ShortId);
+                    }
                     entry.Row["mesh_file"] = meshPath ?? "";
                 }
                 catch (Exception ex)
