@@ -29,17 +29,30 @@ public class StructuralSectionProfileExtractor : IFieldExtractor
             return fields;
         }
 
-        // Rectangular / other sections
+        // Rectangular / other sections. Avoid FAMILY_WIDTH_PARAM / FAMILY_HEIGHT_PARAM
+        // as fallbacks: for many structural column families those store the column's
+        // overall vertical dimension, not the cross-section, which yields nonsense
+        // sizes (e.g. a 12 m "wide" column). Stick to structural-specific params.
         var width = element.get_Parameter(BuiltInParameter.STRUCTURAL_SECTION_COMMON_WIDTH).AsPositiveDouble()
-                 ?? element.get_Parameter(BuiltInParameter.FAMILY_WIDTH_PARAM).AsPositiveDouble()
                  ?? ParameterUtils.FindDoubleParameterByNames(element, "width", "w", "b", "宽");
         var height = element.get_Parameter(BuiltInParameter.STRUCTURAL_SECTION_COMMON_HEIGHT).AsPositiveDouble()
-                  ?? element.get_Parameter(BuiltInParameter.FAMILY_HEIGHT_PARAM).AsPositiveDouble()
                   ?? ParameterUtils.FindDoubleParameterByNames(element, "height", "depth", "h", "d", "高", "深");
+        // Sanity-clamp to ≤10 m: some column families fill the "section width" param
+        // with the column's vertical extent (e.g. 12.8 m for a multi-story column),
+        // which would round-trip as a nonsensical cross-section. Drop instead.
+        const double maxReasonableMeters = 10.0;
         if (width is { } w && w > 0)
-            fields["size_x"] = UnitConverter.FormatDouble(UnitConverter.Length(w));
+        {
+            var wm = UnitConverter.Length(w);
+            if (wm <= maxReasonableMeters)
+                fields["size_x"] = UnitConverter.FormatDouble(wm);
+        }
         if (height is { } h && h > 0)
-            fields["size_y"] = UnitConverter.FormatDouble(UnitConverter.Length(h));
+        {
+            var hm = UnitConverter.Length(h);
+            if (hm <= maxReasonableMeters)
+                fields["size_y"] = UnitConverter.FormatDouble(hm);
+        }
 
         // shape is required. When Revit exposes no STRUCTURAL_SECTION_SHAPE and the
         // section isn't round, fall back to the generic rectangular profile.

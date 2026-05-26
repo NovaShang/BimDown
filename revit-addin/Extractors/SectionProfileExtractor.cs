@@ -10,8 +10,11 @@ public class SectionProfileExtractor : IFieldExtractor
     {
         var fields = new Dictionary<string, string?>();
 
-        // Try round (diameter)
+        // Try round (diameter). RBS_CURVE_DIAMETER_PARAM covers pipes; conduits use
+        // their own RBS_CONDUIT_DIAMETER_PARAM (with outer/inner variants as fallback).
         var diameter = element.get_Parameter(BuiltInParameter.RBS_CURVE_DIAMETER_PARAM).AsPositiveDouble()
+                    ?? element.get_Parameter(BuiltInParameter.RBS_CONDUIT_DIAMETER_PARAM).AsPositiveDouble()
+                    ?? element.get_Parameter(BuiltInParameter.RBS_CONDUIT_OUTER_DIAM_PARAM).AsPositiveDouble()
                     ?? ParameterUtils.FindDoubleParameterByNames(element, "diameter", "d", "直径");
         if (diameter is { } d && d > 0)
         {
