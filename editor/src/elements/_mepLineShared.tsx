@@ -14,10 +14,13 @@ import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { shapeFromAttrs, createProfile } from '../three/primitives/profiles.ts';
-import { buildLineWallFootprint } from './_lineWallShared.tsx';
+import { buildLineWallFootprint, type WallDrawSegment } from './_lineWallShared.tsx';
 import {
   computeCornerAdjustments,
+  computePerSegmentOutlines,
+  ptKey,
   type WallSegment as WallMiterSegment,
+  type WallPolygon,
   type CornerAdjustment,
 } from '../geometry/miter.ts';
 
@@ -38,8 +41,11 @@ export interface MepLineFacts {
    *  `systemType`, or '' if no row matches / has no color. When non-empty, this
    *  overrides the editor's curated SYSTEM_COLORS table in 2D. */
   projectSystemColor: string;
-  /** Miter-adjusted 2D footprint (plan view). */
+  /** Miter-adjusted 2D footprint (plan view). Used for 3D extrude / hit-test. */
   footprint: Point[];
+  /** Draw-ready segments with junction-aware outline edges. Empty for vertical
+   *  risers (which fall back to a single closed polygon at draw time). */
+  segments: WallDrawSegment[];
   /** Chord length in plan view. */
   horLen: number;
 }
@@ -57,23 +63,35 @@ function readZ(ln: LineElement): { startZ: number; endZ: number } {
   };
 }
 
+interface MepNetwork {
+  /** Merged miter adjustments across all Z buckets — safe to query per-element. */
+  adj: Map<string, CornerAdjustment>;
+  /** Draw-ready segments keyed by element id. Vertical risers are absent
+   *  here; the geometry pass falls back to a single closed polygon for them. */
+  segmentsByEl: Map<string, WallDrawSegment[]>;
+}
+
 /**
- * MEP miter cache. Like the wall variant, but buckets lines by (startZ, endZ)
- * — two MEP segments that happen to share a 2D endpoint but live at different
- * Z elevations are NOT actually connected in 3D, so they must not share a
- * miter join in plan view. Within a single Z bucket the miter logic is the
- * same as for walls.
+ * MEP network cache. Mirrors `getWallNetwork` but per-table and per-Z-bucket.
+ * Two MEP segments that share a 2D endpoint at the same (startZ, endZ) form a
+ * junction in plan view: their shared cap edge is omitted at draw time so the
+ * run looks continuous like a wall chain. Segments in different Z buckets are
+ * NOT actually connected and keep their caps.
  */
-function getMepMiterAdjustments(
-  ctx: GeometryContext,
-  table: string,
-): Map<string, CornerAdjustment> {
-  return ctx.memo(`${table}:mep-miter`, () => {
+function getMepNetwork(ctx: GeometryContext, table: string): MepNetwork {
+  return ctx.memo(`${table}:mep-network`, () => {
     const lines = ctx.elementsByTable(table).filter(
       (e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line',
     );
+    // Verticals (start.xy == end.xy) get a degenerate miter network — skip
+    // them here; the geometry pass renders them as a standalone closed polygon.
+    const horizontal = lines.filter(ln => {
+      const dx = ln.end.x - ln.start.x;
+      const dy = ln.end.y - ln.start.y;
+      return dx * dx + dy * dy >= 1e-6;
+    });
     const buckets = new Map<string, LineElement[]>();
-    for (const ln of lines) {
+    for (const ln of horizontal) {
       const { startZ, endZ } = readZ(ln);
       // Quantize to 1mm to avoid floating-point bucket splits.
       const key = `${Math.round(startZ * 1000)}/${Math.round(endZ * 1000)}`;
@@ -81,9 +99,12 @@ function getMepMiterAdjustments(
       list.push(ln);
       buckets.set(key, list);
     }
-    const merged = new Map<string, CornerAdjustment>();
+
+    const adj = new Map<string, CornerAdjustment>();
+    const segmentsByEl = new Map<string, WallDrawSegment[]>();
+
     for (const list of buckets.values()) {
-      const segments: WallMiterSegment[] = list.map(w => ({
+      const miterInput: WallMiterSegment[] = list.map(w => ({
         id: w.id,
         x1: w.start.x, y1: w.start.y,
         x2: w.end.x, y2: w.end.y,
@@ -91,10 +112,44 @@ function getMepMiterAdjustments(
         fill: '',
         arc: w.arc,
       }));
-      const adj = computeCornerAdjustments(segments).adjustments;
-      for (const [k, v] of adj) merged.set(k, v);
+      const bucketAdj = computeCornerAdjustments(miterInput).adjustments;
+      for (const [k, v] of bucketAdj) adj.set(k, v);
+
+      const epCount = new Map<string, number>();
+      const elKeys: { startKey: string; endKey: string }[] = list.map(ln => {
+        const startKey = ptKey(ln.start.x, ln.start.y);
+        const endKey = ptKey(ln.end.x, ln.end.y);
+        epCount.set(startKey, (epCount.get(startKey) ?? 0) + 1);
+        epCount.set(endKey, (epCount.get(endKey) ?? 0) + 1);
+        return { startKey, endKey };
+      });
+      const junctionKeys = new Set<string>();
+      for (const [k, c] of epCount) if (c >= 2) junctionKeys.add(k);
+
+      const polys: WallPolygon[] = [];
+      const elIds: string[] = [];
+      for (let i = 0; i < list.length; i++) {
+        const ln = list[i];
+        const corners = buildLineWallFootprint(ln, bucketAdj);
+        if (corners.length === 0) continue;
+        polys.push({
+          id: ln.id,
+          corners,
+          sideLen: 2,
+          startKey: elKeys[i].startKey,
+          endKey: elKeys[i].endKey,
+          capStartIsWallEnd: true,
+          capEndIsWallEnd: true,
+        });
+        elIds.push(ln.id);
+      }
+      const outlines = computePerSegmentOutlines(polys, junctionKeys);
+      for (let i = 0; i < polys.length; i++) {
+        segmentsByEl.set(elIds[i], [{ corners: polys[i].corners, outline: outlines[i] }]);
+      }
     }
-    return merged;
+
+    return { adj, segmentsByEl };
   });
 }
 
@@ -115,16 +170,19 @@ export function mepLineGeometry(
   const shape = ln.attrs.shape || defaultShape;
 
   let footprint: Point[];
+  let segments: WallDrawSegment[] = [];
   if (horLen < 0.001) {
     // Vertical run (start.xy == end.xy): no chord direction, so the regular
     // miter-aware footprint builder bails out. Synthesize a small square /
-    // diamond at the point so the riser is visible in plan view.
+    // diamond at the point so the riser is visible in plan view. No network
+    // membership — risers always draw a single closed polygon with caps.
     footprint = buildVerticalRiserFootprint(ln.start, sizeX, sizeY, shape);
     if (footprint.length === 0) return null;
   } else {
-    const adj = getMepMiterAdjustments(ctx, table);
-    footprint = buildLineWallFootprint(ln, adj);
+    const network = getMepNetwork(ctx, table);
+    footprint = buildLineWallFootprint(ln, network.adj);
     if (footprint.length === 0) return null;
+    segments = network.segmentsByEl.get(ln.id) ?? [];
   }
 
   const baseOffset = parseFloat(ln.attrs.base_offset || '0') || 0;
@@ -169,6 +227,7 @@ export function mepLineGeometry(
     systemType,
     projectSystemColor,
     footprint,
+    segments,
     horLen,
   };
 }
@@ -261,7 +320,6 @@ export function mepLineDraw2D(
   strokeWidth: number,
   selected = false,
 ): ReactNode {
-  const points = facts.footprint.map(p => `${p.x},${p.y}`).join(' ');
   // When system_type is set (and the element isn't currently selected),
   // override the table's default colors so MEP lines visually group by system
   // instead of by table. Selection always wins so the highlight stays visible.
@@ -270,15 +328,50 @@ export function mepLineDraw2D(
     : null;
   const actualStroke = sysColor ?? stroke;
   const actualFill = sysColor ? sysColor + '22' : fill;
+
+  // Vertical riser: no network membership, draw the riser footprint as a
+  // single closed polygon with caps.
+  if (facts.segments.length === 0) {
+    const points = facts.footprint.map(p => `${p.x},${p.y}`).join(' ');
+    return (
+      <polygon
+        points={points}
+        fill={actualFill}
+        stroke={actualStroke}
+        strokeWidth={strokeWidth}
+        strokeLinejoin="miter"
+        data-id={facts.id}
+      />
+    );
+  }
+
+  // Horizontal run: paint fill polygons with no stroke, then stroke only the
+  // junction-aware outline edges so chains of same-Z MEP look like a
+  // continuous band (matches wallDraw2D).
   return (
-    <polygon
-      points={points}
-      fill={actualFill}
-      stroke={actualStroke}
-      strokeWidth={strokeWidth}
-      strokeLinejoin="miter"
-      data-id={facts.id}
-    />
+    <g data-id={facts.id}>
+      {facts.segments.map((seg, i) => (
+        <polygon
+          key={`f${i}`}
+          points={seg.corners.map(p => `${p.x},${p.y}`).join(' ')}
+          fill={actualFill}
+          stroke="none"
+          data-id={facts.id}
+        />
+      ))}
+      {facts.segments.flatMap((seg, si) =>
+        seg.outline.map(([a, b], ei) => (
+          <line
+            key={`e${si}-${ei}`}
+            x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+            stroke={actualStroke}
+            strokeWidth={strokeWidth}
+            strokeLinecap="butt"
+            data-id={facts.id}
+          />
+        )),
+      )}
+    </g>
   );
 }
 
