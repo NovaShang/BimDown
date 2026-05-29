@@ -3,8 +3,6 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 
-const EXT = 200;
-
 export interface GridFacts {
   id: string;
   ex1: number; ey1: number; ex2: number; ey2: number;
@@ -31,13 +29,11 @@ export const gridModule: ElementModule<GridFacts> = {
     const ln = el as LineElement;
     const dx = ln.end.x - ln.start.x;
     const dy = ln.end.y - ln.start.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 0.001) return null;
-    const ux = dx / len, uy = dy / len;
+    if (dx * dx + dy * dy < 0.000001) return null;
     return {
       id: ln.id,
-      ex1: ln.start.x - ux * EXT, ey1: ln.start.y - uy * EXT,
-      ex2: ln.end.x + ux * EXT, ey2: ln.end.y + uy * EXT,
+      ex1: ln.start.x, ey1: ln.start.y,
+      ex2: ln.end.x, ey2: ln.end.y,
       startLabel: ln.start,
       label: ln.attrs.number || ln.id,
     };
