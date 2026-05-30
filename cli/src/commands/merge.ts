@@ -42,7 +42,12 @@ const GRID_COORD_TOLERANCE = 0.01;
 // Fields that contain IDs and need remapping (schema reference fields + known ID string fields)
 const KNOWN_ID_FIELDS = new Set([
   'id', 'host_id', 'top_level_id', 'level_id',
-  'start_node_id', 'end_node_id',
+]);
+
+// Fields that contain port references "host_id:port_name" (or bare "host_id").
+// Only the host_id portion is remapped; port_name is preserved.
+const PORT_REF_FIELDS = new Set([
+  'from', 'to',
 ]);
 
 interface SourceData {
@@ -371,11 +376,27 @@ function buildFullRemaps(
 function remapRow(row: Record<string, string>, remap: Map<string, string>, refFieldNames: Set<string>): Record<string, string> {
   const out: Record<string, string> = {};
   for (const [key, val] of Object.entries(row)) {
-    if (val && (refFieldNames.has(key) || KNOWN_ID_FIELDS.has(key))) {
-      out[key] = remap.get(val) ?? val;
-    } else {
+    if (!val) {
       out[key] = val;
+      continue;
     }
+    if (PORT_REF_FIELDS.has(key)) {
+      // "host_id:port_name" → remap host_id, keep port_name. Bare "host_id" → remap.
+      const colon = val.indexOf(':');
+      if (colon < 0) {
+        out[key] = remap.get(val) ?? val;
+      } else {
+        const host = val.slice(0, colon);
+        const port = val.slice(colon + 1);
+        out[key] = `${remap.get(host) ?? host}:${port}`;
+      }
+      continue;
+    }
+    if (refFieldNames.has(key) || KNOWN_ID_FIELDS.has(key)) {
+      out[key] = remap.get(val) ?? val;
+      continue;
+    }
+    out[key] = val;
   }
   return out;
 }

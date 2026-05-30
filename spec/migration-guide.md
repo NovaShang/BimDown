@@ -124,7 +124,7 @@ MEP networks are a **bipartite graph**: curves connect to nodes, nodes connect t
 - `mep_curve` (duct/pipe/cable_tray/conduit) endpoints come from **connector positions** (not centerline). This ensures endpoints coincide with fitting/accessory positions.
 - `mep_node` represents fittings and accessories. Minimal data: just position and system_type.
 - `equipment` and `terminal` also serve as network endpoints.
-- `start_node_id` / `end_node_id` on curves reference the connected node/equipment/terminal.
+- `from` / `to` on curves reference the connected port via `host_id:port_name` (or bare `host_id` for passive fittings). See [`mep-port-conventions.md`](mep-port-conventions.md).
 
 AI authoring: draw curves → call CLI `validate`/`resolve-topology` → auto-generates nodes and fills connectivity.
 

@@ -37,7 +37,15 @@ fields:
   - name: family
     type: text
     required: false
-    description: Optional Revit family name for round-trip fidelity.
+    description: >
+      Family name from source CAD/BIM tool (e.g. Revit Family.Name).
+      Free-form text. Round-trip fidelity.
+
+  - name: type
+    type: text
+    required: false
+    description: >
+      Family type / symbol name from source CAD/BIM tool. Free-form text.
 
   - name: shape
     type: enum

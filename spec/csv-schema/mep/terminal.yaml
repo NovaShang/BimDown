@@ -17,3 +17,14 @@ fields:
       - data_outlet
       - plumbing_fixture
       - other
+
+  - name: family
+    type: text
+    description: >
+      Family name from source CAD/BIM tool (e.g. Revit Family.Name).
+      Free-form text. Used for round-trip fidelity.
+
+  - name: type
+    type: text
+    description: >
+      Family type / symbol name from source CAD/BIM tool. Free-form text.

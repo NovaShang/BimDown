@@ -7,11 +7,11 @@ fields:
   - name: host_id
     type: reference
     reference: element
-    description: ID of the host wall. Required unless host_x/host_y are provided (auto-resolved by build).
+    description: ID of the host wall/floor. Required unless host_x/host_y are provided (auto-resolved by build).
 
   - name: position
     type: float
-    description: Distance in meters from the host element's start point to the center of this opening. Required unless host_x/host_y are provided (auto-resolved by build).
+    description: Distance in length units from the host element's start point to the center of this opening. Required unless host_x/host_y are provided (auto-resolved by build).
 
   - name: host_x
     type: float

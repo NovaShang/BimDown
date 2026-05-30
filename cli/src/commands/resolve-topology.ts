@@ -21,7 +21,7 @@ interface Point3D { x: number; y: number; z: number }
 
 interface CurveEndpoint {
   curveId: string;
-  side: 'start' | 'end';
+  side: 'from' | 'to';
   point: Point3D;
   levelDir: string;
   systemType: string;
@@ -32,6 +32,14 @@ interface NodeEntry {
   tableName: string;
   id: string;
   pos: Point3D;
+  rotation: number;
+}
+
+interface ConnectorEntry {
+  hostId: string;
+  name: string;
+  systemType: string;
+  worldPos: Point3D;
 }
 
 function dist3d(a: Point3D, b: Point3D): number {
@@ -41,6 +49,26 @@ function dist3d(a: Point3D, b: Point3D): number {
 
 function near(a: Point3D, b: Point3D): boolean {
   return dist3d(a, b) <= TOLERANCE;
+}
+
+function toFloat(val: unknown, fallback = 0): number {
+  const n = parseFloat(String(val ?? ''));
+  return Number.isFinite(n) ? n : fallback;
+}
+
+/** Resolve a connector row to its world position given its host node's pos + rotation. */
+function connectorWorldPos(node: NodeEntry, row: Record<string, string>): Point3D {
+  const ox = toFloat(row.offset_x);
+  const oy = toFloat(row.offset_y);
+  const oz = toFloat(row.offset_z);
+  const theta = (node.rotation * Math.PI) / 180;
+  const c = Math.cos(theta);
+  const s = Math.sin(theta);
+  return {
+    x: node.pos.x + (ox * c - oy * s),
+    y: node.pos.y + (ox * s + oy * c),
+    z: node.pos.z + oz,
+  };
 }
 
 export function resolveTopology(dir: string): void {
@@ -89,16 +117,16 @@ export function resolveTopology(dir: string): void {
         totalCurves++;
         const lg = extractLineGeometry(feat);
 
-        if (row.start_node_id) alreadyResolved++;
+        if (row.from) alreadyResolved++;
         else freeEndpoints.push({
-          curveId: row.id, side: 'start',
+          curveId: row.id, side: 'from',
           point: { x: lg.start_x, y: lg.start_y, z: lg.start_z ?? 0 },
           levelDir: d.name, systemType: row.system_type ?? '',
         });
 
-        if (row.end_node_id) alreadyResolved++;
+        if (row.to) alreadyResolved++;
         else freeEndpoints.push({
-          curveId: row.id, side: 'end',
+          curveId: row.id, side: 'to',
           point: { x: lg.end_x, y: lg.end_y, z: lg.end_z ?? 0 },
           levelDir: d.name, systemType: row.system_type ?? '',
         });
@@ -126,36 +154,86 @@ export function resolveTopology(dir: string): void {
       try { fc = parseGeoJsonFile(geomPath); }
       catch { continue; }
 
-      const posById = new Map<string, Point3D>();
+      const posById = new Map<string, { pos: Point3D; rotation: number }>();
       for (const f of fc.features) {
         if (f.geometry.type !== 'Point') continue;
         const id = String(f.properties?.id ?? '');
         if (!id) continue;
         const pg = extractPointGeometry(f);
-        posById.set(id, { x: pg.x, y: pg.y, z: pg.z ?? 0 });
+        const rotation = toFloat(f.properties?.rotation);
+        posById.set(id, { pos: { x: pg.x, y: pg.y, z: pg.z ?? 0 }, rotation });
       }
 
       for (const row of csv.rows) {
         const p = posById.get(row.id);
         if (!p) continue;
-        nodes.push({ levelDir: d.name, tableName, id: row.id, pos: p });
+        nodes.push({ levelDir: d.name, tableName, id: row.id, pos: p.pos, rotation: p.rotation });
       }
     }
   }
 
-  // ─── Phase 3: match free endpoints to existing nodes ──────
-  const resolvedIds = new Map<string, string>();
+  // ─── Phase 2b: load connectors (host_id, name, world pos) ─
+  const nodeById = new Map<string, NodeEntry>();
+  for (const n of nodes) nodeById.set(n.id, n);
+
+  const connectorsByHost = new Map<string, ConnectorEntry[]>();
+  for (const d of allDirs) {
+    if (!existsSync(d.path)) continue;
+    const files = listFiles(d.path);
+    if (!files.includes('connector.csv')) continue;
+    const csv = readCsv(join(d.path, 'connector.csv'));
+    for (const row of csv.rows) {
+      const host = nodeById.get(row.host_id ?? '');
+      if (!host || !row.name) continue;
+      const entry: ConnectorEntry = {
+        hostId: row.host_id,
+        name: row.name,
+        systemType: row.system_type ?? '',
+        worldPos: connectorWorldPos(host, row),
+      };
+      const arr = connectorsByHost.get(row.host_id) ?? [];
+      arr.push(entry);
+      connectorsByHost.set(row.host_id, arr);
+    }
+  }
+
+  // ─── Phase 3: match free endpoints to existing nodes / ports ──
+  const resolvedRefs = new Map<string, string>(); // "curveId:side" -> port_ref string
   const stillFree: CurveEndpoint[] = [];
 
   for (const ep of freeEndpoints) {
+    // Try connector match first (more specific than node match)
+    let bestConn: ConnectorEntry | null = null;
+    let bestConnDist = Infinity;
+    for (const arr of connectorsByHost.values()) {
+      for (const c of arr) {
+        const d = dist3d(ep.point, c.worldPos);
+        if (d <= TOLERANCE && d < bestConnDist) {
+          // prefer matching system_type when distances are tied
+          if (
+            bestConn === null ||
+            d < bestConnDist - 1e-9 ||
+            (ep.systemType && c.systemType === ep.systemType && bestConn.systemType !== ep.systemType)
+          ) {
+            bestConn = c;
+            bestConnDist = d;
+          }
+        }
+      }
+    }
+    if (bestConn) {
+      resolvedRefs.set(`${ep.curveId}:${ep.side}`, `${bestConn.hostId}:${bestConn.name}`);
+      continue;
+    }
+    // Fallback to node host match
     let matched: NodeEntry | null = null;
     for (const node of nodes) {
       if (near(ep.point, node.pos)) { matched = node; break; }
     }
-    if (matched) resolvedIds.set(`${ep.curveId}:${ep.side}`, matched.id);
+    if (matched) resolvedRefs.set(`${ep.curveId}:${ep.side}`, matched.id);
     else stillFree.push(ep);
   }
-  const fittingMatches = resolvedIds.size;
+  const fittingMatches = resolvedRefs.size;
 
   // ─── Phase 4: cluster remaining endpoints into new mep_nodes ──
   interface Junction {
@@ -192,7 +270,8 @@ export function resolveTopology(dir: string): void {
     const next = cur + 1;
     maxMnId.set(j.levelDir, next);
     j.nodeId = `mn-${next}`;
-    for (const ep of j.endpoints) resolvedIds.set(`${ep.curveId}:${ep.side}`, j.nodeId);
+    // Junctions are passive mep_nodes; reference by bare host_id (no :port suffix)
+    for (const ep of j.endpoints) resolvedRefs.set(`${ep.curveId}:${ep.side}`, j.nodeId);
   }
 
   // ─── Phase 5: write new mep_node entries (CSV + GeoJSON) ──
@@ -240,29 +319,29 @@ export function resolveTopology(dir: string): void {
     writeFileSync(geomPath, stringifyFeatureCollection(fc), 'utf-8');
   }
 
-  // ─── Phase 6: back-fill curve CSV node IDs ────────────────
+  // ─── Phase 6: back-fill curve CSV from/to columns ──────────
   let updatedRows = 0;
   for (const [, entry] of curveData) {
     let modified = false;
-    if (!entry.csv.headers.includes('start_node_id')) entry.csv.headers.push('start_node_id');
-    if (!entry.csv.headers.includes('end_node_id')) entry.csv.headers.push('end_node_id');
+    if (!entry.csv.headers.includes('from')) entry.csv.headers.push('from');
+    if (!entry.csv.headers.includes('to')) entry.csv.headers.push('to');
     for (const row of entry.csv.rows) {
-      if (!row.start_node_id) {
-        const id = resolvedIds.get(`${row.id}:start`);
-        if (id) { row.start_node_id = id; modified = true; updatedRows++; }
+      if (!row.from) {
+        const ref = resolvedRefs.get(`${row.id}:from`);
+        if (ref) { row.from = ref; modified = true; updatedRows++; }
       }
-      if (!row.end_node_id) {
-        const id = resolvedIds.get(`${row.id}:end`);
-        if (id) { row.end_node_id = id; modified = true; }
+      if (!row.to) {
+        const ref = resolvedRefs.get(`${row.id}:to`);
+        if (ref) { row.to = ref; modified = true; }
       }
     }
     if (modified) writeCsv(entry.path, entry.csv);
   }
 
   console.log(`Scanned ${totalCurves} MEP curves (${totalCurves * 2} endpoints)`);
-  console.log(`  Already connected: ${alreadyResolved} (from Revit export)`);
+  console.log(`  Already connected: ${alreadyResolved}`);
   console.log(`  Free endpoints: ${freeEndpoints.length}`);
-  console.log(`  Matched to existing nodes (proximity): ${fittingMatches}`);
+  console.log(`  Matched to existing nodes/ports: ${fittingMatches}`);
   console.log(`  New mep_nodes created: ${junctions.length}`);
   if (updatedRows > 0) console.log(`Updated ${updatedRows} curve rows`);
 }

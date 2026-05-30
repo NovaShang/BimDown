@@ -106,6 +106,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `equipment`  | Point        | `Point` 3D | MEP equipment (AHU, chiller, pump...) |
 | `terminal`   | Point        | `Point` 3D | MEP terminal (diffuser, outlet...) |
 | `mep_node`   | Point        | `Point` 3D | Topology node (fitting/accessory in Revit) |
+| `connector`  | None (CSV)   | — | Connection port on equipment/terminal/mep_node — host-local offset + outward direction, cross-section, flow direction, domain. Curves reference it via `from`/`to` (`host_id:name`). CSV-only. |
 
 ### Fallback
 
@@ -200,6 +201,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `equipment` | `eq` | `eq-1` |
 | `terminal` | `tm` | `tm-1` |
 | `mep_node` | `mn` | `mn-1` |
+| `connector` | `cn` | `cn-1` |
 | `mesh` | `ms` | `ms-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
@@ -257,6 +259,7 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 - **mep_curve** geometry is defined by its two connector endpoints (not the physical centerline). In GeoJSON this is a 3D `LineString`. In Revit, endpoints are taken from `Connector.Origin` positions, which naturally align with the connectors of adjacent fittings.
 - **mep_node** is a minimal topology node with position only. In GeoJSON this is a 3D `Point`. In Revit it maps to fittings (`DuctFitting`, `PipeFitting`, etc.) and accessories (`DuctAccessory`, `PipeAccessory`).
 - **equipment** and **terminal** also serve as network endpoints — curves can connect directly to them.
+- **connector** rows define the named ports on equipment, terminals, and active accessories: a host-local offset, outward direction, cross-section, flow direction, and domain. A curve's `from`/`to` references a port as `host_id:name` (or bare `host_id` for passive fittings, whose ports are derived from geometry at runtime). See [`mep-port-conventions.md`](mep-port-conventions.md).
 
 **AI authoring workflow**:
 1. Place equipment and terminals (anchors)

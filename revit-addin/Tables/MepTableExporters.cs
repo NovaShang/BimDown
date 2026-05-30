@@ -29,36 +29,61 @@ public static class MepTableExporters
         "cable_tray",
         [BuiltInCategory.OST_CableTray],
         new CompositeExtractor(
-            [..ExpandMepCurve(), new SectionProfileExtractor(), new MepSystemExtractor()]));
+            [..ExpandMepCurve(), new SectionProfileExtractor(), new MepSystemExtractor(), new MepConnectedSegmentExtractor()]));
 
     public static ITableExporter Conduit() => new TableExporter(
         "conduit",
         [BuiltInCategory.OST_Conduit],
         new CompositeExtractor(
-            [..ExpandMepCurve(), new SectionProfileExtractor(), new MepSystemExtractor()]));
+            [..ExpandMepCurve(), new SectionProfileExtractor(), new MepSystemExtractor(), new MepConnectedSegmentExtractor()]));
 
     public static ITableExporter MepNode() => new TableExporter(
         "mep_node",
         [BuiltInCategory.OST_DuctFitting, BuiltInCategory.OST_PipeFitting, BuiltInCategory.OST_CableTrayFitting, BuiltInCategory.OST_ConduitFitting,
          BuiltInCategory.OST_DuctAccessory, BuiltInCategory.OST_PipeAccessory],
         new CompositeExtractor(
-            [..CompositeExtractor.ExpandPointElement(), new MepSystemExtractor(), new MepNodeExtractor()]));
+            [..CompositeExtractor.ExpandPointElement(), new MepSystemExtractor(), new MepNodeExtractor()],
+            ["family", "type"],
+            ExtractFamilyAndType));
 
     public static ITableExporter Equipment() => new TableExporter(
         "equipment",
         [BuiltInCategory.OST_MechanicalEquipment, BuiltInCategory.OST_ElectricalEquipment],
         new CompositeExtractor(
             [..CompositeExtractor.ExpandPointElement(), new MepSystemExtractor()],
-            ["equipment_type"],
-            e => new Dictionary<string, string?> { ["equipment_type"] = ClassifyEquipmentType(e) }));
+            ["equipment_type", "family", "type"],
+            e =>
+            {
+                var d = ExtractFamilyAndType(e);
+                d["equipment_type"] = ClassifyEquipmentType(e);
+                return d;
+            }));
 
     public static ITableExporter Terminal() => new TableExporter(
         "terminal",
         [BuiltInCategory.OST_DuctTerminal, BuiltInCategory.OST_Sprinklers, BuiltInCategory.OST_LightingFixtures, BuiltInCategory.OST_ElectricalFixtures],
         new CompositeExtractor(
             [..CompositeExtractor.ExpandPointElement(), new MepSystemExtractor()],
-            ["terminal_type"],
-            e => new Dictionary<string, string?> { ["terminal_type"] = ClassifyTerminalType(e) }));
+            ["terminal_type", "family", "type"],
+            e =>
+            {
+                var d = ExtractFamilyAndType(e);
+                d["terminal_type"] = ClassifyTerminalType(e);
+                return d;
+            }));
+
+    static Dictionary<string, string?> ExtractFamilyAndType(Element e)
+    {
+        if (e is FamilyInstance fi)
+        {
+            return new Dictionary<string, string?>
+            {
+                ["family"] = fi.Symbol?.Family?.Name,
+                ["type"] = fi.Symbol?.Name,
+            };
+        }
+        return new Dictionary<string, string?> { ["family"] = null, ["type"] = null };
+    }
 
     static string? ClassifyEquipmentType(Element e)
     {

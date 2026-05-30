@@ -44,7 +44,10 @@ class ShortIdGenerator
     // References that may point at any partitioned table. Resolved last, after every
     // id has been assigned, so forward references (e.g. opening → structure_wall,
     // duct → mep_node) resolve instead of nulling out.
-    static readonly string[] OtherReferenceFields = ["host_id", "start_node_id", "end_node_id"];
+    static readonly string[] OtherReferenceFields = ["host_id"];
+    // Port references: "host_uid:port_name" or bare "host_uid". Only the host_uid
+    // is resolved to a short id; the port_name suffix is preserved.
+    static readonly string[] PortReferenceFields = ["from", "to"];
     static readonly string[] ReferenceFields = [.. LevelReferenceFields, .. OtherReferenceFields];
 
     // Counters scoped by (directory, prefix)
@@ -158,7 +161,11 @@ class ShortIdGenerator
         }
     }
 
-    void ResolveReferences(Dictionary<string, string?> row) => ResolveReferences(row, ReferenceFields);
+    void ResolveReferences(Dictionary<string, string?> row)
+    {
+        ResolveReferences(row, ReferenceFields);
+        ResolvePortReferences(row);
+    }
 
     void ResolveReferences(Dictionary<string, string?> row, string[] fields)
     {
@@ -167,6 +174,29 @@ class ShortIdGenerator
             var refUid = row.GetValueOrDefault(field);
             if (refUid is not null)
                 row[field] = Resolve(refUid);
+        }
+    }
+
+    /// <summary>Resolves port-ref fields ("from", "to"). Splits "host_uid:port_name"
+    /// and only remaps the host_uid; bare values are remapped directly.</summary>
+    void ResolvePortReferences(Dictionary<string, string?> row)
+    {
+        foreach (var field in PortReferenceFields)
+        {
+            var val = row.GetValueOrDefault(field);
+            if (string.IsNullOrEmpty(val)) continue;
+            var colon = val.IndexOf(':');
+            if (colon < 0)
+            {
+                row[field] = Resolve(val);
+            }
+            else
+            {
+                var host = val[..colon];
+                var port = val[(colon + 1)..];
+                var shortHost = Resolve(host);
+                row[field] = shortHost is null ? null : $"{shortHost}:{port}";
+            }
         }
     }
 
@@ -182,9 +212,12 @@ class ShortIdGenerator
     internal void ResolveLevelReferences(Dictionary<string, string?> row) =>
         ResolveReferences(row, LevelReferenceFields);
 
-    /// <summary>Resolves non-level references (host_id, node ids) only.</summary>
-    internal void ResolveOtherReferences(Dictionary<string, string?> row) =>
+    /// <summary>Resolves non-level references (host_id and port refs from/to) only.</summary>
+    internal void ResolveOtherReferences(Dictionary<string, string?> row)
+    {
         ResolveReferences(row, OtherReferenceFields);
+        ResolvePortReferences(row);
+    }
 
     /// <summary>
     /// Returns all mappings with directory info for _IdMap.csv.

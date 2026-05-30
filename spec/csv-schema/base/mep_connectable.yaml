@@ -1,0 +1,23 @@
+name: mep_connectable
+abstract: true
+description: >
+  Connectivity fields linking MEP curves (pipe/duct/conduit/cable_tray) to
+  their endpoint ports. `from`/`to` use the port-reference syntax
+  "host_id:port_name" (e.g. "eq-AHU-01:supply"), or bare "host_id" when the
+  host is a passive mep_node (auto-elbow/tee/coupling/cross/cap/transition)
+  whose ports are derived from connected-pipe geometry rather than declared
+  in connector.csv. Empty value = open end.
+
+fields:
+  - name: from
+    type: string
+    description: >
+      Upstream port reference. Format "host_id:port_name" matching a row in
+      connector.csv with host_id and name; or bare "host_id" for passive
+      mep_node hosts. Empty = open upstream end.
+
+  - name: to
+    type: string
+    description: >
+      Downstream port reference. Same format as `from`. Empty = open
+      downstream end.

@@ -20,3 +20,17 @@ fields:
       - water_heater
       - tank
       - other
+
+  - name: family
+    type: text
+    description: >
+      Family name from source CAD/BIM tool (e.g. Revit Family.Name).
+      Free-form text. Used for round-trip fidelity and for grouping
+      same-model instances. Two equipment rows with the same (family,
+      type) pair represent the same product model.
+
+  - name: type
+    type: text
+    description: >
+      Family type / symbol name from source CAD/BIM tool (e.g. Revit
+      FamilySymbol.Name). Free-form text.

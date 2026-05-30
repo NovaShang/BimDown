@@ -112,6 +112,7 @@ static class L
     public static string CatMepNode => S("MEP Node / Fitting", "机电节点/管件");
     public static string CatEquipment => S("Equipment", "设备");
     public static string CatTerminal => S("Terminal", "末端");
+    public static string CatConnector => S("Connector / Port", "连接器/端口");
     public static string CatLevel => S("Level", "标高");
     public static string CatGrid => S("Grid", "轴网");
 }

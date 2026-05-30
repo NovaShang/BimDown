@@ -55,6 +55,7 @@ internal static class ExportPipeline
             MepTableExporters.MepNode(),
             MepTableExporters.Equipment(),
             MepTableExporters.Terminal(),
+            new ConnectorTableExporter(),
         ];
 
         var exporters = allExporters.Where(e => enabled.Contains(e.TableName)).ToArray();

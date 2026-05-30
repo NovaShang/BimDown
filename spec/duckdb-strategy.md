@@ -73,13 +73,14 @@ AI designs MEP networks by placing duct/pipe segments with endpoint coordinates.
 1. Collects all MEP segment endpoints and equipment/terminal positions.
 2. Detects coincident coordinates (within tolerance).
 3. Auto-generates `mep_node` entries at pure junction points (where no equipment/terminal exists).
-4. Back-fills `start_node_id` and `end_node_id` on each duct/pipe/cable_tray/conduit.
+4. Back-fills `from` and `to` on each duct/pipe/cable_tray/conduit. Values are port refs of the form `host_id:port_name` (or bare `host_id` for passive fittings). See [`mep-port-conventions.md`](mep-port-conventions.md).
 
 After resolution, DuckDB graph queries work naturally:
 ```sql
--- Find all ducts connected to equipment eq-1
+-- Find all ducts connected to equipment eq-1 (any port)
 SELECT d.* FROM duct d
-WHERE d.start_node_id = 'eq-1' OR d.end_node_id = 'eq-1';
+WHERE d.from = 'eq-1' OR d.to = 'eq-1'
+   OR d.from LIKE 'eq-1:%' OR d.to LIKE 'eq-1:%';
 ```
 
 ---

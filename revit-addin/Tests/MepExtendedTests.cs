@@ -267,28 +267,30 @@ public class MepExtendedTests : RevitApiTest
     // ── Exporter Field Verification ─────────────────────────────
 
     [Test]
-    public async Task CableTray_Exporter_HasNoNodeIdFields()
+    public async Task CableTray_Exporter_HasPortRefFields()
     {
+        // cable_tray is a connectable MEP curve (inherits mep_connectable in spec;
+        // editor treats it as a MEP line table and wires from/to). It carries port refs.
         var exporter = MepTableExporters.CableTray();
-        await Assert.That(exporter.Columns.Contains("start_node_id")).IsFalse();
-        await Assert.That(exporter.Columns.Contains("end_node_id")).IsFalse();
-        await Assert.That(exporter.CsvColumns.Contains("start_node_id")).IsFalse();
+        await Assert.That(exporter.Columns.Contains("from")).IsTrue();
+        await Assert.That(exporter.Columns.Contains("to")).IsTrue();
+        await Assert.That(exporter.CsvColumns.Contains("from")).IsTrue();
     }
 
     [Test]
-    public async Task Conduit_Exporter_HasNoNodeIdFields()
+    public async Task Conduit_Exporter_HasPortRefFields()
     {
         var exporter = MepTableExporters.Conduit();
-        await Assert.That(exporter.Columns.Contains("start_node_id")).IsFalse();
-        await Assert.That(exporter.Columns.Contains("end_node_id")).IsFalse();
+        await Assert.That(exporter.Columns.Contains("from")).IsTrue();
+        await Assert.That(exporter.Columns.Contains("to")).IsTrue();
     }
 
     [Test]
-    public async Task Duct_Exporter_HasNodeIdFields()
+    public async Task Duct_Exporter_HasPortRefFields()
     {
         var exporter = MepTableExporters.Duct();
-        await Assert.That(exporter.Columns.Contains("start_node_id")).IsTrue();
-        await Assert.That(exporter.Columns.Contains("end_node_id")).IsTrue();
+        await Assert.That(exporter.Columns.Contains("from")).IsTrue();
+        await Assert.That(exporter.Columns.Contains("to")).IsTrue();
     }
 
     // ── MEP Round-trip Export Tests ────────────────────────────────

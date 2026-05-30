@@ -48,6 +48,7 @@ sealed class ExportSettingsForm : BaseForm
         new("mep_node", L.CatMepNode, L.GroupMep),
         new("equipment", L.CatEquipment, L.GroupMep),
         new("terminal", L.CatTerminal, L.GroupMep),
+        new("connector", L.CatConnector, L.GroupMep),
     ];
 
     readonly TextBox _pathBox;
