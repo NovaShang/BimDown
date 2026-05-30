@@ -8,7 +8,7 @@
 
 开源的 AI 原生建筑数据格式、命令行工具以及 **BIM 领域 AI Agent Skill** — **支持与 Autodesk Revit 双向互通（Round-Trip）**。
 
-BimDown 用 **CSV** 存储属性，用 **SVG** 存储二维几何 — 简单到任何大语言模型都能直接读写，同时又足够结构化来支撑真实的 BIM 工作流。内置的 Revit 插件实现了**双向同步**：从 Revit 导出到 BimDown，用 AI 或手动修改数据，再导回 Revit，改动完整保留。
+BimDown 用 **CSV** 存储属性，几何层可以用 **SVG**（二维）或 **GeoJSON**（二维/三维）两种方式编码 — 简单到任何大语言模型都能直接读写，同时又足够结构化来支撑真实的 BIM 工作流。两种几何编码都是一等公民、可互相转换；新项目默认使用 GeoJSON。内置的 Revit 插件实现了**双向同步**：从 Revit 导出到 BimDown，用 AI 或手动修改数据，再导回 Revit，改动完整保留。
 
 ## 配合 AI Agent 使用 (BIM Skill)
 
@@ -40,8 +40,8 @@ bimdown generate-skill
 
 `revit-addin/` 目录包含一个适用于 Autodesk Revit 2025+ 的 C# 插件，实现 Revit 模型与 BimDown 格式之间的**双向同步**：
 
-- **导出**：Revit 模型 -> BimDown（CSV + SVG 文件）
-- **导入**：BimDown（CSV + SVG 文件）-> Revit 模型
+- **导出**：Revit 模型 -> BimDown（CSV + SVG 或 GeoJSON 文件）
+- **导入**：BimDown（CSV + SVG 或 GeoJSON 文件）-> Revit 模型
 - **Round-Trip**：导出、用 AI 或手工编辑、导回 — 改动应用到原始 Revit 模型
 
 **安装**：
@@ -69,7 +69,7 @@ bimdown info ./my-project                # 打印项目概要（楼层、构件�
 
 ### 查询
 
-BimDown 将所有 CSV 文件加载到内存中的 DuckDB 数据库，几何字段（长度、面积、起止坐标）从 SVG 自动计算。使用标准 SQL 查询：
+BimDown 将所有 CSV 文件加载到内存中的 DuckDB 数据库，几何字段（长度、面积、起止坐标）从几何层（SVG 或 GeoJSON）自动计算。使用标准 SQL 查询：
 
 ```bash
 # 列出所有墙及其长度
@@ -123,24 +123,26 @@ bimdown resolve-topology ./my-project   # 自动检测重合端点，
 ### 同步
 
 ```bash
-bimdown sync ./my-project   # 加载到 DuckDB，再写回 CSV/SVG
+bimdown sync ./my-project   # 加载到 DuckDB，再写回 CSV + SVG/GeoJSON
 ```
 
 ## 快速一览
 
 ```
 project/
-  project_metadata.json    # 格式版本、项目名称、单位
+  project_metadata.json         # format_version（1 = SVG，2 = GeoJSON）、项目名称、单位
   global/
-    level.csv              # 建筑楼层
-    grid.csv               # 结构轴网
+    level.csv                   # 建筑楼层
+    grid.csv                    # 结构轴网
   lv-1/
-    wall.csv + wall.svg    # 墙（CSV 属性 + SVG 几何）
-    door.csv               # 门（仅 CSV，参数化定位在宿主墙上）
-    slab.csv + slab.svg    # 楼板
-    space.csv              # 房间（种子点 + 名称）
+    wall.csv + wall.geojson     # 墙（CSV 属性 + 几何；v1 项目里是 .svg）
+    door.csv                    # 门（仅 CSV，参数化定位在宿主墙上）
+    slab.csv + slab.geojson     # 楼板
+    space.csv                   # 房间（种子点 + 名称）
     ...
 ```
+
+无论用哪种编码，CSV 属性层完全相同：
 
 **wall.csv**
 ```csv
@@ -149,7 +151,22 @@ w-1,concrete,0.2
 w-2,concrete,0.2
 ```
 
-**wall.svg**
+几何层是 GeoJSON **或** SVG 二选一：
+
+**wall.geojson**（`format_version: 2`，默认）
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "id": "w-1" },
+      "geometry": { "type": "LineString", "coordinates": [[0,0],[10,0]] } },
+    { "type": "Feature", "properties": { "id": "w-2" },
+      "geometry": { "type": "LineString", "coordinates": [[10,0],[10,8]] } }
+  ]
+}
+```
+
+**wall.svg**（`format_version: 1`）
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg">
   <g transform="scale(1,-1)">
@@ -159,7 +176,7 @@ w-2,concrete,0.2
 </svg>
 ```
 
-**door.csv**（无需 SVG — 位置是参数化的）
+**door.csv**（两种编码下都无需几何文件 — 位置是参数化的）
 ```csv
 id,host_id,position,width,height,operation
 d-1,w-1,3.0,0.9,2.1,single_swing
@@ -191,7 +208,9 @@ BimDown 是一个 **LOD 200 级别的轻量 Revit 替代方案**，面向方案�
 - **宿主构件**（门、窗、洞口）使用 `host_id` + `position`（距宿主墙起点的距离，单位米）
 - **空间**是种子点 — 边界从周围的墙自动推导
 - **材料**使用固定枚举：`concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite`
-- **SVG 几何**使用 `<path>`（M, L, A 命令）、`<rect>`、`<circle>`、`<polygon>` — 不支持贝塞尔曲线
+- **几何层**为 SVG **或** GeoJSON，由 `format_version` 选择（`1` = SVG，`2` = GeoJSON）：
+  - **GeoJSON**（默认）：`Point` / `LineString` / `Polygon`（不支持 Multi\*）；支持二维和三维坐标
+  - **SVG**：`<path>`（M, L, A 命令）、`<rect>`、`<circle>`、`<polygon>` — 不支持贝塞尔曲线；仅二维
 - **Mesh 回退** — 任何构件可以附带可选的 `mesh_file`（GLB）用于 3D 可视化
 - **MEP 拓扑** — 管线和节点组成的二部图，由 CLI 自动解析
 

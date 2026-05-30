@@ -8,7 +8,7 @@
 
 An open-source, AI-native building data format and **AI Agent Skill for BIM** — with **full round-trip support for Autodesk Revit**.
 
-BimDown uses **CSV** for attributes and **SVG** for 2D geometry — simple enough for any LLM to read and write, structured enough for real BIM workflows. The included Revit add-in enables **bidirectional sync**: export from Revit to BimDown, let AI agents modify the data, then import back into Revit with changes preserved.
+BimDown uses **CSV** for attributes and a **geometry layer** that can be encoded as either **SVG** (2D) or **GeoJSON** (2D/3D) — simple enough for any LLM to read and write, structured enough for real BIM workflows. Both geometry encodings are first-class and interchangeable; GeoJSON is the default for new projects. The included Revit add-in enables **bidirectional sync**: export from Revit to BimDown, let AI agents modify the data, then import back into Revit with changes preserved.
 
 ## Use with AI Agents (BIM Skill)
 
@@ -40,8 +40,8 @@ bimdown generate-skill
 
 The `revit-addin/` directory contains a C# add-in for Autodesk Revit 2025+ that enables **bidirectional sync** between Revit models and BimDown format:
 
-- **Export**: Revit model -> BimDown (CSV + SVG files)
-- **Import**: BimDown (CSV + SVG files) -> Revit model
+- **Export**: Revit model -> BimDown (CSV + SVG or GeoJSON files)
+- **Import**: BimDown (CSV + SVG or GeoJSON files) -> Revit model
 - **Round-trip**: Export, edit with AI or by hand, import back — changes are applied to the original Revit model
 
 **Installation**:
@@ -69,7 +69,7 @@ bimdown info ./my-project                # print project summary (levels, elemen
 
 ### Querying
 
-BimDown loads all CSV files into an in-memory DuckDB database, with geometry fields (length, area, start/end coordinates) auto-computed from SVG. Query with standard SQL:
+BimDown loads all CSV files into an in-memory DuckDB database, with geometry fields (length, area, start/end coordinates) auto-computed from the geometry layer (SVG or GeoJSON). Query with standard SQL:
 
 ```bash
 # List all walls and their lengths
@@ -123,24 +123,26 @@ bimdown resolve-topology ./my-project   # auto-detect coincident endpoints,
 ### Sync
 
 ```bash
-bimdown sync ./my-project   # hydrate into DuckDB, then dehydrate back to CSV/SVG
+bimdown sync ./my-project   # hydrate into DuckDB, then dehydrate back to CSV + SVG/GeoJSON
 ```
 
 ## Quick Look
 
 ```
 project/
-  project_metadata.json    # format version, project name, units
+  project_metadata.json         # format_version (1 = SVG, 2 = GeoJSON), project name, units
   global/
-    level.csv              # building levels
-    grid.csv               # structural grids
+    level.csv                   # building levels
+    grid.csv                    # structural grids
   lv-1/
-    wall.csv + wall.svg    # walls (CSV attributes + SVG geometry)
-    door.csv               # doors (CSV-only, parametric position on wall)
-    slab.csv + slab.svg    # floor slabs
-    space.csv              # rooms (seed point + name)
+    wall.csv + wall.geojson     # walls (CSV attributes + geometry; .svg in a v1 project)
+    door.csv                    # doors (CSV-only, parametric position on wall)
+    slab.csv + slab.geojson     # floor slabs
+    space.csv                   # rooms (seed point + name)
     ...
 ```
+
+The CSV attribute layer is identical regardless of encoding:
 
 **wall.csv**
 ```csv
@@ -149,7 +151,22 @@ w-1,concrete,0.2
 w-2,concrete,0.2
 ```
 
-**wall.svg**
+The geometry layer is either GeoJSON **or** SVG:
+
+**wall.geojson** (`format_version: 2`, default)
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    { "type": "Feature", "properties": { "id": "w-1" },
+      "geometry": { "type": "LineString", "coordinates": [[0,0],[10,0]] } },
+    { "type": "Feature", "properties": { "id": "w-2" },
+      "geometry": { "type": "LineString", "coordinates": [[10,0],[10,8]] } }
+  ]
+}
+```
+
+**wall.svg** (`format_version: 1`)
 ```xml
 <svg xmlns="http://www.w3.org/2000/svg">
   <g transform="scale(1,-1)">
@@ -159,7 +176,7 @@ w-2,concrete,0.2
 </svg>
 ```
 
-**door.csv** (no SVG needed — position is parametric)
+**door.csv** (no geometry file in either encoding — position is parametric)
 ```csv
 id,host_id,position,width,height,operation
 d-1,w-1,3.0,0.9,2.1,single_swing
@@ -191,7 +208,9 @@ The full format specification lives in [`spec/`](./spec/). Key concepts:
 - **Hosted elements** (doors, windows, openings) use `host_id` + `position` (distance in meters from wall start)
 - **Spaces** are seed points — boundary auto-derived from surrounding walls
 - **Materials** use a fixed enum: `concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite`
-- **SVG geometry** uses `<path>` (M, L, A commands), `<rect>`, `<circle>`, `<polygon>` — no Bezier curves
+- **Geometry layer** is SVG **or** GeoJSON, selected by `format_version` (`1` = SVG, `2` = GeoJSON):
+  - **GeoJSON** (default): `Point` / `LineString` / `Polygon` (no Multi\*); 2D and 3D coordinates
+  - **SVG**: `<path>` (M, L, A commands), `<rect>`, `<circle>`, `<polygon>` — no Bezier curves; 2D only
 - **Mesh fallback** — any element can have an optional `mesh_file` (GLB) for 3D visualization
 - **MEP topology** — bipartite graph of curves and nodes, auto-resolved by CLI
 

@@ -13,7 +13,7 @@
 - CLI dev: source is in `cli/src/`, uses tsup for bundling
 
 ## Format Key Concepts
-- CSV for attributes, SVG for 2D geometry — both human and AI readable
+- CSV for attributes; geometry layer is SVG (2D, `format_version: 1`) or GeoJSON (2D/3D, `format_version: 2`, default) — both encodings supported, both human and AI readable. CSV attribute layer is identical for both.
 - Hosted elements (door, window, opening) are CSV-only with `position` (distance in meters from host wall start)
 - Spaces are CSV-only seed points (x, y) — boundary auto-derived from walls
 - Wall thickness is in both CSV and SVG stroke-width, CSV is source of truth

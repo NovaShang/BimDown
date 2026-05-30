@@ -1,6 +1,6 @@
 # BimDown GeoJSON Spec
 
-GeoJSON is the **geometry storage layer** for BimDown. It replaces the previous SVG-based geometry layer (`format_version >= 2`). GeoJSON was chosen over SVG after empirical testing on Gemini 3 Flash: it produces equivalent or better AI generation/edit quality at lower token cost, has native 3D support, and integrates with the GIS toolchain (turf.js, DuckDB spatial).
+GeoJSON is one of **two interchangeable geometry storage layers** for BimDown — the other is [SVG](../svg-schema/readme.md). Both are first-class and fully supported; a project picks one, declared by `format_version` (see §9). GeoJSON (`format_version: 2`) is the **default for new projects** and the encoding the BimClaw editor consumes. It was chosen as the default after empirical testing on Gemini 3 Flash: it produces equivalent or better AI generation/edit quality at lower token cost, has native 3D support, and integrates with the GIS toolchain (turf.js, DuckDB spatial). The SVG encoding (`format_version: 1`) remains fully supported for 2D projects and for tools with existing SVG pipelines.
 
 GeoJSON files are **not** used for visualization — they are a structured geometry storage format. The editor and renderers consume the parsed canonical element model, not raw GeoJSON.
 
@@ -265,7 +265,7 @@ Canonical: `Polygon` with a closed outer ring (last coord = first coord), option
 
 - **Snap endpoints**: cluster nearby endpoints within tolerance `max(0.10m, max wall thickness)`. Works across `current_level/` and `global/` (the two-directory rule).
 - **Resolve hosted coords**: door/window/opening `position` validated against host wall length.
-- **Resolve MEP topology**: detect coincident curve endpoints, materialize `mep_node` entries, back-fill `start_node_id`/`end_node_id`.
+- **Resolve MEP topology**: detect coincident curve endpoints, materialize `mep_node` entries, back-fill `from`/`to` (port refs `host_id:port_name`).
 - **Compute space boundaries**: half-edge face tracing from walls + curtain_walls + room_separators + structure_walls; emit `space.geojson` with `Polygon` features. (Space CSV is source of truth for seed points; the generated `.geojson` is a build artifact.)
 - **Auto-heal CSV ↔ geometry conflict**: if a CSV `required` field disagrees with hydrated geometry, CSV wins and geometry is corrected on next sync-out.
 
@@ -324,10 +324,10 @@ Notes:
 }
 ```
 
-- `format_version: 1` — legacy CSV + SVG (no longer supported; use migration script)
-- `format_version: 2` — CSV + GeoJSON (this spec)
+- `format_version: 1` — CSV + **SVG** (see [svg-schema/readme.md](../svg-schema/readme.md)). Fully supported; 2D geometry.
+- `format_version: 2` — CSV + **GeoJSON** (this spec). Fully supported; 2D and 3D geometry. Default for new projects.
 
-CLI behavior on `format_version: 1`: print an error pointing to the migration script (`bimdown migrate svg-to-geojson <path>`).
+Both encodings are maintained; neither is deprecated. Tools may also detect the encoding directly from the geometry files present (`*.geojson` vs `*.svg`). To convert an existing SVG project to GeoJSON (e.g. to gain 3D fidelity for spatial elements), use `bimdown migrate svg-to-geojson <path>` or `scripts/svg-to-geojson.ts`.
 
 ---
 

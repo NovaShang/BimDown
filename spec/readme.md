@@ -2,9 +2,13 @@
 
 This directory defines the **BimDown data format** — a "Minimum Viable Building" representation optimized for AI-native building design and bidirectional sync with BIM tools (Revit).
 
-BimDown uses **CSV for attributes** and **GeoJSON for geometry** (`format_version >= 2`), both human-readable and AI-friendly. GeoJSON supports 2D and 3D coordinates and was selected over the legacy SVG layer after empirical AI-edit-quality testing. A CLI tool with DuckDB provides relational query and auto-sync capabilities.
+BimDown uses **CSV for attributes** and a **geometry layer** that may be encoded as either **SVG** or **GeoJSON** — both human-readable and AI-friendly. The two encodings are interchangeable and fully supported; a project declares which it uses via `format_version` (`1` = SVG, `2` = GeoJSON). GeoJSON adds 2D **and** 3D coordinates and is the default for new projects; SVG is 2D-only and was the original encoding. A CLI tool with DuckDB provides relational query and auto-sync capabilities over either.
 
-> See **[geojson-schema/readme.md](geojson-schema/readme.md)** for the geometry storage spec, including canonical forms, AI input flexibility, and build-time normalization rules.
+> Geometry storage specs (canonical forms, AI input flexibility, build-time normalization):
+> - **[geojson-schema/readme.md](geojson-schema/readme.md)** — GeoJSON encoding (`format_version: 2`, default)
+> - **[svg-schema/readme.md](svg-schema/readme.md)** — SVG encoding (`format_version: 1`)
+>
+> The CSV attribute layer below is identical for both encodings.
 
 ---
 
@@ -33,6 +37,8 @@ BimDown uses **CSV for attributes** and **GeoJSON for geometry** (`format_versio
 └── _IdMap.csv                       # UUID ↔ short ID mapping (Revit round-trip)
 ```
 
+> The geometry files above are shown as `.geojson` (`format_version: 2`). In an SVG project (`format_version: 1`) the same elements use `.svg` files instead (`wall.svg`, `column.svg`, …); CSV files are unchanged. See [svg-schema/readme.md](svg-schema/readme.md).
+
 ---
 
 ## Partitioning Rules (Level vs Global)
@@ -49,6 +55,8 @@ Consequence: editing or rendering one level view requires loading at most **two 
 ---
 
 ## Schema Overview
+
+The **GeoJSON type** column below maps directly to an SVG element in the SVG encoding: `Point` → `<rect>`/`<circle>`, `LineString` → `<path>`, `Polygon` → `<polygon>`. A `3D LineString` (spatial element) becomes a 2D `<path>` plus `start_z`/`end_z` columns in CSV. See [svg-schema/readme.md §6](svg-schema/readme.md).
 
 ### Global Tables
 
@@ -120,8 +128,8 @@ YAML schemas use the following markers:
 
 - **`required: true`** — Semantic source of truth in CSV. AI writes directly. If geometry contradicts, CSV wins.
 - **`computed: true`** — Spatial derivative, never stored. DuckDB hydrate produces it at query time.
-- **`storage: geojson_property`** — Lives in GeoJSON Feature `properties`, not CSV. Source of truth in GeoJSON.
-- **(default)** — Stored in CSV.
+- **`storage: geojson_property`** — Lives in GeoJSON Feature `properties`, not CSV. Source of truth in GeoJSON. **In the SVG encoding**, the same hint is expressed intrinsically by SVG (`rotation` → `transform`, `arc` → path `A` command) or, where SVG cannot (Z offsets, spatial Z), moves to a CSV column. See [svg-schema/readme.md §6](svg-schema/readme.md).
+- **(default)** — Stored in CSV (identical in both encodings).
 
 ---
 
@@ -133,6 +141,8 @@ Two modes (see [geojson-schema/readme.md §4](geojson-schema/readme.md) for deta
 2. **Spatial** (beam, brace, stair, ramp, railing, duct, pipe, cable_tray, conduit): geometry coords are 3D with absolute Z; CSV still carries `base_level_id` for partitioning but no Z numerics.
 
 This split keeps numeric Z arithmetic out of the LLM's hands for the bulk of building elements while preserving full 3D fidelity for elements that genuinely need it.
+
+In the **SVG encoding** (2D-only), the same two modes apply but Z always lives in CSV: level-anchored `base_offset`/`top_offset` and spatial `start_z`/`end_z` are CSV columns. See [svg-schema/readme.md §6](svg-schema/readme.md).
 
 ---
 
@@ -151,7 +161,7 @@ This split keeps numeric Z arithmetic out of the LLM's hands for the bulk of bui
 | `section_profile`            | `shape` (CSV enum rect/round), `size_x`, `size_y` (CSV) |
 | `structural_section_profile` | `shape` (CSV enum rect/round/i/t/l/c/cross), `size_x`, `size_y` (CSV) |
 | `mep_system`                 | `system_type` (CSV string) |
-| `mep_connected_segment`      | `start_node_id`, `end_node_id` (CSV, auto-resolved by CLI) |
+| `mep_connectable`            | `from`, `to` (CSV; port-ref `host_id:port_name` or bare `host_id`, auto-resolved by CLI) |
 
 ---
 
@@ -208,15 +218,18 @@ Architectural and structural elements are fully independent. `structure_column`,
 - Structural elements use `structural_section_profile` with engineering shapes (I, T, L, C, cross).
 - Section attributes (`shape`, `size_x`, `size_y`) live in CSV. Point-element orientation (`rotation`) lives in GeoJSON `properties` if non-zero.
 
-### GeoJSON as AI-Native Geometry Storage
+### Two Geometry Encodings (SVG and GeoJSON)
 
-GeoJSON is **not** used for visualization — it is a geometry storage format chosen because:
-- AI models produce equivalent or better quality on GeoJSON vs SVG at lower token cost (validated on Gemini 3 Flash; see `bimdown-format-comparison`).
-- Native 3D coordinate support `[x, y, z]` per RFC 7946.
-- JSON parsing is universally available; no XML/SVG parser dependency.
-- Compatible with the GIS toolchain (turf.js, DuckDB spatial, QGIS) for downstream analysis.
+The geometry layer is **not** used for visualization in either encoding — it is structured geometry storage. BimDown supports two interchangeable encodings:
 
-The spec defines a strict subset (Point, LineString, Polygon only; no Multi*) and a canonical form. AI may write looser variants (tessellated arcs, rotated polygons for rect columns, unclosed rings, etc.) and `bimdown build` normalizes to canonical. See [geojson-schema/readme.md §6](geojson-schema/readme.md).
+- **SVG** (`format_version: 1`) — 2D only. AI models have extensive SVG training data and strong spatial reasoning with the format. See [svg-schema/readme.md](svg-schema/readme.md).
+- **GeoJSON** (`format_version: 2`, **default**) — 2D and 3D. Chosen as the default because:
+  - AI models produce equivalent or better quality on GeoJSON vs SVG at lower token cost (validated on Gemini 3 Flash; see `bimdown-format-comparison`).
+  - Native 3D coordinate support `[x, y, z]` per RFC 7946.
+  - JSON parsing is universally available; no XML/SVG parser dependency.
+  - Compatible with the GIS toolchain (turf.js, DuckDB spatial, QGIS) for downstream analysis.
+
+Both define a strict subset and a canonical form (GeoJSON: Point/LineString/Polygon, no Multi*; SVG: `<path>` with M/L/A only, `<rect>`, `<circle>`, `<polygon>`). AI may write looser variants (tessellated arcs, rotated polygons for rect columns, unclosed rings, etc.) and `bimdown build` normalizes to canonical. The two encodings are losslessly convertible over the shared 2D subset (GeoJSON additionally carries 3D). See [geojson-schema/readme.md §6](geojson-schema/readme.md) and [svg-schema/readme.md §6](svg-schema/readme.md).
 
 ### Elements Without Geometry File
 
@@ -248,9 +261,9 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 **AI authoring workflow**:
 1. Place equipment and terminals (anchors)
 2. Draw duct/pipe segments connecting them (endpoint coordinates)
-3. Call CLI `build` / `resolve-topology` — this detects coincident endpoints, generates `mep_node` entries at junctions, and back-fills `start_node_id`/`end_node_id` on each segment. Warns about disconnected endpoints.
+3. Call CLI `build` / `resolve-topology` — this detects coincident endpoints, generates `mep_node` entries at junctions, and back-fills `from`/`to` on each segment. Warns about disconnected endpoints.
 
-**Revit export**: Fittings and accessories are exported as `mep_node`. Curve endpoints are taken from connector positions (not `LocationCurve`), so they naturally coincide with node positions. `start_node_id`/`end_node_id` are derived from Revit's connector relationships.
+**Revit export**: Fittings and accessories are exported as `mep_node`. Curve endpoints are taken from connector positions (not `LocationCurve`), so they naturally coincide with node positions. `from`/`to` are derived from Revit's connector relationships and reference the specific port via `host_id:port_name`. See [`mep-port-conventions.md`](mep-port-conventions.md) for port naming conventions.
 
 **Revit import**: Curves are created from endpoint coordinates. Fittings are auto-inserted at junctions where curves meet nodes.
 
@@ -260,9 +273,11 @@ A fixed enum of 15 common structural/architectural materials. Represents the **p
 
 ### Format Versioning
 
-`project_metadata.json` at the project root includes `format_version`:
-- `1` — legacy CSV + SVG. CLI rejects with a pointer to `bimdown migrate svg-to-geojson`.
-- `2` — CSV + GeoJSON (this spec).
+`project_metadata.json` at the project root includes `format_version`, which selects the geometry encoding:
+- `1` — CSV + **SVG** (2D). Fully supported; see [svg-schema/readme.md](svg-schema/readme.md).
+- `2` — CSV + **GeoJSON** (2D/3D). Fully supported; default for new projects.
+
+Both are maintained; neither is deprecated. `bimdown migrate svg-to-geojson` converts a v1 project to v2 (to gain 3D fidelity); tools may also detect the encoding from the geometry files present (`*.svg` vs `*.geojson`).
 
 ---
 

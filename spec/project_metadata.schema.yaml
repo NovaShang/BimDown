@@ -5,7 +5,12 @@ fields:
   - name: format_version
     type: string
     required: true
-    description: BimDown format version (e.g. "1.0")
+    description: |
+      BimDown format version, which also selects the geometry encoding:
+      "1" = CSV + SVG (2D geometry), "2" = CSV + GeoJSON (2D/3D geometry).
+      Both encodings are fully supported; 2 is the default for new projects.
+      Tools may also detect the encoding from the geometry files present
+      (*.svg vs *.geojson).
 
   - name: project_name
     type: string

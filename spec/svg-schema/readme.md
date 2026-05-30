@@ -1,6 +1,13 @@
 # BimDown SVG Spec
 
-SVG is the **geometry storage layer** for BimDown. It is not used for visualization — it is chosen because AI models have extensive training data on SVG and strong spatial reasoning with the format.
+SVG is one of **two interchangeable geometry storage layers** for BimDown — the other is [GeoJSON](../geojson-schema/readme.md). Both are first-class and fully supported; a project picks one, declared by `format_version` (see §7). The CSV attribute layer is identical regardless of which geometry encoding is used.
+
+- **SVG** (`format_version: 1`): 2D geometry, the encoding documented here. AI models have extensive SVG training data and strong spatial reasoning with the format.
+- **GeoJSON** (`format_version: 2`): 2D **and** 3D geometry, native JSON, GIS-toolchain compatible. The default for new projects and the encoding the BimClaw editor consumes.
+
+Like GeoJSON, SVG here is **not** used for visualization — it is a structured geometry storage format. Renderers consume the parsed canonical element model, not the raw SVG.
+
+A key structural difference: **SVG stores 2D geometry only.** Any Z information — level offsets and the absolute Z of spatial elements — lives in CSV columns (see §6). GeoJSON, by contrast, carries absolute Z in coordinates and Z offsets in feature `properties`.
 
 ---
 
@@ -163,3 +170,42 @@ The CLI parses SVG elements and injects computed fields into DuckDB:
 | `<rect>` | `x`, `y`, `size_x` (width), `size_y` (height), `rotation` |
 | `<circle>` | `x` (cx), `y` (cy), `size_x` (2r), `size_y` (2r), `shape="round"` |
 | `<polygon>` | `points` (serialized), `area` |
+
+---
+
+## 6. Attribute Split: SVG vs CSV
+
+As in the GeoJSON encoding, **CSV is the attribute source of truth** — material, thickness, sizes, enums, foreign keys (`host_id`, `base_level_id`, `top_level_id`), and parametric placement (`position`) all live in CSV, unchanged.
+
+The difference is in the **numeric geometry hints**. The GeoJSON encoding keeps these in feature `properties`; SVG has no per-feature property bag, so each hint maps as follows:
+
+| Geometry hint | GeoJSON encoding | SVG encoding |
+|---|---|---|
+| Point orientation (`rotation`) | `properties.rotation` | `transform="rotate(angle, cx, cy)"` on `<rect>`/`<circle>` |
+| Arc curvature (`arc`) | `properties.arc = {radius, large_arc, sweep}` | path `A rx,ry rot large-arc sweep x,y` command |
+| Level Z offsets (`base_offset`, `top_offset`) | `properties.base_offset` / `top_offset` | **CSV columns** `base_offset` / `top_offset` (SVG carries no Z) |
+| Absolute Z of spatial elements (beam, duct, …) | 3rd coordinate `[x, y, z]` | **CSV columns** `start_z` / `end_z` (SVG `<path>` is 2D) |
+
+Everything else — `length`, `area`, `x`/`y`, `start_*`/`end_*` — is **computed** at hydrate time (§5), never stored, in both encodings.
+
+> Rule of thumb when porting a field between encodings: geometry the SVG element can express *intrinsically* (2D position, arc, rotation) stays in SVG; any Z, and all non-geometric attributes, move to CSV.
+
+---
+
+## 7. Format Version
+
+`project_metadata.json` declares the geometry encoding via `format_version`:
+
+```json
+{
+  "format_version": 1,
+  "project_name": "…",
+  "units": "m",
+  "source": "revit"
+}
+```
+
+- `format_version: 1` — CSV + **SVG** (this spec). Fully supported.
+- `format_version: 2` — CSV + **GeoJSON** (see [geojson-schema/readme.md](../geojson-schema/readme.md)). Fully supported; default for new projects.
+
+Both encodings are maintained; neither is deprecated. Tools may also detect the encoding directly from the geometry files present (`*.svg` vs `*.geojson`). Conversion in either direction is lossless for the 2D subset; the `bimdown migrate` command and `scripts/svg-to-geojson.ts` convert SVG → GeoJSON (3D fidelity for spatial elements is gained, not lost, in that direction).
