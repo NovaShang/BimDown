@@ -705,6 +705,21 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         if (Number.isFinite(t) && t > 0) (updated as LineElement).strokeWidth = t;
       }
 
+      // Sync start_z/end_z attrs → SpatialLineElement startZ/endZ fields.
+      // The 3D renderer + serializer read the fields (not attrs), so without
+      // this an edited slope (start_z ≠ end_z) would still render/save flat.
+      if (updated.geometry === 'spatial_line') {
+        const sp = updated as SpatialLineElement;
+        if ('start_z' in action.attrs) {
+          const z = parseFloat(action.attrs.start_z);
+          if (Number.isFinite(z)) sp.startZ = z;
+        }
+        if ('end_z' in action.attrs) {
+          const z = parseFloat(action.attrs.end_z);
+          if (Number.isFinite(z)) sp.endZ = z;
+        }
+      }
+
       // Re-resolve hosted geometry when position, width, or host_id changes
       if (updated.hostId && updated.geometry === 'line' && ('position' in action.attrs || 'width' in action.attrs || 'host_id' in action.attrs)) {
         const hostWall = state.document.elements.get(action.attrs.host_id ?? updated.hostId ?? '');
@@ -1157,10 +1172,13 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
     }
     case 'spatial_line': {
       const sc = changes as Partial<SpatialLineElement>;
+      const spEl = el as SpatialLineElement;
       return {
         ...el,
         start: 'start' in sc ? sc.start! : el.start,
         end: 'end' in sc ? sc.end! : el.end,
+        startZ: 'startZ' in sc ? sc.startZ! : spEl.startZ,
+        endZ: 'endZ' in sc ? sc.endZ! : spEl.endZ,
         strokeWidth: 'strokeWidth' in sc ? sc.strokeWidth! : el.strokeWidth,
         arc: 'arc' in sc ? sc.arc : el.arc,
         attrs: mergedAttrs,
