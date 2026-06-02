@@ -6,6 +6,8 @@ import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
+import { STARTER_KEY_ATTR } from '../elements/equipment.tsx';
+import { getStarter, materializeStarter } from '../elements/equipment_starters.ts';
 
 export const drawPointTool: ToolHandler = {
   cursor: 'crosshair',
@@ -24,9 +26,32 @@ export const drawPointTool: ToolHandler = {
     if (!target) return;
 
     const da = state.drawingAttrs;
+
+    // Starter template: when the user has picked a kind from the equipment /
+    // terminal template dropdown, materialize the host + its connector rows
+    // as a single CREATE_ELEMENTS dispatch (one undo entry).
+    const starter = getStarter(da[STARTER_KEY_ATTR]);
+    if (starter && (target.tableName === 'equipment' || target.tableName === 'terminal')) {
+      const existing = new Set(state.document?.elements.keys() ?? []);
+      const rotationOverride = da.rotation !== undefined && da.rotation !== ''
+        ? parseFloat(da.rotation) || 0
+        : undefined;
+      const levelId = resolveNextLevelId(state);
+      const elements = materializeStarter(starter, pt, levelId, existing, rotationOverride);
+      ctx.dispatch({
+        type: 'CREATE_ELEMENTS',
+        elements,
+        description: `Place ${starter.label_zh}`,
+      });
+      ctx.setSnap(null);
+      return;
+    }
+
     const baseDefaults = defaultAttrs(target.tableName, resolveNextLevelId(state));
     const vDefaults = variantDefaults(target.tableName, target.variantId);
     const mergedAttrs = { ...baseDefaults, ...vDefaults, ...da };
+    // Strip the UI-only starter sentinel.
+    delete mergedAttrs[STARTER_KEY_ATTR];
 
     const w = parseFloat(mergedAttrs.size_x || '0.3');
     const h = parseFloat(mergedAttrs.size_y || '0.3');

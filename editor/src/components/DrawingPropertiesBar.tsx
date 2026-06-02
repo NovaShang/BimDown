@@ -11,6 +11,7 @@ import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
+import { disciplinesForMepLine } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import { cn } from '../lib/utils.ts';
 
@@ -25,7 +26,20 @@ export default function DrawingPropertiesBar() {
   if (!target) return null;
 
   const levels = state.project?.levels ?? [];
-  const fields = getDrawingFields(target.tableName, levels);
+  // Inject project-level mep_system options at render time, filtered to the
+  // disciplines that make sense for this table (e.g. a duct only sees HVAC /
+  // fire systems, not plumbing). When no matching systems exist we leave
+  // options undefined so the field degrades to a text input rather than
+  // showing an empty dropdown.
+  const acceptedDisciplines = disciplinesForMepLine(target.tableName);
+  const systemOptions = (state.project?.mepSystems ?? [])
+    .filter(s => !acceptedDisciplines || acceptedDisciplines.includes(s.discipline))
+    .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
+  const fields = getDrawingFields(target.tableName, levels).map(f =>
+    f.key === 'system_type' && systemOptions.length > 0
+      ? { ...f, options: systemOptions }
+      : f,
+  );
   if (fields.length === 0) return null;
 
   const projectUnit = getProjectUnits(state);
@@ -77,11 +91,16 @@ export default function DrawingPropertiesBar() {
               onValueChange={(v) => { if (v) handleChange(f.key, v); }}
             >
               <SelectTrigger size="sm" className={`${fieldInputClass} min-w-16 gap-1`}>
-                <span className="truncate">{(() => { const o = f.options!.find(o => o.value === (attrs[f.key] ?? '')); return o ? t(`option.${o.label}`, o.label) : attrs[f.key] ?? ''; })()}</span>
+                <span className="truncate">{(() => {
+                  const o = f.options!.find(o => o.value === (attrs[f.key] ?? ''));
+                  // system_type labels are user-defined project names, not i18n keys.
+                  const labelOf = (lbl: string) => f.key === 'system_type' ? lbl : t(`option.${lbl}`, lbl);
+                  return o ? labelOf(o.label) : attrs[f.key] ?? '';
+                })()}</span>
               </SelectTrigger>
               <SelectContent>
                 {f.options.map(o => (
-                  <SelectItem key={o.value} value={o.value}>{t(`option.${o.label}`, o.label)}</SelectItem>
+                  <SelectItem key={o.value} value={o.value}>{f.key === 'system_type' ? o.label : t(`option.${o.label}`, o.label)}</SelectItem>
                 ))}
               </SelectContent>
             </Select>

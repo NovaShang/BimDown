@@ -4,7 +4,7 @@
  * Two semantic flavors:
  *   - Passive fitting: attrs.kind empty → effectiveKind derived from topology
  *     (coupling/elbow/tee/cross/reducer/transition/cap) by counting and
- *     analyzing the pipes that reference this node via start_node_id/end_node_id.
+ *     analyzing the pipes that reference this node via from/to port refs.
  *   - Functional accessory: attrs.kind set explicitly (valve/damper/pump/...).
  *
  * UX intent: users never explicitly create "a tee"; they just draw pipes and
@@ -16,8 +16,8 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, LineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-
-const MEP_LINE_TABLES = ['duct', 'pipe', 'conduit', 'cable_tray'];
+import { portRefTargetsHost } from '../utils/portRef.ts';
+import { MEP_LINE_TABLES } from '../model/mepTopology.ts';
 
 export type EffectiveKind =
   | 'orphan' | 'cap' | 'coupling' | 'reducer' | 'transition' | 'elbow'
@@ -63,13 +63,16 @@ function findConnected(node: PointElement, ctx: GeometryContext): ConnectedPipe[
   const colonIdx = node.id.indexOf(':');
   const unprefixed = colonIdx >= 0 ? node.id.substring(colonIdx + 1) : node.id;
 
+  const targetsNode = (ref: string | undefined): boolean =>
+    portRefTargetsHost(ref, node.id) || portRefTargetsHost(ref, unprefixed);
+
   const result: ConnectedPipe[] = [];
   for (const tbl of MEP_LINE_TABLES) {
     for (const el of ctx.elementsByTable(tbl)) {
       if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
       const ln = el as LineElement;
-      const startMatch = ln.attrs.start_node_id === node.id || ln.attrs.start_node_id === unprefixed;
-      const endMatch   = ln.attrs.end_node_id   === node.id || ln.attrs.end_node_id   === unprefixed;
+      const startMatch = targetsNode(ln.attrs.from);
+      const endMatch   = targetsNode(ln.attrs.to);
       if (!startMatch && !endMatch) continue;
 
       const dx = ln.end.x - ln.start.x;
@@ -146,8 +149,8 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
   discipline: 'mep',
   archetype: 'point',
   prefix: 'mn',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'kind', 'family', 'shape', 'size_w', 'size_h', 'rotation'],
-  defaults: { base_offset: '0', system_type: '', kind: '', family: '', shape: '', size_w: '', size_h: '', rotation: '0' },
+  csvHeaders: ['number', 'base_offset', 'system_type', 'kind', 'family', 'type', 'shape', 'size_w', 'size_h', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', kind: '', family: '', type: '', shape: '', size_w: '', size_h: '', rotation: '0' },
   drawingFields: [],
   propertyFields: [],
   layerStyle: { displayName: 'MEP Nodes', color: '#ff6b6b', icon: '●', order: 13.5 },
@@ -183,12 +186,30 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
     // follow-up render pass in Step 7 (tools / 2D symbols).
     //
     // Passive fittings with 2+ collinear connections (coupling) are visually
-    // invisible — a coupling is a phantom in real BIM drawings too. We still
-    // render a transparent hit zone so the user can interact with it.
+    // invisible — a coupling is a phantom in real BIM drawings too.
+    //
+    // Selection policy: passive nodes (declaredKind empty) are PURE topology
+    // derivatives — auto-created by endpoint bonding, auto-deleted when
+    // orphaned, and always moved by the pipes they join. They never get
+    // `data-id` and the group is pointer-events: none so clicks fall
+    // through to whatever's underneath. Active accessories (valve / damper
+    // / pump with explicit kind) keep normal selectability + hit zones.
     const k = facts.effectiveKind;
+    const isPassive = !facts.declaredKind;
     const color = drawCtx.selected ? '#3a7bff' : (KIND_COLOR[k] ?? '#999');
     const r = k === 'coupling' ? 0.04 : (k === 'orphan' || k === 'cap' ? 0.06 : 0.08);
     const opacity = k === 'coupling' ? 0.0 : 0.6;
+    if (isPassive) {
+      return (
+        <g pointerEvents="none">
+          <circle
+            cx={facts.position.x} cy={facts.position.y} r={r}
+            fill={color} fillOpacity={opacity}
+            stroke={color} strokeWidth={0.012}
+          />
+        </g>
+      );
+    }
     return (
       <g data-id={facts.id}>
         <circle

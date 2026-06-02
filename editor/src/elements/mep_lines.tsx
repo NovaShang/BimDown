@@ -36,7 +36,7 @@ function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
     prefix: opts.prefix,
     csvHeaders: [
       'number', 'base_offset', 'start_z', 'end_z', 'shape',
-      'size_x', 'size_y', 'system_type', 'start_node_id', 'end_node_id',
+      'size_x', 'size_y', 'system_type', 'from', 'to',
     ],
     defaults: opts.defaults,
     drawingFields: opts.drawingFields,
@@ -72,8 +72,9 @@ function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
 
 export const ductModule = makeMepLineModule({
   table: 'duct', prefix: 'du',
-  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.2', size_y: '0.2', system_type: 'hvac' },
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.2', size_y: '0.2', system_type: '' },
   drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
@@ -91,8 +92,9 @@ export const ductModule = makeMepLineModule({
 
 export const pipeModule = makeMepLineModule({
   table: 'pipe', prefix: 'pi',
-  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: 'plumbing' },
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: '' },
   drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
     { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
@@ -108,8 +110,9 @@ export const pipeModule = makeMepLineModule({
 
 export const conduitModule = makeMepLineModule({
   table: 'conduit', prefix: 'co',
-  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.025', size_y: '0.025', system_type: 'electrical' },
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.025', size_y: '0.025', system_type: '' },
   drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.005, step: 0.005 },
     { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
@@ -125,8 +128,9 @@ export const conduitModule = makeMepLineModule({
 
 export const cableTrayModule = makeMepLineModule({
   table: 'cable_tray', prefix: 'ct',
-  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'rect', size_x: '0.1', size_y: '0.1', system_type: 'electrical' },
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'rect', size_x: '0.1', size_y: '0.1', system_type: '' },
   drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },

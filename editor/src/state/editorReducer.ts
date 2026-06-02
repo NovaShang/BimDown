@@ -5,10 +5,14 @@ import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import { isVerticalSpanTable } from '../model/tableRegistry.ts';
+import { collectMepBranch, isMepLineTable } from '../model/mepTopology.ts';
+import { bondEndpoints } from '../model/bondEndpoints.ts';
+import { parsePortRef } from '../utils/portRef.ts';
 import { serializeToGeoJson } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
+import { portRefTargetsHost } from '../utils/portRef.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -71,10 +75,116 @@ function collectMutationKeys(...maps: Map<string, CanonicalElement | null>[]): s
   return Array.from(keys);
 }
 
+/**
+ * Run the MEP endpoint-bonding pass and merge any resulting patches into
+ * `nextElements` + the history before/after maps. Mutates `before` / `after`
+ * in place; returns the (possibly extended) elements map. Skips quickly when
+ * no MEP curves changed.
+ */
+function applyEndpointBonding(
+  nextElements: Map<string, CanonicalElement>,
+  candidatePipeIds: Iterable<string>,
+  before: Map<string, CanonicalElement | null>,
+  after: Map<string, CanonicalElement | null>,
+): Map<string, CanonicalElement> {
+  const candidates: string[] = [];
+  for (const id of candidatePipeIds) {
+    const el = nextElements.get(id);
+    if (el && isMepLineTable(el.tableName)) candidates.push(id);
+  }
+  if (candidates.length === 0) return nextElements;
+  const bond = bondEndpoints(nextElements, candidates);
+  if (!bond) return nextElements;
+
+  const next = new Map(nextElements);
+  for (const el of bond.newElements) {
+    next.set(el.id, el);
+    if (!before.has(el.id)) before.set(el.id, null);
+    after.set(el.id, el);
+  }
+  for (const [id, el] of bond.updates) {
+    if (!before.has(id)) before.set(id, nextElements.get(id) ?? null);
+    next.set(id, el);
+    after.set(id, el);
+  }
+  return next;
+}
+
+/** Garbage-collect passive mep_node rows that no longer serve any purpose
+ *  (< 2 MEP curves reference them via `from`/`to`). Active fittings — those
+ *  with `kind` set (valve / damper / pump / …) — are user-placed and never
+ *  auto-removed. Mutates `nextElements`, `before`, `after` in place and
+ *  returns the (possibly trimmed) elements map. */
+function cleanupOrphanMepNodes(
+  nextElements: Map<string, CanonicalElement>,
+  before: Map<string, CanonicalElement | null>,
+  after: Map<string, CanonicalElement | null>,
+): Map<string, CanonicalElement> {
+  // Index mep_node ids (raw + level-stripped) so port-ref hostId values
+  // resolve regardless of which form was written.
+  const nodeById = new Map<string, CanonicalElement>();
+  const nodeByStripped = new Map<string, CanonicalElement>();
+  for (const el of nextElements.values()) {
+    if (el.tableName !== 'mep_node') continue;
+    nodeById.set(el.id, el);
+    const colon = el.id.indexOf(':');
+    if (colon >= 0) nodeByStripped.set(el.id.substring(colon + 1), el);
+  }
+  if (nodeById.size === 0) return nextElements;
+
+  type RefEntry = { pipeId: string; side: 'from' | 'to'; nodeId: string };
+  const refs: RefEntry[] = [];
+  const counts = new Map<string, number>();
+  for (const el of nextElements.values()) {
+    if (el.tableName !== 'duct' && el.tableName !== 'pipe' &&
+        el.tableName !== 'conduit' && el.tableName !== 'cable_tray') continue;
+    if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
+    for (const side of ['from', 'to'] as const) {
+      const parsed = parsePortRef(el.attrs[side]);
+      if (!parsed) continue;
+      const node = nodeById.get(parsed.hostId) ?? nodeByStripped.get(parsed.hostId);
+      if (!node) continue;
+      refs.push({ pipeId: el.id, side, nodeId: node.id });
+      counts.set(node.id, (counts.get(node.id) ?? 0) + 1);
+    }
+  }
+
+  const doomed = new Set<string>();
+  for (const node of nodeById.values()) {
+    // Active fittings are user-placed — never auto-delete.
+    if ((node.attrs.kind ?? '').trim()) continue;
+    if ((counts.get(node.id) ?? 0) < 2) doomed.add(node.id);
+  }
+  if (doomed.size === 0) return nextElements;
+
+  const next = new Map(nextElements);
+  for (const id of doomed) {
+    const original = nextElements.get(id);
+    if (!before.has(id)) before.set(id, original ?? null);
+    after.set(id, null);
+    next.delete(id);
+  }
+  // Clear refs that point at the doomed nodes so surviving pipes don't
+  // carry dangling `host_id` strings forward.
+  for (const r of refs) {
+    if (!doomed.has(r.nodeId)) continue;
+    const pipe = next.get(r.pipeId);
+    if (!pipe) continue;
+    if (!before.has(pipe.id)) before.set(pipe.id, pipe);
+    const updated: CanonicalElement = {
+      ...pipe,
+      attrs: { ...pipe.attrs, [r.side]: '' },
+    };
+    next.set(pipe.id, updated);
+    after.set(pipe.id, updated);
+  }
+  return next;
+}
+
 /** Actions that mutate the document — blocked in readonly mode. */
 const MUTATION_ACTIONS: Set<string> = new Set([
-  'CREATE_ELEMENT', 'DELETE_ELEMENTS', 'MOVE_ELEMENTS', 'RESIZE_ELEMENT',
-  'UPDATE_ATTRS', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS',
+  'CREATE_ELEMENT', 'CREATE_ELEMENTS', 'DELETE_ELEMENTS', 'MOVE_ELEMENTS', 'RESIZE_ELEMENT',
+  'UPDATE_ATTRS', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS', 'APPLY_PATCH',
   'UNDO', 'REDO', 'ADD_LEVEL', 'REMOVE_LEVEL', 'RENAME_LEVEL',
 ]);
 
@@ -322,24 +432,29 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         changed = true;
         next.set(id, moveElement(el, dx, dy));
       }
-      // Topology cascade: when a mep_node moves, only the matching endpoint(s)
-      // of every pipe/duct/conduit/cable_tray referencing it should follow —
-      // the rest of the pipe stays where it is. Pipes already in `movedSet`
-      // (fully translated above) are skipped to avoid double-moving.
+      // Topology cascade: when an equipment / terminal / mep_node host moves,
+      // only the matching endpoint(s) of every pipe/duct/conduit/cable_tray
+      // whose `from` / `to` references the host (with or without :port_name
+      // suffix) should follow — the rest of the pipe stays where it is.
+      // Pipes already in `movedSet` (fully translated above) are skipped to
+      // avoid double-moving.
       const partialMoved = new Set<string>();
+      const HOST_TABLES = new Set(['mep_node', 'equipment', 'terminal']);
       for (const movedId of allIds) {
         const movedEl = next.get(movedId);
-        if (!movedEl || movedEl.tableName !== 'mep_node') continue;
+        if (!movedEl || !HOST_TABLES.has(movedEl.tableName)) continue;
         const colonIdx = movedId.indexOf(':');
         const unprefixedNodeId = colonIdx >= 0 ? movedId.substring(colonIdx + 1) : movedId;
+        const targetsMoved = (ref: string | undefined): boolean =>
+          portRefTargetsHost(ref, movedId) || portRefTargetsHost(ref, unprefixedNodeId);
         for (const el of state.document.elements.values()) {
           if (
             el.tableName !== 'duct' && el.tableName !== 'pipe'
             && el.tableName !== 'conduit' && el.tableName !== 'cable_tray'
           ) continue;
           if (movedSet.has(el.id)) continue;
-          const startMatch = el.attrs.start_node_id === movedId || el.attrs.start_node_id === unprefixedNodeId;
-          const endMatch   = el.attrs.end_node_id   === movedId || el.attrs.end_node_id   === unprefixedNodeId;
+          const startMatch = targetsMoved(el.attrs.from);
+          const endMatch   = targetsMoved(el.attrs.to);
           if (!startMatch && !endMatch) continue;
           const currentPipe = next.get(el.id) ?? el;
           if (currentPipe.geometry !== 'line' && currentPipe.geometry !== 'spatial_line') continue;
@@ -383,20 +498,108 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.document) return state;
       const before = new Map<string, CanonicalElement | null>([[action.element.id, null]]);
       const after = new Map<string, CanonicalElement | null>([[action.element.id, action.element]]);
-      const next = new Map(state.document.elements);
+      let next = new Map(state.document.elements);
       next.set(action.element.id, action.element);
       // Auto-show layer if not yet visible
       const layerKey = `${action.element.discipline}/${action.element.tableName}`;
       const visibleLayers = state.visibleLayers.has(layerKey)
-        ? state.visibleLayers
+        ? new Set(state.visibleLayers)
         : new Set([...state.visibleLayers, layerKey]);
+      // Endpoint bonding: if this is a MEP curve, weld coincident endpoints
+      // by auto-creating / reusing a passive mep_node and rewriting from/to.
+      next = applyEndpointBonding(next, [action.element.id], before, after);
+      // GC any passive mep_nodes that ended up with < 2 references.
+      next = cleanupOrphanMepNodes(next, before, after);
+      // Make sure any bonded-in mep_node layer becomes visible too.
+      for (const el of after.values()) {
+        if (!el) continue;
+        visibleLayers.add(`${el.discipline}/${el.tableName}`);
+      }
       return {
         ...state,
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Create element', before, after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: [layerKey] },
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) },
         selectedIds: state.drawingTarget ? state.selectedIds : new Set([action.element.id]),
+        visibleLayers,
+      };
+    }
+
+    case 'APPLY_PATCH': {
+      if (!state.document || action.patches.size === 0) return state;
+      let next = new Map(state.document.elements);
+      const before = new Map<string, CanonicalElement | null>();
+      const after = new Map<string, CanonicalElement | null>();
+      const visibleLayers = new Set(state.visibleLayers);
+      const candidatePipeIds: string[] = [];
+      // Callers can override `before` per element when the live document
+      // already reflects an in-flight preview (e.g. resize handle mid-drag)
+      // and the history should record the *pre-preview* state instead.
+      const explicitBefore = action.before;
+      for (const [id, value] of action.patches) {
+        const beforeVal = explicitBefore?.has(id)
+          ? explicitBefore.get(id)!
+          : state.document.elements.get(id) ?? null;
+        before.set(id, beforeVal);
+        after.set(id, value);
+        if (value === null) {
+          next.delete(id);
+        } else {
+          next.set(id, value);
+          const layerKey = `${value.discipline}/${value.tableName}`;
+          visibleLayers.add(layerKey);
+          if (isMepLineTable(value.tableName)) candidatePipeIds.push(id);
+        }
+      }
+      next = applyEndpointBonding(next, candidatePipeIds, before, after);
+      next = cleanupOrphanMepNodes(next, before, after);
+      for (const el of after.values()) {
+        if (!el) continue;
+        visibleLayers.add(`${el.discipline}/${el.tableName}`);
+      }
+      return {
+        ...state,
+        document: { ...state.document, elements: next },
+        history: pushCommand(state.history, createCommand(action.description, before, after)),
+        documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) },
+        visibleLayers,
+      };
+    }
+
+    case 'CREATE_ELEMENTS': {
+      if (!state.document || action.elements.length === 0) return state;
+      let next = new Map(state.document.elements);
+      const before = new Map<string, CanonicalElement | null>();
+      const after = new Map<string, CanonicalElement | null>();
+      const visibleLayers = new Set(state.visibleLayers);
+      const candidatePipeIds: string[] = [];
+      for (const el of action.elements) {
+        before.set(el.id, null);
+        after.set(el.id, el);
+        next.set(el.id, el);
+        visibleLayers.add(`${el.discipline}/${el.tableName}`);
+        if (isMepLineTable(el.tableName)) candidatePipeIds.push(el.id);
+      }
+      next = applyEndpointBonding(next, candidatePipeIds, before, after);
+      next = cleanupOrphanMepNodes(next, before, after);
+      for (const el of after.values()) {
+        if (!el) continue;
+        visibleLayers.add(`${el.discipline}/${el.tableName}`);
+      }
+      const description = action.description ?? `Create ${action.elements.length} elements`;
+      const primary = action.selectPrimary !== false ? action.elements[0] : null;
+      const nextSelection = primary && !state.drawingTarget
+        ? new Set([primary.id])
+        : state.selectedIds;
+      return {
+        ...state,
+        document: { ...state.document, elements: next },
+        history: pushCommand(state.history, createCommand(description, before, after)),
+        documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) },
+        selectedIds: nextSelection,
         visibleLayers,
       };
     }
@@ -427,6 +630,9 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
       if (before.size === 0) return state;
+      // GC passive mep_nodes that lost their last MEP-curve reference when
+      // pipes / ducts were deleted above.
+      const gced = cleanupOrphanMepNodes(next, before, after);
       // Remove deleted IDs from selection (match both prefixed and raw)
       const nextSelected = new Set(state.selectedIds);
       for (const sid of state.selectedIds) {
@@ -435,7 +641,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       return {
         ...state,
-        document: { ...state.document, elements: next },
+        document: { ...state.document, elements: gced },
         history: pushCommand(state.history, createCommand('Delete elements', before, after)),
         documentVersion: state.documentVersion + 1,
         lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before) },
@@ -516,6 +722,28 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const next = new Map(state.document.elements);
       next.set(rawId, updated);
 
+      // Branch propagation: when the edit changes system_type on an MEP curve,
+      // walk the connected branch (same table, same OLD system_type) via the
+      // from/to port-ref topology and re-tag every curve in one atomic command.
+      if (
+        'system_type' in action.attrs
+        && action.attrs.system_type !== (el.attrs.system_type ?? '')
+        && isMepLineTable(updated.tableName)
+      ) {
+        const oldSys = el.attrs.system_type ?? '';
+        const newSys = action.attrs.system_type ?? '';
+        const branchIds = collectMepBranch(state.document.elements, updated, oldSys);
+        for (const branchId of branchIds) {
+          if (branchId === rawId) continue;
+          const bel = state.document.elements.get(branchId);
+          if (!bel) continue;
+          before.set(branchId, bel);
+          const bnext = { ...bel, attrs: { ...bel.attrs, system_type: newSys } };
+          after.set(branchId, bnext);
+          next.set(branchId, bnext);
+        }
+      }
+
       // Auto-migrate to globalLayers when top_level_id skips levels
       if ('top_level_id' in action.attrs && isVerticalSpanTable(updated.tableName) && state.project) {
         const migrated = maybeMigrateToGlobal(updated, state);
@@ -563,9 +791,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
 
-      // Topology cascade (reverse of MOVE_ELEMENTS': mep_node case):
+      // Topology cascade (reverse of MOVE_ELEMENTS' host case):
       // When a pipe/duct/conduit/cable_tray's endpoint moves, drag the
-      // connected mep_node along with it AND every other pipe sharing that node.
+      // connected mep_node along with it AND every other pipe sharing that
+      // node. Equipment/terminal hosts are intentionally NOT dragged this way
+      // (they're authored, not derived); only passive mep_node hosts cascade.
       const partialMoved = new Set<string>();
       const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
       if (MEP_TABLES.has(el.tableName)
@@ -576,12 +806,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         const startChanged = original.start.x !== after.start.x || original.start.y !== after.start.y;
         const endChanged = original.end.x !== after.end.x || original.end.y !== after.end.y;
 
-        for (const [nodeAttr, dragged, changed] of [
-          ['start_node_id', { dx: after.start.x - original.start.x, dy: after.start.y - original.start.y }, startChanged],
-          ['end_node_id',   { dx: after.end.x   - original.end.x,   dy: after.end.y   - original.end.y   }, endChanged],
+        const parsePortRef = (ref: string | undefined): string | null => {
+          if (!ref) return null;
+          const colon = ref.indexOf(':');
+          return colon < 0 ? ref : ref.substring(0, colon);
+        };
+
+        for (const [portRefAttr, dragged, changed] of [
+          ['from', { dx: after.start.x - original.start.x, dy: after.start.y - original.start.y }, startChanged],
+          ['to',   { dx: after.end.x   - original.end.x,   dy: after.end.y   - original.end.y   }, endChanged],
         ] as const) {
           if (!changed) continue;
-          const nodeIdRaw = original.attrs[nodeAttr];
+          const nodeIdRaw = parsePortRef(original.attrs[portRefAttr]);
           if (!nodeIdRaw) continue;
           // Match prefixed and unprefixed; nodes may live with or without level prefix.
           const colonIdx = rawId.indexOf(':');
@@ -596,12 +832,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           // matching endpoint.
           const nodeRaw = node.id;
           const nodeUnpref = nodeRaw.includes(':') ? nodeRaw.substring(nodeRaw.indexOf(':') + 1) : nodeRaw;
+          const otherTargets = (ref: string | undefined): boolean =>
+            portRefTargetsHost(ref, nodeRaw) || portRefTargetsHost(ref, nodeUnpref);
           for (const other of state.document.elements.values()) {
             if (other.id === rawId) continue;
             if (!MEP_TABLES.has(other.tableName)) continue;
             if (other.geometry !== 'line' && other.geometry !== 'spatial_line') continue;
-            const sMatch = other.attrs.start_node_id === nodeRaw || other.attrs.start_node_id === nodeUnpref;
-            const eMatch = other.attrs.end_node_id   === nodeRaw || other.attrs.end_node_id   === nodeUnpref;
+            const sMatch = otherTargets(other.attrs.from);
+            const eMatch = otherTargets(other.attrs.to);
             if (!sMatch && !eMatch) continue;
             const cur = next.get(other.id) ?? other;
             if (cur.geometry !== 'line' && cur.geometry !== 'spatial_line') continue;
@@ -644,11 +882,33 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'COMMIT_PREVIEW': {
       if (!state.document) return state;
+      // Endpoint bonding: when the preview that's being committed includes
+      // MEP curves, run a bonding pass against the LIVE document state
+      // (which already reflects the preview's mutations) so coincident
+      // endpoints get welded with a passive mep_node — and merge the
+      // resulting patches into THIS history entry for clean undo.
+      const before = new Map(action.before);
+      const after = new Map(action.after);
+      const candidatePipeIds: string[] = [];
+      for (const [id, el] of action.after) {
+        if (el && isMepLineTable(el.tableName)) candidatePipeIds.push(id);
+      }
+      let nextElements = state.document.elements;
+      if (candidatePipeIds.length > 0) {
+        const bonded = applyEndpointBonding(new Map(state.document.elements), candidatePipeIds, before, after);
+        if (bonded !== state.document.elements) nextElements = bonded;
+      }
+      // Always run the passive-node GC: pipe endpoint drags can leave a node
+      // with < 2 references even without a bonding pass.
+      const gced = cleanupOrphanMepNodes(new Map(nextElements), before, after);
+      if (gced !== nextElements) nextElements = gced;
+      const documentChanged = nextElements !== state.document.elements;
       return {
         ...state,
-        history: pushCommand(state.history, createCommand(action.description, action.before, action.after)),
+        document: documentChanged ? { ...state.document, elements: nextElements } : state.document,
+        history: pushCommand(state.history, createCommand(action.description, before, after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(action.before, action.after) }
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) }
       };
     }
 
@@ -877,6 +1137,12 @@ function maybeMigrateToGlobal(element: CanonicalElement, state: EditorState): im
 }
 
 function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): CanonicalElement {
+  // Optional attrs merge — callers (e.g. MEP endpoint snap) may need to
+  // co-update `from`/`to` along with the geometry change. We don't allow
+  // wholesale replacement here, only key-by-key merging.
+  const mergedAttrs = 'attrs' in changes && changes.attrs
+    ? { ...el.attrs, ...changes.attrs }
+    : el.attrs;
   switch (el.geometry) {
     case 'line': {
       const lc = changes as Partial<LineElement>;
@@ -886,6 +1152,7 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
         end: 'end' in lc ? lc.end! : el.end,
         strokeWidth: 'strokeWidth' in lc ? lc.strokeWidth! : el.strokeWidth,
         arc: 'arc' in lc ? lc.arc : el.arc,
+        attrs: mergedAttrs,
       };
     }
     case 'spatial_line': {
@@ -896,6 +1163,7 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
         end: 'end' in sc ? sc.end! : el.end,
         strokeWidth: 'strokeWidth' in sc ? sc.strokeWidth! : el.strokeWidth,
         arc: 'arc' in sc ? sc.arc : el.arc,
+        attrs: mergedAttrs,
       };
     }
     case 'point': {

@@ -58,8 +58,9 @@ export interface DrawingState {
   cursor: { x: number; y: number } | null;  // current mouse position in SVG coords
   baseOffset?: number;  // computed elevation offset for hosted element preview
   /** If the first placed point was snapped to a connector port, remember the
-   *  host id so the finished line can wire start_node_id to it. */
-  startNodeId?: string;
+   *  full port reference ("host_id:port_name" or bare host_id) so the
+   *  finished line can wire `from` to it. */
+  startPortRef?: string;
 }
 
 export type EditorAction =
@@ -85,6 +86,8 @@ export type EditorAction =
   | { type: 'INIT_DOCUMENT'; document: DocumentState }
   | { type: 'MOVE_ELEMENTS'; ids: string[]; dx: number; dy: number; preview?: boolean }
   | { type: 'CREATE_ELEMENT'; element: CanonicalElement }
+  | { type: 'CREATE_ELEMENTS'; elements: CanonicalElement[]; description?: string; selectPrimary?: boolean }
+  | { type: 'APPLY_PATCH'; description: string; patches: Map<string, CanonicalElement | null>; before?: Map<string, CanonicalElement | null> }
   | { type: 'DELETE_ELEMENTS'; ids: string[] }
   | { type: 'UPDATE_ATTRS'; id: string; attrs: Record<string, string> }
   | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean }

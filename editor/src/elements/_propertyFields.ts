@@ -80,14 +80,18 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   // Relationships
   top_level_id:    { key: 'top_level_id',    label: 'Top Level',       type: 'select', group: 'relationships' },
   host_id:         { key: 'host_id',         label: 'Host',            type: 'readonly', group: 'relationships' },
-  start_node_id:   { key: 'start_node_id',   label: 'Start Node',      type: 'readonly', group: 'relationships' },
-  end_node_id:     { key: 'end_node_id',     label: 'End Node',        type: 'readonly', group: 'relationships' },
+  from:            { key: 'from',            label: 'From',            type: 'readonly', group: 'relationships' },
+  to:              { key: 'to',              label: 'To',              type: 'readonly', group: 'relationships' },
+  family:          { key: 'family',          label: 'Family',          type: 'text',     group: 'relationships' },
+  type:            { key: 'type',            label: 'Type',            type: 'text',     group: 'relationships' },
+  flow_dir:        { key: 'flow_dir',        label: 'Flow',            type: 'text',     group: 'system' },
+  domain:          { key: 'domain',          label: 'Domain',          type: 'text',     group: 'system' },
 
   // System
   operation:       { key: 'operation',       label: 'Operation',       type: 'select', options: OPERATION_OPTIONS, group: 'system' },
   hinge_position:  { key: 'hinge_position',  label: 'Hinge',           type: 'select', options: HINGE_OPTIONS, group: 'system' },
   swing_side:      { key: 'swing_side',      label: 'Swing',           type: 'select', options: SWING_SIDE_OPTIONS, group: 'system' },
-  system_type:     { key: 'system_type',     label: 'System Type',     type: 'text',   group: 'system' },
+  system_type:     { key: 'system_type',     label: 'System Type',     type: 'select', group: 'system' },
   equipment_type:  { key: 'equipment_type',  label: 'Equipment Type',  type: 'select', options: EQUIPMENT_TYPE_OPTIONS, group: 'system' },
   terminal_type:   { key: 'terminal_type',   label: 'Terminal Type',   type: 'select', options: TERMINAL_TYPE_OPTIONS, group: 'system' },
 

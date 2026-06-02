@@ -76,6 +76,12 @@ export interface DrawContextBase {
 export interface Draw2DContext extends DrawContextBase {
   /** Current canvas scale (model→screen). Used for paper-space line widths. */
   scale: number;
+  /** True when the element's host (resolved by host_id) is in the selection.
+   *  Only populated for hosted elements (e.g. connector) — others may ignore. */
+  hostSelected?: boolean;
+  /** True when the active drawing tool targets an MEP curve table. Connectors
+   *  use this to show all ports while the user is laying out pipes. */
+  mepToolActive?: boolean;
 }
 
 /** Context passed to draw3D — Three.js / R3F. */

@@ -9,7 +9,7 @@
  * connector slots when the schema lands.
  */
 import type { ReactNode } from 'react';
-import { ExtrudeGeometry } from 'three';
+import { ExtrudeGeometry, Quaternion, Vector3 } from 'three';
 import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
@@ -387,17 +387,19 @@ export function mepLineDraw3D(facts: MepLineFacts, isHL: boolean): ReactNode {
   const geo = new ExtrudeGeometry(shape, { depth: len3D, bevelEnabled: false });
 
   // Orient profile along the 3D centerline. ExtrudeGeometry extrudes along
-  // local +Z; rotate so local +Z points from start to end.
-  // Compose: rotate around X by tilt angle, then around Y by horizontal angle.
-  const angleY = Math.atan2(-dy, dx);
-  const angleX = -Math.atan2(dz, Math.sqrt(dx * dx + dy * dy));
+  // local +Z; rotate so local +Z points from start to end. The world-space
+  // direction is (dx, dz, -dy) because SVG Y maps to world -Z and Z height
+  // maps to world Y. Use a quaternion to align +Z with that direction —
+  // Euler decomposition gets the axis composition order wrong (90° off).
+  const dir = new Vector3(dx, dz, -dy).normalize();
+  const quat = new Quaternion().setFromUnitVectors(new Vector3(0, 0, 1), dir);
 
   const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
   return (
     <mesh
       geometry={geo}
       position={[facts.start.x, facts.baseY + facts.startZ, -facts.start.y]}
-      rotation={[angleX, angleY, 0]}
+      quaternion={quat}
       material={isHL ? undefined : material}
       userData={{ elementId: facts.id }}
     >

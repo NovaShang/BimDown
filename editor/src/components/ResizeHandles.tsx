@@ -1,5 +1,5 @@
 import { useCallback, useRef } from 'react';
-import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
+import type { CanonicalElement, Point, LineElement, SpatialLineElement, PointElement } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { arcFromMidpoint, arcMidpoint, arcLength } from '../geometry/arc.ts';
@@ -7,6 +7,10 @@ import { formatLength, getProjectUnits } from '../utils/units.ts';
 import type { ProjectUnit } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { useGeometryContext } from '../adapters/svg/context.tsx';
+import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
+import { findPipeBodyHit, type MepCurveElement } from '../utils/pipeBodyHit.ts';
+import { generateId } from '../model/ids.ts';
+import { defaultAttrs } from '../model/defaults.ts';
 
 function LengthLabel({ from, to, scale, length, projectUnit }: { from: Point; to: Point; scale: number; length?: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
@@ -51,6 +55,11 @@ interface ResizeHandlesProps {
 const HANDLE_RADIUS = 0.36;
 
 export default function ResizeHandles({ element, svgRef, scale, onSnap }: ResizeHandlesProps) {
+  // Connectors are pure derivatives of their host's position + local offset.
+  // Their world position is recomputed each frame from `attrs.offset_*`, so
+  // a position drag wouldn't actually persist; expose no handles at all and
+  // route any canvas interaction through the host instead (see selectTool).
+  if (element.tableName === 'connector') return null;
   const r = HANDLE_RADIUS / scale;
   const sw = 0.09 / scale;
 
@@ -83,13 +92,28 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
     const exclude = new Set([element.id]);
     const grids = stateRef.current.grids;
     const unit = getProjectUnits(stateRef.current);
-    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, undefined, unit);
+    // MEP-curve endpoints get the same connector snap targets as the line
+    // drawing tool, so dragging a pipe end onto an equipment port wires the
+    // port_ref automatically (see `from`/`to` handling below).
+    const connectorPoints = isMepLineTable(element.tableName)
+      ? gatherConnectorSnapPoints(elements ?? undefined)
+      : undefined;
+    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, connectorPoints, unit);
     onSnap?.(snap.snapX || snap.snapY ? snap : null);
-    return snap.point;
-  }, [screenToSvg, element.id, onSnap]);
+    return snap;
+  }, [screenToSvg, element.id, element.tableName, onSnap]);
+
+  /** Side of a MEP-curve endpoint drag, captured by the pointer-down branch
+   *  so the pointer-up handler can run a "did this drop into another pipe's
+   *  body? if so, T-junction" check. */
+  const endpointSideRef = useRef<'start' | 'end' | null>(null);
+  /** Most recent snap result during the drag, so upHandler can read the
+   *  final snap without an extra screenToSvg call. */
+  const lastSnapRef = useRef<SnapResult | null>(null);
 
   const handleDrag = useCallback((
-    onMove: (svgX: number, svgY: number) => void,
+    onMove: (svgX: number, svgY: number, snap: SnapResult) => void,
+    opts: { endpointSide?: 'start' | 'end' } = {},
   ) => {
     return (e: React.PointerEvent) => {
       e.stopPropagation();
@@ -99,37 +123,90 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
 
       // Snapshot before drag starts
       beforeRef.current = stateRef.current.document?.elements.get(element.id) ?? null;
+      endpointSideRef.current = opts.endpointSide ?? null;
+      lastSnapRef.current = null;
       // Remember pointerdown position in model coords so module-defined
       // handles can compute drag deltas from a stable origin.
       const startPt = screenToSvg(e.clientX, e.clientY);
       dragStartRef.current = startPt ?? { x: 0, y: 0 };
 
       const moveHandler = (me: PointerEvent) => {
-        const pt = snapSvgPoint(me.clientX, me.clientY);
-        if (pt) onMove(pt.x, pt.y);
+        const snap = snapSvgPoint(me.clientX, me.clientY);
+        if (snap) {
+          lastSnapRef.current = snap;
+          onMove(snap.point.x, snap.point.y, snap);
+        }
       };
 
       const upHandler = () => {
         target.removeEventListener('pointermove', moveHandler);
         target.removeEventListener('pointerup', upHandler);
-        // Commit single undo entry
-        if (beforeRef.current) {
+
+        // T-junction commit path: only triggers when this drag was a MEP-
+        // curve endpoint, the cursor never landed on a connector port, and
+        // the cursor's final position is over a same-system pipe's body.
+        const snapshot = beforeRef.current;
+        const side = endpointSideRef.current;
+        const finalSnap = lastSnapRef.current;
+        const live = stateRef.current.document?.elements.get(element.id) ?? null;
+        if (
+          snapshot && live && side &&
+          isMepLineTable(element.tableName) &&
+          !finalSnap?.connectorHit &&
+          finalSnap &&
+          (live.geometry === 'line' || live.geometry === 'spatial_line')
+        ) {
+          const elements = stateRef.current.document?.elements;
+          const cursor = side === 'start' ? live.start : live.end;
+          const hit = findPipeBodyHit(cursor, elements, {
+            tolerance: 0.2,
+            systemType: live.attrs.system_type ?? '',
+            excludeIds: new Set([element.id]),
+          });
+          if (hit && elements) {
+            const patches = buildEndpointTJunctionPatch(
+              live as MepCurveElement,
+              snapshot as MepCurveElement,
+              hit,
+              side,
+              elements,
+            );
+            if (patches) {
+              dispatch({
+                type: 'APPLY_PATCH',
+                description: 'Insert T-junction',
+                patches: patches.patches,
+                before: patches.before,
+              });
+              beforeRef.current = null;
+              endpointSideRef.current = null;
+              lastSnapRef.current = null;
+              onSnap?.(null);
+              return;
+            }
+          }
+        }
+
+        // Default commit path: single-element resize.
+        if (snapshot) {
           const after = stateRef.current.document?.elements.get(element.id) ?? null;
           dispatch({
             type: 'COMMIT_PREVIEW',
             description: 'Resize element',
-            before: new Map([[element.id, beforeRef.current]]),
+            before: new Map([[element.id, snapshot]]),
             after: new Map([[element.id, after]]),
           });
         }
         beforeRef.current = null;
+        endpointSideRef.current = null;
+        lastSnapRef.current = null;
         onSnap?.(null);
       };
 
       target.addEventListener('pointermove', moveHandler);
       target.addEventListener('pointerup', upHandler);
     };
-  }, [snapSvgPoint, screenToSvg, element.id, dispatch, onSnap]);
+  }, [snapSvgPoint, screenToSvg, element.id, element.tableName, dispatch, onSnap]);
 
   // ─── Module-defined handles ─────────────────────────────────────────────────
   // When the element's module declares `selectionHandles`, that overrides the
@@ -186,29 +263,53 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
           cx={element.start.x} cy={element.start.y}
           r={r} fill="#06b6d4" stroke="white" strokeWidth={sw}
           cursor="move"
-          onPointerDown={handleDrag((x, y) => {
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { start: { x, y } } });
-          })}
+          onPointerDown={handleDrag((x, y, snap) => {
+            const changes: Partial<CanonicalElement> = { start: { x, y } };
+            if (isMepLineTable(element.tableName)) {
+              if (snap.connectorHit) {
+                (changes as { attrs: Record<string, string> }).attrs = { from: snap.connectorHit.portRef };
+              } else if ('attrs' in element && element.attrs.from) {
+                // Drag away from a connected port → clear the from-ref so the
+                // pipe doesn't stay glued to a port it no longer touches.
+                (changes as { attrs: Record<string, string> }).attrs = { from: '' };
+              }
+            }
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes });
+          }, { endpointSide: 'start' })}
         />
         <circle
           cx={element.end.x} cy={element.end.y}
           r={r} fill="#06b6d4" stroke="white" strokeWidth={sw}
           cursor="move"
-          onPointerDown={handleDrag((x, y) => {
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { end: { x, y } } });
-          })}
+          onPointerDown={handleDrag((x, y, snap) => {
+            const changes: Partial<CanonicalElement> = { end: { x, y } };
+            if (isMepLineTable(element.tableName)) {
+              if (snap.connectorHit) {
+                (changes as { attrs: Record<string, string> }).attrs = { to: snap.connectorHit.portRef };
+              } else if ('attrs' in element && element.attrs.to) {
+                (changes as { attrs: Record<string, string> }).attrs = { to: '' };
+              }
+            }
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes });
+          }, { endpointSide: 'end' })}
         />
-        {/* Arc midpoint handle */}
-        <circle
-          cx={arcHandleMid.x} cy={arcHandleMid.y}
-          r={arcR}
-          fill={lineEl.arc ? '#f59e0b' : '#06b6d4'} stroke="white" strokeWidth={sw}
-          cursor="crosshair" opacity={0.9}
-          onPointerDown={handleDrag((x, y) => {
-            const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y });
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
-          })}
-        />
+        {/* Arc midpoint handle. MEP curves don't expose this — running a
+            pipe through an arc isn't representable in the BimDown topology
+            (every segment is a straight A→B between two nodes), and the
+            "slide the run sideways" gesture is covered by dragging the
+            pipe body itself with run-aware selection in selectTool. */}
+        {!isMepLineTable(element.tableName) && (
+          <circle
+            cx={arcHandleMid.x} cy={arcHandleMid.y}
+            r={arcR}
+            fill={lineEl.arc ? '#f59e0b' : '#06b6d4'} stroke="white" strokeWidth={sw}
+            cursor="crosshair" opacity={0.9}
+            onPointerDown={handleDrag((x, y) => {
+              const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y });
+              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
+            })}
+          />
+        )}
         <LengthLabel from={element.start} to={element.end} scale={scale} length={displayLen} projectUnit={projectUnit} />
       </g>
     );
@@ -295,4 +396,108 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   }
 
   return null;
+}
+
+/** Build the patches that turn an "endpoint dragged onto another pipe's body"
+ *  drop into a T-junction:
+ *  - Resets the dragged pipe's endpoint to the projection point + wires its
+ *    `from` / `to` to the new tee node id.
+ *  - Splits the target pipe in two (upstream half keeps the original id;
+ *    downstream half is a brand-new row), both wired to the new node.
+ *  - Creates the new passive mep_node at the projection point.
+ *
+ *  `before` is built from the pre-preview snapshot for the dragged pipe and
+ *  from the current document for everything else (those weren't previewed). */
+interface EndpointTJunctionPatch {
+  patches: Map<string, CanonicalElement | null>;
+  before: Map<string, CanonicalElement | null>;
+}
+
+function buildEndpointTJunctionPatch(
+  liveDragged: MepCurveElement,
+  preDragSnapshot: MepCurveElement,
+  hit: ReturnType<typeof findPipeBodyHit> & object,
+  side: 'start' | 'end',
+  elements: ReadonlyMap<string, CanonicalElement>,
+): EndpointTJunctionPatch | null {
+  const target = hit.pipe;
+  if (target.id === liveDragged.id) return null;
+
+  const existingIds = new Set(elements.keys());
+  const newNodeId = generateId('mep_node', existingIds);
+  existingIds.add(newNodeId);
+  const newPipeId = generateId(target.tableName, existingIds);
+  existingIds.add(newPipeId);
+
+  const isSpatial = target.geometry === 'spatial_line';
+  const spatialT = target as unknown as { startZ?: number; endZ?: number };
+  const splitPoint = hit.point;
+
+  // Update target pipe: keeps id, end → splitPoint, attrs.to → newNodeId.
+  const updatedTarget: MepCurveElement = {
+    ...target,
+    end: { x: splitPoint.x, y: splitPoint.y },
+    ...(isSpatial ? { endZ: spatialT.startZ ?? 0 } : {}),
+    attrs: { ...target.attrs, to: newNodeId },
+  } as MepCurveElement;
+
+  // New downstream half of target.
+  const newDownstream: MepCurveElement = {
+    ...target,
+    id: newPipeId,
+    start: { x: splitPoint.x, y: splitPoint.y },
+    ...(isSpatial ? { startZ: spatialT.endZ ?? 0 } : {}),
+    attrs: {
+      ...target.attrs,
+      id: newPipeId,
+      from: newNodeId,
+      to: target.attrs.to ?? '',
+    },
+  } as MepCurveElement;
+
+  // Update dragged pipe: snap the live endpoint to the projection point and
+  // wire the matching ref.
+  const draggedPatch: MepCurveElement = {
+    ...liveDragged,
+    ...(side === 'start'
+      ? { start: { x: splitPoint.x, y: splitPoint.y } }
+      : { end:   { x: splitPoint.x, y: splitPoint.y } }),
+    attrs: {
+      ...liveDragged.attrs,
+      ...(side === 'start' ? { from: newNodeId } : { to: newNodeId }),
+    },
+  } as MepCurveElement;
+
+  // New passive mep_node at the split point.
+  const baseNodeAttrs = defaultAttrs('mep_node', '');
+  const newNode: PointElement = {
+    id: newNodeId,
+    tableName: 'mep_node',
+    discipline: target.discipline,
+    geometry: 'point',
+    position: { x: splitPoint.x, y: splitPoint.y },
+    width: 0,
+    height: 0,
+    attrs: {
+      ...baseNodeAttrs,
+      id: newNodeId,
+      system_type: target.attrs.system_type ?? '',
+      kind: '',
+    },
+  };
+
+  const patches = new Map<string, CanonicalElement | null>();
+  patches.set(liveDragged.id, draggedPatch);
+  patches.set(target.id, updatedTarget);
+  patches.set(newPipeId, newDownstream);
+  patches.set(newNodeId, newNode);
+
+  // History should record the dragged pipe's PRE-PREVIEW snapshot as
+  // before, not the live preview state. The other three patches default to
+  // the live document's value (null for the new ones, the original target
+  // row for the split source).
+  const before = new Map<string, CanonicalElement | null>();
+  before.set(liveDragged.id, preDragSnapshot);
+
+  return { patches, before };
 }

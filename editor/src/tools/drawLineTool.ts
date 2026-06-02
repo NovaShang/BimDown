@@ -65,10 +65,11 @@ export const drawLineTool: ToolHandler = {
     const points = state.drawingState?.points || [];
 
     if (points.length === 0) {
-      // First click — set start point, remember connector hostId (if any).
+      // First click — set start point, remember the connector's port ref
+      // (if the cursor landed on one) so it can later go into pipe.from.
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { points: [pt], cursor: pt, startNodeId: snap.connectorHit?.hostId },
+        state: { points: [pt], cursor: pt, startPortRef: snap.connectorHit?.portRef },
       });
     } else {
       // Second click — create element
@@ -92,15 +93,16 @@ export const drawLineTool: ToolHandler = {
       // Strip the reserved UI flag from the persisted attrs.
       delete mergedAttrs[VERTICAL_MODE_KEY];
 
-      // Connector wiring: when the user dropped the start or end on a connector
-      // port, attach start_node_id / end_node_id to the connector's host so the
-      // existing reverse-topology cascade (host move → line endpoint move)
-      // keeps the line glued to the equipment. Only applies to MEP line tables.
+      // Connector wiring: when the user dropped the start or end on a
+      // connector port, attach `from` / `to` to the connector's port-ref
+      // ("host_id:port_name" or bare host_id) so the reverse-topology cascade
+      // (host move → line endpoint move) keeps the line glued to the
+      // equipment. Only applies to MEP line tables.
       if (isMepLineTable(target.tableName)) {
-        const startHostId = state.drawingState?.startNodeId;
-        const endHostId = snap.connectorHit?.hostId;
-        if (startHostId) mergedAttrs.start_node_id = startHostId;
-        if (endHostId) mergedAttrs.end_node_id = endHostId;
+        const startRef = state.drawingState?.startPortRef;
+        const endRef = snap.connectorHit?.portRef;
+        if (startRef) mergedAttrs.from = startRef;
+        if (endRef) mergedAttrs.to = endRef;
       }
 
       const geo = geometryTypeForTable(target.tableName);

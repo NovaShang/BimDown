@@ -43,8 +43,9 @@ export interface ToolStateSnapshot {
   drawingState: {
     points: { x: number; y: number }[];
     cursor: { x: number; y: number } | null;
-    /** Host id of a connector the first click snapped onto (MEP line tools). */
-    startNodeId?: string;
+    /** Port-ref ("host_id:port_name" or bare host_id) the first click snapped
+     *  onto, for MEP line tools to wire into pipe.from. */
+    startPortRef?: string;
   } | null;
   document: DocumentState | null;
   project: ProjectData | null;

@@ -51,9 +51,11 @@ function resolveHost(
 
 /**
  * Walk the elements map, collect every connector that resolves to a valid
- * host, and return its world-space snap target. The `hostId` returned is the
- * host element's own id (as it appears in the elements map), so the drawing
- * tool can wire start_node_id / end_node_id directly.
+ * host, and return its world-space snap target. `hostId` is the host
+ * element's id (as it appears in the elements map); `portRef` is the full
+ * port-reference string ("host_id:port_name") the drawing tool writes into
+ * pipe.from / pipe.to. Falls back to bare host_id when the connector row
+ * has no `name` attribute.
  */
 export function gatherConnectorSnapPoints(
   elements: ReadonlyMap<string, CanonicalElement> | null | undefined,
@@ -80,8 +82,8 @@ export function gatherConnectorSnapPoints(
     const dir = len > 1e-6 ? { x: dirRaw.x / len, y: dirRaw.y / len } : { x: 1, y: 0 };
 
     // Resolve to the *actual* host id present in the elements map so the
-    // start_node_id / end_node_id link uses the same form the topology
-    // cascade expects.
+    // pipe.from / pipe.to link uses the same form the topology cascade
+    // expects.
     let hostId = hostIdRaw;
     if (!elements.has(hostIdRaw)) {
       for (const candidate of elements.values()) {
@@ -91,7 +93,10 @@ export function gatherConnectorSnapPoints(
       }
     }
 
-    out.push({ pos, dir, hostId });
+    const portName = (p.attrs.name || '').trim();
+    const portRef = portName ? `${hostId}:${portName}` : hostId;
+
+    out.push({ pos, dir, hostId, portRef });
   }
   return out;
 }

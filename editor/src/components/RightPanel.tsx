@@ -5,6 +5,7 @@ import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { PROPERTY_GROUPS, type PropertyField } from '../elements/_propertyFields.ts';
+import { disciplinesForMepLine } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import type { ProjectUnit } from '../types.ts';
 import { Input } from './ui/input';
@@ -62,10 +63,20 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     const mod = getElementModule(firstData.tableName);
     if (!mod) return [];
     const levelOptions = levels.map(l => ({ value: l.id, label: l.name || l.id }));
-    // Inject level options for top_level_id at render time (levels are dynamic).
-    return mod.propertyFields.map(f =>
-      f.key === 'top_level_id' ? { ...f, options: levelOptions } : f,
-    );
+    // Inject dynamic options at render time. Level + MEP system definitions
+    // live in project state, not in the static element module. For MEP line
+    // tables (duct / pipe / etc.) filter to the disciplines that make sense
+    // for that table. When no matching systems exist we leave the field as a
+    // plain text input rather than showing an empty dropdown.
+    const acceptedDisciplines = disciplinesForMepLine(firstData.tableName);
+    const systemOptions = (state.project?.mepSystems ?? [])
+      .filter(s => !acceptedDisciplines || acceptedDisciplines.includes(s.discipline))
+      .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
+    return mod.propertyFields.map(f => {
+      if (f.key === 'top_level_id') return { ...f, options: levelOptions };
+      if (f.key === 'system_type' && systemOptions.length > 0) return { ...f, options: systemOptions };
+      return f;
+    });
   })();
 
   const grouped: { labelKey: string; fields: PropertyField[] }[] = [];
@@ -204,14 +215,19 @@ function PropertyRow({
         ) : f.type === 'select' && f.options ? (
           <Select value={value} onValueChange={(v) => { if (v) onChange(f.key, v); }}>
             <SelectTrigger className="h-[22px] min-w-0 flex-1 gap-0.5 rounded border-transparent bg-[var(--bg-input)] px-1.5 text-right text-[11px] tabular-nums hover:border-border focus-visible:border-[var(--color-accent)]">
-              <span className="truncate">{(() => { const o = f.options!.find(o => o.value === value); return o ? t(`option.${o.label}`, o.label) : value; })()}</span>
+              <span className="truncate">{(() => {
+                const o = f.options!.find(o => o.value === value);
+                // system_type labels are user-defined project names, not i18n keys.
+                const labelOf = (lbl: string) => f.key === 'system_type' ? lbl : t(`option.${lbl}`, lbl);
+                return o ? labelOf(o.label) : value;
+              })()}</span>
             </SelectTrigger>
             <SelectContent>
               {!f.options.some(o => o.value === value) && value && (
                 <SelectItem value={value}>{value}</SelectItem>
               )}
               {f.options.map(o => (
-                <SelectItem key={o.value} value={o.value}>{t(`option.${o.label}`, o.label)}</SelectItem>
+                <SelectItem key={o.value} value={o.value}>{f.key === 'system_type' ? o.label : t(`option.${o.label}`, o.label)}</SelectItem>
               ))}
             </SelectContent>
           </Select>

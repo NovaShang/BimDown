@@ -41,8 +41,9 @@ export interface SnapResult {
   /** Distance to nearest grid line in Y direction (perpendicular) */
   nearestGridY?: GridDistanceInfo;
   /** If the result snapped to a connector, info about which one.
-   *  The drawing tool uses `hostId` to wire start_node_id / end_node_id. */
-  connectorHit?: { hostId: string };
+   *  The drawing tool uses `portRef` (= "host_id:port_name") to wire pipe
+   *  from / to. `hostId` is the bare host id (no port suffix). */
+  connectorHit?: { hostId: string; portRef: string };
 }
 
 /** A connector snap target supplied by the drawing tool. */
@@ -50,6 +51,9 @@ export interface ConnectorSnapPoint {
   pos: Point;
   dir: { x: number; y: number };
   hostId: string;
+  /** Full port reference string "host_id:port_name". Falls back to bare
+   *  host_id if the connector has no `name` attribute. */
+  portRef: string;
 }
 
 // ── Grid spacing ──
@@ -299,7 +303,7 @@ export function computeSnap(
         snapY: { type: 'connector', value: cp.pos.y },
         guides,
         dominantType: 'connector',
-        connectorHit: { hostId: cp.hostId },
+        connectorHit: { hostId: cp.hostId, portRef: cp.portRef },
       };
     }
   }

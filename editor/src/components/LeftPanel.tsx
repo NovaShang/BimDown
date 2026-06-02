@@ -70,7 +70,7 @@ function LevelContextMenu({
 /** Fields not useful in the compact element list */
 const SKIP_FIELDS = new Set([
   'number', 'base_offset', 'top_level_id', 'top_offset', 'host_id',
-  'x', 'y', 'position', 'start_z', 'end_z', 'start_node_id', 'end_node_id',
+  'x', 'y', 'position', 'start_z', 'end_z', 'from', 'to',
 ]);
 
 interface ColumnDef {

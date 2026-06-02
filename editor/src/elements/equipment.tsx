@@ -8,6 +8,26 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, EQUIPMENT_TYPE_OPTIONS, TERMINAL_TYPE_OPTIONS } from './_options.ts';
+import { equipmentStarters } from './equipment_starters.ts';
+
+/** Reserved drawingAttrs key (double underscore = UI-only flag, stripped at
+ *  commit time). When set, the placement tool materializes a starter
+ *  template — host row + default connector rows — instead of a bare row. */
+export const STARTER_KEY_ATTR = '__starter_key';
+
+const STARTER_OPTIONS_EQUIPMENT = [
+  { value: '', label: 'None' },
+  ...equipmentStarters
+    .filter((s) => s.table === 'equipment')
+    .map((s) => ({ value: s.key, label: s.label_zh })),
+];
+
+const STARTER_OPTIONS_TERMINAL = [
+  { value: '', label: 'None' },
+  ...equipmentStarters
+    .filter((s) => s.table === 'terminal')
+    .map((s) => ({ value: s.key, label: s.label_zh })),
+];
 
 const DEFAULT_POINT_HEIGHT = 0.5;
 
@@ -112,9 +132,10 @@ function makeEquipmentModule(opts: {
 
 export const equipmentModule = makeEquipmentModule({
   table: 'equipment', prefix: 'eq', color: '#e63946',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'equipment_type', 'rotation'],
-  defaults: { base_offset: '0', system_type: '', equipment_type: 'other', rotation: '0' },
+  csvHeaders: ['number', 'base_offset', 'system_type', 'equipment_type', 'family', 'type', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', equipment_type: 'other', family: '', type: '', rotation: '0' },
   drawingFields: [
+    { key: STARTER_KEY_ATTR, label: 'Template', type: 'select', options: STARTER_OPTIONS_EQUIPMENT },
     { key: 'equipment_type', label: 'Type', type: 'select', options: EQUIPMENT_TYPE_OPTIONS },
     { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15 },
     BASE_OFFSET_FIELD,
@@ -125,9 +146,10 @@ export const equipmentModule = makeEquipmentModule({
 
 export const terminalModule = makeEquipmentModule({
   table: 'terminal', prefix: 'tm', color: '#f77f00',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'terminal_type', 'rotation'],
-  defaults: { base_offset: '0', system_type: '', terminal_type: 'other', rotation: '0' },
+  csvHeaders: ['number', 'base_offset', 'system_type', 'terminal_type', 'family', 'type', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', terminal_type: 'other', family: '', type: '', rotation: '0' },
   drawingFields: [
+    { key: STARTER_KEY_ATTR, label: 'Template', type: 'select', options: STARTER_OPTIONS_TERMINAL },
     { key: 'terminal_type', label: 'Type', type: 'select', options: TERMINAL_TYPE_OPTIONS },
     { key: 'system_type', label: 'System', type: 'text' },
     { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15 },

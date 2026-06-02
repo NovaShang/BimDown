@@ -1,9 +1,12 @@
-import type { CanonicalElement } from '../model/elements.ts';
+import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import type { ToolHandler, ToolContext } from './types.ts';
 import { snapPoint } from '../utils/snap.ts';
-import { toSelectionId, toElementId } from '../model/ids.ts';
+import { toSelectionId, toElementId, toLevelId } from '../model/ids.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { isBackgroundDiscipline } from '../state/selectors.ts';
+import { tryStartPortDrag, updatePortDrag, finishPortDrag, isPortDragActive } from './portDragTool.ts';
+import { portRefTargetsHost } from '../utils/portRef.ts';
+import { expandSelectionForCoMove, collectCascadeBranches } from '../model/mepRun.ts';
 
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
@@ -19,6 +22,9 @@ const gesture = {
   accumulatedDx: 0,
   accumulatedDy: 0,
   moveAnchor: null as { x: number; y: number } | null,
+  /** Raw ids the move dispatches actually translate. Computed at drag-start
+   *  from the selection by walking collinear MEP runs (see mepRun.ts). */
+  moveIds: null as string[] | null,
   reset() {
     this.isDragging = false;
     this.isMoving = false;
@@ -28,6 +34,7 @@ const gesture = {
     this.accumulatedDx = 0;
     this.accumulatedDy = 0;
     this.moveAnchor = null;
+    this.moveIds = null;
   },
 };
 
@@ -47,6 +54,42 @@ export const selectTool: ToolHandler = {
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     gesture.startSvg = svgPt || { x: 0, y: 0 };
+
+    // Connector clicks: ports are pure derivatives of their host
+    // (host position + local offset). They never participate in selection
+    // or drag directly. Three outcomes:
+    //   - Open port + port-drag can start → portDragTool takes the gesture
+    //     (smart MEP routing); we suppress default handling.
+    //   - Otherwise (already-connected, or port-drag failed to start) →
+    //     rewire the click to the host equipment / terminal / fitting so
+    //     dragging moves the whole assembly. The connector itself never
+    //     ends up in the selection.
+    if (gesture.clickedId) {
+      const docState = ctx.getState();
+      // findElementId returns a level-prefixed selection id ("lv-1:cn-1");
+      // document.elements is keyed by raw id ("cn-1"). Strip before lookup.
+      const rawClickedId = toElementId(gesture.clickedId);
+      const clickedEl = docState.document?.elements.get(rawClickedId);
+      if (clickedEl?.tableName === 'connector') {
+        if (
+          isPortOpen(clickedEl, docState.document?.elements) &&
+          tryStartPortDrag(ctx, e, rawClickedId)
+        ) {
+          gesture.clickedId = null; // suppress default click handling
+          gesture.isDragging = false;
+          return;
+        }
+        // Rewire to the host so dragging moves the whole assembly. Preserve
+        // the original selection-id prefix so SELECT / move stay consistent.
+        const hostEl = resolveConnectorHost(clickedEl, docState.document?.elements);
+        if (hostEl) {
+          const levelId = toLevelId(gesture.clickedId);
+          gesture.clickedId = levelId ? toSelectionId(levelId, hostEl.id) : hostEl.id;
+        } else {
+          gesture.clickedId = null;
+        }
+      }
+    }
 
     if (gesture.clickedId) {
       const state = ctx.getState();
@@ -71,6 +114,13 @@ export const selectTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
+    // Port-drag gesture takes precedence — it captured the pointer on its
+    // pointerdown branch, so we must keep feeding it move events even though
+    // the select-tool's own gesture state is reset.
+    if (isPortDragActive()) {
+      updatePortDrag(ctx, e);
+      return;
+    }
     if (!gesture.isDragging) {
       // Hover detection
       // TODO: hover temporarily disabled for performance testing
@@ -104,11 +154,29 @@ export const selectTool: ToolHandler = {
         if (!state.selectedIds.has(gesture.clickedId)) {
           ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId] });
         }
-        // Snapshot elements before move starts (for single undo entry)
         const freshState = ctx.getState();
+        const elements = freshState.document?.elements ?? new Map<string, CanonicalElement>();
+
+        // Expand each selected MEP pipe to its full collinear run (plus the
+        // passive mep_nodes that join the run's segments). The expanded set
+        // is what MOVE_ELEMENTS actually translates so a "drag" on any
+        // single segment feels like sliding the whole logical pipe.
+        const selectedRaw = Array.from(freshState.selectedIds).map(toElementId);
+        const expanded = expandSelectionForCoMove(elements, selectedRaw);
+        gesture.moveIds = [...expanded];
+
+        // Snapshot every id that the move + reducer cascade may touch, so
+        // the COMMIT_PREVIEW history entry covers them all:
+        //   - the move set itself (will be translated whole)
+        //   - branches the cascade will partial-move at our passive nodes
+        const cascadeBranches = collectCascadeBranches(elements, expanded);
         gesture.beforeSnapshot = new Map();
-        for (const sid of freshState.selectedIds) {
-          const el = freshState.document?.elements.get(toElementId(sid));
+        for (const id of expanded) {
+          const el = elements.get(id);
+          if (el) gesture.beforeSnapshot.set(el.id, el);
+        }
+        for (const id of cascadeBranches) {
+          const el = elements.get(id);
           if (el) gesture.beforeSnapshot.set(el.id, el);
         }
         // Compute move anchor from the first selected element
@@ -143,9 +211,10 @@ export const selectTool: ToolHandler = {
             gesture.accumulatedDx = snappedDx;
             gesture.accumulatedDy = snappedDy;
 
+            const moveIds = gesture.moveIds ?? Array.from(state.selectedIds);
             ctx.dispatch({
               type: 'MOVE_ELEMENTS',
-              ids: Array.from(state.selectedIds),
+              ids: moveIds,
               dx: incrementDx,
               dy: incrementDy,
               preview: true,
@@ -155,9 +224,10 @@ export const selectTool: ToolHandler = {
             const svgDy = currentSvg.y - gesture.startSvg.y;
             gesture.startSvg = currentSvg;
             const state = ctx.getState();
+            const moveIds = gesture.moveIds ?? Array.from(state.selectedIds);
             ctx.dispatch({
               type: 'MOVE_ELEMENTS',
-              ids: Array.from(state.selectedIds),
+              ids: moveIds,
               dx: svgDx,
               dy: svgDy,
               preview: true,
@@ -169,6 +239,11 @@ export const selectTool: ToolHandler = {
   },
 
   onPointerUp(ctx: ToolContext, e: React.PointerEvent) {
+    if (isPortDragActive()) {
+      finishPortDrag(ctx);
+      ctx.setSnap(null);
+      return;
+    }
     if (gesture.isMarquee) {
       // Finalize marquee selection
       const state = ctx.getState();
@@ -198,6 +273,52 @@ export const selectTool: ToolHandler = {
     ctx.setSnap(null);
   },
 };
+
+/** Resolve a connector's host element (equipment / terminal / mep_node) by
+ *  scanning the elements map. Accepts prefixed and unprefixed host_id values. */
+function resolveConnectorHost(
+  conn: CanonicalElement,
+  elements: ReadonlyMap<string, CanonicalElement> | undefined,
+): CanonicalElement | null {
+  if (!elements) return null;
+  if (conn.geometry !== 'point') return null;
+  const p = conn as PointElement;
+  const hostRaw = p.hostId || p.attrs.host_id || '';
+  if (!hostRaw) return null;
+  const direct = elements.get(hostRaw);
+  if (direct) return direct;
+  for (const el of elements.values()) {
+    const colon = el.id.indexOf(':');
+    if (colon >= 0 && el.id.substring(colon + 1) === hostRaw) return el;
+  }
+  return null;
+}
+
+/** Is this connector free (no pipe references its host:port pair)? */
+function isPortOpen(
+  conn: CanonicalElement,
+  elements: ReadonlyMap<string, CanonicalElement> | undefined,
+): boolean {
+  if (!elements || conn.geometry !== 'point') return true;
+  const p = conn as PointElement;
+  const portName = (p.attrs.name || '').trim();
+  const host = resolveConnectorHost(conn, elements);
+  if (!host) return true;
+  const target = portName ? `${host.id}:${portName}` : host.id;
+  const altHost = host.id.includes(':') ? host.id.substring(host.id.indexOf(':') + 1) : host.id;
+  const altTarget = portName ? `${altHost}:${portName}` : altHost;
+  for (const el of elements.values()) {
+    if (el.tableName !== 'duct' && el.tableName !== 'pipe' &&
+        el.tableName !== 'conduit' && el.tableName !== 'cable_tray') continue;
+    if (el.attrs.from === target || el.attrs.to === target) return false;
+    if (el.attrs.from === altTarget || el.attrs.to === altTarget) return false;
+    if (!portName) {
+      // Bare-host references; check both forms via portRefTargetsHost.
+      if (portRefTargetsHost(el.attrs.from, host.id) || portRefTargetsHost(el.attrs.to, host.id)) return false;
+    }
+  }
+  return true;
+}
 
 /** Get an anchor point from snapshot elements (use first element's primary point) */
 function getElementAnchor(snapshot: Map<string, CanonicalElement | null> | null): { x: number; y: number } | null {
@@ -277,6 +398,8 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
         const elemId = toElementId(rawId);
         const canonical = docElements?.get(elemId);
         if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline)) continue;
+        // Connectors are pure derivatives of their host — not selectable.
+        if (canonical?.tableName === 'connector') continue;
         ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);
       }
     } catch {
