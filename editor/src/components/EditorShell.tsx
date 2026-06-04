@@ -12,6 +12,7 @@ import Canvas from './Canvas.tsx';
 import type { CanvasHandle } from './Canvas.tsx';
 import FloatingToolbar from './FloatingToolbar.tsx';
 import ViewToolbar from './ViewToolbar.tsx';
+import SnapSettingsPanel, { isSnapInteraction } from './SnapSettingsPanel.tsx';
 import TopBar from './TopBar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
 import RightPanel from './RightPanel.tsx';
@@ -285,13 +286,15 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
             overlayItems={overlayItems}
           />
         )}
-        <TopBar />
+        {/* Hide the top discipline bar while the snap panel occupies the same slot. */}
+        {!(!state.readonly && isSnapInteraction(state.activeTool, state.drawingState)) && <TopBar />}
         {!state.readonly && <DrawingPropertiesBar />}
         {!state.readonly && <FloatingToolbar activeDiscipline={activeDiscipline} />}
         <ViewToolbar
           onZoomToFit={handleZoomToFit}
           scale={state.viewMode === '2d' ? canvasScale : undefined}
         />
+        {!state.readonly && <SnapSettingsPanel />}
         {(!isMobile || mobilePanel === 'right') && (
           <RightPanel
             selectedData={selectedData}

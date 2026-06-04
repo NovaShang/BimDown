@@ -15,10 +15,15 @@
   "topbar.archContextShort": "建筑",
   "topbar.projectUnit": "项目单位(在 project_metadata.json 中设置)",
 
+  "snap.title": "捕捉",
   "snap.endpoint": "端点",
   "snap.center": "中心",
   "snap.midpoint": "中点",
-  "snap.gridline": "轴线",
+  "snap.gridline": "轴网",
+  "snap.edge": "边",
+  "snap.angle": "角度",
+  "snap.length": "长度",
+  "snap.connector": "连接点",
 
   "space.defaultName": "房间 {{n}}",
 

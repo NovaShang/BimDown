@@ -1,7 +1,7 @@
 import type { EditorAction, ViewTransform } from '../state/editorTypes.ts';
 import type { DocumentState } from '../model/document.ts';
 import type { ProjectData, GridData } from '../types.ts';
-import type { SnapResult } from '../utils/snap.ts';
+import type { SnapResult, SnapType } from '../utils/snap.ts';
 
 // Transform actions are Canvas-local (not in EditorAction), but tools still dispatch them
 export type TransformAction =
@@ -50,6 +50,8 @@ export interface ToolStateSnapshot {
   document: DocumentState | null;
   project: ProjectData | null;
   grids: readonly GridData[];
+  /** Snap types the user has disabled (empty = all active). */
+  disabledSnapTypes: ReadonlySet<SnapType>;
   currentLevel: string;
   /** Mirrors EditorState.activeDiscipline so tools can replicate the discipline
    *  filtering logic (e.g. marquee should skip background-only layers). */

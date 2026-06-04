@@ -1,9 +1,10 @@
 import type { EditorState, EditorAction } from './editorTypes.ts';
+import type { SnapType } from '../utils/snap.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
-import { resolveHostedGeometry } from '../geometry/hosted.ts';
+import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
 import { isVerticalSpanTable } from '../model/tableRegistry.ts';
 import { collectMepBranch, isMepLineTable } from '../model/mepTopology.ts';
 import { bondEndpoints } from '../model/bondEndpoints.ts';
@@ -16,6 +17,23 @@ import { portRefTargetsHost } from '../utils/portRef.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
+
+/** localStorage key for the user's disabled snap types (persists across reloads). */
+const DISABLED_SNAP_KEY = 'bimdown-disabled-snap-types';
+
+function loadDisabledSnapTypes(): Set<SnapType> {
+  try {
+    const raw = localStorage.getItem(DISABLED_SNAP_KEY);
+    if (raw) return new Set(JSON.parse(raw) as SnapType[]);
+  } catch { /* ignore malformed / unavailable storage */ }
+  return new Set();
+}
+
+function saveDisabledSnapTypes(types: Set<SnapType>): void {
+  try {
+    localStorage.setItem(DISABLED_SNAP_KEY, JSON.stringify([...types]));
+  } catch { /* ignore unavailable storage */ }
+}
 
 /** Add all non-hidden layer keys from every floor to a visibleLayers set. */
 function addAllFloorLayers(visibleLayers: Set<string>, floors: Map<string, import('../types.ts').FloorData>): void {
@@ -42,7 +60,8 @@ export const initialState: EditorState = {
   readonly: false,
   visibleLayers: new Set(),
   showGrid: true,
-  showMinimap: true,
+  showMinimap: false,
+  disabledSnapTypes: loadDisabledSnapTypes(),
 
   activeTool: 'select',
   previousTool: 'select',
@@ -344,6 +363,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'TOGGLE_MINIMAP':
       return { ...state, showMinimap: !state.showMinimap };
 
+    case 'TOGGLE_SNAP_CATEGORY': {
+      const next = new Set(state.disabledSnapTypes);
+      // A category is "on" only when none of its types are disabled. Toggling
+      // flips the whole category: enable all (if any was off) else disable all.
+      const allEnabled = action.types.every(t => !next.has(t));
+      if (allEnabled) {
+        for (const t of action.types) next.add(t);
+      } else {
+        for (const t of action.types) next.delete(t);
+      }
+      saveDisabledSnapTypes(next);
+      return { ...state, disabledSnapTypes: next };
+    }
+
     case 'SET_TOOL': {
       // In 3D mode, 'select' should become 'orbit' (the 3D equivalent default tool)
       let tool = action.tool;
@@ -430,6 +463,32 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         const el = next.get(id);
         if (!el) continue;
         changed = true;
+        // Hosted elements (doors/windows/openings) dragged on their own must
+        // slide ALONG the host wall, not translate freely off it. Re-project
+        // the dragged center onto the host and update the parametric position.
+        // Skipped when the host is also moving (cascade) — then a plain
+        // translate keeps the element's relative position on the wall.
+        if (
+          el.hostId && !movedSet.has(el.hostId)
+          && (el.geometry === 'line' || el.geometry === 'spatial_line')
+        ) {
+          const host = next.get(el.hostId) ?? state.document.elements.get(el.hostId);
+          if (host && (host.geometry === 'line' || host.geometry === 'spatial_line')) {
+            const ln = el as LineElement;
+            const width = parseFloat(ln.attrs.width ?? '0.9') || 0.9;
+            const center = {
+              x: (ln.start.x + ln.end.x) / 2 + dx,
+              y: (ln.start.y + ln.end.y) / 2 + dy,
+            };
+            const pos = computeHostedPosition(host as LineElement, center);
+            const { start, end } = resolveHostedGeometry(host as LineElement, pos, width);
+            next.set(id, {
+              ...ln, start, end, locationParam: pos,
+              attrs: { ...ln.attrs, position: String(pos) },
+            });
+            continue;
+          }
+        }
         next.set(id, moveElement(el, dx, dy));
       }
       // Topology cascade: when an equipment / terminal / mep_node host moves,
@@ -790,7 +849,32 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const rawId = toElementId(action.id);
       const el = state.document.elements.get(rawId);
       if (!el) return state;
-      const resized = applyResize(el, action.changes);
+      let resized = applyResize(el, action.changes);
+
+      // Keep a hosted element (door/window/opening) on its host wall when its
+      // own endpoints are dragged: project both ends onto the host, then derive
+      // parametric position + width and re-resolve geometry. Without this, the
+      // default line-endpoint handles would pull it off the wall.
+      if (
+        el.hostId
+        && (resized.geometry === 'line' || resized.geometry === 'spatial_line')
+        && ('start' in action.changes || 'end' in action.changes)
+      ) {
+        const host = state.document.elements.get(el.hostId);
+        if (host && (host.geometry === 'line' || host.geometry === 'spatial_line')) {
+          const ln = resized as LineElement;
+          const tA = computeHostedPosition(host as LineElement, ln.start);
+          const tB = computeHostedPosition(host as LineElement, ln.end);
+          const width = Math.max(0.05, Math.abs(tB - tA));
+          const position = (tA + tB) / 2;
+          const { start, end } = resolveHostedGeometry(host as LineElement, position, width);
+          resized = {
+            ...ln, start, end, locationParam: position,
+            attrs: { ...ln.attrs, position: String(position), width: String(width) },
+          };
+        }
+      }
+
       const next = new Map(state.document.elements);
       next.set(rawId, resized);
 

@@ -1,6 +1,6 @@
 import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
 import type { LayerData, CsvRow } from '../types.ts';
-import { DISCIPLINE_TABLES } from '../types.ts';
+import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import { groupByLayer } from '../model/serialize.ts';
 import { parseLayer } from '../model/parse.ts';
 import { renderZIndexForTable } from '../model/tableRegistry.ts';
@@ -159,11 +159,23 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
       const prefix = tablePrefix.get(el.tableName) ?? state.currentLevel;
       m.set(`${prefix}:${el.id}`, el.attrs);
     }
+    const tablesInResult = new Set<string>();
     for (const [, layers] of result) {
       for (let i = 0; i < layers.length; i++) {
+        tablesInResult.add(layers[i].tableName);
         const live = liveByTable.get(layers[i].tableName);
         if (live) layers[i] = { ...layers[i], csvRows: live };
       }
+    }
+    // Surface element types that exist ONLY in the live document — i.e. the
+    // first element of a type the loaded project/floor never had. Without this
+    // such a type would never appear in the Layers panel until a reload.
+    for (const [tableName, csvRows] of liveByTable) {
+      if (tablesInResult.has(tableName)) continue;
+      const discipline = TABLE_TO_DISCIPLINE[tableName];
+      if (!discipline) continue;
+      if (!result.has(discipline)) result.set(discipline, []);
+      result.get(discipline)!.push({ tableName, discipline, geojsonContent: '', csvRows });
     }
   }
 

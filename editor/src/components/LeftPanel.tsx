@@ -257,7 +257,7 @@ export default function LeftPanel({
       </div>
 
       {/* Layers */}
-      <div className="glass-panel flex min-h-0 flex-1 shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+      <div className="glass-panel flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
         <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
         </div>

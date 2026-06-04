@@ -23,6 +23,7 @@ export const gridModule: ElementModule<GridFacts> = {
   layerStyle: { displayName: 'Grids', color: '#ef476f', icon: '┼', order: 0 },
   renderZIndex: 1,
   isSnapTarget: false,
+  supportsArc: false, // grid axes are straight references, not curves
 
   geometry(el: CanonicalElement, _ctx: GeometryContext): GridFacts | null {
     if (el.geometry !== 'line') return null;

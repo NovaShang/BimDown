@@ -2,6 +2,7 @@ import type { Level, ProjectData, GridData, FloorData, LayerData, SystemDef } fr
 import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { HistoryState } from '../model/history.ts';
+import type { SnapType } from '../utils/snap.ts';
 
 export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted';
 
@@ -29,6 +30,9 @@ export interface EditorState {
   visibleLayers: Set<string>;
   showGrid: boolean;
   showMinimap: boolean;
+  /** Snap types the user has turned OFF. Empty = all snap types active.
+   *  Stored as a disabled-set so newly added snap types default to enabled. */
+  disabledSnapTypes: Set<SnapType>;
 
   activeTool: Tool;
   previousTool: Tool;
@@ -73,6 +77,7 @@ export type EditorAction =
   | { type: 'SET_VISIBLE_LAYERS'; keys: Set<string> }
   | { type: 'TOGGLE_GRID' }
   | { type: 'TOGGLE_MINIMAP' }
+  | { type: 'TOGGLE_SNAP_CATEGORY'; types: SnapType[] }
   | { type: 'SET_TOOL'; tool: Tool }
   | { type: 'SET_SPACE_HELD'; held: boolean }
   | { type: 'SET_FILTER'; filter: string | null }

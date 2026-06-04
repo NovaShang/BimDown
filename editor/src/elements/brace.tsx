@@ -50,6 +50,7 @@ export const braceModule: ElementModule<BraceFacts> = {
   propertyFields: [],
   layerStyle: { displayName: 'Braces', color: '#8d6e63', icon: '╲', order: 17 },
   renderZIndex: 71,
+  supportsArc: false, // structural braces are straight members, not curves
 
   geometry(el: CanonicalElement, ctx: GeometryContext): BraceFacts | null {
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;

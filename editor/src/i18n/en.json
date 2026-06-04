@@ -15,10 +15,15 @@
   "topbar.archContextShort": "Arch",
   "topbar.projectUnit": "Project unit (set in project_metadata.json)",
 
+  "snap.title": "Snap",
   "snap.endpoint": "Endpoint",
   "snap.center": "Center",
   "snap.midpoint": "Midpoint",
-  "snap.gridline": "Grid",
+  "snap.gridline": "Grid line",
+  "snap.edge": "Edge",
+  "snap.angle": "Angle",
+  "snap.length": "Length",
+  "snap.connector": "Connector",
 
   "space.defaultName": "Room {{n}}",
 

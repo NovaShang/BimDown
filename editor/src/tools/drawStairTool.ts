@@ -64,7 +64,7 @@ export const drawStairTool: ToolHandler = {
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
     const snap = snapPoint(
       svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids,
-      undefined, undefined, getProjectUnits(state),
+      undefined, undefined, getProjectUnits(state), state.disabledSnapTypes,
     );
     const pt = snap.point;
     ctx.setSnap(snap);
@@ -106,7 +106,7 @@ export const drawStairTool: ToolHandler = {
     const anchor = points.length > 0 ? points[points.length - 1] : undefined;
     const snap = snapPoint(
       svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids,
-      undefined, undefined, getProjectUnits(state),
+      undefined, undefined, getProjectUnits(state), state.disabledSnapTypes,
     );
     const pt = snap.point;
     if (points.length > 0) {

@@ -77,6 +77,20 @@ export function geometryTypeOf(mod: AnyElementModule): GeometryType {
 }
 
 /**
+ * Whether an element type exposes the arc/curvature midpoint handle in the
+ * selection overlay. Honors the module's explicit `supportsArc` flag; falls
+ * back to true for free linear geometry ('line' / 'spatial-line') and false
+ * for everything else. Returns false for unknown tables.
+ */
+export function supportsArcEdit(tableName: string | undefined | null): boolean {
+  if (!tableName) return false;
+  const mod = getElementModule(tableName);
+  if (!mod) return false;
+  if (mod.supportsArc !== undefined) return mod.supportsArc;
+  return mod.archetype === 'line' || mod.archetype === 'spatial-line';
+}
+
+/**
  * Resolve the placement type for an element module.
  * Returns the explicit `placementType` field if set, otherwise derives from archetype.
  */

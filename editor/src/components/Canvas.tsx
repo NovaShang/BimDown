@@ -207,6 +207,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         document: s.document,
         project: s.project,
         grids: s.grids,
+        disabledSnapTypes: s.disabledSnapTypes,
         currentLevel: s.currentLevel,
         activeDiscipline: s.activeDiscipline,
         showArchContext: s.showArchContext,

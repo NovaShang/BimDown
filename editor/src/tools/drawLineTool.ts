@@ -48,7 +48,7 @@ export const drawLineTool: ToolHandler = {
     const connectors = isMepLineTable(state.drawingTarget?.tableName)
       ? gatherConnectorSnapPoints(state.document?.elements)
       : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state));
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state), state.disabledSnapTypes);
     const pt = snap.point;
     ctx.setSnap(snap);
 
@@ -150,7 +150,7 @@ export const drawLineTool: ToolHandler = {
     const connectors = isMepLineTable(state.drawingTarget?.tableName)
       ? gatherConnectorSnapPoints(state.document?.elements)
       : undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state));
+    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state), state.disabledSnapTypes);
     const pt = snap.point;
 
     if (isVerticalMode(state.drawingAttrs)) {

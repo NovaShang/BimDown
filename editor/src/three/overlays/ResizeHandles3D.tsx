@@ -8,6 +8,7 @@ import { useEditorDispatch, useEditorState } from '../../state/EditorContext.tsx
 import { snapPoint } from '../../utils/snap.ts';
 import { arcFromMidpoint, arcMidpoint, tessellateArc } from '../../geometry/arc.ts';
 import { formatLength, getProjectUnits } from '../../utils/units.ts';
+import { supportsArcEdit } from '../../elements/registry.ts';
 import type { ProjectUnit } from '../../types.ts';
 
 function LengthLabel3D({ from, to, midY, projectUnit }: { from: Point; to: Point; midY: number; projectUnit: ProjectUnit }) {
@@ -70,7 +71,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
     const elements = stateRef.current.document?.elements ?? null;
     const exclude = new Set([element.id]);
     const grids = stateRef.current.grids;
-    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, undefined, getProjectUnits(stateRef.current));
+    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, undefined, getProjectUnits(stateRef.current), stateRef.current.disabledSnapTypes);
     return snap.point;
   }, [element.id, screenToSvg]);
 
@@ -240,11 +241,13 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
         <Line points={centerlinePoints} color={HANDLE_COLOR} lineWidth={2} dashed dashSize={0.2} gapSize={0.1} depthTest={false} renderOrder={998} />
         <HandleSphere position={startPos} onPointerDown={handleEndpointDrag('start', elevation)} />
         <HandleSphere position={endPos} onPointerDown={handleEndpointDrag('end', elevation)} />
-        <HandleSphere position={midPos} color={lineEl.arc ? '#f59e0b' : HANDLE_COLOR} size={HANDLE_SIZE * 0.75}
-          onPointerDown={handleDrag((x, yy) => {
-            const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y: yy });
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
-          })} />
+        {supportsArcEdit(element.tableName) && (
+          <HandleSphere position={midPos} color={lineEl.arc ? '#f59e0b' : HANDLE_COLOR} size={HANDLE_SIZE * 0.75}
+            onPointerDown={handleDrag((x, yy) => {
+              const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y: yy });
+              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
+            })} />
+        )}
         <LengthLabel3D from={element.start} to={element.end} midY={midY} projectUnit={projectUnit} />
       </group>
     );

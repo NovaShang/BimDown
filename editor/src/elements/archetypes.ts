@@ -263,6 +263,16 @@ export interface ElementModule<TFacts = unknown> {
    * want to align other objects to.
    */
   isSnapTarget?: boolean;
+
+  /**
+   * Whether this element exposes the arc/curvature midpoint handle in the
+   * selection overlay. Defaults to true for free linear geometry (archetype
+   * 'line' / 'spatial-line') and false otherwise (topo-lines route straight
+   * A→B between nodes; points/hosted/surfaces have no centerline to bend).
+   * Set `false` on linear elements that are conceptually straight — e.g. grid
+   * axes and structural braces.
+   */
+  supportsArc?: boolean;
 }
 
 /** Type-erased module for the registry. */

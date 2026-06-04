@@ -212,7 +212,7 @@ export function updatePortDrag(ctx: ToolContext, e: React.PointerEvent): void {
   // all behave the way the user expects.
   const snapResult = snapPoint(
     svgPt, ctx.screenToSvg, elements, undefined, state.origin, undefined,
-    snap.grids, undefined, connectorPoints, getProjectUnits(snap),
+    snap.grids, undefined, connectorPoints, getProjectUnits(snap), snap.disabledSnapTypes,
   );
 
   state.cursor = { x: snapResult.point.x, y: snapResult.point.y };

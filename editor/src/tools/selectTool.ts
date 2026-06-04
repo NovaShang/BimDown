@@ -169,6 +169,7 @@ export const selectTool: ToolHandler = {
         // the COMMIT_PREVIEW history entry covers them all:
         //   - the move set itself (will be translated whole)
         //   - branches the cascade will partial-move at our passive nodes
+        //   - hosted children (doors/windows in a moved wall) the host cascade moves
         const cascadeBranches = collectCascadeBranches(elements, expanded);
         gesture.beforeSnapshot = new Map();
         for (const id of expanded) {
@@ -178,6 +179,16 @@ export const selectTool: ToolHandler = {
         for (const id of cascadeBranches) {
           const el = elements.get(id);
           if (el) gesture.beforeSnapshot.set(el.id, el);
+        }
+        // Hosted elements (e.g. doors/windows embedded in a wall) are cascade-
+        // moved by the MOVE_ELEMENTS reducer but aren't part of the move set or
+        // MEP branches, so they'd be missing from the undo command. Mirror the
+        // reducer's host cascade here so undo restores them with the host.
+        const movedIdSet = new Set(expanded);
+        for (const el of elements.values()) {
+          if (el.hostId && movedIdSet.has(el.hostId) && !gesture.beforeSnapshot.has(el.id)) {
+            gesture.beforeSnapshot.set(el.id, el);
+          }
         }
         // Compute move anchor from the first selected element
         gesture.moveAnchor = getElementAnchor(gesture.beforeSnapshot);
@@ -199,7 +210,7 @@ export const selectTool: ToolHandler = {
             // the prefix so the exclusion actually matches.
             const excludeRawIds = new Set<string>();
             state.selectedIds.forEach(id => excludeRawIds.add(toElementId(id)));
-            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, excludeRawIds, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state));
+            const snap = snapPoint(anchorTarget, ctx.screenToSvg, state.document?.elements, excludeRawIds, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
             ctx.setSnap(snap.snapX || snap.snapY ? snap : null);
 
             const snappedDx = snap.point.x - gesture.moveAnchor.x;

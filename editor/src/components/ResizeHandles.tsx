@@ -5,11 +5,11 @@ import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { arcFromMidpoint, arcMidpoint, arcLength } from '../geometry/arc.ts';
 import { formatLength, getProjectUnits } from '../utils/units.ts';
 import type { ProjectUnit } from '../types.ts';
-import { getElementModule } from '../elements/registry.ts';
+import { getElementModule, supportsArcEdit } from '../elements/registry.ts';
 import { useGeometryContext } from '../adapters/svg/context.tsx';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { findPipeBodyHit, type MepCurveElement } from '../utils/pipeBodyHit.ts';
-import { generateId } from '../model/ids.ts';
+import { generateId, toElementId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 
 function LengthLabel({ from, to, scale, length, projectUnit }: { from: Point; to: Point; scale: number; length?: number; projectUnit: ProjectUnit }) {
@@ -69,6 +69,10 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   stateRef.current = state;
   const projectUnit = getProjectUnits(state);
   const beforeRef = useRef<CanonicalElement | null>(null);
+  /** Pre-drag snapshot of elements hosted on this element (e.g. doors/windows
+   *  embedded in a wall). The RESIZE_ELEMENT reducer re-resolves them as the
+   *  host is dragged, so they must be recorded in the commit for undo. */
+  const hostedBeforeRef = useRef<Map<string, CanonicalElement>>(new Map());
   /** Pointer position at the moment the current drag started. Custom handles
    *  read this so "translate" behavior can compute deltas without drift. */
   const dragStartRef = useRef<Point>({ x: 0, y: 0 });
@@ -98,7 +102,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
     const connectorPoints = isMepLineTable(element.tableName)
       ? gatherConnectorSnapPoints(elements ?? undefined)
       : undefined;
-    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, connectorPoints, unit);
+    const snap = snapPoint(raw, screenToSvg, elements, exclude, undefined, undefined, grids, undefined, connectorPoints, unit, stateRef.current.disabledSnapTypes);
     onSnap?.(snap.snapX || snap.snapY ? snap : null);
     return snap;
   }, [screenToSvg, element.id, element.tableName, onSnap]);
@@ -123,6 +127,16 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
 
       // Snapshot before drag starts
       beforeRef.current = stateRef.current.document?.elements.get(element.id) ?? null;
+      // Also snapshot elements hosted on this one (doors/windows in a wall),
+      // which the reducer re-resolves during the drag.
+      hostedBeforeRef.current = new Map();
+      const rawHostId = toElementId(element.id);
+      const liveEls = stateRef.current.document?.elements;
+      if (liveEls) {
+        for (const [id, el] of liveEls) {
+          if (el.hostId === rawHostId) hostedBeforeRef.current.set(id, el);
+        }
+      }
       endpointSideRef.current = opts.endpointSide ?? null;
       lastSnapRef.current = null;
       // Remember pointerdown position in model coords so module-defined
@@ -189,14 +203,25 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
 
         // Default commit path: single-element resize.
         if (snapshot) {
-          const after = stateRef.current.document?.elements.get(element.id) ?? null;
+          const liveNow = stateRef.current.document?.elements;
+          const after = liveNow?.get(element.id) ?? null;
+          const before = new Map<string, CanonicalElement | null>([[element.id, snapshot]]);
+          const afterMap = new Map<string, CanonicalElement | null>([[element.id, after]]);
+          // Include hosted children re-resolved during the drag so undo restores
+          // them along with the host (matches RESIZE_ELEMENT's host re-resolve).
+          for (const [id, hostedBefore] of hostedBeforeRef.current) {
+            const hostedAfter = liveNow?.get(id) ?? null;
+            before.set(id, hostedBefore);
+            afterMap.set(id, hostedAfter);
+          }
           dispatch({
             type: 'COMMIT_PREVIEW',
             description: 'Resize element',
-            before: new Map([[element.id, snapshot]]),
-            after: new Map([[element.id, after]]),
+            before,
+            after: afterMap,
           });
         }
+        hostedBeforeRef.current = new Map();
         beforeRef.current = null;
         endpointSideRef.current = null;
         lastSnapRef.current = null;
@@ -293,12 +318,14 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes });
           }, { endpointSide: 'end' })}
         />
-        {/* Arc midpoint handle. MEP curves don't expose this — running a
-            pipe through an arc isn't representable in the BimDown topology
-            (every segment is a straight A→B between two nodes), and the
-            "slide the run sideways" gesture is covered by dragging the
-            pipe body itself with run-aware selection in selectTool. */}
-        {!isMepLineTable(element.tableName) && (
+        {/* Arc midpoint handle, gated by the element type's `supportsArc`
+            capability. MEP curves don't expose it — running a pipe through an
+            arc isn't representable in the BimDown topology (every segment is a
+            straight A→B between two nodes), and the "slide the run sideways"
+            gesture is covered by dragging the pipe body itself with run-aware
+            selection in selectTool. Grids and braces opt out as straight-only
+            linear types. */}
+        {supportsArcEdit(element.tableName) && (
           <circle
             cx={arcHandleMid.x} cy={arcHandleMid.y}
             r={arcR}

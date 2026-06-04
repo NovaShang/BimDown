@@ -267,6 +267,8 @@ function computeAngleSnap(
 
 // ── Main snap function ──
 
+const NO_DISABLED_SNAPS: ReadonlySet<SnapType> = new Set();
+
 export function computeSnap(
   input: Point,
   pixelSize: number,
@@ -278,6 +280,7 @@ export function computeSnap(
   extraEndpoints?: readonly Point[],
   connectorPoints?: readonly ConnectorSnapPoint[],
   projectUnit: ProjectUnit = 'm',
+  disabledSnapTypes: ReadonlySet<SnapType> = NO_DISABLED_SNAPS,
 ): SnapResult {
   const threshold = pixelSize * SNAP_THRESHOLD_PX;
   const guides: SnapGuide[] = [];
@@ -286,7 +289,7 @@ export function computeSnap(
   // Done up front because a successful connector snap short-circuits the
   // rest of the snap pipeline (no axis-aligned point snaps, no length /
   // angle suggestions wandering off the port).
-  if (connectorPoints && connectorPoints.length > 0) {
+  if (connectorPoints && connectorPoints.length > 0 && !disabledSnapTypes.has('connector')) {
     let bestConn: { cp: ConnectorSnapPoint; dist: number } | null = null;
     for (const cp of connectorPoints) {
       const d = dist2D(input, cp.pos);
@@ -320,7 +323,7 @@ export function computeSnap(
   // used by Pass 5 to keep along-line integer snapping ON the line.
   let gridLineDir: { ux: number; uy: number; a: Point } | null = null;
 
-  const targets = elements ? extractSnapTargets(elements, excludeIds, input) : [];
+  let targets = elements ? extractSnapTargets(elements, excludeIds, input) : [];
   // Mix in extra endpoints (e.g. polygon vertices being drawn but not yet
   // committed to the document) as high-priority snap targets.
   if (extraEndpoints && extraEndpoints.length > 0) {
@@ -328,9 +331,13 @@ export function computeSnap(
       targets.push({ x: p.x, y: p.y, type: 'endpoint', priority: 1 });
     }
   }
+  // Drop object-snap targets the user has turned off (endpoint/center/midpoint/edge).
+  if (disabledSnapTypes.size > 0) {
+    targets = targets.filter(t => !disabledSnapTypes.has(t.type));
+  }
 
   // ── Pass 0: Grid line (轴网) targets ──
-  if (grids && grids.length > 0) {
+  if (grids && grids.length > 0 && !disabledSnapTypes.has('gridline')) {
     // Pre-compute extended grid lines
     const extLines: { a: Point; b: Point }[] = [];
     for (const g of grids) {
@@ -467,7 +474,7 @@ export function computeSnap(
 
   // ── Pass 3: Angle constraint ──
   let angleResult: ReturnType<typeof computeAngleSnap> = null;
-  if (anchor) {
+  if (anchor && !disabledSnapTypes.has('angle')) {
     // Use the current (possibly snapped) point as basis, but apply angle to raw input
     angleResult = computeAngleSnap(input, anchor, threshold, angleIncrement);
     if (angleResult) {
@@ -493,7 +500,8 @@ export function computeSnap(
   }
 
   // ── Pass 4: Grid-distance snap (snap to round distances from nearest 轴网) ──
-  if (grids && grids.length > 0) {
+  // Folded into the "Grid line" toggle — disabled together with 'gridline'.
+  if (grids && grids.length > 0 && !disabledSnapTypes.has('grid')) {
     const gridSpacing = adaptiveGridSpacing(pixelSize);
     const gridThreshold = gridSpacing * 0.45;
 
@@ -542,7 +550,8 @@ export function computeSnap(
     gridLineDir &&
     snapX?.type === 'gridline' &&
     snapY?.type === 'gridline' &&
-    grids && grids.length > 0
+    grids && grids.length > 0 &&
+    !disabledSnapTypes.has('length')
   ) {
     const { ux, uy, a: lineA } = gridLineDir;
     const preX = snapX.value;
@@ -598,7 +607,7 @@ export function computeSnap(
     }
   }
 
-  if (anchor) {
+  if (anchor && !disabledSnapTypes.has('length')) {
     const preX = snapX ? snapX.value : input.x;
     const preY = snapY ? snapY.value : input.y;
 
@@ -750,10 +759,11 @@ export function snapPoint(
   extraEndpoints?: readonly Point[],
   connectorPoints?: readonly ConnectorSnapPoint[],
   projectUnit: ProjectUnit = 'm',
+  disabledSnapTypes: ReadonlySet<SnapType> = NO_DISABLED_SNAPS,
 ): SnapResult {
   const pixelSize = computePixelSize(screenToSvg);
   return computeSnap(
     raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement,
-    grids, extraEndpoints, connectorPoints, projectUnit,
+    grids, extraEndpoints, connectorPoints, projectUnit, disabledSnapTypes,
   );
 }
