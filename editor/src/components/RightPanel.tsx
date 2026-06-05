@@ -13,10 +13,18 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { Button } from './ui/button';
 import { Icon } from './Icons.tsx';
+import { ChevronRight } from 'lucide-react';
 import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { ScrollArea } from './ui/scroll-area';
 import { cn } from '../lib/utils';
+
+// Shared input styling so number / text / select / level controls read as one
+// system: transparent until interaction, soft fill on hover, accent border on
+// focus. Keeps the panel calm at rest instead of a grid of grey boxes.
+const FIELD_INPUT =
+  'h-[22px] min-w-0 flex-1 rounded-md border border-transparent bg-transparent px-1.5 text-right text-[11px] tabular-nums transition-colors hover:bg-[var(--bg-input)] focus-visible:border-[var(--color-accent)] focus-visible:bg-[var(--bg-input)]';
+const FIELD_SELECT = `${FIELD_INPUT} gap-0.5`;
 
 interface RightPanelProps {
   selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>;
@@ -30,10 +38,10 @@ export default function RightPanel({ selectedData, levels, offsetRight: _, reado
 
   return (
     <div
-      className="absolute top-16 bottom-[52px] z-30 w-52 animate-in fade-in slide-in-from-left-2 duration-200"
+      className="absolute top-16 bottom-[52px] z-30 flex w-52 flex-col animate-in fade-in slide-in-from-left-2 duration-200"
       style={{ left: 12 + 208 + 8 }}
     >
-      <div className="glass-panel flex h-full flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+      <div className="glass-panel flex min-h-0 max-h-full shrink-0 flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
         <PropertiesContent selectedData={selectedData} levels={levels} readonly={readonly} />
       </div>
     </div>
@@ -106,14 +114,20 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     <>
       {/* Header */}
       <div className="relative shrink-0 border-b border-border/50 px-3 pb-2 pt-2.5">
-        <div className="flex items-center gap-1.5">
-          <span style={{ color: style?.color }}>
-            <Icon name={firstData.tableName} width={16} height={16} />
+        <div className="flex items-center gap-2 pr-6">
+          <span
+            className="flex size-6 shrink-0 items-center justify-center rounded-md"
+            style={{
+              color: style?.color,
+              backgroundColor: style?.color ? `color-mix(in srgb, ${style.color} 14%, transparent)` : undefined,
+            }}
+          >
+            <Icon name={firstData.tableName} width={15} height={15} />
           </span>
-          <span className="text-[10px] font-semibold uppercase tracking-[0.08em]">
+          <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-tight">
             {style ? t(`display.${style.displayName}`) : firstData.tableName}
           </span>
-          <span className="ml-auto text-[9px] text-muted-foreground/50 tabular-nums">{firstId}</span>
+          <span className="shrink-0 rounded bg-[var(--bg-input)] px-1.5 py-0.5 text-[9px] text-muted-foreground tabular-nums">{firstId}</span>
         </div>
         <Button
           variant="ghost"
@@ -124,7 +138,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
           &#x2715;
         </Button>
         {selectedData.size > 1 && (
-          <div className="mt-0.5 text-[10px] text-muted-foreground">{t('prop.elementsSelected', { count: selectedData.size })}</div>
+          <div className="mt-1 text-[10px] text-muted-foreground">{t('prop.elementsSelected', { count: selectedData.size })}</div>
         )}
       </div>
 
@@ -144,14 +158,14 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
             return (
               <Collapsible key={group.labelKey} open={!isCollapsed} onOpenChange={() => toggleGroup(group.labelKey)}>
                 <CollapsibleTrigger className={cn(
-                  'flex w-full cursor-pointer items-center gap-1 border-none bg-transparent px-3 py-1 text-left text-[10px] font-semibold uppercase tracking-[0.06em] text-muted-foreground/70 hover:text-foreground',
-                  gi > 0 && 'border-t border-border/30',
+                  'flex w-full cursor-pointer items-center border-none bg-foreground/[0.05] px-3 py-1.5 text-left text-[10px] font-semibold text-foreground/65 transition-colors hover:bg-foreground/[0.08] hover:text-foreground',
+                  gi > 0 && 'mt-1',
                 )}>
-                  <span className="w-2.5 text-[8px] text-muted-foreground/50">{isCollapsed ? '\u25B8' : '\u25BE'}</span>
-                  {t(group.labelKey)}
+                  <span>{t(group.labelKey)}</span>
+                  <ChevronRight className={cn('ml-auto size-3.5 shrink-0 text-muted-foreground/70 transition-transform', !isCollapsed && 'rotate-90')} />
                 </CollapsibleTrigger>
                 <CollapsibleContent>
-                  <div className="px-3 pb-1">
+                  <div className="px-3 pb-1.5 pt-1">
                     {group.fields.map(f => (
                       <PropertyRow
                         key={f.key}
@@ -199,7 +213,7 @@ function PropertyRow({
   const renderedUnit = f.unit === 'm' ? getUnitSuffix(projectUnit).trim() : f.unit;
 
   return (
-    <div className="flex items-center gap-2 py-[3px]">
+    <div className="-mx-1 flex items-center gap-2 rounded-md px-1 py-[3px] transition-colors hover:bg-foreground/[0.03]">
       <span className="w-[72px] shrink-0 truncate text-[10px] text-muted-foreground" title={label}>
         {label}
       </span>
@@ -208,13 +222,15 @@ function PropertyRow({
           <LevelSelect
             value={value}
             onValueChange={(v) => onChange(f.key, v)}
-            triggerClassName="h-[22px] min-w-0 flex-1 gap-0.5 rounded border-transparent bg-[var(--bg-input)] px-1.5 text-right text-[11px] tabular-nums hover:border-border focus-visible:border-[var(--color-accent)]"
+            triggerClassName={FIELD_SELECT}
           />
         ) : f.type === 'readonly' || !editable ? (
-          <span className="truncate text-right text-[11px] tabular-nums text-foreground/70">{value}</span>
+          <span className="truncate px-1.5 text-right text-[11px] tabular-nums text-foreground/70">
+            {value !== '' ? value : <span className="text-muted-foreground/40">&mdash;</span>}
+          </span>
         ) : f.type === 'select' && f.options ? (
           <Select value={value} onValueChange={(v) => { if (v) onChange(f.key, v); }}>
-            <SelectTrigger className="h-[22px] min-w-0 flex-1 gap-0.5 rounded border-transparent bg-[var(--bg-input)] px-1.5 text-right text-[11px] tabular-nums hover:border-border focus-visible:border-[var(--color-accent)]">
+            <SelectTrigger className={FIELD_SELECT}>
               <span className="truncate">{(() => {
                 const o = f.options!.find(o => o.value === value);
                 // system_type labels are user-defined project names, not i18n keys.
@@ -234,7 +250,7 @@ function PropertyRow({
         ) : f.type === 'number' ? (
           <>
             <NumberInput
-              className="h-[22px] min-w-0 flex-1 rounded border-transparent bg-transparent px-1.5 text-right text-[11px] hover:bg-[var(--bg-input)] focus-visible:border-[var(--color-accent)] focus-visible:bg-[var(--bg-input)]"
+              className={FIELD_INPUT}
               value={value}
               onChange={v => onChange(f.key, v)}
               step={f.step}
@@ -242,11 +258,11 @@ function PropertyRow({
               max={f.max}
               parseImperial={f.unit === 'm' && (projectUnit === 'ft' || projectUnit === 'in') ? projectUnit : undefined}
             />
-            {renderedUnit && <span className="shrink-0 text-[9px] text-muted-foreground/60 select-none">{renderedUnit}</span>}
+            <span className="w-3 shrink-0 select-none text-left text-[9px] text-muted-foreground/60">{renderedUnit ?? ''}</span>
           </>
         ) : (
           <Input
-            className="h-[22px] min-w-0 flex-1 rounded border-transparent bg-transparent px-1.5 text-right text-[11px] hover:bg-[var(--bg-input)] focus-visible:border-[var(--color-accent)] focus-visible:bg-[var(--bg-input)]"
+            className={FIELD_INPUT}
             type="text"
             value={value}
             onChange={e => onChange(f.key, e.target.value)}
