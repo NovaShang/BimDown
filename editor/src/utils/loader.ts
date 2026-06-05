@@ -81,11 +81,70 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
+/**
+ * Spatial elements (duct/pipe/beam… and the 3D points equipment/terminal/mep_node)
+ * carry **absolute** Z in their GeoJSON coordinates per the BimDown spec. The
+ * editor, however, renders spatial Z as **level-relative** (`levelElevation + z`,
+ * and its draw defaults like `start_z: '3'` mean "3 m above the floor"). So when a
+ * project comes from an absolute-Z source (e.g. a Revit export) we convert each
+ * LEVEL layer's Z to the editor's relative convention by subtracting the level
+ * elevation:
+ *   - LineString coords (duct/pipe/…): `z -= elevation` (consumed as startZ/endZ).
+ *   - Point coords (equipment/terminal/mep_node): the relative Z is written into
+ *     the CSV `base_offset` — `buildPoint` reads `base_offset`, not `coords[2]`,
+ *     so without this the point collapses to the floor plane.
+ * Level-anchored elements (walls/columns/slabs) have 2D coords and are untouched.
+ * Global-directory layers are rendered at elevation 0, so their absolute Z is
+ * already correct and is NOT normalized here.
+ */
+function normalizeLevelLayerZ(
+  geojsonContent: string,
+  elevation: number,
+  csvMap: Map<string, CsvRow>,
+): string {
+  if (!geojsonContent) return geojsonContent;
+  let fc: { features?: { geometry?: { type?: string; coordinates?: unknown }; properties?: { id?: string } }[] };
+  try { fc = JSON.parse(geojsonContent); } catch { return geojsonContent; }
+  if (!Array.isArray(fc.features)) return geojsonContent;
+  for (const ft of fc.features) {
+    const g = ft.geometry;
+    if (!g) continue;
+    if (g.type === 'Point') {
+      const c = g.coordinates as number[];
+      if (Array.isArray(c) && c.length >= 3 && typeof c[2] === 'number') {
+        const relZ = c[2] - elevation;
+        c[2] = relZ;
+        const id = ft.properties?.id;
+        if (id) {
+          const row = csvMap.get(id) ?? { id };
+          if (row.base_offset === undefined || row.base_offset === '') {
+            row.base_offset = String(relZ);
+            csvMap.set(id, row);
+          }
+        }
+      }
+    } else if (g.type === 'LineString') {
+      const coords = g.coordinates as number[][];
+      if (Array.isArray(coords)) {
+        for (const c of coords) {
+          if (Array.isArray(c) && c.length >= 3 && typeof c[2] === 'number') c[2] = c[2] - elevation;
+        }
+      }
+    }
+  }
+  return JSON.stringify(fc);
+}
+
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const metadataPromise = loadProjectMetadata(ds);
   const manifest = ds.listFiles ? new Set(await ds.listFiles()) : null;
   const fetchIfPresent = (p: string) =>
     manifest && !manifest.has(p) ? Promise.resolve(null) : ds.fetchText(p);
+
+  // Absolute-Z sources (Revit) store absolute Z in coords; the editor model is
+  // level-relative. Normalize level layers on import (see normalizeLevelLayerZ).
+  const metadata = await metadataPromise;
+  const isAbsoluteZ = /revit/i.test(metadata.source ?? '');
 
   let levels: Level[] = [];
   const text = await fetchIfPresent('global/level.csv');
@@ -146,7 +205,9 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     floors.get(level.id)!.layers.push({
       tableName,
       discipline: disc,
-      geojsonContent: geojsonContent ?? '',
+      geojsonContent: isAbsoluteZ
+        ? normalizeLevelLayerZ(geojsonContent ?? '', level.elevation, csvMap)
+        : (geojsonContent ?? ''),
       csvRows: csvMap,
     });
   }
@@ -194,7 +255,6 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   // Project-level MEP system definitions (optional file)
   const mepSystems = await loadMepSystems(ds);
 
-  const metadata = await metadataPromise;
   return { levels, floors, globalLayers, mepSystems, metadata };
 }
 

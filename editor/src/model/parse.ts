@@ -249,6 +249,12 @@ function buildSpatialLine(id: string, feat: Feature, layer: LayerData, csv?: Csv
   const b = g.coordinates[g.coordinates.length - 1] ?? [0, 0, 0];
   const startZ = isSpatial && a.length === 3 ? (a as Position3)[2] : parseFloat(csv?.start_z ?? '0');
   const endZ = isSpatial && b.length === 3 ? (b as Position3)[2] : parseFloat(csv?.end_z ?? '0');
+  const attrs = csvToAttrs(csv, id);
+  // Back-compat: older Revit exports used start_node_id/end_node_id instead of
+  // the spec's from/to for MEP curve connectivity. Alias them so all topology
+  // code (rendering, run-drag, fitting derivation) sees from/to. Lossless.
+  if (!attrs.from && attrs.start_node_id) attrs.from = attrs.start_node_id;
+  if (!attrs.to && attrs.end_node_id) attrs.to = attrs.end_node_id;
   const el: SpatialLineElement = {
     geometry: 'spatial_line', id,
     tableName: layer.tableName, discipline: layer.discipline,
@@ -256,7 +262,7 @@ function buildSpatialLine(id: string, feat: Feature, layer: LayerData, csv?: Csv
     end: { x: b[0], y: b[1] },
     startZ, endZ,
     strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
-    attrs: csvToAttrs(csv, id),
+    attrs,
   };
   const arc = feat.properties?.arc;
   if (arc) el.arc = normalizeArc(arc);
@@ -269,8 +275,18 @@ function buildPoint(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): 
   const attrs = csvToAttrs(csv, id);
   const csvSizeX = parseFloat(attrs.size_x);
   const csvSizeY = parseFloat(attrs.size_y);
-  const w = !isNaN(csvSizeX) ? csvSizeX : 0.3;
-  const h = !isNaN(csvSizeY) ? csvSizeY : (!isNaN(csvSizeX) ? csvSizeX : 0.3);
+  // Bounding-box display size from GeoJSON properties (e.g. Revit export):
+  // size = [plan width (x), plan depth (y), vertical height (z)]. Drives the 2D
+  // footprint and the 3D box; explicit CSV size_x/size_y still win (CSV is the
+  // source of truth). The vertical extent feeds attrs.height, which the point
+  // modules read for their 3D box.
+  const sizeProp = feat.properties?.size;
+  const size = Array.isArray(sizeProp) ? (sizeProp as number[]) : null;
+  const w = !isNaN(csvSizeX) ? csvSizeX : (typeof size?.[0] === 'number' ? size[0] : 0.3);
+  const h = !isNaN(csvSizeY) ? csvSizeY : (typeof size?.[1] === 'number' ? size[1] : (!isNaN(csvSizeX) ? csvSizeX : 0.3));
+  if (typeof size?.[2] === 'number' && (attrs.height === undefined || attrs.height === '')) {
+    attrs.height = String(size[2]);
+  }
   return {
     geometry: 'point', id,
     tableName: layer.tableName, discipline: layer.discipline,
