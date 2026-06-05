@@ -19,6 +19,7 @@ import { tessellateArc, pointOnArc, type ArcParams } from '../geometry/arc.ts';
 import { applyOpenings } from '../three/resolve/csg.ts';
 import type { SurfacePrimitive, ParametricOpening } from '../three/primitives/types.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { resolveHeight } from '../three/utils/elementTo3D.ts';
 
 const HOSTED_TABLES = new Set(['door', 'window', 'opening']);
 const DEFAULT_HEIGHT = 3.0;
@@ -320,7 +321,12 @@ export function wallGeometryFor(
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
   const chordLen = Math.sqrt(dx * dx + dy * dy);
-  const baseOffset = parseFloat(el.attrs.base_offset || '0') || 0;
+  // Resolve vertical extent from top_level_id / top_offset / base_offset so the
+  // wall rises to its top constraint (e.g. up to the next level) instead of a
+  // fixed default. Walls with no top_level_id fall back via resolveHeight.
+  const { height, baseOffset } = resolveHeight(
+    el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT,
+  );
   return {
     id: el.id,
     table,
@@ -329,7 +335,7 @@ export function wallGeometryFor(
     segments,
     openings,
     thickness: el.strokeWidth,
-    height: DEFAULT_HEIGHT,
+    height,
     baseY: ctx.levelElevation + baseOffset,
     material: el.attrs.material || 'concrete',
   };
