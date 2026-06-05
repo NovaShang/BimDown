@@ -7,6 +7,7 @@ import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
+import { getElementModule } from '../elements/registry.ts';
 import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
@@ -25,6 +26,34 @@ export const VERTICAL_MODE_KEY = '__vertical_mode';
 
 function isVerticalMode(attrs: Record<string, string>): boolean {
   return attrs[VERTICAL_MODE_KEY] === 'true';
+}
+
+/**
+ * Resolve a spatial-line's level-relative Z span for vertical-span tables
+ * (stair). Their toolbar exposes `base_offset` / `top_offset` / `top_level_id`
+ * — NOT `start_z` / `end_z` — so reading start_z/end_z (as the horizontal
+ * 2-click path did) leaves both at 0 and the element renders as a flat strip
+ * on the floor. Mirror the spec semantics: startZ = base_offset, endZ = the
+ * top level's elevation (relative to the current level) plus top_offset.
+ * Returns null for non-span tables so their existing start_z/end_z path is kept.
+ */
+function resolveVerticalSpanZ(
+  attrs: Record<string, string>,
+  tableName: string,
+  state: ReturnType<ToolContext['getState']>,
+): { startZ: number; endZ: number } | null {
+  if (!getElementModule(tableName)?.hasVerticalSpan) return null;
+  const baseOffset = parseFloat(attrs.base_offset ?? '0');
+  const topOffset = parseFloat(attrs.top_offset ?? '0');
+  const startZ = isFinite(baseOffset) ? baseOffset : 0;
+  const levels = state.project?.levels ?? [];
+  const curId = state.document?.levelId ?? '';
+  const curElev = levels.find(l => l.id === curId)?.elevation ?? 0;
+  const topElev = levels.find(l => l.id === (attrs.top_level_id || curId))?.elevation ?? curElev;
+  let endZ = (topElev - curElev) + (isFinite(topOffset) ? topOffset : 0);
+  // Degenerate zero-rise span would still render flat — fall back to a 3 m rise.
+  if (Math.abs(endZ - startZ) < 1e-6) endZ = startZ + 3;
+  return { startZ, endZ };
 }
 
 export const drawLineTool: ToolHandler = {
@@ -106,6 +135,14 @@ export const drawLineTool: ToolHandler = {
       }
 
       const geo = geometryTypeForTable(target.tableName);
+      // Vertical-span tables (stair) carry their rise in base_offset/top_offset,
+      // not start_z/end_z; derive the Z span from those so they aren't flat.
+      const span = resolveVerticalSpanZ(mergedAttrs, target.tableName, state);
+      if (span) {
+        // Keep the persisted CSV start_z/end_z in sync with the derived span.
+        mergedAttrs.start_z = String(span.startZ);
+        mergedAttrs.end_z = String(span.endZ);
+      }
       const element: CanonicalElement = geo === 'spatial_line'
         ? {
             id,
@@ -114,8 +151,8 @@ export const drawLineTool: ToolHandler = {
             geometry: 'spatial_line',
             start,
             end,
-            startZ: parseFloat(da.start_z ?? '0'),
-            endZ: parseFloat(da.end_z ?? '0'),
+            startZ: span ? span.startZ : parseFloat(da.start_z ?? '0'),
+            endZ: span ? span.endZ : parseFloat(da.end_z ?? '0'),
             strokeWidth,
             attrs: mergedAttrs,
           } satisfies SpatialLineElement
