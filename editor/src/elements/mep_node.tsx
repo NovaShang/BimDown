@@ -196,20 +196,14 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
     // / pump with explicit kind) keep normal selectability + hit zones.
     const k = facts.effectiveKind;
     const isPassive = !facts.declaredKind;
+    // Passive fittings (elbow/tee/cross/reducer/coupling/cap) render NOTHING:
+    // their incident curves are snapped onto this node (see mepFittingRender),
+    // so the miter-joined run already draws the fitting body. Drawing a marker
+    // here would just put a dot back in the middle of a continuous run.
+    if (isPassive) return null;
     const color = drawCtx.selected ? '#3a7bff' : (KIND_COLOR[k] ?? '#999');
-    const r = k === 'coupling' ? 0.04 : (k === 'orphan' || k === 'cap' ? 0.06 : 0.08);
-    const opacity = k === 'coupling' ? 0.0 : 0.6;
-    if (isPassive) {
-      return (
-        <g pointerEvents="none">
-          <circle
-            cx={facts.position.x} cy={facts.position.y} r={r}
-            fill={color} fillOpacity={opacity}
-            stroke={color} strokeWidth={0.012}
-          />
-        </g>
-      );
-    }
+    const r = k === 'orphan' || k === 'cap' ? 0.06 : 0.08;
+    const opacity = 0.6;
     return (
       <g data-id={facts.id}>
         <circle
@@ -227,12 +221,13 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    // Placeholder cube. Future: derive geometry per effective kind (small
-    // elbow arc mesh, tee body, valve handle, etc.).
-    const k = facts.effectiveKind;
-    // Coupling has no visible body in real plumbing — hide.
-    if (k === 'coupling') return null;
-    // Size: accessories use declared size; passive fittings use a small default.
+    // Accessory body cube. Future: derive geometry per declared kind (valve
+    // handle, damper blade, etc.).
+    // Passive fittings render no body: the snapped incident curves (see
+    // mepFittingRender) already form the bend / branch / step in 3D. Only
+    // user-placed accessories (declared kind) draw a body.
+    if (!facts.declaredKind) return null;
+    // Size: accessories use declared size; fall back to a small default.
     const size = facts.sizeW > 0 ? facts.sizeW : 0.12;
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'mep_node'));
     const isHL = drawCtx.selected || drawCtx.hovered;

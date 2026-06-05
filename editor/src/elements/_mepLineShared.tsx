@@ -23,6 +23,7 @@ import {
   type WallPolygon,
   type CornerAdjustment,
 } from '../geometry/miter.ts';
+import { effectiveMepLine } from '../model/mepFittingRender.ts';
 
 export interface MepLineFacts {
   id: string;
@@ -80,9 +81,12 @@ interface MepNetwork {
  */
 function getMepNetwork(ctx: GeometryContext, table: string): MepNetwork {
   return ctx.memo(`${table}:mep-network`, () => {
-    const lines = ctx.elementsByTable(table).filter(
-      (e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line',
-    );
+    // Snap each curve's passive-node-referencing endpoints onto the node so
+    // the gap left by Revit's connector-face geometry closes and the run reads
+    // as continuous (see mepFittingRender). Render-only — data is untouched.
+    const lines = ctx.elementsByTable(table)
+      .filter((e): e is LineElement => e.geometry === 'line' || e.geometry === 'spatial_line')
+      .map(e => effectiveMepLine(e as LineElement | SpatialLineElement, ctx) as LineElement);
     // Verticals (start.xy == end.xy) get a degenerate miter network — skip
     // them here; the geometry pass renders them as a standalone closed polygon.
     const horizontal = lines.filter(ln => {
@@ -160,7 +164,10 @@ export function mepLineGeometry(
   defaultShape: 'round' | 'rect',
 ): MepLineFacts | null {
   if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
-  const ln = el as LineElement;
+  // Use the render-effective curve (passive-node endpoints snapped to the node)
+  // so the footprint and 3D mesh reach the fitting and meet the neighbor.
+  const eff = effectiveMepLine(el as LineElement | SpatialLineElement, ctx);
+  const ln = eff as LineElement;
   const dx = ln.end.x - ln.start.x;
   const dy = ln.end.y - ln.start.y;
   const horLen = Math.sqrt(dx * dx + dy * dy);
@@ -188,9 +195,8 @@ export function mepLineGeometry(
   const baseOffset = parseFloat(ln.attrs.base_offset || '0') || 0;
   let startZ = baseOffset, endZ = baseOffset;
   // Spatial-line carries explicit Z; line falls back to attr or base_offset.
-  if (el.geometry === 'spatial_line') {
-    const sp = el as SpatialLineElement;
-    startZ = sp.startZ; endZ = sp.endZ;
+  if (eff.geometry === 'spatial_line') {
+    startZ = eff.startZ; endZ = eff.endZ;
   } else {
     startZ = parseFloat(ln.attrs.start_z || `${baseOffset}`) || baseOffset;
     endZ = parseFloat(ln.attrs.end_z || `${baseOffset}`) || baseOffset;
