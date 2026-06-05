@@ -156,8 +156,11 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
     for (const el of state.document.elements.values()) {
       let m = liveByTable.get(el.tableName);
       if (!m) { m = new Map(); liveByTable.set(el.tableName, m); }
-      const prefix = tablePrefix.get(el.tableName) ?? state.currentLevel;
-      m.set(`${prefix}:${el.id}`, el.attrs);
+      // The document only ever holds CURRENT-LEVEL elements, so their selection
+      // ID is always currentLevel-scoped. Using tablePrefix here is wrong when a
+      // table (e.g. wall) also has a global/ layer — its prefix gets overwritten
+      // to "global", which would mislabel current-level walls as global:w-N.
+      m.set(`${state.currentLevel}:${el.id}`, el.attrs);
     }
     const tablesInResult = new Set<string>();
     for (const [, layers] of result) {
