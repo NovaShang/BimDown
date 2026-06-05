@@ -117,7 +117,8 @@ function MeshElement({ meshFile, position, rotationY, elementId }: {
  * Renders elements that have a mesh_file attribute. Two modes:
  *
  * 1. mesh table: GLB in local coordinates, positioned by CSV x/y/z/rotation.
- *    π base rotation flips GLB +Z (BimDown forward) to editor -Z.
+ *    rotationY = +rotation (the exporter baked local coords via RotateY(-rot)
+ *    in the editor's own glTF frame, so we just re-apply +rot).
  *
  * 2. Other tables (slab, roof, railing, etc.): GLB already in world coordinates
  *    (glTF Y-up matching editor scene). No transform applied.
@@ -137,7 +138,12 @@ export default function MeshInstances({ elements, levelElevation }: MeshInstance
           id: el.id,
           meshFile,
           position: [x, levelElevation + z, -y] as [number, number, number],
-          rotationY: Math.PI - csvRotDeg * Math.PI / 180,
+          // CSV rotation is Revit LocationPoint.Rotation (degrees CCW about up).
+          // The exporter bakes local GLB coords via RotateY(-rot) in the same
+          // glTF frame the editor uses (Revit X,Y,Z -> X,Z,-Y), so we reconstruct
+          // by re-applying +rot. (No base offset: at rot=0 the GLB is already in
+          // world orientation.)
+          rotationY: csvRotDeg * Math.PI / 180,
         };
       }
 
