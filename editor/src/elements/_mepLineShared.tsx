@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import { ExtrudeGeometry, Matrix4, Quaternion, Vector3 } from 'three';
 import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
-import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { getBimMaterial, getSystemColorMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { shapeFromAttrs, createProfile } from '../three/primitives/profiles.ts';
 import { buildLineWallFootprint, type WallDrawSegment } from './_lineWallShared.tsx';
 import {
@@ -411,7 +411,14 @@ export function mepLineDraw3D(facts: MepLineFacts, isHL: boolean): ReactNode {
     new Matrix4().makeBasis(right, trueUp, forward),
   );
 
-  const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
+  // Color by MEP system (matching 2D) when the line carries a system_type;
+  // otherwise fall back to the table's BIM material.
+  const sysColor = facts.systemType.trim()
+    ? resolveMepSystemColor(facts.systemType, facts.projectSystemColor)
+    : '';
+  const material = sysColor
+    ? getSystemColorMaterial(sysColor)
+    : getBimMaterial(resolveBimMaterial(facts.material, facts.table));
   return (
     <mesh
       geometry={geo}

@@ -252,10 +252,70 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     });
   }
 
-  // Project-level MEP system definitions (optional file)
-  const mepSystems = await loadMepSystems(ds);
+  // Project-level MEP system definitions: explicit file rows, plus any
+  // system_type found on MEP elements but not declared (e.g. Revit exports with
+  // no mep_system.csv) — auto-registered with a palette color so they show in
+  // the systems panel and color 2D/3D consistently.
+  const declared = await loadMepSystems(ds);
+  const derived = deriveMepSystems(declared, floors, globalLayers);
+  const mepSystems = [...declared, ...derived];
 
   return { levels, floors, globalLayers, mepSystems, metadata };
+}
+
+/** MEP tables that carry a `system_type` tag. */
+const MEP_SYSTEM_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray', 'terminal', 'equipment', 'mep_node']);
+
+/** Distinct, readable palette cycled when auto-assigning colors to systems. */
+const SYSTEM_PALETTE = [
+  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
+  '#06b6d4', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#eab308',
+];
+
+function disciplineForSystem(name: string): string {
+  const s = name.toLowerCase();
+  if (/\bair\b|hvac|chilled|condenser|refriger|exhaust|supply|return/.test(s)) return 'hvac';
+  if (/water|sanit|vent|drain|waste|plumb|\bgas\b|domestic/.test(s)) return 'plumbing';
+  if (/power|data|cable|electr|low.?volt|fire.?alarm|telecom/.test(s)) return 'electrical';
+  return 'other';
+}
+
+/** Derive SystemDefs for system_type values present on MEP elements but not
+ *  already declared. Equipment carries a comma-joined list of port systems, so
+ *  values are split on commas. Deterministic (sorted) so colors are stable. */
+function deriveMepSystems(
+  existing: SystemDef[],
+  floors: Map<string, FloorData>,
+  globalLayers: LayerData[],
+): SystemDef[] {
+  const have = new Set(existing.map(s => s.system_type.trim()).filter(Boolean));
+  const seen = new Set<string>();
+  const found: string[] = [];
+  const scan = (layers: LayerData[]) => {
+    for (const layer of layers) {
+      if (!MEP_SYSTEM_TABLES.has(layer.tableName)) continue;
+      for (const row of layer.csvRows.values()) {
+        const raw = (row.system_type || '').trim();
+        if (!raw) continue;
+        for (const part of raw.split(',')) {
+          const v = part.trim();
+          if (!v || have.has(v) || seen.has(v)) continue;
+          seen.add(v);
+          found.push(v);
+        }
+      }
+    }
+  };
+  for (const f of floors.values()) scan(f.layers);
+  scan(globalLayers);
+  found.sort();
+  return found.map((v, i) => ({
+    id: `sys-auto-${i + 1}`,
+    system_type: v,
+    name: v,
+    color: SYSTEM_PALETTE[i % SYSTEM_PALETTE.length],
+    discipline: disciplineForSystem(v),
+  }));
 }
 
 /** Load `global/mep_system.csv` if present. Returns [] when the file is

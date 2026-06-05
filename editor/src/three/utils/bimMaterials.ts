@@ -92,6 +92,19 @@ export function resolveBimMaterial(materialStr: string | undefined, tableName: s
 const materialCache = new Map<string, MeshPhysicalMaterial>();
 const ghostCache = new Map<string, MeshPhysicalMaterial>();
 
+const systemColorCache = new Map<string, MeshPhysicalMaterial>();
+
+/** Cached material colored by an MEP system color (hex or CSS color string).
+ *  Lets 3D MEP lines color by system, matching the 2D view. */
+export function getSystemColorMaterial(color: string): MeshPhysicalMaterial {
+  let mat = systemColorCache.get(color);
+  if (!mat) {
+    mat = new MeshPhysicalMaterial({ color, roughness: 0.45, metalness: 0.15, clearcoat: 0.05 });
+    systemColorCache.set(color, mat);
+  }
+  return mat;
+}
+
 /** Get or create a PBR material for the given BimMaterial enum value. */
 export function getBimMaterial(bimMat: BimMaterial): MeshPhysicalMaterial {
   const cached = materialCache.get(bimMat);
