@@ -15,6 +15,11 @@ public class ElementExtractor : IFieldExtractor
     public IReadOnlyList<string> ComputedFieldNames { get; } =
     [
         "level_id", "created_at", "updated_at", "volume",
+        // bbox stays out of CSV: emitted as the optional `size` GeoJSON Feature
+        // property on Point features by GeoJsonWriter. Values still populated in
+        // the row dict so GeoJsonWriter can read them.
+        "bbox_min_x", "bbox_min_y", "bbox_min_z",
+        "bbox_max_x", "bbox_max_y", "bbox_max_z",
     ];
 
     // base_offset lives in the GeoJSON Feature properties (schema storage: geojson_property).

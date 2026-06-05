@@ -122,6 +122,8 @@ static class GeoJsonWriter
         var rot = ParseOr(row.GetValueOrDefault("rotation"), 0);
         if (rot != 0) props["rotation"] = rot;
 
+        AttachSize(props, row);
+
         return new JsonObject
         {
             ["type"] = "Feature",
@@ -202,6 +204,35 @@ static class GeoJsonWriter
         if (topOffset is { } to && to != 0) props["top_offset"] = to;
         var heightOffset = ParseOrNull(row.GetValueOrDefault("height_offset"));
         if (heightOffset is { } ho) props["height_offset"] = ho;
+    }
+
+    /// <summary>
+    /// Optional `size: [x, y, z]` Feature property derived from the element's
+    /// bbox (max − min). Only useful for Point features whose geometry alone
+    /// carries no extent; line/polygon features already encode their size
+    /// in the coordinates. Skipped if any bbox component is missing or the
+    /// resulting volume is zero (no measurable geometry).
+    /// </summary>
+    static void AttachSize(JsonObject props, Dictionary<string, string?> row)
+    {
+        var minX = ParseOrNull(row.GetValueOrDefault("bbox_min_x"));
+        var minY = ParseOrNull(row.GetValueOrDefault("bbox_min_y"));
+        var minZ = ParseOrNull(row.GetValueOrDefault("bbox_min_z"));
+        var maxX = ParseOrNull(row.GetValueOrDefault("bbox_max_x"));
+        var maxY = ParseOrNull(row.GetValueOrDefault("bbox_max_y"));
+        var maxZ = ParseOrNull(row.GetValueOrDefault("bbox_max_z"));
+        if (minX is null || minY is null || minZ is null
+            || maxX is null || maxY is null || maxZ is null) return;
+
+        var sx = maxX.Value - minX.Value;
+        var sy = maxY.Value - minY.Value;
+        var sz = maxZ.Value - minZ.Value;
+        if (sx <= 0 && sy <= 0 && sz <= 0) return;
+
+        props["size"] = new JsonArray(
+            JsonValue.Create(Round(sx)),
+            JsonValue.Create(Round(sy)),
+            JsonValue.Create(Round(sz)));
     }
 
     static void AttachArc(JsonObject props, Dictionary<string, string?> row)

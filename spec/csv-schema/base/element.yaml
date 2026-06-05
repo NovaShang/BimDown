@@ -24,26 +24,32 @@ fields:
     type: string
     description: Optional GLB mesh path for precise 3D visualization
 
-  # bbox extent in meters. For FamilyInstance elements (equipment, terminal,
-  # door, window, structural_column, …) values are in the family's local frame —
-  # shared across all instances of the same type, independent of placement
-  # rotation. For non-FamilyInstance elements (wall, slab, …) values are the
-  # world-axis-aligned bounding box.
+  # bbox extents in meters. Not stored in CSV — exposed instead as the optional
+  # `size: [x, y, z]` GeoJSON Feature property on Point features (equipment,
+  # terminal, mep_node, column, …). For FamilyInstance elements the bbox is
+  # taken from the family symbol (local frame, rotation-invariant); for system
+  # families it is the world-axis-aligned bounding box.
   - name: bbox_min_x
     type: float
+    computed: true
 
   - name: bbox_min_y
     type: float
+    computed: true
 
   - name: bbox_min_z
     type: float
+    computed: true
 
   - name: bbox_max_x
     type: float
+    computed: true
 
   - name: bbox_max_y
     type: float
+    computed: true
 
   - name: bbox_max_z
     type: float
+    computed: true
 
