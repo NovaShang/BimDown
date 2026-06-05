@@ -13,14 +13,14 @@ export function validateIdFormat(
     const id = data.rows[i].id;
     if (!id) continue; // caught by required check
 
-    // grid/level/mep_system allow any non-empty string after prefix (human-readable
-    // identifiers like "sys-chws-main"); other tables require digits only.
-    const freeformTables = new Set(['grid', 'level', 'mep_system']);
-    const pattern = freeformTables.has(table.name) ? `^${prefix}-.+$` : `^${prefix}-\\d+$`;
-    const regex = new RegExp(pattern);
+    // IDs must carry the table prefix ("{prefix}-...") so references resolve and
+    // prefix-collisions stay impossible. The suffix is free-form: digits
+    // ("w-1") or descriptive ("w-ext-1", "c-lv1-A3") are both fine — merge
+    // renumbers to sequential prefix-N on roundtrip, so authored IDs need only
+    // be unique within their level scope.
+    const regex = new RegExp(`^${prefix}-.+$`);
     if (!regex.test(id)) {
-      const expected = freeformTables.has(table.name) ? `"${prefix}-{name}"` : `"${prefix}-{n}"`;
-      issues.push(`${path}:${i + 2}  id "${id}" has wrong format, expected ${expected}`);
+      issues.push(`${path}:${i + 2}  id "${id}" has wrong format, expected "${prefix}-..."`);
     }
   }
 

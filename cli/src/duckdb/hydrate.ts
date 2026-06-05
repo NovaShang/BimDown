@@ -72,6 +72,7 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
 
   for (const { name, table } of hydrated) {
     await injectGeometry(conn, name, allDirs);
+    await injectLevelId(conn, name);
 
     if (levelsReady && table.computedFields.some((f) => f.name === 'height')) {
       await injectHeight(conn, name);
@@ -153,6 +154,32 @@ async function injectHeight(conn: DuckDBConnection, tableName: string): Promise<
 }
 
 /**
+ * Populate the computed `level_id` column for every row: the explicit
+ * base_level_id when set, otherwise the partition directory (lv-N), leaving
+ * global-partition rows with no base_level_id as NULL.
+ */
+async function injectLevelId(conn: DuckDBConnection, tableName: string): Promise<void> {
+  const colsResult = await runQuery(
+    conn,
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'`,
+  );
+  const existing = new Set(colsResult.rows.map((r) => String(r.column_name)));
+
+  if (!existing.has('level_id')) {
+    await runQuery(conn, `ALTER TABLE "${tableName}" ADD COLUMN "level_id" VARCHAR`);
+  }
+  const baseExpr = existing.has('base_level_id') ? `NULLIF(base_level_id, '')` : `NULL`;
+  await runQuery(
+    conn,
+    `UPDATE "${tableName}"
+     SET level_id = COALESCE(
+       ${baseExpr},
+       CASE WHEN _partition <> 'global' THEN _partition END
+     )`,
+  );
+}
+
+/**
  * Hydrate geometry-derived fields AND GeoJSON Feature properties into the main
  * DuckDB table. Properties stored in GeoJSON (base_offset, top_offset,
  * height_offset, rotation, arc) appear as table columns alongside CSV columns,
@@ -215,6 +242,14 @@ async function injectGeometry(
     if (existingSet.has(col)) continue;
     await runQuery(conn, `ALTER TABLE "${tableName}" ADD COLUMN "${col}" ${typeOf(col)}`);
   }
+  // Guarantee bbox_*_z columns exist on every geometry table so queries return
+  // NULL (not a binder error) for 2D level-anchored elements whose Z isn't
+  // derivable from geometry alone. bbox_*_x/y are always populated above.
+  for (const zc of ['bbox_min_z', 'bbox_max_z']) {
+    if (!existingSet.has(zc) && !cols.includes(zc)) {
+      await runQuery(conn, `ALTER TABLE "${tableName}" ADD COLUMN "${zc}" DOUBLE`);
+    }
+  }
 
   // Stage into a temp table, then UPDATE ... FROM.
   const stagingName = `_geo_${tableName}`;
@@ -255,7 +290,42 @@ async function injectGeometry(
   await runQuery(conn, `DROP TABLE "${stagingName}"`);
 }
 
+/**
+ * Axis-aligned bounding box over every coordinate in a geometry, regardless of
+ * type/nesting. Z bounds are emitted only when the coordinates carry a Z
+ * (spatial elements) — level-anchored 2D geometry leaves bbox_*_z NULL.
+ */
+function extractBboxFields(feature: BimDownFeature, out: Record<string, number | string>): void {
+  let minX = Infinity, minY = Infinity, minZ = Infinity;
+  let maxX = -Infinity, maxY = -Infinity, maxZ = -Infinity;
+  let hasZ = false;
+
+  const visit = (node: unknown): void => {
+    if (!Array.isArray(node)) return;
+    if (typeof node[0] === 'number') {
+      const [x, y, z] = node as number[];
+      if (x < minX) minX = x; if (x > maxX) maxX = x;
+      if (y < minY) minY = y; if (y > maxY) maxY = y;
+      if (typeof z === 'number') {
+        hasZ = true;
+        if (z < minZ) minZ = z; if (z > maxZ) maxZ = z;
+      }
+      return;
+    }
+    for (const child of node) visit(child);
+  };
+  visit((feature.geometry as { coordinates?: unknown }).coordinates);
+
+  if (minX === Infinity) return; // no coordinates
+  out.bbox_min_x = minX; out.bbox_max_x = maxX;
+  out.bbox_min_y = minY; out.bbox_max_y = maxY;
+  if (hasZ) {
+    out.bbox_min_z = minZ; out.bbox_max_z = maxZ;
+  }
+}
+
 function extractGeometryFields(feature: BimDownFeature, isSpatial: boolean, out: Record<string, number | string>): void {
+  extractBboxFields(feature, out);
   const g = feature.geometry;
   if (g.type === 'LineString') {
     const lg = extractLineGeometry(feature);

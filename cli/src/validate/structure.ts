@@ -26,13 +26,11 @@ export function validateStructure(dir: string): string[] {
     return issues;
   }
 
-  // global/ must have level.csv and grid.csv
+  // global/ must have level.csv. grid.csv is optional — a structural grid is
+  // meaningful for column layouts but pointless for plain architectural/MEP models.
   const globalFiles = listFiles(layout.globalDir);
   if (!globalFiles.includes('level.csv')) {
     issues.push('global/  missing level.csv');
-  }
-  if (!globalFiles.includes('grid.csv')) {
-    issues.push('global/  missing grid.csv');
   }
 
   // global/ — CSVs and GeoJSON files (cross-floor elements may have geometry in global/) allowed

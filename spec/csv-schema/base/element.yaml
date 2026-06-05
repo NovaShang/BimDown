@@ -14,14 +14,6 @@ fields:
     reference: level
     computed: true
 
-  - name: created_at
-    type: datetime
-    computed: true
-
-  - name: updated_at
-    type: datetime
-    computed: true
-
   - name: base_offset
     type: float
     default: 0
@@ -31,10 +23,6 @@ fields:
   - name: mesh_file
     type: string
     description: Optional GLB mesh path for precise 3D visualization
-
-  - name: volume
-    type: float
-    computed: true
 
   - name: bbox_min_x
     type: float
