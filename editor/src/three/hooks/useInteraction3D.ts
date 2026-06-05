@@ -25,6 +25,10 @@ function resolveElementId(intersection: Intersection): string | null {
   return null;
 }
 
+/** Max pointer travel (px) for a press+release to still count as a "click"
+ *  rather than an orbit drag. */
+const CLICK_THRESHOLD_PX = 4;
+
 interface UseInteraction3DOptions {
   toolCtx: ToolContext;
   hitElementIdRef: React.RefObject<string | null>;
@@ -52,6 +56,11 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
 
   // Track whether our tool system owns the current gesture
   const toolOwnsGestureRef = useRef(false);
+
+  // Press position of a click that started on empty space while orbiting.
+  // If the pointer doesn't travel past CLICK_THRESHOLD_PX it's a bare click →
+  // clear the selection on release; otherwise it's an orbit drag (ignored).
+  const emptyClickRef = useRef<{ x: number; y: number } | null>(null);
 
   const toNDC = useCallback((clientX: number, clientY: number): Vector2 => {
     const rect = gl.domElement.getBoundingClientRect();
@@ -88,6 +97,9 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
 
     const handlePointerDown = (e: PointerEvent) => {
       if (e.button !== 0) return;
+      // Clear any stale pending deselect before this gesture starts (e.g. one
+      // left over from a resize-handle drag whose move/up were guarded away).
+      emptyClickRef.current = null;
       if (resizeDraggingRef.current) return;
 
       const tool = stateRef.current.activeTool;
@@ -108,12 +120,18 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       }
 
       if (tool === 'orbit') {
-        // Orbit tool: only take gesture if clicking an element; otherwise let OrbitControls handle it
         if (elementId) {
+          // Clicking a component: take the gesture so it gets SELECTED on
+          // release, but keep orbit disabled and swallow moves (see
+          // handlePointerMove) so it can't be dragged/moved directly in 3D.
           toolOwnsGestureRef.current = true;
           if (controlsRef.current) controlsRef.current.enabled = false;
           const handler = getToolHandler(tool);
           handler.onPointerDown?.(toolCtx, e as unknown as React.PointerEvent);
+        } else {
+          // Empty space: let OrbitControls drive the camera, but arm a
+          // bare-click deselect resolved on pointer-up.
+          emptyClickRef.current = { x: e.clientX, y: e.clientY };
         }
         return;
       }
@@ -126,7 +144,22 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       const tool = stateRef.current.activeTool;
       if (tool === 'pan' || tool === 'zoom') return;
 
+      // Once an empty-space press travels far enough it's an orbit drag, not a
+      // click — cancel the pending deselect.
+      if (emptyClickRef.current) {
+        if (
+          Math.abs(e.clientX - emptyClickRef.current.x) > CLICK_THRESHOLD_PX ||
+          Math.abs(e.clientY - emptyClickRef.current.y) > CLICK_THRESHOLD_PX
+        ) {
+          emptyClickRef.current = null;
+        }
+      }
+
       if (toolOwnsGestureRef.current) {
+        // In 3D, components are select-only: swallow moves for the select/orbit
+        // gesture so a drag never translates the element. Draw / relocate /
+        // rotate tools still need their move events.
+        if (tool === 'orbit' || tool === 'select') return;
         // Tool owns this gesture — route to tool handler
         const handler = getToolHandler(tool);
         handler.onPointerMove?.(toolCtx, e as unknown as React.PointerEvent);
@@ -144,6 +177,12 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
     const handlePointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
       if (resizeDraggingRef.current) return;
+
+      // Bare click on empty space (no orbit drag) clears the selection.
+      if (emptyClickRef.current) {
+        emptyClickRef.current = null;
+        if (!e.shiftKey) toolCtx.dispatch({ type: 'CLEAR_SELECTION' });
+      }
 
       if (toolOwnsGestureRef.current) {
         const tool = stateRef.current.activeTool;

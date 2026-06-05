@@ -15,6 +15,9 @@ const gesture = {
   isDragging: false,
   isMoving: false,
   isMarquee: false,
+  /** True once a marquee gesture has dragged past the move threshold. Lets
+   *  pointerup tell a real box-select from a bare click on empty space. */
+  marqueeMoved: false,
   startScreen: { x: 0, y: 0 },
   startSvg: { x: 0, y: 0 },
   clickedId: null as string | null,
@@ -29,6 +32,7 @@ const gesture = {
     this.isDragging = false;
     this.isMoving = false;
     this.isMarquee = false;
+    this.marqueeMoved = false;
     this.clickedId = null;
     this.beforeSnapshot = null;
     this.accumulatedDx = 0;
@@ -92,16 +96,13 @@ export const selectTool: ToolHandler = {
     }
 
     if (gesture.clickedId) {
-      const state = ctx.getState();
-      // If clicking an unselected element without shift, select it immediately
-      if (!e.shiftKey && !state.selectedIds.has(gesture.clickedId)) {
-        ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId] });
-      }
+      // Selection is committed on pointer-up (a completed click), not on
+      // press — see onPointerUp. Pressing only arms the gesture so a
+      // subsequent drag can move the element (onPointerMove selects it when
+      // the move actually starts).
     } else {
-      // Clicking on empty space
-      if (!e.shiftKey) {
-        ctx.dispatch({ type: 'CLEAR_SELECTION' });
-      }
+      // Clicking on empty space. Don't clear the selection yet — a bare click
+      // clears on release (onPointerUp); a drag from here becomes a marquee.
       // Prepare for marquee
       gesture.isMarquee = true;
       const sx = e.clientX - rect.left;
@@ -130,13 +131,21 @@ export const selectTool: ToolHandler = {
     if (gesture.isMarquee) {
       const rect = ctx.containerRef.current?.getBoundingClientRect();
       if (!rect) return;
+      const curX = e.clientX - rect.left;
+      const curY = e.clientY - rect.top;
+      if (
+        Math.abs(curX - gesture.startScreen.x) > MOVE_THRESHOLD ||
+        Math.abs(curY - gesture.startScreen.y) > MOVE_THRESHOLD
+      ) {
+        gesture.marqueeMoved = true;
+      }
       ctx.dispatch({
         type: 'SET_MARQUEE',
         marquee: {
           x1: gesture.startScreen.x,
           y1: gesture.startScreen.y,
-          x2: e.clientX - rect.left,
-          y2: e.clientY - rect.top,
+          x2: curX,
+          y2: curY,
         },
       });
       return;
@@ -256,11 +265,16 @@ export const selectTool: ToolHandler = {
       return;
     }
     if (gesture.isMarquee) {
-      // Finalize marquee selection
-      const state = ctx.getState();
-      const container = ctx.containerRef.current;
-      if (container && state.drawingState === null) {
-        finishMarquee(ctx, e);
+      if (gesture.marqueeMoved) {
+        // A real box-select: pick what's inside the rect.
+        const state = ctx.getState();
+        const container = ctx.containerRef.current;
+        if (container && state.drawingState === null) {
+          finishMarquee(ctx, e);
+        }
+      } else if (!e.shiftKey) {
+        // Bare click on empty space → clear the selection on release.
+        ctx.dispatch({ type: 'CLEAR_SELECTION' });
       }
       ctx.dispatch({ type: 'SET_MARQUEE', marquee: null });
     } else if (gesture.clickedId && gesture.isMoving && gesture.beforeSnapshot) {
@@ -273,11 +287,13 @@ export const selectTool: ToolHandler = {
       }
       ctx.dispatch({ type: 'COMMIT_PREVIEW', description: 'Move elements', before: gesture.beforeSnapshot, after });
     } else if (gesture.clickedId && !gesture.isMoving) {
-      // Simple click (no drag) — handle shift-toggle
+      // Completed click on an element (press + release, no drag) — this is
+      // where selection commits.
       if (e.shiftKey) {
         ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId], additive: true });
+      } else {
+        ctx.dispatch({ type: 'SELECT', ids: [gesture.clickedId] });
       }
-      // Non-shift already handled in onPointerDown
     }
 
     gesture.reset();
