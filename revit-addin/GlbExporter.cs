@@ -24,13 +24,19 @@ static class GlbExporter
         XYZ? origin = null, double rotationRad = 0)
     {
         var isFamilyInstance = element is Autodesk.Revit.DB.FamilyInstance;
-        var triangles = ExtractTriangles(element, useSymbolGeometry: isFamilyInstance);
+
+        // For FamilyInstance, prefer InstanceGeometry (placed solids in world coords)
+        // and transform back to local — SymbolGeometry is schematic/symbolic for many
+        // MEP families (HRU, diffusers, fittings, …) and returns only linework or
+        // tiny stub solids that look "non-empty" but are useless. We only fall back
+        // to SymbolGeometry when no origin is supplied (then we can't transform).
+        var useSymbolGeometry = isFamilyInstance && origin is null;
+        var triangles = ExtractTriangles(element, useSymbolGeometry);
         if (triangles.Count == 0) return null;
 
-        // FamilyInstance: GetSymbolGeometry() already gives local coords.
-        // Non-FamilyInstance with origin: transform to local (mesh table elements like Topography).
-        // No origin: keep world coords (fallback mesh for slabs, roofs, etc.).
-        if (!isFamilyInstance && origin is not null)
+        // Symbol path is already local. Instance path (FamilyInstance with origin) and
+        // non-FamilyInstance with origin both need world→local transform.
+        if (origin is not null && !useSymbolGeometry)
             TransformToLocal(triangles, origin, rotationRad);
 
         var doc = element.Document;
@@ -207,7 +213,11 @@ static class GlbExporter
         var options = new Options
         {
             DetailLevel = ViewDetailLevel.Fine,
-            ComputeReferences = false
+            ComputeReferences = false,
+            // Many MEP family categories (equipment, terminals, fittings) keep their
+            // 3D body on a subcategory that is hidden by default; without this flag
+            // get_Geometry returns only schematic linework and we lose the solids.
+            IncludeNonVisibleObjects = true,
         };
 
         var geomElement = element.get_Geometry(options);

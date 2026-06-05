@@ -8,9 +8,14 @@ static class GeometryUtils
 {
     public static (XYZ min, XYZ max)? GetBoundingBox(Element element)
     {
-        var bb = element.get_BoundingBox(null);
-        if (bb is null) return null;
-        return (bb.Min, bb.Max);
+        // For FamilyInstance prefer the symbol's bbox (family-local frame, shared
+        // by every instance of the type) — gives e.g. an AHU's nominal W×D×H
+        // regardless of placement rotation. Fall back to the world AABB.
+        BoundingBoxXYZ? bb = null;
+        if (element is FamilyInstance fi)
+            bb = fi.Symbol?.get_BoundingBox(null);
+        bb ??= element.get_BoundingBox(null);
+        return bb is null ? null : (bb.Min, bb.Max);
     }
 
     public static void WriteBoundingBox(Dictionary<string, string?> fields, Element element)

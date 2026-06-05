@@ -15,8 +15,6 @@ public class ElementExtractor : IFieldExtractor
     public IReadOnlyList<string> ComputedFieldNames { get; } =
     [
         "level_id", "created_at", "updated_at", "volume",
-        "bbox_min_x", "bbox_min_y", "bbox_min_z",
-        "bbox_max_x", "bbox_max_y", "bbox_max_z"
     ];
 
     // base_offset lives in the GeoJSON Feature properties (schema storage: geojson_property).
