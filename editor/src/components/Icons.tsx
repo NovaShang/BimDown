@@ -4,7 +4,7 @@ export type IconName =
   | 'select' | 'orbit' | 'pan' | 'zoom' | 'undo' | 'redo'
   | 'eye-visible' | 'eye-hidden'
   | 'wall' | 'curtain_wall' | 'structure_wall' | 'column' | 'structure_column' | 'window'
-  | 'door' | 'room' | 'room_separator' | 'slab' | 'roof' | 'ceiling' | 'structure_slab' | 'stair' | 'ramp' | 'railing' | 'opening'
+  | 'door' | 'room' | 'room_separator' | 'slab' | 'roof' | 'ceiling' | 'structure_slab' | 'stair' | 'stair_run' | 'stair_landing' | 'ramp' | 'railing' | 'opening'
   | 'duct' | 'pipe' | 'equipment' | 'terminal' | 'conduit' | 'cable_tray' | 'mep_node'
   | 'beam' | 'brace' | 'foundation' | 'grid';
 

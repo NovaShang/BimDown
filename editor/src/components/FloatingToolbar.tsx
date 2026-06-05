@@ -94,7 +94,10 @@ const ARCH_TOOL_GROUPS: { tools: string[] }[] = [
   { tools: ['wall', 'curtain_wall'] },
   { tools: ['space', 'room_separator'] },
   { tools: ['slab', 'ceiling'] },
-  { tools: ['stair', 'ramp', 'railing'] },
+  // Stair + its component parts (run, landing) collapse into one slot so the
+  // hosted sub-elements don't clutter the toolbar as standalone tools.
+  { tools: ['stair', 'stair_run', 'stair_landing'] },
+  { tools: ['ramp', 'railing'] },
 ];
 
 function toolForPlacement(placement: PlacementType): Tool {
