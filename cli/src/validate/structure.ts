@@ -14,7 +14,9 @@ const KNOWN_CSV_NAMES = new Set(Object.keys(ID_PREFIXES).map((t) => `${t}.csv`))
 const KNOWN_GEOJSON_NAMES = new Set(Object.values(GEOJSON_FILE_NAMES).map((s) => `${s}.geojson`));
 const KNOWN_GLOBAL_EXTRAS = new Set(['_IdMap.csv']);
 
-const CURRENT_FORMAT_VERSION = 2;
+// Minimum supported format version. v1 was SVG geometry; v2+ is GeoJSON. Builds
+// accept any version >= this (v2, v3, ...) since they share the GeoJSON format.
+const MIN_FORMAT_VERSION = 2;
 
 export function validateStructure(dir: string): string[] {
   const issues: string[] = [];
@@ -124,13 +126,14 @@ export function validateStructure(dir: string): string[] {
           const n = typeof fv === 'number' ? fv : parseInt(String(fv), 10);
           if (!Number.isFinite(n)) {
             issues.push(`project_metadata.json  invalid "format_version": ${fv}`);
-          } else if (n < CURRENT_FORMAT_VERSION) {
+          } else if (n < MIN_FORMAT_VERSION) {
             issues.push(
               `project_metadata.json  format_version ${n} is no longer supported. Run: npx tsx scripts/svg-to-geojson.ts <project_dir>`,
             );
-          } else if (n > CURRENT_FORMAT_VERSION) {
-            issues.push(`project_metadata.json  format_version ${n} is newer than CLI (${CURRENT_FORMAT_VERSION})`);
           }
+          // n >= MIN_FORMAT_VERSION is accepted: v2 and v3 are the same GeoJSON
+          // format (the API stamps new projects "3.0"); the number is just an
+          // identifier, so don't hard-fail builds on a "newer" minor bump.
         }
         for (const key of Object.keys(metadata)) {
           if (!['format_version', 'project_name', 'units', 'source'].includes(key)) {
