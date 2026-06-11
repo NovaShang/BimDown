@@ -155,29 +155,64 @@ function expandToolbarEntries(tables: string[]): ToolbarEntry[] {
   return out;
 }
 
+// ─── Entry helpers (shared by group + single buttons) ────────────────────────
+
+/** i18n label key for a toolbar entry (variant label, or table short label). */
+function entryLabelKey(e: ToolbarEntry): string {
+  return e.variant?.label ?? SHORT_LABEL_KEYS[e.table] ?? `layer.${e.table}`;
+}
+
+/** Keyboard shortcut for an entry — variants never carry shortcuts. */
+function entryShortcut(e: ToolbarEntry): string | null {
+  return e.variant ? null : (TABLE_SHORTCUT[e.table] ?? null);
+}
+
+/** Render an entry's icon: variant SVG → variant glyph → table SVG. */
+function EntryIcon({ entry, size = 22 }: { entry: ToolbarEntry; size?: number }) {
+  const v = entry.variant;
+  if (v?.iconName) return <Icon name={v.iconName} width={size} height={size} />;
+  if (v) {
+    return (
+      <span className="inline-flex items-center justify-center"
+        style={{ width: size, height: size, fontSize: Math.round(size * 0.82), lineHeight: 1 }}>
+        {v.icon}
+      </span>
+    );
+  }
+  return <Icon name={iconForTable(entry.table)} width={size} height={size} />;
+}
+
 // ─── ToolGroupButton ─────────────────────────────────────────────────────────
 
+/** A collapsible toolbar slot shared by several entries. Entries are either
+ *  distinct tables (e.g. stair / run / landing) or variants of one table
+ *  (e.g. isolated / strip / raft foundation). */
 interface ToolGroupButtonProps {
-  tools: string[];
+  entries: ToolbarEntry[];
   discipline: string;
   disciplineColor: string;
   activeTable: string | null;
+  activeVariantId: string | null;
   activeDiscipline: string | null;
-  onToolClick: (table: string, discipline: string) => void;
+  onToolClick: (table: string, discipline: string, variantId?: string) => void;
 }
 
-function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, activeDiscipline, onToolClick }: ToolGroupButtonProps) {
+function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, activeVariantId, activeDiscipline, onToolClick }: ToolGroupButtonProps) {
   const { t } = useTranslation();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
+  const isEntryActive = useCallback((e: ToolbarEntry) =>
+    activeDiscipline === discipline
+    && activeTable === e.table
+    && (activeVariantId ?? undefined) === (e.variantId ?? undefined),
+  [activeDiscipline, discipline, activeTable, activeVariantId]);
+
   // If the active tool is in this group, show it
-  const activeIdx = activeTable && activeDiscipline === discipline
-    ? tools.indexOf(activeTable)
-    : -1;
-  const displayIdx = activeIdx >= 0 ? activeIdx : selectedIndex;
-  const displayTable = tools[displayIdx];
+  const activeIdx = entries.findIndex(isEntryActive);
+  const displayIdx = activeIdx >= 0 ? activeIdx : Math.min(selectedIndex, entries.length - 1);
+  const displayEntry = entries[displayIdx];
   const isActive = activeIdx >= 0;
 
   // Close dropdown on outside click
@@ -193,8 +228,8 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
   }, [open]);
 
   const handleMainClick = useCallback(() => {
-    onToolClick(displayTable, discipline);
-  }, [displayTable, discipline, onToolClick]);
+    onToolClick(displayEntry.table, discipline, displayEntry.variantId);
+  }, [displayEntry, discipline, onToolClick]);
 
   const handleExpandClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -206,13 +241,15 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
     setOpen(prev => !prev);
   }, []);
 
-  const handleSelect = useCallback((table: string, idx: number) => {
+  const handleSelect = useCallback((entry: ToolbarEntry, idx: number) => {
     setSelectedIndex(idx);
     setOpen(false);
-    onToolClick(table, discipline);
+    onToolClick(entry.table, discipline, entry.variantId);
   }, [discipline, onToolClick]);
 
-  const style = LAYER_STYLES[displayTable];
+  const shortcut = entryShortcut(displayEntry);
+  const labelKey = entryLabelKey(displayEntry);
+  const style = LAYER_STYLES[displayEntry.table];
 
   return (
     <div ref={containerRef} className="relative flex">
@@ -233,13 +270,16 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
           onContextMenu={handleContextMenu}
         >
           <span className="relative text-base leading-none">
-            <Icon name={iconForTable(displayTable)} />
-            {TABLE_SHORTCUT[displayTable] && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{TABLE_SHORTCUT[displayTable]}</kbd>}
+            <EntryIcon entry={displayEntry} />
+            {shortcut && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{shortcut}</kbd>}
           </span>
-          <span className="whitespace-nowrap text-[9px] leading-none">{t(SHORT_LABEL_KEYS[displayTable] || `layer.${displayTable}`)}</span>
+          <span className="whitespace-nowrap text-[9px] leading-none">{t(labelKey)}</span>
         </TooltipTrigger>
         <TooltipContent side="top">
-          {style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : displayTable}{TABLE_SHORTCUT[displayTable] ? ` (${TABLE_SHORTCUT[displayTable]})` : ''}
+          {displayEntry.variant
+            ? t('draw.tooltip', { name: t(labelKey) })
+            : (style ? t('draw.tooltip', { name: t(`display.${style.displayName}`) }) : displayEntry.table)}
+          {shortcut ? ` (${shortcut})` : ''}
         </TooltipContent>
       </Tooltip>
       {/* Expand arrow — separate right-side strip with upward chevron */}
@@ -263,11 +303,11 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
         <div className="absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 glass-panel rounded-lg border border-border py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-1 duration-150"
           style={{ minWidth: '7rem' }}
         >
-          {tools.map((table, idx) => {
-            const isItemActive = activeTable === table && activeDiscipline === discipline;
+          {entries.map((entry, idx) => {
+            const isItemActive = isEntryActive(entry);
             return (
               <button
-                key={table}
+                key={entry.key}
                 className={cn(
                   'flex w-full items-center gap-2 px-2.5 py-1.5 text-left text-xs transition-colors',
                   isItemActive
@@ -275,10 +315,10 @@ function ToolGroupButton({ tools, discipline, disciplineColor, activeTable, acti
                     : 'text-foreground hover:bg-accent'
                 )}
                 style={{ '--tool-color': disciplineColor } as React.CSSProperties}
-                onClick={() => handleSelect(table, idx)}
+                onClick={() => handleSelect(entry, idx)}
               >
-                <Icon name={iconForTable(table)} width={16} height={16} />
-                <span>{t(SHORT_LABEL_KEYS[table] || `layer.${table}`)}</span>
+                <EntryIcon entry={entry} size={16} />
+                <span>{t(entryLabelKey(entry))}</span>
               </button>
             );
           })}
@@ -360,9 +400,17 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   const activeVariantId = state.drawingTarget?.variantId ?? null;
 
   // Expand variants into per-variant pseudo-entries for the flat (non-architecture)
-  // rendering branch. Architecture groups never include variant-bearing modules
-  // today (foundation lives in 'structure'), so we leave the group path alone.
+  // rendering branch, then group consecutive entries of the same table so a
+  // multi-variant module collapses into one slot. Architecture uses its own
+  // group path above, so this only drives non-architecture disciplines.
   const flatEntries = expandToolbarEntries(disciplineTables);
+  const flatGroups: ToolbarEntry[][] = [];
+  for (const entry of flatEntries) {
+    if (!LAYER_STYLES[entry.table]) continue;
+    const last = flatGroups[flatGroups.length - 1];
+    if (last && last[0].table === entry.table) last.push(entry);
+    else flatGroups.push([entry]);
+  }
 
   return (
     <div data-tour="toolbar" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
@@ -440,10 +488,11 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
                 item.type === 'group' ? (
                   <ToolGroupButton
                     key={i}
-                    tools={item.tools}
+                    entries={expandToolbarEntries(item.tools)}
                     discipline={activeDiscipline!}
                     disciplineColor={disciplineColor}
                     activeTable={activeTable}
+                    activeVariantId={activeVariantId}
                     activeDiscipline={state.drawingTarget?.discipline ?? null}
                     onToolClick={handleDrawToolClick}
                   />
@@ -460,25 +509,35 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
               )}
             </>
           ) : (
-            // Non-architecture: flat list (with variant expansion)
-            flatEntries.map(entry => {
-              const style = LAYER_STYLES[entry.table];
-              if (!style) return null;
-              const isActive = activeTable === entry.table
-                && state.drawingTarget?.discipline === activeDiscipline
-                && (activeVariantId ?? undefined) === entry.variantId;
-              return (
-                <SingleToolButton
-                  key={entry.key}
-                  table={entry.table}
-                  variant={entry.variant}
+            // Non-architecture: flat list. Variants of one table (e.g. the
+            // foundation isolated/strip/raft trio) collapse into a single
+            // group slot instead of leaking out as standalone buttons.
+            flatGroups.map((group, i) =>
+              group.length > 1 ? (
+                <ToolGroupButton
+                  key={`g${i}`}
+                  entries={group}
                   discipline={activeDiscipline!}
                   disciplineColor={disciplineColor}
-                  isActive={isActive}
+                  activeTable={activeTable}
+                  activeVariantId={activeVariantId}
+                  activeDiscipline={state.drawingTarget?.discipline ?? null}
+                  onToolClick={handleDrawToolClick}
+                />
+              ) : (
+                <SingleToolButton
+                  key={group[0].key}
+                  table={group[0].table}
+                  variant={group[0].variant}
+                  discipline={activeDiscipline!}
+                  disciplineColor={disciplineColor}
+                  isActive={activeTable === group[0].table
+                    && state.drawingTarget?.discipline === activeDiscipline
+                    && (activeVariantId ?? undefined) === group[0].variantId}
                   onClick={handleDrawToolClick}
                 />
-              );
-            })
+              )
+            )
           )}
         </div>
       )}
@@ -563,9 +622,11 @@ function SingleToolButton({ table, variant, discipline, disciplineColor, isActiv
         onClick={() => onClick(table, discipline, variant?.id)}
       >
         <span className="relative text-base leading-none">
-          {isVariant
-            ? <span className="inline-flex items-center justify-center" style={{ width: 22, height: 22, fontSize: 18, lineHeight: 1 }}>{variant!.icon}</span>
-            : <Icon name={iconForTable(table)} />}
+          {variant?.iconName
+            ? <Icon name={variant.iconName} />
+            : isVariant
+              ? <span className="inline-flex items-center justify-center" style={{ width: 22, height: 22, fontSize: 18, lineHeight: 1 }}>{variant!.icon}</span>
+              : <Icon name={iconForTable(table)} />}
           {shortcut && <kbd className="absolute -top-0.5 -right-1.5 text-[9px] leading-none font-normal opacity-50 pointer-events-none">{shortcut}</kbd>}
         </span>
         <span className="whitespace-nowrap text-[9px] leading-none">{t(labelKey)}</span>

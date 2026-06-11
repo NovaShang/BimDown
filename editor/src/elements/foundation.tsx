@@ -67,9 +67,9 @@ export const foundationModule: ElementModule<FoundationFacts> = {
   layerStyle: { displayName: 'Foundations', color: '#8d6e63', icon: '▨', order: 8.1 },
   renderZIndex: 22,
   toolbarVariants: [
-    { id: 'isolated', label: 'layer.isolated_foundation', icon: '◼', placementType: 'free_point' },
-    { id: 'strip',    label: 'layer.strip_foundation',    icon: '▬', placementType: 'free_line' },
-    { id: 'raft',     label: 'layer.raft_foundation',     icon: '▢', placementType: 'free_polygon' },
+    { id: 'isolated', label: 'layer.isolated_foundation', icon: '◼', iconName: 'isolated_foundation', placementType: 'free_point' },
+    { id: 'strip',    label: 'layer.strip_foundation',    icon: '▬', iconName: 'strip_foundation',    placementType: 'free_line' },
+    { id: 'raft',     label: 'layer.raft_foundation',     icon: '▢', iconName: 'raft_foundation',     placementType: 'free_polygon' },
   ],
 
   geometry(el: CanonicalElement, ctx: GeometryContext): FoundationFacts | null {

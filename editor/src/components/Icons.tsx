@@ -6,7 +6,7 @@ export type IconName =
   | 'wall' | 'curtain_wall' | 'structure_wall' | 'column' | 'structure_column' | 'window'
   | 'door' | 'room' | 'room_separator' | 'slab' | 'roof' | 'ceiling' | 'structure_slab' | 'stair' | 'stair_run' | 'stair_landing' | 'ramp' | 'railing' | 'opening'
   | 'duct' | 'pipe' | 'equipment' | 'terminal' | 'conduit' | 'cable_tray' | 'mep_node'
-  | 'beam' | 'brace' | 'foundation' | 'grid';
+  | 'beam' | 'brace' | 'foundation' | 'isolated_foundation' | 'strip_foundation' | 'raft_foundation' | 'grid';
 
 // Dynamically load all SVG files as raw strings
 const svgModules = import.meta.glob('../assets/icons/*.svg', { eager: true, query: '?raw', import: 'default' });

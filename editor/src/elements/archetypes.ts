@@ -297,8 +297,12 @@ export interface ToolbarVariant {
   id: string;
   /** Toolbar short label. Plain text or i18n key — resolved at render time. */
   label: string;
-  /** Single-char icon shown in the toolbar (matches LayerStyle.icon style). */
+  /** Single-char fallback icon (matches LayerStyle.icon style). Used when
+   *  `iconName` is not set. */
   icon: string;
+  /** Name of an SVG icon (in assets/icons) to render instead of `icon`.
+   *  Preferred so variants look consistent with the rest of the toolbar. */
+  iconName?: string;
   /** Placement type for this variant — overrides module's default placement. */
   placementType: PlacementType;
   /** Default attrs merged on top of `module.defaults` when this variant is used. */
