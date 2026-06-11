@@ -186,7 +186,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   // Use document model for rendering when available
   const processedLayers = useMemo(
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
-    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline],
+    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline, state.showArchContext],
   );
   // viewBox only recomputes on level change / project load — not on every edit.
   // This keeps the canvas coordinate space stable during drawing; SVG overflow:visible
