@@ -29,6 +29,7 @@ export const meshModule: ElementModule<MeshFacts> = {
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Mesh Objects', color: '#9e9e9e', icon: '◇', order: 20 },
+  hiddenFromToolbar: true,  // No GLB upload flow yet — meshes only arrive via Revit import / AI tools.
   renderZIndex: 5,
 
   geometry(el: CanonicalElement, _ctx: GeometryContext): MeshFacts | null {
