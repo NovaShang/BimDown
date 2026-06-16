@@ -9,7 +9,7 @@ import {
   HINGE_OPTIONS,
   SWING_SIDE_OPTIONS,
 } from './_options.ts';
-import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { doorMesh3D } from './_opening3D.tsx';
 
 const BLOCK_MAP: Record<string, string> = {
   single_swing: 'door_single_swing',
@@ -33,6 +33,7 @@ export interface DoorFacts {
   width: number;
   thickness: number;
   material: string;
+  operation: string;
 }
 
 const DEFAULT_HEIGHT = 2.1;
@@ -95,6 +96,7 @@ export const doorModule: ElementModule<DoorFacts> = {
       width: parseFloat(d.attrs.width || '0.9') || 0.9,
       thickness: d.strokeWidth || 0.04,
       material: d.attrs.material || '',
+      operation,
     };
   },
 
@@ -113,28 +115,9 @@ export const doorModule: ElementModule<DoorFacts> = {
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    // Box mesh sitting in the opening: center at (cx, baseY + height/2, -cy).
-    // R3F coord convention here mirrors V1 doorWindowBuilder: Y=elevation, Z=-svgY.
-    const cx = (facts.start.x + facts.end.x) / 2;
-    const cySvg = (facts.start.y + facts.end.y) / 2;
-    const cy = facts.baseY + facts.height / 2;
-    const angleRad = (facts.angleDeg * Math.PI) / 180;
-    const material = getBimMaterial(resolveBimMaterial(facts.material, 'door'));
-    const isHL = drawCtx.selected || drawCtx.hovered;
-    return (
-      <mesh
-        position={[cx, cy, -cySvg]}
-        rotation={[0, angleRad, 0]}
-        scale={[facts.length, facts.height, facts.thickness]}
-        material={isHL ? undefined : material}
-        userData={{ elementId: facts.id }}
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        {isHL && (
-          <meshStandardMaterial attach="material" color="#06b6d4"
-            transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-        )}
-      </mesh>
+    return doorMesh3D(
+      { ...facts, strokeWidth: facts.thickness },
+      drawCtx.selected || drawCtx.hovered,
     );
   },
 };
