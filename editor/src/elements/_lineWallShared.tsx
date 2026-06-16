@@ -233,7 +233,14 @@ export function collectWallOpenings(el: LineElement, ctx: GeometryContext): Wall
     }
     const defaultH = tbl === 'window' ? 1.2 : 2.1;
     const height = parseFloat(hosted.attrs.height || `${defaultH}`) || defaultH;
-    const sillHeight = parseFloat(hosted.attrs.base_offset || '0') || 0;
+    // Sill height = base_offset when set. When ABSENT, default a window to a
+    // 0.9m sill (matches the window tool's default) so AI-built windows aren't
+    // stuck on the floor; doors/openings stay at 0. An explicit "0" is honored
+    // (floor-to-ceiling window), so we distinguish absent from zero.
+    const rawSill = hosted.attrs.base_offset;
+    const sillHeight = (rawSill !== undefined && rawSill !== '')
+      ? (parseFloat(rawSill) || 0)
+      : (tbl === 'window' ? 0.9 : 0);
     const shape = (hosted.attrs.shape || 'rect') as 'rect' | 'round' | 'arch';
     result.push({ hostedId: hosted.id, hostedTable: tbl, position, width, height, sillHeight, shape });
   }
