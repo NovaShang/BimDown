@@ -4,6 +4,14 @@ bases:
 abstract: true
 
 fields:
+  # Override element.base_offset (geojson_property) → CSV: hosted elements are
+  # CSV-only (no GeoJSON file), so their sill/base height lives in the CSV.
+  - name: base_offset
+    type: float
+    default: 0
+    storage: csv
+    description: Sill/base height — vertical offset of the opening bottom from the host's base level, meters. Windows default to a 0.9m sill in viewers when unset.
+
   - name: host_id
     type: reference
     reference: element
