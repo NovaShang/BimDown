@@ -28,17 +28,17 @@ export function initProject(absDir: string) {
   // Create level.csv
   const levelCsvPath = join(globalDir, 'level.csv');
   if (!existsSync(levelCsvPath)) {
-    writeFileSync(levelCsvPath, 'id,name,elevation\nlv-1,Level 1,0.0\n', 'utf-8');
+    writeFileSync(levelCsvPath, 'id,number,name,elevation\nlv-1,1,Level 1,0.0\n', 'utf-8');
   }
 
   // Create grid.csv
   const gridCsvPath = join(globalDir, 'grid.csv');
   if (!existsSync(gridCsvPath)) {
-    // 2 axes (mutually perpendicular, e.g., X goes along Y=0 from X=-10000 to X=10000)
+    // 2 axes (mutually perpendicular), 20 units long in the default unit (m)
     const gridContent = [
-      'id,name,role,start_x,start_y,end_x,end_y',
-      'gr-1,A,primary,-10000,0,10000,0',
-      'gr-2,1,primary,0,-10000,0,10000'
+      'id,number,start_x,start_y,end_x,end_y',
+      'gr-1,A,-10,0,10,0',
+      'gr-2,1,0,-10,0,10'
     ].join('\n') + '\n';
     writeFileSync(gridCsvPath, gridContent, 'utf-8');
   }
