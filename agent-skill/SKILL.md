@@ -72,7 +72,7 @@ Most elements are **level-anchored**: their geometry is 2D and their height come
 | `beam`, `brace` | **3D** LineString `[x, y, z]` | z − `size_y` | **z = TOP of the member** |
 | `stair`, `ramp`, `railing` | 3D LineString | z of the walking surface (start = bottom of run) | |
 | duct, pipe, cable_tray, conduit | 3D LineString | | z = **centre line** |
-| `door`, `window`, `opening` | none (hosted) | host base + `base_offset` (sill) | + `height` |
+| `door`, `window`, `opening` | none (hosted) | **level** + `base_offset` (sill height above the level, not above the wall base) | + `height` |
 
 So a 180 mm slab whose top is at −0.100 on level `lv-1` (elevation 0) is `base_offset: -0.1, thickness: 0.18`; a 300×700 beam whose top is flush with that slab has z = −0.1 and `size_y: 0.7`.
 
@@ -179,7 +179,7 @@ wn-1,C1515,w-7,4.2,1.5,1.5,0.9,aluminum
 ```
 
 - `position ± width/2` must stay within the wall; openings on one wall must not overlap.
-- Windows: always set `base_offset` = sill height (0.9 typical); 0 puts the window on the floor.
+- `base_offset` is measured from the level elevation (like Revit's sill height), even when the host wall starts below the level. Windows: always set it (0.9 typical); 0 puts the window on the level.
 - Put the drawing's mark (e.g. `FM甲1022`, `C1515`) in `number`.
 
 ## 8. CLI reference
