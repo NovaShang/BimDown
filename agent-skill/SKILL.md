@@ -1,7 +1,7 @@
 ---
 name: bimdown
-version: 2.0.0
-description: A bridge between AI and building data. Read & create BIM exactly like writing code. Execute architectural design, or just model your own house!
+version: 2.1.0
+description: Read, create and edit BIM models in the BimDown format (CSV attributes + GeoJSON geometry, one folder per level) with the `bimdown` CLI — architecture, structure, foundations and MEP. Use when asked to build a building model from drawings or a brief, to query or check an existing BimDown project, or when a task mentions BimDown / BimClaw.
 metadata:
   {
     "openclaw": {
@@ -23,273 +23,195 @@ metadata:
   }
 ---
 
-# BimDown Agent Skill & Schema Rules
+# BimDown
 
-> **Your Mission:** A bridge between AI agents and building data. Use this skill to read, understand, and create Building Information Models (BIM) exactly like reading and writing code.
+BimDown is a plain-text BIM format: **CSV for attributes, GeoJSON for geometry**, one directory per level. You create a model by writing files (usually from a script), then validate and inspect it with the `bimdown` CLI.
 
-## Setup / Prerequisites
+## Setup
 
-This skill **REQUIRES** the `bimdown` binary (provided by the `bimdown-cli` npm package).
+`bimdown --version` must work. If it is missing, ask the user before running `npm install -g bimdown-cli`.
 
-1. **Check first**: Run `which bimdown` (or `bimdown --version`). If it exists, skip the install step.
-2. **If missing**: Install via npm — ask the user for permission before running `npm install -g`.
-
-```bash
-npm install -g bimdown-cli
-```
-
-You are an AI Coder operating within a BimDown project environment.
-BimDown is an open-source, AI-native building data format using **CSV for attributes** and **GeoJSON for geometry**.
-
-## Core Architecture
-
-- **Units are project-declared** — read `project_metadata.json::units` (`m` / `ft` / `in` / `mm`; defaults to `m` when absent). See the [Units](#units) section below. Every coordinate and dimension in CSV / GeoJSON is in that unit — there is no internal canonical conversion.
-- **CSV holds attributes** (material, thickness, sizes, FKs, enums). **GeoJSON holds geometry** (Point / LineString / Polygon) plus optional numeric hints (`base_offset`, `top_offset`, `arc`, `rotation`).
-- **Computed fields are READ-ONLY**: `length`, `area`, `height`, `start_x/y/z`, `end_x/y/z`, `x`, `y`, `rotation`, `points`, `volume`, `bbox_*`, `level_id`. Never write them anywhere — the CLI hydrates them at query time.
-- **The `id` field links CSV row ↔ GeoJSON `properties.id`** for each element.
-- **`format_version: 2`** in `project_metadata.json`. Legacy SVG projects (v1) must be migrated first via the `svg-to-geojson` script.
-
-## Project Directory Structure
+## 1. Project layout
 
 ```
 project/
-  project_metadata.json     # { "format_version": 2, "units": "m", ... }
-  global/                   # cross-floor reference + multi-level geometry
-    level.csv               # floor elevations (Z source of truth)
-    grid.csv                # structural grid lines (inline coords)
-    wall.geojson + wall.csv # multi-story walls
-    pipe.geojson + pipe.csv # vertical risers
-    ...
-  lv-1/                     # per-level element files
+  project_metadata.json        { "format_version": 2, "units": "m" }
+  global/
+    level.csv                  id,number,name,elevation      ← Z source of truth
+    grid.csv                   id,number,start_x,start_y,end_x,end_y
+    <table>.csv/.geojson       elements spanning more than one level (multi-storey walls, risers)
+  lv-B1/                       one directory per level; the directory name IS the level id
     wall.csv + wall.geojson
-    column.csv + column.geojson
-    slab.csv + slab.geojson
-    door.csv                # hosted: CSV only (host_id + position)
-    window.csv              # hosted: CSV only
-    space.csv               # seed point only (boundary auto-generated)
+    door.csv                   hosted: CSV only
+    foundation.csv + foundation.geojson
     ...
-  lv-2/
-    ...
+  lv-1/
+    beam.csv + beam.geojson
+    structure_slab.csv + structure_slab.geojson
 ```
 
-**Key partition rules**:
-- An element's `base_level_id` is **always** the containing directory's level. To express a multi-level element (e.g. a wall spanning lv-1 → lv-3), place it in `global/`.
-- Spatial elements (beam, ramp, duct, pipe…) live in the level they primarily belong to. Only true cross-level instances (vertical risers, multi-flight stairs) go in `global/`.
+- Start with `bimdown init <dir>`, then edit `global/level.csv` (elevations are absolute, basements negative) and `global/grid.csv`.
+- An element's base level is **always the directory it is in**. Put it in the level it starts from; only elements spanning more than one level go to `global/`.
+- **Units**: whatever `project_metadata.json` declares (`m` default; also `ft`, `in`, `mm`). Every number in every file is in that unit. Use metres unless told otherwise.
+- **IDs**: `{prefix}-{n}` with digits (`w-12`, `sc-3`, `f-40`); `lv-*` / `gr-*` may use any suffix. IDs are unique per table **per level**. The CSV row and its GeoJSON Feature share the id (`properties.id`).
+- Coordinates: project-local, `+X` east, `+Y` north, `+Z` up. No `crs`, no Y flip.
 
-## Units
+## 2. Vertical conventions (read this before writing any Z)
 
-BimDown is **store-as-displayed**: every coordinate, length, thickness, position, and offset in every CSV / GeoJSON file is written in the unit declared by `project_metadata.json::units`. There is no internal canonical unit and no implicit conversion.
+Most elements are **level-anchored**: their geometry is 2D and their height comes from the level elevation plus offsets. Framing and MEP are **spatial**: their geometry carries absolute Z.
 
-**File-level invariant** — once a project declares `"units": "ft"`, every `0.3` you read or write is 0.3 feet. The same number in a `"units": "m"` project is 0.3 meters.
+| Table | Geometry | Bottom | Top |
+|---|---|---|---|
+| `wall`, `structure_wall`, `curtain_wall` | 2D LineString (centre line) | level + `base_offset` | `top_level_id` elevation + `top_offset` (default: next level up) |
+| `column`, `structure_column` | 2D Point (centre) | level + `base_offset` | `top_level_id` elevation + `top_offset` |
+| `slab`, `structure_slab` | 2D Polygon | top − `thickness` | **level + `base_offset` = TOP face** |
+| `foundation` (raft, pad, pile cap, strip) | 2D Polygon / Point / LineString | top − `thickness` | **level + `base_offset` = TOP face** |
+| `roof` | 2D Polygon | level + `base_offset` | (sits on top of the walls below) |
+| `ceiling` | 2D Polygon | level + `height_offset` | — |
+| `beam`, `brace` | **3D** LineString `[x, y, z]` | z − `size_y` | **z = TOP of the member** |
+| `stair`, `ramp`, `railing` | 3D LineString | z of the walking surface (start = bottom of run) | |
+| duct, pipe, cable_tray, conduit | 3D LineString | | z = **centre line** |
+| `door`, `window`, `opening` | none (hosted) | host base + `base_offset` (sill) | + `height` |
 
-**Before writing or editing any numeric value, read `project_metadata.json` and note the unit.** All the "typical values" tables below assume meters; multiply by the appropriate factor when working in another unit (e.g. a 0.15 m partition wall is ~0.49 ft, ~5.9 in, ~150 mm).
+So a 180 mm slab whose top is at −0.100 on level `lv-1` (elevation 0) is `base_offset: -0.1, thickness: 0.18`; a 300×700 beam whose top is flush with that slab has z = −0.1 and `size_y: 0.7`.
 
-**Allowed values** (enum):
+`bimdown query` reports the resulting extents in `bbox_min_z` / `bbox_max_z` for every element — use it to check your elevations (see §6).
 
-| Value | Meaning | Notes |
-|---|---|---|
-| `m` | meter | default when field is missing — preserves all pre-units projects |
-| `ft` | foot (decimal) | imperial, decimal — `1.25` means 1.25 ft, not 1'-3" |
-| `in` | inch | imperial small-scale |
-| `mm` | millimeter | metric small-scale (typical in Asia/EU construction docs) |
+## 3. Where each field lives
 
-**Do not convert existing data when changing the unit field.** Switching `units` without converting the numeric payload changes the physical meaning of the project. A separate `bimdown convert --to <unit>` workflow (future) is the only correct way to re-scale.
+| Field | Lives in |
+|---|---|
+| `id` | both (CSV row ↔ `properties.id`) |
+| `base_offset`, `top_offset`, `arc`, `rotation`, `height_offset` | GeoJSON `properties` — **except hosted elements** (door / window / opening), which have no GeoJSON, so their `base_offset` is a CSV column |
+| `base_level_id`, `top_level_id`, `host_id`, `position`, `thickness`, `size_x`, `size_y`, `shape`, `material`, `number`, enums | CSV |
+| `length`, `area`, `height`, `x`, `y`, `start_*`, `end_*`, `points`, `volume`, `bbox_*`, `level_id` | **computed — never write them** |
 
-## Z-Axis Handling (Important — read carefully)
+Run `bimdown schema <table>` for the exact columns of any table. Use `number` for the element mark / type label you want to keep (e.g. `KL3(2) 300x700`, `FM甲1022`, `CT2`).
 
-Two modes depending on the element type:
-
-### Level-anchored elements (wall, column, slab, ceiling, roof, curtain_wall, room_separator)
-
-- GeoJSON `geometry.coordinates` are **2D** `[x, y]` — no Z.
-- `base_level_id`, `top_level_id` in **CSV** (FKs). Defaults: base = directory level; top = level immediately above base.
-- Numeric Z offsets (optional, default 0) in **GeoJSON `properties`**: `base_offset`, `top_offset`.
-- This means: changing a level's elevation in `level.csv` auto-updates every anchored element. AI never does arithmetic on level elevations.
-
-### Spatial elements (beam, brace, stair, ramp, railing, duct, pipe, cable_tray, conduit, equipment, terminal, mep_node)
-
-- GeoJSON `geometry.coordinates` are **3D** `[x, y, z]` (absolute Z in meters).
-- `base_level_id` (CSV) is still recorded for partitioning, but geometry is self-contained in 3D.
-
-## GeoJSON Geometry Reference
-
-Every Feature has `properties.id` matching the paired CSV row.
-
-### Canonical forms
+## 4. Geometry forms
 
 ```jsonc
-// Straight wall (level-anchored, 2D)
-{
-  "type": "Feature",
-  "properties": { "id": "w-1" },
-  "geometry": { "type": "LineString", "coordinates": [[0, 0], [5, 0]] }
-}
+// wall / structure_wall: centre line, exactly 2 points
+{ "type": "Feature", "properties": { "id": "w-1" },
+  "geometry": { "type": "LineString", "coordinates": [[0, 0], [8.4, 0]] } }
 
-// Curved wall: 2 endpoints + arc properties
-{
-  "type": "Feature",
-  "properties": { "id": "w-2", "arc": { "radius": 3, "large_arc": false, "sweep": true } },
-  "geometry": { "type": "LineString", "coordinates": [[5, 0], [5, 6]] }
-}
+// curved wall: the 2 end points + arc (or write a tessellated polyline; build converts it)
+{ "type": "Feature", "properties": { "id": "w-2", "arc": { "radius": 11.47, "large_arc": false, "sweep": true } },
+  "geometry": { "type": "LineString", "coordinates": [[60, 10], [66, 20]] } }
 
-// Column (level-anchored Point; section attrs live in CSV)
-{
-  "type": "Feature",
-  "properties": { "id": "c-1" },
-  "geometry": { "type": "Point", "coordinates": [2, 2] }
-}
+// column: centre point; section in CSV (shape, size_x, size_y); rotation in degrees CCW in properties
+{ "type": "Feature", "properties": { "id": "sc-1", "top_offset": -0.1 },
+  "geometry": { "type": "Point", "coordinates": [8.4, 6.0] } }
 
-// Beam (spatial 3D LineString)
-{
-  "type": "Feature",
-  "properties": { "id": "bm-1" },
-  "geometry": { "type": "LineString", "coordinates": [[0, 0, 3.5], [10, 5, 3.7]] }
-}
+// slab with a shaft opening: outer ring + hole rings
+{ "type": "Feature", "properties": { "id": "ss-1", "base_offset": -0.1 },
+  "geometry": { "type": "Polygon", "coordinates": [
+    [[0, 0], [16.8, 0], [16.8, 12], [0, 12], [0, 0]],
+    [[3, 3], [5, 3], [5, 6], [3, 6], [3, 3]] ] } }
 
-// Slab (2D Polygon, closed ring; CSV has thickness, material)
-{
-  "type": "Feature",
-  "properties": { "id": "sl-1" },
-  "geometry": { "type": "Polygon", "coordinates": [[[0,0],[10,0],[10,8],[0,8],[0,0]]] }
-}
+// beam: 3D line at the top of the beam
+{ "type": "Feature", "properties": { "id": "bm-1" },
+  "geometry": { "type": "LineString", "coordinates": [[0, 6, -0.1], [8.4, 6, -0.1]] } }
+
+// pile cap / pad footing: give the real footprint as a Polygon (unambiguous size and orientation)
+{ "type": "Feature", "properties": { "id": "f-7", "base_offset": -0.6 },
+  "geometry": { "type": "Polygon", "coordinates": [[[7.0, 4.6], [9.8, 4.6], [9.8, 7.4], [7.0, 7.4], [7.0, 4.6]]] } }
 ```
 
-**Disconnected polygons — no `MultiPolygon`**: When a split produces multiple disconnected pieces (typical: slicing an L-shaped slab through its notch), emit them as **separate Features with suffixed ids** (`sl-18a`, `sl-18b`, …), each a single `Polygon`. `MultiPolygon` / `MultiLineString` / `MultiPoint` / `GeometryCollection` are not allowed in canonical form. The `bimdown-cli` library's `writeBimDownGeometry` does this automatically when JSTS operations return Multi* results — if you write geometry through it, you don't have to think about the rule.
+- **No Multi\* geometries.** A slab cut into disconnected pieces becomes separate Features with their own ids.
+- `build` also accepts and normalises: tessellated arcs, columns written as 4-vertex polygons, unclosed rings, 3D coordinates on level-anchored elements with a constant Z.
 
-### AI input flexibility (build normalizes everything)
+## 5. Choosing tables
 
-You can write any of these equivalent forms; `bimdown build` normalizes to canonical:
-
-| Variant you write | Build action |
+| You are modelling | Use |
 |---|---|
-| Arc wall as tessellated polyline (`LineString` with N≥3 points on a circle) | Detects arc → emits 2-point LineString + `properties.arc` |
-| Rectangular column as 4-vertex Polygon | Extracts `shape/size_x/size_y` to CSV, `rotation` to properties; geometry → Point at centroid |
-| Round column as regular polygon approximation (N≥8 vertices on a circle) | Extracts `shape="round"`, sizes; geometry → Point at center |
-| Unclosed Polygon ring | Auto-closes |
-| 3D coordinates on a level-anchored element with constant Z | Drops Z; if `Z != base_level.elevation + base_offset`, recomputes `base_offset` |
+| Partition / masonry / finish walls | `wall` |
+| Concrete shear walls, retaining walls, core walls, pit walls | `structure_wall` (material concrete) |
+| Architectural column casing | `column` |
+| Structural columns | `structure_column` |
+| Floor / roof slabs that are structure | `structure_slab` (`function`: floor / roof) |
+| Finish floors, non-structural slabs | `slab` |
+| Beams, girders | `beam` (`shape`, `size_x` = width, `size_y` = depth) |
+| Raft / mat, slab-on-grade foundation, pile caps, pads, strip footings | `foundation` (Polygon for raft, caps and pads; LineString + `width` for strips) |
+| Thickened raft zones / different raft levels | separate `foundation` polygons, each with its own `base_offset` and `thickness` |
+| Sumps, lift pits | `foundation` polygon for the pit floor (its top = pit bottom) + `structure_wall` for the pit walls (negative `base_offset` / `top_offset`) |
+| Pour strips / construction joints in a raft | their own `foundation` polygons, named in `number` |
+| Piles | `foundation` Point or a small polygon per pile, or skip if not required |
+| Car ramps | `ramp` (3D LineString + `width`) or sloped `structure_slab` pieces |
+| Openings in walls | `door`, `window`, `opening` (hosted) |
+| Shafts / holes in slabs | polygon holes in the slab |
+| Room-closing lines without a wall | `room_separator` |
+| Anything without a table | `mesh` (GLB) or the closest table + a clear `number` |
 
-## Recommended Workflow
+## 6. Workflow
 
-1. **Plan spatial layout first**: reason through wall positions, room adjacencies, openings.
-2. **Write GeoJSON geometry**: create `*.geojson` Feature collections with correct coordinates.
-3. **Write CSV attributes**: element properties (material, thickness, size_x/y, …). Never include computed fields.
-4. **Render and visually verify**: `bimdown render <dir> -l lv-1 -o render.png` and view the PNG. Save renders **outside** the project directory.
-5. **Build**: `bimdown build <dir>` — validates schema, snaps endpoints, normalizes geometry, computes space boundaries.
-6. **Iterate** until the render looks right.
+1. **Read the brief or drawings first** and collect the numbers (grid, levels, sizes, elevations) before writing files.
+2. **Generate the model from a script** (Python or Node) that holds the data and writes every CSV/GeoJSON. Re-running the script is how you fix things; hand-editing hundreds of rows is error-prone.
+3. `bimdown build <dir>` after every generation. It validates the schema, snaps endpoints within 10 cm, normalises geometry and computes room boundaries. **Errors must be fixed; warnings are advice** (see below).
+4. `bimdown render <dir> -l <level> -o /tmp/lv.png` and look at the image. Write renders **outside** the project directory. Render is a plan view of one level.
+5. **Check Z with a query**, because the render is 2D:
+   ```bash
+   bimdown query <dir> "SELECT id, number, round(bbox_min_z,3) lo, round(bbox_max_z,3) hi FROM structure_slab ORDER BY hi"
+   bimdown query <dir> "SELECT number, count(*) n FROM beam GROUP BY number"
+   bimdown info <dir>
+   ```
+   SQL tips: `window`, `column` (and other SQL keywords) must be quoted: `SELECT * FROM "window"`. Computed fields (`length`, `area`, `height`, `bbox_*`) are available in queries.
+6. Iterate until counts, plans and elevations are right.
 
-## CLI Tools
+**About build warnings**: "has no connected line element" means a wall end does not meet another wall. That matters only where you need closed rooms (`space`). Retaining walls ending at a column, free-standing walls and pit walls legitimately have free ends — do not split or extend walls just to silence the warning. Fix it when the gap is a real modelling error.
 
-1. **`bimdown query <dir> <sql> [--json]`** — DuckDB SQL across all tables, including hydrated geometry fields.
-   - Example: `bimdown query ./proj "SELECT id, length FROM wall WHERE length > 5"`
-2. **`bimdown render <dir> [-l level] [-o out.png] [-w width]`** — render a level as PNG/SVG image.
-3. **`bimdown build <dir>`** — validate + snap endpoints + normalize geometry + compute space boundaries. Run after every edit.
-4. **`bimdown schema [table]`** — print the full schema for a table.
-5. **`bimdown diff <dirA> <dirB>`** — diff two projects.
-6. **`bimdown init <dir>`** — create a new empty project (`format_version: 2`).
-7. **`bimdown publish <dir>`** — upload to BimClaw and get a share URL (network step; **ask user first**).
-8. **`bimdown info <dir>`** — element counts per level.
-9. **`bimdown resolve-topology <dir>`** — auto-resolve MEP curve connectivity.
-10. **`bimdown merge <dirs...> -o <out>`** — merge projects.
-11. **`bimdown sync <dir>`** — hydrate to DuckDB then dehydrate to files (applies normalization).
+## 7. Doors and windows
 
-## Publishing & Data Upload
-
-`bimdown publish` is the **only** network command. Before running:
-
-- **Destination**: `https://bim-claw.com/api/shares/publish` (override with `--api` or `BIMCLAW_API`).
-- **Uploaded**: the entire project zipped — every CSV, every GeoJSON, any GLB files, `project_metadata.json`.
-- **Anonymous**: no account; the server returns a random share token. Anyone with the link can view/download until expiry (default 7 days).
-- **Consent**: Ask the user for explicit permission before the first publish of a project.
-
-## Critical Rules
-
-- **ID format**: `{prefix}-{n}` (digits only) for most elements; `lv-{any}` / `gr-{any}` for level/grid.
-- **GeoJSON coordinate system**: project-local meters, `+X=East`, `+Y=North`, `+Z=Up`. **No `crs` member**, **no `scale(1,-1)` flip** — GeoJSON uses native Y-up by convention.
-- **CSV vs computed**: write only non-computed CSV fields. Never include `length`, `area`, `start_x/y/z`, `end_x/y/z`, `x`, `y`, `rotation`, `points`, `height`, `volume`, `bbox_*`, `level_id`.
-- **GeoJSON properties vs CSV**:
-  - `id` — both (matched by string equality).
-  - `base_offset`, `top_offset`, `arc`, `rotation`, `height_offset` (ceiling) — **GeoJSON `properties`** only.
-  - `base_level_id`, `top_level_id`, `host_id`, `position`, all material/size/enum attrs — **CSV** only.
-
-## Generation Tips
-
-### Typical values (meters — scale to project's `units`)
-| Element | Field | Range |
-|---|---|---|
-| Wall (partition) | thickness | 0.1 – 0.15 |
-| Wall (exterior) | thickness | 0.2 – 0.3 |
-| Wall (structural) | thickness | 0.3 – 0.6 |
-| Door (single) | width × height | 0.9 × 2.1 |
-| Door (double) | width × height | 1.8 × 2.1 |
-| Window | width × height | 1.2–1.8 × 1.5 |
-| Window sill | `properties.base_offset` | 0.9 (standard), 0 (floor-to-ceiling) |
-| Column | size_x × size_y | 0.3–0.6 × 0.3–0.6 |
-| Slab | thickness | 0.15 – 0.25 |
-| Level spacing | elevation Δ | 3.0 – 4.0 |
-
-### Room boundary connectivity
-For room boundaries to close cleanly (so `build` can compute spaces):
-- Line-element endpoints must meet at shared coordinates (build snaps within 10cm).
-- `bimdown build` warns about unconnected endpoints and computes faces from closed loops.
-
-### Door / window placement
-Doors and windows are hosted on walls and have **no GeoJSON file** — only CSV with `host_id` + `position` (distance in meters from wall start to opening center).
+Hosted on a wall, CSV only. Either give `host_id` + `position` (metres from the wall's start point to the opening centre), or give `host_x`, `host_y` (the opening centre) and let `build` resolve the nearest wall and position.
 
 ```csv
-id,host_id,position,width,height,operation,material
-d-1,w-3,1.5,0.9,2.1,single_swing,wood
+id,number,host_id,position,width,height,base_offset,operation,material
+d-1,FM甲1022,w-3,1.5,1.0,2.2,0,single_swing,steel
+```
+```csv
+id,number,host_id,position,width,height,base_offset,material
+wn-1,C1515,w-7,4.2,1.5,1.5,0.9,aluminum
 ```
 
-Validation rules:
-- `position - width/2 >= 0` and `position + width/2 <= wall_length`
-- Multiple openings on the same wall must not overlap
+- `position ± width/2` must stay within the wall; openings on one wall must not overlap.
+- Windows: always set `base_offset` = sill height (0.9 typical); 0 puts the window on the floor.
+- Put the drawing's mark (e.g. `FM甲1022`, `C1515`) in `number`.
 
-### GeoJSON file template
-```json
-{
-  "type": "FeatureCollection",
-  "features": [
-    { "type": "Feature", "properties": { "id": "w-1" },
-      "geometry": { "type": "LineString", "coordinates": [[0,0],[5,0]] } }
-  ]
-}
-```
+## 8. CLI reference
 
-## Base Schema Reference
+| Command | Purpose |
+|---|---|
+| `bimdown init <dir>` | new empty project |
+| `bimdown build <dir>` | validate, snap, normalise, compute spaces — run after every edit |
+| `bimdown render <dir> [-l level] [-o out.png] [-w width]` | plan image of a level |
+| `bimdown query <dir> "<sql>" [--json]` | DuckDB SQL over all tables incl. computed fields |
+| `bimdown info <dir>` | element counts per level |
+| `bimdown schema [table]` | columns and types of a table |
+| `bimdown diff <a> <b>` / `merge <dirs…> -o <out>` / `sync <dir>` | compare / combine / normalise projects |
+| `bimdown resolve-topology <dir>` | connect MEP runs (after all MEP is placed) |
+| `bimdown publish <dir>` | upload for a 3D share link — **network; ask the user first** |
 
-All elements inherit from `element`:
-- **CSV**: `id` (required), `number`, `mesh_file`.
-- **GeoJSON properties**: `base_offset` (default 0).
-- **Computed**: `level_id`, `volume`, `bbox_*`.
+`publish` is the only network command. It uploads the whole project (CSV, GeoJSON, GLB, metadata) anonymously to `https://bim-claw.com/api/shares/publish` (override with `--api` or `BIMCLAW_API`); the link is public until it expires (default 7 days).
 
-**Geometry bases** (computed-only):
-- `line_element` (wall, beam, …): `start_x`, `start_y`, `end_x`, `end_y`, `length`.
-- `spatial_line_element` (beam, duct, …): adds `start_z`, `end_z`.
-- `point_element` (column, equipment, …): `x`, `y`, `rotation`.
-- `polygon_element` (slab, roof, …): `points`, `area`.
+## 9. Typical values (metres)
 
-**Vertical span** (`vertical_span`):
-- **CSV**: `base_level_id`, `top_level_id`.
-- **GeoJSON properties**: `top_offset` (default 0).
-- **Computed**: `height`.
+| Element | Field | Typical |
+|---|---|---|
+| Partition wall | thickness | 0.1 – 0.2 |
+| Exterior / retaining wall | thickness | 0.2 – 0.4 |
+| Shear / core wall | thickness | 0.2 – 0.6 |
+| Door | width × height | 0.9 × 2.1 (single), 1.5–1.8 × 2.1 (double) |
+| Window | width × height, sill | 1.2–1.8 × 1.5, `base_offset` 0.9 |
+| Column | size_x × size_y | 0.4–0.8 |
+| Beam | size_x × size_y | 0.25–0.4 × 0.5–0.9 |
+| Floor slab | thickness | 0.12 – 0.25 |
+| Raft | thickness | 0.4 – 1.5 |
+| Storey height | Δ elevation | 3.0 – 4.5 |
 
-**Hosted** (`hosted_element`): `host_id`, `position` — both in CSV. No GeoJSON file.
+## 10. Further reading
 
-**Material enum**: concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite.
+Read the SOP that matches your task before writing files (paths relative to this skill's directory):
+- Modelling from existing drawings or plans → `references/bim-modeling.md`
+- Designing a building from a brief → `references/building-design.md`
 
-## Available Tables
-
-`beam`, `brace`, `cable_tray`, `ceiling`, `column`, `conduit`, `curtain_wall`, `door`, `duct`, `equipment`, `foundation`, `grid`, `level`, `mep_node`, `mesh`, `opening`, `pipe`, `railing`, `ramp`, `roof`, `room_separator`, `slab`, `space`, `stair`, `structure_column`, `structure_slab`, `structure_wall`, `terminal`, `wall`, `window`.
-
-If the user asks about a table not covered above, run `bimdown schema <table_name>` for its full schema.
-
-## Reference SOPs
-
-**Before writing files, READ the matching SOP**:
-- **Designing a building from a brief** → [`references/building-design.md`](./references/building-design.md)
-- **Modeling from existing plans / drawings** → [`references/bim-modeling.md`](./references/bim-modeling.md)
-
-## Additional Resources
-
-For more detail or Revit round-trip tooling, see the official repository:
-**[https://github.com/NovaShang/BimDown](https://github.com/NovaShang/BimDown)**
+Format specification and Revit round-trip tooling: https://github.com/NovaShang/BimDown

@@ -104,7 +104,7 @@ Polygon matching exterior wall outline. `function`: floor or roof. Thickness 0.1
 Seed point (x, y) inside each enclosed room. `bimdown build` computes boundary. Point must be clearly inside walls, not on or near them.
 
 ### 5.6 Roof
-Top floor only. `roof_type`: flat/gable/hip/shed/mansard. `slope` in degrees.
+A level-anchored polygon sits at its directory level's elevation. To cap the building, place the roof in the TOPMOST level's dir (the roof level, e.g. `lv-R`, whose elevation = where the top-story walls end) — NOT the top occupied floor's dir, which buries it mid-building at that floor's elevation. `roof_type`: flat/gable/hip/shed/mansard. `slope` in degrees.
 
 ### 5.7 Multi-Floor
 Complete typical floor (usually lv-2) → validate → copy to other lv-N dirs → adjust non-standard floors (GF lobby, top mechanical, basement parking). IDs are level-scoped.
@@ -166,7 +166,7 @@ Complete typical floor (usually lv-2) → validate → copy to other lv-N dirs �
 1. `bimdown build` — zero warnings
 2. `bimdown info` — element counts reasonable
 3. `bimdown render` every floor — visually verify
-4. `bimdown publish` — provide 3D preview URL
+4. `bimdown publish` — only if the user wants a 3D share link (ask first)
 5. Summary to user: floors, GFA, room schedule, systems, preview link
 
 ## Iteration Protocol

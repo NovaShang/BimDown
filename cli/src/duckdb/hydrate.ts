@@ -77,6 +77,9 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
     if (levelsReady && table.computedFields.some((f) => f.name === 'height')) {
       await injectHeight(conn, name);
     }
+    if (levelsReady) {
+      await injectZExtent(conn, name, table.computedFields.some((f) => f.name === 'height'));
+    }
   }
 
   return tables;
@@ -151,6 +154,55 @@ async function injectHeight(conn: DuckDBConnection, tableName: string): Promise<
              (SELECT id FROM _levels WHERE rank = lv_base.rank + 1)
            )`,
   );
+}
+
+/** Tables whose level-anchored position is their TOP face; the body hangs down by `thickness`. */
+const TOP_DOWN_TABLES = new Set(['slab', 'structure_slab', 'foundation']);
+/** Spatial framing whose 3D line is the TOP of the member; the body hangs down by `size_y`. */
+const TOP_LINE_TABLES = new Set(['beam', 'brace']);
+
+/**
+ * Fill bbox_min_z / bbox_max_z for elements whose Z is not in their coordinates, using the
+ * BimDown vertical conventions:
+ *   - vertical-span elements (wall, column, ...): level elevation + base_offset → + height
+ *   - slab / structure_slab / foundation: top = level elevation + base_offset, bottom = top − thickness
+ *   - beam / brace: the 3D line is the top of the member, bottom = top − size_y
+ */
+async function injectZExtent(conn: DuckDBConnection, tableName: string, hasHeight: boolean): Promise<void> {
+  const colsResult = await runQuery(
+    conn,
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'`,
+  );
+  const cols = new Set(colsResult.rows.map((r) => String(r.column_name)));
+  if (!cols.has("bbox_min_z") || !cols.has("level_id")) return;
+  const num = (c: string) => (cols.has(c) ? `COALESCE(TRY_CAST(NULLIF(CAST(t."${c}" AS VARCHAR), '') AS DOUBLE), 0)` : '0');
+
+  if (TOP_LINE_TABLES.has(tableName) && cols.has('size_y')) {
+    await runQuery(
+      conn,
+      `UPDATE "${tableName}" AS t SET bbox_min_z = t.bbox_min_z - ${num('size_y')} WHERE t.bbox_min_z IS NOT NULL`,
+    );
+    return;
+  }
+  if (TOP_DOWN_TABLES.has(tableName)) {
+    await runQuery(
+      conn,
+      `UPDATE "${tableName}" AS t
+       SET bbox_max_z = lv.elevation + ${num('base_offset')},
+           bbox_min_z = lv.elevation + ${num('base_offset')} - ${num('thickness')}
+       FROM _levels AS lv WHERE lv.id = t.level_id AND t.bbox_min_z IS NULL`,
+    );
+    return;
+  }
+  if (hasHeight && cols.has('height')) {
+    await runQuery(
+      conn,
+      `UPDATE "${tableName}" AS t
+       SET bbox_min_z = lv.elevation + ${num('base_offset')},
+           bbox_max_z = lv.elevation + ${num('base_offset')} + t.height
+       FROM _levels AS lv WHERE lv.id = t.level_id AND t.bbox_min_z IS NULL AND t.height IS NOT NULL`,
+    );
+  }
 }
 
 /**

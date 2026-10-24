@@ -23,7 +23,7 @@
 5. slab.csv + slab.geojson          ← needs wall outline known
 6. space.csv                ← needs walls enclosed (build computes boundary)
 7. stair, ramp, railing     ← independent
-8. ceiling, roof            ← roof on top floor only
+8. ceiling, roof            ← roof in the topmost (roof) level dir, caps wall tops
 9. structure_column, beam, structure_slab, foundation
 10. MEP: duct/pipe/cable_tray/conduit, equipment, terminal
 11. bimdown resolve-topology ← LAST for MEP
@@ -79,12 +79,17 @@ Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `
 ### curtain_wall, ceiling, roof
 - Curtain wall: line element like wall, with `u_grid_count`/`v_grid_count`
 - Ceiling: polygon, `height_offset` above level
-- Roof: polygon, `roof_type` (flat/gable/hip/shed/mansard), `slope` in degrees. Top floor only.
+- Roof: polygon, `roof_type` (flat/gable/hip/shed/mansard), `slope` in degrees. Place it in the TOPMOST level's dir (roof level, e.g. `lv-R`) so it caps the wall tops — a roof in an occupied floor's dir anchors to that floor's elevation and is buried mid-building.
 
-### Structure (structure_column, beam, foundation)
-- structure_column: like column but `structural_section_profile` supports i/t/l/c/cross shapes
-- beam: spatial 3D `LineString`; CSV: section profile (primary rect 0.3×0.6m, secondary 0.2×0.4m)
-- foundation: GeoJSON geometry type chooses form — `Point` = isolated, `LineString` = strip, `Polygon` = raft
+### Structure (structure_column, structure_wall, beam, structure_slab, foundation)
+Follow the vertical conventions in SKILL.md §2. In short:
+- structure_column / structure_wall: from level + `base_offset` to `top_level_id` + `top_offset`. A basement column usually runs from the raft or cap top to the underside or top of the floor above; set `top_offset` accordingly.
+- beam: 3D `LineString` whose z is the **top of the beam**; `size_x` = width, `size_y` = depth. A beam flush with the slab it carries has z = slab top. Keep one beam per span or per continuous run, and put its mark in `number`.
+- structure_slab: polygon whose `base_offset` places the **top face**; `thickness` hangs down. Split slabs where thickness or top level changes; cut shafts as holes.
+- foundation: `base_offset` places the **top face**, `thickness` hangs down. Polygon = raft zone, pile cap or pad (use the real footprint); LineString + `width` = strip footing; Point = pile. Model each raft zone with a different top or thickness as its own polygon.
+- Pits and sumps: pit floor as a `foundation` polygon (top = pit bottom) plus `structure_wall` pit walls.
+
+Verify elevations with `bimdown query <dir> "SELECT id, number, bbox_min_z, bbox_max_z FROM <table>"` — the plan render does not show Z.
 
 ### MEP (duct, pipe, cable_tray, conduit)
 Spatial 3D `LineString` elements. CSV: `shape` (rect/round), `size_x` (/`size_y`), `system_type`. Align endpoints to create connections. Run `bimdown resolve-topology` after all MEP placed.
@@ -151,7 +156,7 @@ Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan,
 
 | Error | Fix |
 |-------|-----|
-| Unconnected wall endpoint | Align endpoint coordinates exactly |
+| Unconnected wall endpoint (warning) | Align endpoints where rooms must close; free ends of retaining, pit or free-standing walls are fine |
 | Door/window out of bounds | Recalculate position or reduce width |
 | Overlapping openings | Adjust positions on same wall |
 | Space seed not enclosed | Move seed point inside or close wall gaps |
@@ -160,11 +165,12 @@ Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan,
 
 ## Final Checklist
 
-- [ ] `bimdown build` — zero warnings/errors
+- [ ] `bimdown build` — zero errors; remaining warnings understood (free wall ends are OK where no room must close)
+- [ ] Elevations checked with `bimdown query … bbox_min_z, bbox_max_z` (slabs, beams, foundations, columns)
 - [ ] `bimdown render` every floor — visually correct
 - [ ] `bimdown info` — counts reasonable, no empty levels
 - [ ] All rooms connected per connectivity graph (every room traces to stair/elevator via doors)
 - [ ] Windows have `base_offset` set (sill height)
 - [ ] Slabs cover full footprint per level
 - [ ] MEP topology resolved (if applicable)
-- [ ] `bimdown publish` — 3D preview URL provided
+- [ ] `bimdown publish` — only if the user asked for a share link
