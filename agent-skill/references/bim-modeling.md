@@ -156,7 +156,7 @@ Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan,
 
 | Error | Fix |
 |-------|-----|
-| Unconnected wall endpoint (warning) | Align endpoints where rooms must close; free ends of retaining, pit or free-standing walls are fine |
+| Unconnected wall endpoint (warning) | The end touches no wall, wall face or column. Close it where rooms must close; free ends of retaining, pit or free-standing walls are fine |
 | Door/window out of bounds | Recalculate position or reduce width |
 | Overlapping openings | Adjust positions on same wall |
 | Space seed not enclosed | Move seed point inside or close wall gaps |

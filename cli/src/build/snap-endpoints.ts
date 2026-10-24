@@ -7,44 +7,58 @@ import {
   type Position,
 } from '../utils/geojson.js';
 import { writeFileSync } from 'node:fs';
-import { readCsv } from '../utils/csv.js';
 import { discoverLayout } from '../utils/fs.js';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 
-const MIN_SNAP_TOLERANCE = 0.10; // 10cm floor
+/**
+ * Endpoints closer than this are treated as the same junction and merged. Kept small on purpose:
+ * snapping only heals imprecise coordinates; it must not move real geometry. (It used to be the
+ * thickest wall in the project, which merged distinct corners up to ~0.5 m apart and skewed walls.)
+ */
+const SNAP_TOLERANCE = 0.05;
+/** Never snap if it would turn a wall by more than this (degrees) — protects short walls. */
+const MAX_TURN_DEG = 2;
 
 const BOUNDARY_TABLES = ['wall', 'structure_wall', 'curtain_wall', 'room_separator'];
-const WALL_TABLES_WITH_THICKNESS = ['wall', 'structure_wall', 'curtain_wall'];
 
 interface Point { x: number; y: number }
 
 interface EndpointRef {
   point: Point;
+  other: Point; // the opposite endpoint of the same element
   table: string;
   elementId: string;
   side: 'start' | 'end';
   dirPath: string;
 }
 
+export interface SnapRecord {
+  level: string;
+  table: string;
+  elementId: string;
+  side: 'start' | 'end';
+  from: Point;
+  to: Point;
+}
+
 /**
- * Pre-build step: snap wall endpoints that are within SNAP_TOLERANCE of each other.
- * Modifies GeoJSON files in-place. Returns count of snapped endpoints.
+ * Pre-build step: merge wall endpoints of the same level that lie within SNAP_TOLERANCE of each other.
+ * Modifies GeoJSON files in-place. Returns what was moved.
  */
-export function snapEndpoints(dir: string): number {
+export function snapEndpoints(dir: string): SnapRecord[] {
   const layout = discoverLayout(dir);
   const allDirs = [
     { name: 'global', path: layout.globalDir },
     ...layout.levelDirs,
   ];
 
-  const snapTolerance = computeSnapTolerance(allDirs);
-
-  // Collect all endpoints
-  const allEndpoints: EndpointRef[] = [];
   const fcCache = new Map<string, BimDownFeatureCollection>(); // key = `${dirPath}/${table}.geojson`
+  const snapMap = new Map<string, Point>();
+  const records: SnapRecord[] = [];
 
   for (const d of allDirs) {
     if (!existsSync(d.path)) continue;
+    const endpoints: EndpointRef[] = [];
     for (const table of BOUNDARY_TABLES) {
       const geomName = GEOJSON_FILE_NAMES[table];
       if (!geomName) continue;
@@ -61,31 +75,26 @@ export function snapEndpoints(dir: string): number {
         if (!id) continue;
         const a = f.geometry.coordinates[0];
         const b = f.geometry.coordinates[f.geometry.coordinates.length - 1];
-        allEndpoints.push({ point: { x: a[0], y: a[1] }, table, elementId: id, side: 'start', dirPath: d.path });
-        allEndpoints.push({ point: { x: b[0], y: b[1] }, table, elementId: id, side: 'end', dirPath: d.path });
+        const pa = { x: a[0], y: a[1] }, pb = { x: b[0], y: b[1] };
+        endpoints.push({ point: pa, other: pb, table, elementId: id, side: 'start', dirPath: d.path });
+        endpoints.push({ point: pb, other: pa, table, elementId: id, side: 'end', dirPath: d.path });
+      }
+    }
+
+    // Snapping is per level: endpoints of different levels never interact.
+    for (const cluster of clusterEndpoints(endpoints, SNAP_TOLERANCE)) {
+      if (cluster.length <= 1) continue;
+      const canonical = pickCanonical(cluster);
+      for (const ep of cluster) {
+        if (Math.abs(ep.point.x - canonical.x) <= 1e-6 && Math.abs(ep.point.y - canonical.y) <= 1e-6) continue;
+        if (turnDegrees(ep.other, ep.point, canonical) > MAX_TURN_DEG) continue;
+        snapMap.set(`${ep.dirPath}:${ep.table}:${ep.elementId}:${ep.side}`, canonical);
+        records.push({ level: d.name, table: ep.table, elementId: ep.elementId, side: ep.side, from: ep.point, to: canonical });
       }
     }
   }
 
-  if (allEndpoints.length === 0) return 0;
-
-  const clusters = clusterEndpoints(allEndpoints, snapTolerance);
-  const snapMap = new Map<string, Point>();
-  let totalSnapped = 0;
-
-  for (const cluster of clusters) {
-    if (cluster.length <= 1) continue;
-    const canonical = pickCanonical(cluster);
-    for (const ep of cluster) {
-      if (Math.abs(ep.point.x - canonical.x) > 1e-6 || Math.abs(ep.point.y - canonical.y) > 1e-6) {
-        const key = `${ep.dirPath}:${ep.table}:${ep.elementId}:${ep.side}`;
-        snapMap.set(key, canonical);
-        totalSnapped++;
-      }
-    }
-  }
-
-  if (snapMap.size === 0) return 0;
+  if (snapMap.size === 0) return records;
 
   // Apply snaps by rewriting GeoJSON files
   const dirtyPaths = new Set<string>();
@@ -126,55 +135,35 @@ export function snapEndpoints(dir: string): number {
     if (fc) writeFileSync(path, stringifyFeatureCollection(fc), 'utf-8');
   }
 
-  return totalSnapped;
+  return records;
 }
 
-function computeSnapTolerance(dirs: { name: string; path: string }[]): number {
-  let maxThickness = 0;
-  for (const d of dirs) {
-    if (!existsSync(d.path)) continue;
-    for (const table of WALL_TABLES_WITH_THICKNESS) {
-      const csvPath = join(d.path, `${table}.csv`);
-      if (!existsSync(csvPath)) continue;
-      try {
-        const csv = readCsv(csvPath);
-        for (const row of csv.rows) {
-          const t = parseFloat(row.thickness ?? '0');
-          if (t > maxThickness) maxThickness = t;
-        }
-      } catch { /* skip */ }
-    }
-  }
-  return Math.max(MIN_SNAP_TOLERANCE, maxThickness);
-}
-
+/** Seed clustering without chaining: every member is within `tolerance` of the seed. */
 function clusterEndpoints(endpoints: EndpointRef[], tolerance: number): EndpointRef[][] {
   const visited = new Set<number>();
   const clusters: EndpointRef[][] = [];
-
   for (let i = 0; i < endpoints.length; i++) {
     if (visited.has(i)) continue;
-    const cluster: EndpointRef[] = [endpoints[i]];
     visited.add(i);
-
-    let expanded = true;
-    while (expanded) {
-      expanded = false;
-      for (let j = 0; j < endpoints.length; j++) {
-        if (visited.has(j)) continue;
-        for (const member of cluster) {
-          if (dist(member.point, endpoints[j].point) < tolerance) {
-            cluster.push(endpoints[j]);
-            visited.add(j);
-            expanded = true;
-            break;
-          }
-        }
+    const cluster: EndpointRef[] = [endpoints[i]];
+    for (let j = i + 1; j < endpoints.length; j++) {
+      if (!visited.has(j) && dist(endpoints[i].point, endpoints[j].point) < tolerance) {
+        cluster.push(endpoints[j]);
+        visited.add(j);
       }
     }
     clusters.push(cluster);
   }
   return clusters;
+}
+
+/** Angle (degrees) between the element direction before and after moving `from` to `to`. */
+function turnDegrees(fixed: Point, from: Point, to: Point): number {
+  const a = Math.atan2(from.y - fixed.y, from.x - fixed.x);
+  const b = Math.atan2(to.y - fixed.y, to.x - fixed.x);
+  let d = Math.abs(a - b) * 180 / Math.PI;
+  if (d > 180) d = 360 - d;
+  return d;
 }
 
 function pickCanonical(cluster: EndpointRef[]): Point {

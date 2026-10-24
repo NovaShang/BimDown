@@ -17,7 +17,9 @@ program
   .version(typeof CLI_VERSION !== 'undefined' ? CLI_VERSION : '0.0.0');
 
 // ─── build ──────────────────────────────────────────────
-function runBuild(dir: string) {
+const WARN_LIST_LIMIT = 20;
+
+function runBuild(dir: string, opts: { verbose?: boolean } = {}) {
   const absDir = resolve(dir);
   const result = build(absDir);
 
@@ -30,14 +32,23 @@ function runBuild(dir: string) {
   }
 
   if (result.warnings.length > 0) {
-    for (const w of result.warnings) {
+    const shown = opts.verbose ? result.warnings : result.warnings.slice(0, WARN_LIST_LIMIT);
+    for (const w of shown) {
       console.log(w);
     }
-    console.log(`\n${result.warnings.length} warning(s).`);
+    if (shown.length < result.warnings.length) {
+      console.log(`... ${result.warnings.length - shown.length} more (use --verbose to list all)`);
+    }
+    console.log(`\n${result.warnings.length} warning(s). Warnings are advisory; issues are errors.`);
   }
 
-  if (result.snappedEndpoints > 0) {
-    console.log(`Snapped ${result.snappedEndpoints} endpoint(s).`);
+  if (result.snaps.length > 0) {
+    console.log(`Snapped ${result.snaps.length} endpoint(s) closer than 5 cm:`);
+    const shown = opts.verbose ? result.snaps : result.snaps.slice(0, WARN_LIST_LIMIT);
+    for (const s of shown) {
+      console.log(`  ${s.level}/${s.table} ${s.elementId} ${s.side} (${s.from.x.toFixed(3)}, ${s.from.y.toFixed(3)}) -> (${s.to.x.toFixed(3)}, ${s.to.y.toFixed(3)})`);
+    }
+    if (shown.length < result.snaps.length) console.log(`  ... ${result.snaps.length - shown.length} more`);
   }
 
   if (result.artifacts.length > 0) {
@@ -52,14 +63,16 @@ function runBuild(dir: string) {
 program
   .command('build')
   .argument('<dir>', 'BimDown project directory')
+  .option('--verbose', 'List every warning and snapped endpoint')
   .description('Build a BimDown project (validate + compute space boundaries)')
-  .action((dir: string) => runBuild(dir));
+  .action((dir: string, opts: { verbose?: boolean }) => runBuild(dir, opts));
 
 program
   .command('validate')
   .argument('<dir>', 'BimDown project directory')
+  .option('--verbose', 'List every warning and snapped endpoint')
   .description('Alias for build')
-  .action((dir: string) => runBuild(dir));
+  .action((dir: string, opts: { verbose?: boolean }) => runBuild(dir, opts));
 
 // ─── query ──────────────────────────────────────────────
 program

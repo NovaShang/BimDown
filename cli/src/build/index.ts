@@ -5,18 +5,19 @@ import { discoverLayout } from '../utils/fs.js';
 import { computeSpaceBoundaries } from './space-boundary.js';
 import { validateGeometry } from './geometry-warnings.js';
 import { resolveHostedCoords } from './resolve-hosted-coords.js';
-import { snapEndpoints } from './snap-endpoints.js';
+import { snapEndpoints, type SnapRecord } from './snap-endpoints.js';
 
 export interface BuildResult {
   issues: string[];
   warnings: string[];
   artifacts: string[];
   snappedEndpoints: number;
+  snaps: SnapRecord[];
 }
 
 export function build(dir: string): BuildResult {
-  // 0a. Snap wall endpoints within 5cm tolerance (before everything else)
-  const snapped = snapEndpoints(dir);
+  // 0a. Merge wall endpoints of the same level that are within 5 cm (before everything else)
+  const snaps = snapEndpoints(dir);
 
   // 0b. Resolve host_x/host_y → host_id + position (before validation)
   const resolveIssues = resolveHostedCoords(dir);
@@ -42,5 +43,5 @@ export function build(dir: string): BuildResult {
     }
   }
 
-  return { issues, warnings, artifacts, snappedEndpoints: snapped };
+  return { issues, warnings, artifacts, snappedEndpoints: snaps.length, snaps };
 }

@@ -61,34 +61,40 @@ export function validateGeometry(dir: string): string[] {
 
 // ─── A. Line connectivity ───────────────────────────────
 
+/** Extra slack (m) when deciding that a wall end touches another wall's body or a column. */
+const TOUCH_SLACK = 0.02;
+const COLUMN_TABLES = ['column', 'structure_column'];
+
+/**
+ * A boundary-line end is connected when it meets another line's end, lands anywhere on another wall's
+ * body (T-junction at the centre line or at the face, within that wall's half thickness), or ends on a
+ * column. Only ends that touch nothing are reported — those are the gaps that keep rooms from closing.
+ */
 function validateLineConnectivity(levelDir: { name: string; path: string }): string[] {
   const warnings: string[] = [];
 
-  interface Endpoint {
-    x: number;
-    y: number;
-    side: 'start' | 'end';
-    elementId: string;
-    table: string;
-  }
-
-  interface Segment {
-    start_x: number;
-    start_y: number;
-    end_x: number;
-    end_y: number;
-    elementId: string;
-    table: string;
-  }
+  interface Endpoint { x: number; y: number; side: 'start' | 'end'; elementId: string; table: string }
+  interface Segment { ax: number; ay: number; bx: number; by: number; half: number; elementId: string; table: string }
+  interface Box { x0: number; y0: number; x1: number; y1: number }
 
   const endpoints: Endpoint[] = [];
   const segments: Segment[] = [];
+  const columns: Box[] = [];
+
+  const csvRows = (table: string): Map<string, Record<string, string>> => {
+    const m = new Map<string, Record<string, string>>();
+    const p = join(levelDir.path, `${table}.csv`);
+    if (!existsSync(p)) return m;
+    try { for (const r of readCsv(p).rows) if (r.id) m.set(r.id, r); } catch { /* skip */ }
+    return m;
+  };
 
   for (const table of BOUNDARY_TABLES) {
     const geomName = GEOJSON_FILE_NAMES[table];
     if (!geomName) continue;
     const path = join(levelDir.path, `${geomName}.geojson`);
     if (!existsSync(path)) continue;
+    const attrs = csvRows(table);
     try {
       const fc = parseGeoJsonFile(path);
       for (const f of fc.features) {
@@ -96,55 +102,60 @@ function validateLineConnectivity(levelDir: { name: string; path: string }): str
         const id = String(f.properties?.id ?? '');
         if (!id) continue;
         const lg = extractLineGeometry(f);
+        const t = parseFloat(attrs.get(id)?.thickness ?? '') || 0;
         endpoints.push({ x: lg.start_x, y: lg.start_y, side: 'start', elementId: id, table });
         endpoints.push({ x: lg.end_x, y: lg.end_y, side: 'end', elementId: id, table });
-        segments.push({ start_x: lg.start_x, start_y: lg.start_y, end_x: lg.end_x, end_y: lg.end_y, elementId: id, table });
+        segments.push({ ax: lg.start_x, ay: lg.start_y, bx: lg.end_x, by: lg.end_y, half: t / 2, elementId: id, table });
       }
     } catch { /* skip */ }
   }
 
-  // For each endpoint, check if it connects to another element — either at an endpoint or on a segment (T-junction)
+  for (const table of COLUMN_TABLES) {
+    const geomName = GEOJSON_FILE_NAMES[table];
+    if (!geomName) continue;
+    const path = join(levelDir.path, `${geomName}.geojson`);
+    if (!existsSync(path)) continue;
+    const attrs = csvRows(table);
+    try {
+      const fc = parseGeoJsonFile(path);
+      for (const f of fc.features) {
+        if (f.geometry.type !== 'Point') continue;
+        const [x, y] = f.geometry.coordinates as number[];
+        const r = attrs.get(String(f.properties?.id ?? ''));
+        const sx = parseFloat(r?.size_x ?? '') || 0.4;
+        const sy = parseFloat(r?.size_y ?? '') || sx;
+        const h = Math.max(sx, sy) / 2;     // rotation-safe: use the larger half size
+        columns.push({ x0: x - h, y0: y - h, x1: x + h, y1: y + h });
+      }
+    } catch { /* skip */ }
+  }
+
+  const same = (a: { elementId: string; table: string }, b: { elementId: string; table: string }) =>
+    a.elementId === b.elementId && a.table === b.table;
+
   for (const ep of endpoints) {
-    // Check endpoint-to-endpoint connection
-    const hasEndpointNeighbor = endpoints.some(
-      (other) =>
-        other !== ep &&
-        !(other.elementId === ep.elementId && other.table === ep.table) &&
-        Math.abs(other.x - ep.x) < TOLERANCE &&
-        Math.abs(other.y - ep.y) < TOLERANCE,
+    const atEndpoint = endpoints.some(
+      (o) => o !== ep && !same(o, ep) && Math.abs(o.x - ep.x) < TOLERANCE && Math.abs(o.y - ep.y) < TOLERANCE,
     );
+    if (atEndpoint) continue;
 
-    if (hasEndpointNeighbor) continue;
+    const onWall = segments.some((seg) => !same(seg, ep) &&
+      pointNearSegment(ep.x, ep.y, seg.ax, seg.ay, seg.bx, seg.by, Math.max(seg.half, TOLERANCE) + TOUCH_SLACK));
+    if (onWall) continue;
 
-    // Check T-junction: endpoint falls on another segment's line
-    const hasTJunction = segments.some((seg) => {
-      if (seg.elementId === ep.elementId && seg.table === ep.table) return false;
-      return pointOnSegment(ep.x, ep.y, seg.start_x, seg.start_y, seg.end_x, seg.end_y, TOLERANCE);
-    });
+    const onColumn = columns.some((c) =>
+      ep.x >= c.x0 - TOUCH_SLACK && ep.x <= c.x1 + TOUCH_SLACK && ep.y >= c.y0 - TOUCH_SLACK && ep.y <= c.y1 + TOUCH_SLACK);
+    if (onColumn) continue;
 
-    if (hasTJunction) continue;
-
-    // No connection found — emit warning
     let nearestDist = Infinity;
     let nearestId = '';
     let nearestSide = '';
     for (const other of endpoints) {
-      if (other === ep || (other.elementId === ep.elementId && other.table === ep.table)) continue;
-      const dx = other.x - ep.x;
-      const dy = other.y - ep.y;
-      const dist = Math.sqrt(dx * dx + dy * dy);
-      if (dist < nearestDist) {
-        nearestDist = dist;
-        nearestId = other.elementId;
-        nearestSide = other.side;
-      }
+      if (other === ep || same(other, ep)) continue;
+      const d = Math.hypot(other.x - ep.x, other.y - ep.y);
+      if (d < nearestDist) { nearestDist = d; nearestId = other.elementId; nearestSide = other.side; }
     }
-
-    const nearestInfo =
-      nearestDist < Infinity
-        ? ` (nearest: ${nearestId} ${nearestSide}, distance ${nearestDist.toFixed(3)}m)`
-        : '';
-
+    const nearestInfo = nearestDist < Infinity ? ` (nearest: ${nearestId} ${nearestSide}, distance ${nearestDist.toFixed(3)}m)` : '';
     warnings.push(
       `[warn] ${levelDir.name}/${ep.table}.geojson  ${ep.elementId} ${ep.side} (${ep.x.toFixed(3)}, ${ep.y.toFixed(3)}) has no connected line element${nearestInfo}`,
     );
@@ -153,23 +164,16 @@ function validateLineConnectivity(levelDir: { name: string; path: string }): str
   return warnings;
 }
 
-/** Check if point (px, py) lies on the line segment from (ax, ay) to (bx, by) within tolerance */
-function pointOnSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number, tol: number): boolean {
-  const dx = bx - ax;
-  const dy = by - ay;
-  const lenSq = dx * dx + dy * dy;
-  if (lenSq < tol * tol) return false; // degenerate segment
-
-  // Project point onto line, get parameter t
-  const t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
-  if (t < -tol || t > 1 + tol) return false; // outside segment
-
-  // Distance from point to closest point on segment
-  const clampedT = Math.max(0, Math.min(1, t));
-  const closestX = ax + clampedT * dx;
-  const closestY = ay + clampedT * dy;
-  const distSq = (px - closestX) * (px - closestX) + (py - closestY) * (py - closestY);
-  return distSq < tol * tol;
+/** Point within `tol` of segment AB, measured to the segment body (ends extended by `tol`). */
+function pointNearSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number, tol: number): boolean {
+  const dx = bx - ax, dy = by - ay;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return false;
+  const ux = dx / len, uy = dy / len;
+  const along = (px - ax) * ux + (py - ay) * uy;
+  if (along < -tol || along > len + tol) return false;
+  const across = Math.abs(-(px - ax) * uy + (py - ay) * ux);
+  return across <= tol;
 }
 
 // ─── B. Hosted bounds ───────────────────────────────────

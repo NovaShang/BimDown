@@ -163,7 +163,7 @@ Run `bimdown schema <table>` for the exact columns of any table. Use `number` fo
    SQL tips: `window`, `column` (and other SQL keywords) must be quoted: `SELECT * FROM "window"`. Computed fields (`length`, `area`, `height`, `bbox_*`) are available in queries.
 6. Iterate until counts, plans and elevations are right.
 
-**About build warnings**: "has no connected line element" means a wall end does not meet another wall. That matters only where you need closed rooms (`space`). Retaining walls ending at a column, free-standing walls and pit walls legitimately have free ends — do not split or extend walls just to silence the warning. Fix it when the gap is a real modelling error.
+**About build warnings**: "has no connected line element" means a wall end touches nothing — no other wall end, no other wall's body (a T-junction at its face counts as connected) and no column. That matters only where rooms must close (`space`); retaining, pit and free-standing walls may legitimately end free. Do not split or extend walls just to silence it. `build` also merges wall ends of the same level that are less than 5 cm apart and lists what it moved; anything farther apart is left exactly where you put it. Long warning lists are truncated — `bimdown build <dir> --verbose` prints all.
 
 ## 7. Doors and windows
 
