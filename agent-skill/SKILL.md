@@ -50,6 +50,7 @@ project/
     structure_slab.csv + structure_slab.geojson
 ```
 
+- `project_metadata.json` takes only the known keys (`format_version`, `units`, …); unknown keys such as `name` fail `build`.
 - Start with `bimdown init <dir>`, then edit `global/level.csv` (elevations are absolute, basements negative) and `global/grid.csv`.
 - An element's base level is **always the directory it is in**. Put it in the level it starts from; only elements spanning more than one level go to `global/`.
 - **Units**: whatever `project_metadata.json` declares (`m` default; also `ft`, `in`, `mm`). Every number in every file is in that unit. Use metres unless told otherwise.
@@ -74,6 +75,9 @@ Most elements are **level-anchored**: their geometry is 2D and their height come
 | `door`, `window`, `opening` | none (hosted) | host base + `base_offset` (sill) | + `height` |
 
 So a 180 mm slab whose top is at −0.100 on level `lv-1` (elevation 0) is `base_offset: -0.1, thickness: 0.18`; a 300×700 beam whose top is flush with that slab has z = −0.1 and `size_y: 0.7`.
+
+- **Offsets are relative to a level; spatial z is absolute.** `base_offset` / `top_offset` are added to a level elevation. The z in a beam/duct/ramp coordinate is the absolute elevation — the same number whatever level directory the element is in (a beam at elevation 3.95 in `lv-2` whose elevation is 4.2 has z = 3.95, not −0.25).
+- `top_level_id` may be the element's own level with a negative `top_offset` (e.g. a pit wall in `lv-B1` from −5.9 to −4.9 is `base_offset: -1.5, top_level_id: lv-B1, top_offset: -0.5`). Use whichever reads more clearly.
 
 `bimdown query` reports the resulting extents in `bbox_min_z` / `bbox_max_z` for every element — use it to check your elevations (see §6).
 
@@ -119,6 +123,7 @@ Run `bimdown schema <table>` for the exact columns of any table. Use `number` fo
 ```
 
 - **No Multi\* geometries.** A slab cut into disconnected pieces becomes separate Features with their own ids.
+- **No boolean operations.** Elements may overlap (caps inside a raft, beams inside a slab, columns through beams) — that is normal and expected; do not carve one element out of another unless the drawing shows a real gap (e.g. a pour strip between two raft pieces, a shaft hole).
 - `build` also accepts and normalises: tessellated arcs, columns written as 4-vertex polygons, unclosed rings, 3D coordinates on level-anchored elements with a constant Z.
 
 ## 5. Choosing tables
