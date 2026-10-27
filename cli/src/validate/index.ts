@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import type { ResolvedTable } from '../schema/types.js';
@@ -87,9 +87,14 @@ export function validate(dir: string): string[] {
     issues.push(...validateReferences(entry.path, entry.table, entry.data, idRegistry));
   }
 
-  // 8. Value range validation (catches mm vs m mistakes)
+  // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
+  let units = 'm';
+  try {
+    const meta = JSON.parse(readFileSync(join(dir, 'project_metadata.json'), 'utf8'));
+    if (typeof meta.units === 'string') units = meta.units;
+  } catch { /* missing or invalid metadata is reported by validateStructure */ }
   for (const entry of csvEntries) {
-    issues.push(...validateRanges(entry.path, entry.table, entry.data));
+    issues.push(...validateRanges(entry.path, entry.table, entry.data, units));
   }
 
   // 8b. Hosted element position validation (must be non-negative distance in meters)

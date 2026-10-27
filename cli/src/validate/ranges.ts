@@ -31,7 +31,16 @@ const FIELD_MAX: Record<string, number> = {
 /** Default max for any float field not in FIELD_MAX. */
 const DEFAULT_MAX = 1000;
 
-export function validateRanges(path: string, table: ResolvedTable, data: CsvData): string[] {
+/** Project units → meters. The limits above are in meters; values are stored in the project unit. */
+const UNIT_TO_M: Record<string, number> = { m: 1, ft: 0.3048, in: 0.0254, mm: 0.001 };
+
+/** Deep foundations (drilled piers, piles) are far thicker than any wall or slab. */
+const TABLE_FIELD_MAX: Record<string, Record<string, number>> = {
+  foundation: { thickness: 60 },
+};
+
+export function validateRanges(path: string, table: ResolvedTable, data: CsvData, units = 'm'): string[] {
+  const toM = UNIT_TO_M[units] ?? 1;
   const issues: string[] = [];
 
   const floatFields = table.csvFields.filter(
@@ -49,11 +58,13 @@ export function validateRanges(path: string, table: ResolvedTable, data: CsvData
       const val = Number(raw);
       if (isNaN(val)) continue;
 
-      const max = FIELD_MAX[field.name] ?? DEFAULT_MAX;
-      if (Math.abs(val) > max) {
+      const max = TABLE_FIELD_MAX[table.name]?.[field.name] ?? FIELD_MAX[field.name] ?? DEFAULT_MAX;
+      if (field.name !== 'step_count' && Math.abs(val) * toM > max) {
         issues.push(
-          `${path}:${rowNum}  ${field.name}=${raw} looks like millimeters — all values must be in meters (max reasonable: ${max})`,
+          `${path}:${rowNum}  ${field.name}=${raw} is out of range for project units "${units}" (max reasonable: ${+(max / toM).toPrecision(4)} ${units}) — check the unit`,
         );
+      } else if (field.name === 'step_count' && Math.abs(val) > max) {
+        issues.push(`${path}:${rowNum}  ${field.name}=${raw} is out of range (max reasonable: ${max})`);
       }
     }
   }
