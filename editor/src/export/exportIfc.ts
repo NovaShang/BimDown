@@ -19,6 +19,10 @@ const TABLE_TO_IFC: Record<string, string> = {
   beam: 'IfcBeam',
   brace: 'IfcBeam',
   stair: 'IfcStair',
+  duct: 'IfcFlowSegment',
+  pipe: 'IfcFlowSegment',
+  cable_tray: 'IfcFlowSegment',
+  conduit: 'IfcFlowSegment',
 };
 
 function guid(): string {
@@ -32,6 +36,13 @@ function guid(): string {
 }
 
 export async function exportIfc(project: ProjectData, modelName: string): Promise<void> {
+  const data = await buildIfc(project, modelName);
+  const blob = new Blob([new Uint8Array(data)], { type: 'application/x-ifc' });
+  triggerDownload(blob, `${modelName}.ifc`);
+}
+
+/** Build the IFC2X3 STEP file for a project (no browser APIs; usable from node). */
+export async function buildIfc(project: ProjectData, modelName = 'BimDown'): Promise<Uint8Array> {
   const WebIFC = await import('web-ifc');
   const { IfcAPI } = WebIFC;
   // Use `any` for IFC schema classes — the typed constructors are overly strict
@@ -253,7 +264,7 @@ export async function exportIfc(project: ProjectData, modelName: string): Promis
 
       const handle = createIfcElement(
         api, modelID, el, params, ifcType,
-        ownerHistory, context, storeyPlacement,
+        ownerHistory, context, storeyPlacement, level.elevation,
         IFC2X3, Handle,
       );
       if (handle) elementHandles.push(handle);
@@ -287,9 +298,7 @@ export async function exportIfc(project: ProjectData, modelName: string): Promis
   // Export
   const data = api.SaveModel(modelID);
   api.CloseModel(modelID);
-
-  const blob = new Blob([new Uint8Array(data)], { type: 'application/x-ifc' });
-  triggerDownload(blob, `${modelName}.ifc`);
+  return data;
 }
 
 function createIfcElement(
@@ -301,6 +310,9 @@ function createIfcElement(
   ownerHistory: any,
   context: any,
   storeyPlacement: any,
+  /** Storey elevation: params are world (absolute) Y, but the element is
+   *  placed relative to its storey, which already sits at this elevation. */
+  storeyElevation: number,
   IFC2X3: any,
   Handle: any,
 ): any | null {
@@ -312,10 +324,15 @@ function createIfcElement(
   let depth: number;
 
   if (params.kind === 'box') {
-    // Rectangle profile for boxes
+    // Rectangle profile for boxes (Position is mandatory in IFC2X3)
+    const profileOrigin = new IFC2X3.IfcCartesianPoint([0, 0]);
+    api.WriteLine(modelID, profileOrigin);
+    const profilePos = new IFC2X3.IfcAxis2Placement2D(new Handle(profileOrigin.expressID), null);
+    api.WriteLine(modelID, profilePos);
     const rectProfile = new IFC2X3.IfcRectangleProfileDef(
       IFC2X3.IfcProfileTypeEnum.AREA,
-      null, null,
+      null,
+      new Handle(profilePos.expressID),
       new IFC2X3.IfcPositiveLengthMeasure(params.sx),
       new IFC2X3.IfcPositiveLengthMeasure(params.sz),
     );
@@ -323,8 +340,9 @@ function createIfcElement(
     profileDef = rectProfile;
     depth = params.sy;
 
-    // Position: center at element location
-    const posPoint = new IFC2X3.IfcCartesianPoint([params.cx, params.cz, params.cy - params.sy / 2]);
+    // Position: centre of the box's bottom face. Params are three.js world
+    // (Y up, plan Y → −Z); IFC is plan X/Y with Z up, relative to the storey.
+    const posPoint = new IFC2X3.IfcCartesianPoint([params.cx, -params.cz, params.cy - params.sy / 2 - storeyElevation]);
     api.WriteLine(modelID, posPoint);
 
     // Handle rotation around Y (mapped to Z in IFC)
@@ -332,7 +350,8 @@ function createIfcElement(
     if (Math.abs(params.rotY) > 0.001) {
       const cos = Math.cos(params.rotY);
       const sin = Math.sin(params.rotY);
-      refDir = new IFC2X3.IfcDirection([cos, -sin, 0]);
+      // three.js rotation.y = θ turns local +X to plan direction (cos θ, sin θ)
+      refDir = new IFC2X3.IfcDirection([cos, sin, 0]);
       api.WriteLine(modelID, refDir);
     }
 
@@ -370,7 +389,7 @@ function createIfcElement(
     profileDef = arbProfile;
     depth = params.height;
 
-    const posPoint = new IFC2X3.IfcCartesianPoint([0, 0, params.baseY]);
+    const posPoint = new IFC2X3.IfcCartesianPoint([0, 0, params.baseY - storeyElevation]);
     api.WriteLine(modelID, posPoint);
 
     const zDir = new IFC2X3.IfcDirection([0, 0, 1]);
@@ -468,6 +487,16 @@ function createIfcElement(
       break;
     case 'IfcBeam':
       ifcElement = new IFC2X3.IfcBeam(
+        new IFC2X3.IfcGloballyUniqueId(guid()),
+        new Handle(ownerHistory.expressID),
+        elementName, null, null,
+        new Handle(elPlacement.expressID),
+        new Handle(productShape.expressID),
+        null,
+      );
+      break;
+    case 'IfcFlowSegment':
+      ifcElement = new IFC2X3.IfcFlowSegment(
         new IFC2X3.IfcGloballyUniqueId(guid()),
         new Handle(ownerHistory.expressID),
         elementName, null, null,

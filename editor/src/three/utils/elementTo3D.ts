@@ -98,9 +98,10 @@ function lineToBox(
     const endZ = parseFloat(el.attrs.end_z) || startZ;
     // For MEP, size_y is the cross-section height
     const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
-    baseY = Math.min(startZ, endZ) - (TOP_LINE_TABLES.includes(table) ? sizeY : sizeY / 2);
+    // start_z/end_z are level-relative in the editor model
+    baseY = levelElevation + Math.min(startZ, endZ) - (TOP_LINE_TABLES.includes(table) ? sizeY : sizeY / 2);
     height = sizeY;
-    thickness = el.strokeWidth;
+    thickness = parseFloat(el.attrs.size_x) || el.strokeWidth; // section width
   } else {
     const resolved = resolveHeight(el.attrs, levelElevation, levelElevations, fallbackH);
     baseY = levelElevation + resolved.baseOffset;
@@ -191,14 +192,16 @@ function polygonToExtrude(
 }
 
 /** Convert a SPATIAL_LINE element (MEP/structural with z) to a 3D box */
-function spatialLineToBox(el: SpatialLineElement): BoxParams | null {
+/** Spatial line → box. startZ/endZ are level-relative in the editor model; the
+ *  result is in world (absolute) Y like every other param. */
+function spatialLineToBox(el: SpatialLineElement, levelElevation: number): BoxParams | null {
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
   const length = Math.sqrt(dx * dx + dy * dy);
   if (length < 0.001) return null;
 
   const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
-  const baseY = Math.min(el.startZ, el.endZ) - (TOP_LINE_TABLES.includes(el.tableName) ? sizeY : sizeY / 2);
+  const baseY = levelElevation + Math.min(el.startZ, el.endZ) - (TOP_LINE_TABLES.includes(el.tableName) ? sizeY : sizeY / 2);
 
   const cx = (el.start.x + el.end.x) / 2;
   const cz = -(el.start.y + el.end.y) / 2;
@@ -210,7 +213,7 @@ function spatialLineToBox(el: SpatialLineElement): BoxParams | null {
     cx, cy, cz,
     sx: length,
     sy: sizeY,
-    sz: el.strokeWidth,
+    sz: parseFloat(el.attrs.size_x) || el.strokeWidth, // section width
     rotY,
   };
 }
@@ -224,7 +227,7 @@ export function elementTo3DParams(
     case 'line':
       return lineToBox(element, levelElevation, levelElevations);
     case 'spatial_line':
-      return spatialLineToBox(element);
+      return spatialLineToBox(element, levelElevation);
     case 'point':
       return pointToBox(element, levelElevation, levelElevations);
     case 'polygon':
