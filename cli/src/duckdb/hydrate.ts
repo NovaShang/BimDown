@@ -246,8 +246,9 @@ async function injectGeometry(
   if (!fileName) return;
   const isSpatial = SPATIAL_3D_TABLES.has(tableName);
 
-  // Map of element id → flat record of computed + property values
-  const rowsById = new Map<string, Record<string, number | string>>();
+  // (partition, element id) → flat record of computed + property values. IDs are
+  // only unique per level, so the partition must be part of the key.
+  const rowsById = new Map<string, { partition: string; id: string; rec: Record<string, number | string> }>();
 
   for (const d of dirs) {
     const path = join(d.path, `${fileName}.geojson`);
@@ -266,7 +267,7 @@ async function injectGeometry(
       const out: Record<string, number | string> = {};
       extractGeometryFields(feature, isSpatial, out);
       extractPropertyFields(feature, out);
-      rowsById.set(id, out);
+      rowsById.set(`${d.name}\u0000${id}`, { partition: d.name, id, rec: out });
     }
   }
 
@@ -274,7 +275,7 @@ async function injectGeometry(
 
   // Union of all field names across collected rows.
   const allKeys = new Set<string>();
-  for (const rec of rowsById.values()) {
+  for (const { rec } of rowsById.values()) {
     for (const k of Object.keys(rec)) allKeys.add(k);
   }
   const cols = Array.from(allKeys);
@@ -305,15 +306,15 @@ async function injectGeometry(
 
   // Stage into a temp table, then UPDATE ... FROM.
   const stagingName = `_geo_${tableName}`;
-  const stagingColDefs = ['"id" VARCHAR', ...cols.map((c) => `"${c}" ${typeOf(c)}`)].join(', ');
+  const stagingColDefs = ['"id" VARCHAR', '"_partition" VARCHAR', ...cols.map((c) => `"${c}" ${typeOf(c)}`)].join(', ');
   await runQuery(conn, `CREATE TEMP TABLE "${stagingName}" (${stagingColDefs})`);
 
-  const entries = Array.from(rowsById.entries());
+  const entries = Array.from(rowsById.values());
   for (let i = 0; i < entries.length; i += INSERT_BATCH_SIZE) {
     const batch = entries.slice(i, i + INSERT_BATCH_SIZE);
     const valuesSql = batch
-      .map(([id, rec]) => {
-        const vals = [escapeSql(id)];
+      .map(({ partition, id, rec }) => {
+        const vals = [escapeSql(id), escapeSql(partition)];
         for (const col of cols) {
           const v = rec[col];
           if (v === undefined || v === null) {
@@ -336,7 +337,7 @@ async function injectGeometry(
   const setClause = cols.map((c) => `"${c}" = g."${c}"`).join(', ');
   await runQuery(
     conn,
-    `UPDATE "${tableName}" SET ${setClause} FROM "${stagingName}" g WHERE "${tableName}".id = g.id`,
+    `UPDATE "${tableName}" SET ${setClause} FROM "${stagingName}" g WHERE "${tableName}".id = g.id AND "${tableName}"._partition = g._partition`,
   );
 
   await runQuery(conn, `DROP TABLE "${stagingName}"`);
