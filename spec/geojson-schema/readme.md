@@ -320,9 +320,12 @@ Notes:
   "format_version": 2,
   "project_name": "…",
   "units": "m",
-  "source": "revit"
+  "source": "revit",
+  "spatial_z": "absolute"
 }
 ```
+
+- `spatial_z: "absolute"` — optional marker that spatial coordinates follow §4.2 (absolute Z). Tools that guarantee it write it; a project without it may come from an older BimClaw editor that stored level-relative Z.
 
 - `format_version: 1` — CSV + **SVG** (see [svg-schema/readme.md](../svg-schema/readme.md)). Fully supported; 2D geometry.
 - `format_version: 2` — CSV + **GeoJSON** (this spec). Fully supported; 2D and 3D geometry. Default for new projects.

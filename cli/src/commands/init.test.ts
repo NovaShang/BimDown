@@ -28,5 +28,9 @@ describe('initProject', () => {
     const gridContent = readFileSync(join(testDir, 'global', 'grid.csv'), 'utf-8');
     expect(gridContent).toContain('gr-1');
     expect(gridContent).toContain('gr-2');
+
+    // Marks spatial Z as absolute (spec §4.2) so the project is unambiguous
+    const meta = JSON.parse(readFileSync(join(testDir, 'project_metadata.json'), 'utf-8'));
+    expect(meta.spatial_z).toBe('absolute');
   });
 });

@@ -14,7 +14,7 @@ export function initProject(absDir: string) {
   if (!existsSync(metadataPath)) {
     writeFileSync(
       metadataPath,
-      JSON.stringify({ format_version: 2, units: 'm' }, null, 2) + '\n',
+      JSON.stringify({ format_version: 2, units: 'm', spatial_z: 'absolute' }, null, 2) + '\n',
       'utf-8',
     );
   }

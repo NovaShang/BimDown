@@ -29,3 +29,14 @@ fields:
   - name: source
     type: string
     description: Export source (e.g. "Revit 2026", "BimDown CLI")
+
+  - name: spatial_z
+    type: enum
+    values: [absolute]
+    description: |
+      Marker that the Z in spatial elements' coordinates (beam, duct,
+      equipment, … — GeoJSON spec §4.2) is absolute, as the spec requires.
+      Written by tools that guarantee it (CLI `init`, BimClaw, the BimDown
+      editor, the legacy migration script). Older BimClaw projects without it
+      may hold level-relative Z written by earlier editor versions; see
+      bimdown-editor/scripts/migrate-spatial-z.mjs.

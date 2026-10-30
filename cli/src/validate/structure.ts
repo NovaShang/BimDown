@@ -136,9 +136,12 @@ export function validateStructure(dir: string): string[] {
           // identifier, so don't hard-fail builds on a "newer" minor bump.
         }
         for (const key of Object.keys(metadata)) {
-          if (!['format_version', 'project_name', 'units', 'source'].includes(key)) {
+          if (!['format_version', 'project_name', 'units', 'source', 'spatial_z'].includes(key)) {
             issues.push(`project_metadata.json  unknown field "${key}"`);
           }
+        }
+        if (metadata.spatial_z !== undefined && metadata.spatial_z !== 'absolute') {
+          issues.push(`project_metadata.json  invalid "spatial_z": ${JSON.stringify(metadata.spatial_z)} — must be "absolute"`);
         }
         if (metadata.units !== undefined) {
           const validUnits = ['m', 'ft', 'in', 'mm'];
