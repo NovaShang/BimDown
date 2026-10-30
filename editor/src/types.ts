@@ -33,6 +33,8 @@ export interface ProjectMetadata {
   /** Coordinate / dimension unit. When missing, treat as `'m'` (existing projects). */
   units?: ProjectUnit;
   source?: string;
+  /** `'absolute'` when the project declares spec-absolute spatial Z (see loader). */
+  spatial_z?: string;
 }
 
 /** One row of the project-level `global/mep_system.csv` lookup table. Lets users
@@ -59,6 +61,9 @@ export interface ProjectData {
    *  Empty array when the file is absent — auto-coloring stays in effect. */
   mepSystems: SystemDef[];
   metadata: ProjectMetadata;
+  /** Editor may write `spatial_z: "absolute"` on save: the project lacks the
+   *  marker but has no elevated spatial Z that could be legacy level-relative. */
+  spatialZMarkable?: boolean;
 }
 
 export interface GridData {

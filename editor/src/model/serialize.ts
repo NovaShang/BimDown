@@ -129,12 +129,19 @@ interface GeoJsonFeature {
   geometry: { type: 'Point'; coordinates: number[] } | { type: 'LineString'; coordinates: number[][] } | { type: 'Polygon'; coordinates: number[][][] };
 }
 
+/** Spatial point tables: Z goes into the 3D coordinate, not a base_offset. */
+const SPATIAL_POINT_TABLES = new Set(['equipment', 'terminal', 'mep_node']);
+
 /**
  * Serialize a list of elements (single layer) as a BimDown GeoJSON FeatureCollection string.
  * Returns empty string for CSV-only tables. For dual-mode tables (opening), only polygon
  * elements are emitted.
+ *
+ * `elevation` converts the editor's level-relative spatial Z back to the spec's
+ * absolute Z (pass the level elevation when writing files; 0 for in-memory
+ * layers and global/, which stay in editor form).
  */
-export function serializeToGeoJson(elements: CanonicalElement[]): string {
+export function serializeToGeoJson(elements: CanonicalElement[], elevation = 0): string {
   if (elements.length === 0) return '';
 
   const tableName = elements[0].tableName;
@@ -148,14 +155,14 @@ export function serializeToGeoJson(elements: CanonicalElement[]): string {
   const features: GeoJsonFeature[] = [];
 
   for (const el of elements) {
-    const feat = featureForElement(el, isSpatial);
+    const feat = featureForElement(el, isSpatial, elevation);
     if (feat) features.push(feat);
   }
 
   return stringifyFc(features);
 }
 
-function featureForElement(el: CanonicalElement, isSpatial: boolean): GeoJsonFeature | null {
+function featureForElement(el: CanonicalElement, isSpatial: boolean, elevation: number): GeoJsonFeature | null {
   switch (el.geometry) {
     case 'line': {
       const line = el as LineElement;
@@ -195,8 +202,8 @@ function featureForElement(el: CanonicalElement, isSpatial: boolean): GeoJsonFea
         geometry: {
           type: 'LineString',
           coordinates: [
-            [r2(line.start.x), r2(line.start.y), r2(line.startZ)],
-            [r2(line.end.x), r2(line.end.y), r2(line.endZ)],
+            [r2(line.start.x), r2(line.start.y), r2(line.startZ + elevation)],
+            [r2(line.end.x), r2(line.end.y), r2(line.endZ + elevation)],
           ],
         },
       };
@@ -206,10 +213,15 @@ function featureForElement(el: CanonicalElement, isSpatial: boolean): GeoJsonFea
       const props: Record<string, unknown> = { id: pt.id };
       const rot = parseFloat(pt.attrs.rotation ?? '');
       if (!isNaN(rot) && rot !== 0) props.rotation = rot;
-      attachZProps(props, pt.attrs);
-      const coords = isSpatial && pt.attrs.z !== undefined && pt.attrs.z !== ''
-        ? [r2(pt.position.x), r2(pt.position.y), r2(parseFloat(pt.attrs.z) || 0)]
-        : [r2(pt.position.x), r2(pt.position.y)];
+      let coords: number[];
+      if (isSpatial) {
+        // Spatial point (equipment/terminal/mep_node): absolute Z in the coordinate.
+        const rel = parseFloat(pt.attrs.base_offset ?? '') || 0;
+        coords = [r2(pt.position.x), r2(pt.position.y), r2(rel + elevation)];
+      } else {
+        attachZProps(props, pt.attrs);
+        coords = [r2(pt.position.x), r2(pt.position.y)];
+      }
       return { type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: coords } };
     }
     case 'polygon': {
@@ -266,6 +278,14 @@ export function serializeToCsv(elements: CanonicalElement[], tableName: string):
       headerSet.add(k);
     }
   }
+
+  // Spatial geometry carries its Z in the coordinates: start_z/end_z are
+  // computed fields, and a spatial point's base_offset is its coordinate Z.
+  if (SPATIAL_3D_TABLES.has(tableName)) {
+    headerSet.delete('start_z');
+    headerSet.delete('end_z');
+  }
+  if (SPATIAL_POINT_TABLES.has(tableName)) headerSet.delete('base_offset');
 
   const headers = ['id', ...headerSet];
   const lines: string[] = [headers.join(',')];

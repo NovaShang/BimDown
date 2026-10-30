@@ -6,7 +6,13 @@ import type { DataSource } from './dataSource.ts';
 /**
  * Persist document state via the data source.
  */
-export async function persistDocument(doc: DocumentState, ds: DataSource, changedKeys?: Set<string>): Promise<void> {
+export async function persistDocument(
+  doc: DocumentState,
+  ds: DataSource,
+  changedKeys?: Set<string>,
+  /** Elevation of `doc.levelId`: spatial Z is written back as absolute (spec §4.2). */
+  elevation = 0,
+): Promise<void> {
   const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
   const groups = groupByLayer(elements);
 
@@ -23,7 +29,7 @@ export async function persistDocument(doc: DocumentState, ds: DataSource, change
 
     if (!isCsvOnlyTable(tableName)) {
       const geomPath = `${levelId}/${tableName}.geojson`;
-      const geomContent = serializeToGeoJson(groupElements);
+      const geomContent = serializeToGeoJson(groupElements, elevation);
       saves.push(ds.saveFile(geomPath, geomContent));
     }
 
@@ -96,4 +102,23 @@ function csvEscape(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
+}
+
+/**
+ * Write `spatial_z: "absolute"` into project_metadata.json, keeping every other
+ * key. Only call it for projects whose files are known to be spec-absolute
+ * (ProjectData.spatialZMarkable) — never on unmigrated legacy projects.
+ */
+export async function stampSpatialZMarker(ds: DataSource): Promise<void> {
+  const text = await ds.fetchText('project_metadata.json');
+  let meta: Record<string, unknown> = { format_version: '3.0', units: 'm' };
+  if (text) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) meta = parsed;
+    } catch { /* rewrite a broken file with defaults */ }
+  }
+  if (meta.spatial_z === 'absolute') return;
+  meta.spatial_z = 'absolute';
+  await ds.saveFile('project_metadata.json', JSON.stringify(meta, null, 2) + '\n');
 }

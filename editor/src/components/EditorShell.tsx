@@ -3,7 +3,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument, persistLevels, persistGrids, persistGlobalLayer } from '../utils/persist.ts';
+import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, stampSpatialZMarker } from '../utils/persist.ts';
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
@@ -38,6 +38,20 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   const dsRef = useRef(ds);
   dsRef.current = ds;
 
+  // Write the document's changed layers. Spatial Z goes back to absolute using
+  // the level elevation; the first save of a project that is safe to mark
+  // also stamps `spatial_z: "absolute"` (see ProjectData.spatialZMarkable).
+  const spatialZStamped = useRef(false);
+  const persistDoc = useRef(async (doc: NonNullable<typeof state.document>, changedKeys: Set<string>) => {
+    const project = stateRef.current.project;
+    const elevation = project?.levels.find(l => l.id === doc.levelId)?.elevation ?? 0;
+    await persistDocument(doc, dsRef.current, changedKeys, elevation);
+    if (project?.spatialZMarkable && !spatialZStamped.current) {
+      spatialZStamped.current = true;
+      await stampSpatialZMarker(dsRef.current);
+    }
+  });
+
   // Auto-persist: write to disk on every document mutation
   const persistTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const pendingKeys = useRef(new Set<string>());
@@ -52,7 +66,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     pendingKeys.current.clear();
     lastProcessedVersion.current = 0;
     try {
-      await persistDocument(currentState.document, dsRef.current, changedKeys);
+      await persistDoc.current(currentState.document, changedKeys);
       // If grids changed, persist to global/grid.csv and sync state
       if (changedKeys.has('reference/grid')) {
         const gridEls = Array.from(currentState.document.elements.values()).filter(e => e.tableName === 'grid');
@@ -157,7 +171,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
       const changedKeys = new Set(pendingKeys.current);
       pendingKeys.current.clear();
 
-      persistDocument(doc, dsRef.current, changedKeys)
+      persistDoc.current(doc, changedKeys)
         .then(async () => {
           // If grids changed, also persist to global/grid.csv
           if (changedKeys.has('reference/grid')) {

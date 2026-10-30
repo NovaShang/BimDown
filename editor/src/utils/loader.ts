@@ -25,6 +25,7 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
       project_name: json.project_name,
       units: normalizeUnits(json.units),
       source: json.source,
+      spatial_z: json.spatial_z,
     };
   } catch {
     return { ...DEFAULT_METADATA };
@@ -81,49 +82,57 @@ function parseCsvLine(line: string): string[] {
   return result;
 }
 
+/** Spatial tables: geometry carries absolute Z in its coordinates (spec §4.2). */
+const SPATIAL_TABLES = new Set([
+  'stair', 'ramp', 'railing', 'beam', 'brace',
+  'duct', 'pipe', 'cable_tray', 'conduit',
+  'equipment', 'terminal', 'mep_node',
+]);
+
+/** Z offsets the spec stores in GeoJSON `properties` (the editor reads them as attrs). */
+const GEOJSON_Z_PROPS = ['base_offset', 'top_offset', 'height_offset'] as const;
+
 /**
- * Spatial elements (duct/pipe/beam… and the 3D points equipment/terminal/mep_node)
- * carry **absolute** Z in their GeoJSON coordinates per the BimDown spec. The
- * editor, however, renders spatial Z as **level-relative** (`levelElevation + z`,
- * and its draw defaults like `start_z: '3'` mean "3 m above the floor"). So when a
- * project comes from an absolute-Z source (e.g. a Revit export) we convert each
- * LEVEL layer's Z to the editor's relative convention by subtracting the level
- * elevation:
- *   - LineString coords (duct/pipe/…): `z -= elevation` (consumed as startZ/endZ).
- *   - Point coords (equipment/terminal/mep_node): the relative Z is written into
- *     the CSV `base_offset` — `buildPoint` reads `base_offset`, not `coords[2]`,
- *     so without this the point collapses to the floor plane.
- * Level-anchored elements (walls/columns/slabs) have 2D coords and are untouched.
- * Global-directory layers are rendered at elevation 0, so their absolute Z is
- * already correct and is NOT normalized here.
+ * Bring one layer from the on-disk spec form into the editor model.
+ *
+ * - Spatial coordinates carry **absolute** Z (spec §4.2) for every project; the
+ *   editor model is **level-relative** (`levelElevation + z`, draw defaults like
+ *   `start_z: '3'` mean "3 m above the floor"), so subtract the level elevation:
+ *     - LineString coords (beam/duct/…): `z -= elevation` (read as startZ/endZ).
+ *     - 3D Point coords (equipment/terminal/mep_node): the relative Z becomes the
+ *       row's `base_offset` (what `buildPoint` reads).
+ *   `persistDocument` adds the elevation back on save (see serializeToGeoJson).
+ * - `base_offset` / `top_offset` / `height_offset` written in GeoJSON properties
+ *   (spec storage) are copied into the row; they win over a stale CSV column.
+ *
+ * Global layers use elevation 0, so only the property hoisting applies there.
  */
-function normalizeLevelLayerZ(
+export function importLayerGeometry(
   geojsonContent: string,
   elevation: number,
   csvMap: Map<string, CsvRow>,
+  tableName: string,
 ): string {
   if (!geojsonContent) return geojsonContent;
-  let fc: { features?: { geometry?: { type?: string; coordinates?: unknown }; properties?: { id?: string } }[] };
+  let fc: { features?: { geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }[] };
   try { fc = JSON.parse(geojsonContent); } catch { return geojsonContent; }
   if (!Array.isArray(fc.features)) return geojsonContent;
+  const spatial = SPATIAL_TABLES.has(tableName);
   for (const ft of fc.features) {
+    const id = typeof ft.properties?.id === 'string' ? ft.properties.id : undefined;
+    const row: CsvRow | undefined = id ? (csvMap.get(id) ?? { id }) : undefined;
+    for (const key of GEOJSON_Z_PROPS) {
+      const v = ft.properties?.[key];
+      if (row && typeof v === 'number' && isFinite(v)) row[key] = String(v);
+    }
     const g = ft.geometry;
-    if (!g) continue;
-    if (g.type === 'Point') {
+    if (spatial && g?.type === 'Point') {
       const c = g.coordinates as number[];
       if (Array.isArray(c) && c.length >= 3 && typeof c[2] === 'number') {
-        const relZ = c[2] - elevation;
-        c[2] = relZ;
-        const id = ft.properties?.id;
-        if (id) {
-          const row = csvMap.get(id) ?? { id };
-          if (row.base_offset === undefined || row.base_offset === '') {
-            row.base_offset = String(relZ);
-            csvMap.set(id, row);
-          }
-        }
+        c[2] = c[2] - elevation;
+        if (row) row.base_offset = String(c[2]);
       }
-    } else if (g.type === 'LineString') {
+    } else if (spatial && g?.type === 'LineString') {
       const coords = g.coordinates as number[][];
       if (Array.isArray(coords)) {
         for (const c of coords) {
@@ -131,8 +140,17 @@ function normalizeLevelLayerZ(
         }
       }
     }
+    if (row && id && !csvMap.has(id)) csvMap.set(id, row);
   }
   return JSON.stringify(fc);
+}
+
+/** True when a level layer (elevation ≠ 0) holds spatial geometry with a Z. In
+ *  a project without the `spatial_z` marker such Z may be legacy level-relative
+ *  (pre-marker editor saves), so the editor must not stamp the marker on it. */
+function hasElevatedSpatialZ(geojsonContent: string, elevation: number, tableName: string): boolean {
+  if (elevation === 0 || !SPATIAL_TABLES.has(tableName) || !geojsonContent) return false;
+  return /\[\s*-?[\d.eE+-]+\s*,\s*-?[\d.eE+-]+\s*,\s*-?[\d.eE+-]+\s*\]/.test(geojsonContent);
 }
 
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
@@ -141,10 +159,8 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const fetchIfPresent = (p: string) =>
     manifest && !manifest.has(p) ? Promise.resolve(null) : ds.fetchText(p);
 
-  // Absolute-Z sources (Revit) store absolute Z in coords; the editor model is
-  // level-relative. Normalize level layers on import (see normalizeLevelLayerZ).
   const metadata = await metadataPromise;
-  const isAbsoluteZ = /revit/i.test(metadata.source ?? '');
+  let elevatedSpatialZ = false;
 
   let levels: Level[] = [];
   const text = await fetchIfPresent('global/level.csv');
@@ -202,12 +218,11 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
       });
     }
 
+    if (hasElevatedSpatialZ(geojsonContent ?? '', level.elevation, tableName)) elevatedSpatialZ = true;
     floors.get(level.id)!.layers.push({
       tableName,
       discipline: disc,
-      geojsonContent: isAbsoluteZ
-        ? normalizeLevelLayerZ(geojsonContent ?? '', level.elevation, csvMap)
-        : (geojsonContent ?? ''),
+      geojsonContent: importLayerGeometry(geojsonContent ?? '', level.elevation, csvMap, tableName),
       csvRows: csvMap,
     });
   }
@@ -247,7 +262,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
     globalLayers.push({
       tableName,
       discipline: disc,
-      geojsonContent: geojsonContent ?? '',
+      geojsonContent: importLayerGeometry(geojsonContent ?? '', 0, csvMap, tableName),
       csvRows: csvMap,
     });
   }
@@ -260,7 +275,10 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const derived = deriveMepSystems(declared, floors, globalLayers);
   const mepSystems = [...declared, ...derived];
 
-  return { levels, floors, globalLayers, mepSystems, metadata };
+  // Safe to stamp `spatial_z: absolute` on save unless the project is unmarked
+  // and holds elevated spatial Z that might be legacy level-relative.
+  const spatialZMarkable = metadata.spatial_z !== 'absolute' && !elevatedSpatialZ;
+  return { levels, floors, globalLayers, mepSystems, metadata, spatialZMarkable };
 }
 
 /** MEP tables that carry a `system_type` tag. */
@@ -351,7 +369,13 @@ export async function loadGrids(ds: DataSource): Promise<GridData[]> {
   return [];
 }
 
-export async function loadLayer(ds: DataSource, levelId: string, tableName: string): Promise<LayerData | null> {
+/**
+ * Reload one layer (e.g. after an external file change). `elevation` is the
+ * level's elevation; when omitted it is looked up in global/level.csv.
+ */
+export async function loadLayer(
+  ds: DataSource, levelId: string, tableName: string, elevation?: number,
+): Promise<LayerData | null> {
   const [geojsonContent, csvContent] = await Promise.all([
     ds.fetchText(`${levelId}/${tableName}.geojson`),
     ds.fetchText(`${levelId}/${tableName}.csv`),
@@ -366,10 +390,20 @@ export async function loadLayer(ds: DataSource, levelId: string, tableName: stri
     }
   }
 
+  let elev = elevation;
+  if (elev === undefined) {
+    elev = 0;
+    if (levelId !== 'global') {
+      const levelText = await ds.fetchText('global/level.csv');
+      const row = levelText ? parseCsv(levelText).find(r => r.id === levelId) : undefined;
+      elev = row ? parseFloat(row.elevation) || 0 : 0;
+    }
+  }
+
   return {
     tableName,
     discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architectural',
-    geojsonContent: geojsonContent ?? '',
+    geojsonContent: importLayerGeometry(geojsonContent ?? '', elev, csvMap, tableName),
     csvRows: csvMap,
   };
 }
