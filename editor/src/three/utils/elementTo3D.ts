@@ -23,7 +23,13 @@ const DEFAULT_COLUMN_HEIGHT = 3.0;
 const DEFAULT_POINT_HEIGHT = 0.5;
 const DEFAULT_ROOM_HEIGHT = 3.0;
 const DEFAULT_SLAB_THICKNESS = 0.2;
+const DEFAULT_FOUNDATION_THICKNESS = 0.4;
 const DEFAULT_MEP_SIZE = 0.3;
+
+/** Framing whose line is the member TOP (Revit export convention); MEP lines are centre lines. */
+const TOP_LINE_TABLES = ['beam', 'brace'];
+/** Polygons whose level + base_offset is the TOP face; the body hangs down by `thickness`. */
+const TOP_ANCHORED_POLYGONS = ['slab', 'structure_slab', 'foundation'];
 
 /** Resolve element height from top_level_id / top_offset / base_offset */
 export function resolveHeight(
@@ -92,7 +98,7 @@ function lineToBox(
     const endZ = parseFloat(el.attrs.end_z) || startZ;
     // For MEP, size_y is the cross-section height
     const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
-    baseY = Math.min(startZ, endZ) - sizeY / 2;
+    baseY = Math.min(startZ, endZ) - (TOP_LINE_TABLES.includes(table) ? sizeY : sizeY / 2);
     height = sizeY;
     thickness = el.strokeWidth;
   } else {
@@ -152,10 +158,14 @@ function polygonToExtrude(
   if (el.vertices.length < 3) return null;
 
   const baseOffset = parseFloat(el.attrs.base_offset) || 0;
-  const baseY = levelElevation + baseOffset;
+  let baseY = levelElevation + baseOffset;
   let height: number;
 
-  if (['slab', 'structure_slab', 'roof'].includes(el.tableName)) {
+  if (TOP_ANCHORED_POLYGONS.includes(el.tableName)) {
+    const fallback = el.tableName === 'foundation' ? DEFAULT_FOUNDATION_THICKNESS : DEFAULT_SLAB_THICKNESS;
+    height = parseFloat(el.attrs.thickness) || fallback;
+    baseY -= height;
+  } else if (el.tableName === 'roof') {
     height = parseFloat(el.attrs.thickness) || DEFAULT_SLAB_THICKNESS;
   } else {
     // Space: use next level height or default
@@ -188,7 +198,7 @@ function spatialLineToBox(el: SpatialLineElement): BoxParams | null {
   if (length < 0.001) return null;
 
   const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
-  const baseY = Math.min(el.startZ, el.endZ) - sizeY / 2;
+  const baseY = Math.min(el.startZ, el.endZ) - (TOP_LINE_TABLES.includes(el.tableName) ? sizeY : sizeY / 2);
 
   const cx = (el.start.x + el.end.x) / 2;
   const cz = -(el.start.y + el.end.y) / 2;

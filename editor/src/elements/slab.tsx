@@ -35,7 +35,7 @@ function makeSlabModule(opts: {
 
     geometry(el: CanonicalElement, ctx): SlabFacts | null {
       if (el.geometry !== 'polygon') return null;
-      return slabGeometryFor(el as PolygonElement, ctx, opts.table, opts.defaults.material);
+      return slabGeometryFor(el as PolygonElement, ctx, opts.table, opts.defaults.material, 0, true);
     },
 
     draw2D(facts, drawCtx): ReactNode {

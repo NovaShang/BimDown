@@ -9,11 +9,12 @@
  * connector slots when the schema lands.
  */
 import type { ReactNode } from 'react';
-import { ExtrudeGeometry, Matrix4, Quaternion, Vector3 } from 'three';
+import { ExtrudeGeometry } from 'three';
 import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, getSystemColorMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { shapeFromAttrs, createProfile } from '../three/primitives/profiles.ts';
+import { uprightAxisQuaternion } from '../three/utils/memberAxis.ts';
 import { buildLineWallFootprint, type WallDrawSegment } from './_lineWallShared.tsx';
 import {
   computeCornerAdjustments,
@@ -392,24 +393,9 @@ export function mepLineDraw3D(facts: MepLineFacts, isHL: boolean): ReactNode {
   const shape = createProfile(profile);
   const geo = new ExtrudeGeometry(shape, { depth: len3D, bevelEnabled: false });
 
-  // Orient profile along the 3D centerline. ExtrudeGeometry extrudes along
-  // local +Z; we want local +Z to point from start to end. The world-space
-  // direction is (dx, dz, -dy) because SVG Y maps to world -Z and Z height
-  // maps to world Y.
-  //
-  // setFromUnitVectors gives the *shortest* rotation aligning +Z to dir — but
-  // that leaves the profile's roll (rotation about the pipe axis) unconstrained,
-  // so a sloped rectangular duct / cable tray visibly twists about its axis.
-  // Build a full orthonormal basis instead, pinning the profile's local +Y as
-  // close to world up as possible so the cross-section stays upright.
-  const forward = new Vector3(dx, dz, -dy).normalize(); // local +Z
-  let up = new Vector3(0, 1, 0);
-  if (Math.abs(forward.dot(up)) > 0.999) up = new Vector3(1, 0, 0); // near-vertical riser
-  const right = new Vector3().crossVectors(up, forward).normalize();   // local +X (width)
-  const trueUp = new Vector3().crossVectors(forward, right).normalize(); // local +Y (height)
-  const quat = new Quaternion().setFromRotationMatrix(
-    new Matrix4().makeBasis(right, trueUp, forward),
-  );
+  // Orient local +Z from start to end, profile kept upright (no roll); the
+  // line is the centre line of the section.
+  const quat = uprightAxisQuaternion(dx, dy, dz);
 
   // Color by MEP system (matching 2D) when the line carries a system_type;
   // otherwise fall back to the table's BIM material.

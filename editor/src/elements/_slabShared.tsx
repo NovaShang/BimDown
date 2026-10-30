@@ -1,6 +1,6 @@
 /**
  * Shared logic for surface-archetype elements with polygon footprint:
- * slab, structure_slab. Could extend to roof / ceiling / foundation later.
+ * slab, structure_slab (top-anchored: base_offset = top face) and ceiling.
  */
 import type { ReactNode } from 'react';
 import { Shape, ExtrudeGeometry, type BufferGeometry } from 'three';
@@ -17,6 +17,7 @@ export interface SlabFacts {
   table: string;
   vertices: Point[];
   thickness: number;
+  /** Bottom face elevation of the mesh (world Y). */
   baseY: number;
   material: string;
   /** Polygon-opening holes (from opening elements hosting this slab). */
@@ -47,6 +48,10 @@ export function slabGeometryFor(
   /** Extra elevation offset applied after base_offset (used by ceiling for its
    *  `height_offset` drop). */
   extraOffset = 0,
+  /** true: level + base_offset is the TOP face and the body hangs down by
+   *  `thickness` (slab / structure_slab, matching the Revit export). false:
+   *  it is the bottom face (ceiling). */
+  topAnchored = false,
 ): SlabFacts | null {
   if (el.vertices.length < 3) return null;
   const baseOffset = parseFloat(el.attrs.base_offset || '0') || 0;
@@ -56,7 +61,7 @@ export function slabGeometryFor(
     table,
     vertices: el.vertices,
     thickness,
-    baseY: ctx.levelElevation + baseOffset + extraOffset,
+    baseY: ctx.levelElevation + baseOffset + extraOffset - (topAnchored ? thickness : 0),
     material: el.attrs.material || defaultMaterial,
     holes: collectSlabHoles(el.id, ctx),
   };

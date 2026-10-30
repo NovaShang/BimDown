@@ -196,7 +196,7 @@ export const foundationModule: ElementModule<FoundationFacts> = {
       );
     }
 
-    // line + polygon: extrude footprint upward by thickness
+    // line + polygon: extrude footprint upward by thickness from baseY (= top − thickness)
     const verts = facts.kind === 'line' ? facts.footprint2D : facts.vertices;
     const shape = new Shape();
     shape.moveTo(verts[0].x, verts[0].y);

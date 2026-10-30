@@ -1,9 +1,9 @@
 import type { ReactNode } from 'react';
-import { ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { createProfile } from '../three/primitives/profiles.ts';
+import { framingMemberMesh } from '../three/utils/memberAxis.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 import { resolveSection } from '../families/sections/index.ts';
@@ -105,33 +105,19 @@ export const beamModule: ElementModule<BeamFacts> = {
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    // Extrude the structural cross-section profile along the beam axis.
-    // Approach: orient the cross-section perpendicular to (start→end), extrude by chord length.
-    // For simplicity, build via a separate transform per beam (no batching).
-    const dx = facts.end.x - facts.start.x;
-    const dy = facts.end.y - facts.start.y;
-    const horLen = Math.sqrt(dx * dx + dy * dy);
-    if (horLen < 0.001) return null;
-
-    const profile = facts.section.family.shape3D(facts.section.params);
-    const shape = createProfile(profile);
-    // Profile in XY → extrude by horLen along Z (will be rotated to align with beam axis).
-    const geo = new ExtrudeGeometry(shape, { depth: horLen, bevelEnabled: false });
-
-    // Compute rotation to align local Z with beam direction (in world XZ plane).
-    const angleY = Math.atan2(-dy, dx);
+    // Section extruded along the (possibly sloped) beam line, which runs along
+    // the section's top edge: beam z = top of the beam (Revit export convention).
+    const shape = createProfile(facts.section.family.shape3D(facts.section.params));
+    const m = framingMemberMesh(shape, facts.start, facts.end, facts.startZ, facts.endZ, facts.baseY);
+    if (!m) return null;
 
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'beam'));
     const isHL = drawCtx.selected || drawCtx.hovered;
-
-    // Beam world Y: average of start_z and end_z + level elevation. Approximation
-    // for sloped beams. Full path-extrusion comes later.
-    const avgZ = (facts.startZ + facts.endZ) / 2;
     return (
       <mesh
-        geometry={geo}
-        position={[facts.start.x, facts.baseY + avgZ, -facts.start.y]}
-        rotation={[0, angleY, 0]}
+        geometry={m.geometry}
+        position={m.position}
+        quaternion={m.quaternion}
         material={isHL ? undefined : material}
         castShadow
         receiveShadow

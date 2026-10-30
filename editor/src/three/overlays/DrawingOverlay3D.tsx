@@ -328,10 +328,13 @@ export default function DrawingOverlay3D({ elevation }: DrawingOverlay3DProps) {
     // Compute extrusion parameters for 3D preview
     const fallbackH = tableName ? resolveHeightFallback(tableName, drawingAttrs) : DEFAULT_SLAB_THICKNESS;
     const baseOffset = parseFloat(drawingAttrs.base_offset) || 0;
-    const baseY = elevation + baseOffset;
+    let baseY = elevation + baseOffset;
     let extrudeHeight = fallbackH;
-    if (['slab', 'structure_slab'].includes(tableName ?? '')) {
-      extrudeHeight = parseFloat(drawingAttrs.thickness) || DEFAULT_SLAB_THICKNESS;
+    if (['slab', 'structure_slab', 'foundation'].includes(tableName ?? '')) {
+      // Top-anchored: level + base_offset is the top face, body hangs down.
+      extrudeHeight = parseFloat(drawingAttrs.thickness)
+        || (tableName === 'foundation' ? 0.4 : DEFAULT_SLAB_THICKNESS);
+      baseY -= extrudeHeight;
     } else {
       const resolved = resolveHeight(drawingAttrs, elevation, levelElevations, fallbackH);
       extrudeHeight = resolved.height;
