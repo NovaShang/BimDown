@@ -8,7 +8,7 @@
 
 开源的纯文本轻量 BIM 数据格式，附带命令行工具、**AI Agent Skill**，并**支持与 Autodesk Revit 双向互通（Round-Trip）**。
 
-**在浏览器里试用：[bimdown.com](https://bimdown.com)**。在线编辑器和分享查看器，以及能从图纸、照片或文字为既有建筑建模的 AI 智能体。
+**在浏览器里试用：[bim.jouledown.com](https://bim.jouledown.com)**。在线编辑器和分享查看器，以及能从图纸、照片或文字为既有建筑建模的 AI 智能体。BimDown 是 [JouleDown](https://jouledown.com) 的一部分。
 
 BimDown 用 **CSV** 存储属性，几何层可以用 **SVG**（二维）或 **GeoJSON**（二维/三维）两种方式编码 — 简单到任何大语言模型都能直接读写，同时又足够结构化来支撑真实的 BIM 工作流。两种几何编码都是一等公民、可互相转换；新项目默认使用 GeoJSON。内置的 Revit 插件实现了**双向同步**：从 Revit 导出到 BimDown，用 AI 或手动修改数据，再导回 Revit，改动完整保留。
 
@@ -112,7 +112,7 @@ bimdown merge ./projectA ./projectB -o ./merged  # 合并项目，自动解决 I
 ### 发布
 
 ```bash
-bimdown publish ./my-project          # 发布到 bimdown.com 并获取分享链接
+bimdown publish ./my-project          # 发布到 bim.jouledown.com 并获取分享链接
 ```
 
 ### MEP 拓扑
@@ -255,7 +255,7 @@ BimDown 是一个 **LOD 200 级别的轻量格式**，面向既有建筑记录�
 
 ## 相关项目
 
-- **[BimDown 在线版](https://bimdown.com)**：在线编辑器和查看器，AI 智能体能从图纸、照片或文字建模
+- **[BimDown 在线版](https://bim.jouledown.com)**：在线编辑器和查看器，AI 智能体能从图纸、照片或文字建模
 - **[BimEditor](https://github.com/NovaShang/BimEditor)**：背后的浏览器 2D/3D 编辑器组件
 
 ## 许可证

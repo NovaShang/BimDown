@@ -36,7 +36,7 @@ fields:
     description: |
       Marker that the Z in spatial elements' coordinates (beam, duct,
       equipment, … — GeoJSON spec §4.2) is absolute, as the spec requires.
-      Written by tools that guarantee it (CLI `init`, bimdown.com, the BimDown
-      editor, the legacy migration script). Older bimdown.com (formerly BimClaw) projects without it
+      Written by tools that guarantee it (CLI `init`, bim.jouledown.com, the BimDown
+      editor, the legacy migration script). Older hosted projects (bim-claw.com, formerly BimClaw) without it
       may hold level-relative Z written by earlier editor versions; see
       bimdown-editor/scripts/migrate-spatial-z.mjs.

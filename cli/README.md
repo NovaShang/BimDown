@@ -1,6 +1,6 @@
 # BimDown CLI
 
-Command-line tool for [BimDown](https://bimdown.com), an open building data format (CSV attributes + GeoJSON or SVG geometry, one folder per level). Validates and builds projects, renders plans, loads models into DuckDB for SQL queries, diffs and merges, and publishes share links to bimdown.com. Format spec and agent skill: [NovaShang/BimDown](https://github.com/NovaShang/BimDown).
+Command-line tool for [BimDown](https://bim.jouledown.com), an open building data format (CSV attributes + GeoJSON or SVG geometry, one folder per level). Validates and builds projects, renders plans, loads models into DuckDB for SQL queries, diffs and merges, and publishes share links to bim.jouledown.com. Format spec and agent skill: [NovaShang/BimDown](https://github.com/NovaShang/BimDown).
 
 ## Install
 
@@ -20,7 +20,7 @@ npm run build
 
 ### `bimdown publish <dir>`
 
-Uploads the project anonymously and prints a public share link on bimdown.com (default expiry 7 days, `--expires 24h`). Override the server with `--api <url>` or `BIMDOWN_API`.
+Uploads the project anonymously and prints a public share link on bim.jouledown.com (default expiry 7 days, `--expires 24h`). Override the server with `--api <url>` or `BIMDOWN_API`.
 
 ### `bimdown validate <dir>`
 

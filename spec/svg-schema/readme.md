@@ -3,7 +3,7 @@
 SVG is one of **two interchangeable geometry storage layers** for BimDown — the other is [GeoJSON](../geojson-schema/readme.md). Both are first-class and fully supported; a project picks one, declared by `format_version` (see §7). The CSV attribute layer is identical regardless of which geometry encoding is used.
 
 - **SVG** (`format_version: 1`): 2D geometry, the encoding documented here. AI models have extensive SVG training data and strong spatial reasoning with the format.
-- **GeoJSON** (`format_version: 2`): 2D **and** 3D geometry, native JSON, GIS-toolchain compatible. The default for new projects and the encoding the BimDown editor (bimdown.com) consumes.
+- **GeoJSON** (`format_version: 2`): 2D **and** 3D geometry, native JSON, GIS-toolchain compatible. The default for new projects and the encoding the BimDown editor (bim.jouledown.com) consumes.
 
 Like GeoJSON, SVG here is **not** used for visualization — it is a structured geometry storage format. Renderers consume the parsed canonical element model, not the raw SVG.
 

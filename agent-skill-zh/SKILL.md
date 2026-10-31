@@ -13,9 +13,9 @@ metadata:
       "optionalEnv": ["BIMDOWN_API"],
       "network": {
         "publish": {
-          "endpoint": "https://bimdown.com/api/shares/publish",
+          "endpoint": "https://bim.jouledown.com/api/shares/publish",
           "method": "POST",
-          "description": "可选的分享上传步骤。会将项目的 CSV/GeoJSON/GLB 打包上传到 bimdown.com 并返回一个公共分享链接。匿名发布(无需账号或 token)。智能体在每个项目首次发布前必须显式获得用户授权。",
+          "description": "可选的分享上传步骤。会将项目的 CSV/GeoJSON/GLB 打包上传到 bim.jouledown.com 并返回一个公共分享链接。匿名发布(无需账号或 token)。智能体在每个项目首次发布前必须显式获得用户授权。",
           "override": "设置 BIMDOWN_API(或旧的 BIMCLAW_API)指向自建后端。"
         }
       }
@@ -180,7 +180,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 4. **`bimdown schema [table]`** —— 打印表的完整 schema。
 5. **`bimdown diff <dirA> <dirB>`** —— 项目结构差异。
 6. **`bimdown init <dir>`** —— 创建空项目(`format_version: 2`)。
-7. **`bimdown publish <dir>`** —— 上传到 bimdown.com,返回分享链接(联网,**事先征求用户同意**)。
+7. **`bimdown publish <dir>`** —— 上传到 bim.jouledown.com,返回分享链接(联网,**事先征求用户同意**)。
 8. **`bimdown info <dir>`** —— 各层级元素数量统计。
 9. **`bimdown resolve-topology <dir>`** —— 自动解析 MEP 曲线连接关系。
 10. **`bimdown merge <dirs...> -o <out>`** —— 合并多个项目。
@@ -190,7 +190,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 
 `bimdown publish` 是本技能中**唯一**会联网的命令。运行前向用户确认:
 
-- **目的地**:`https://bimdown.com/api/shares/publish`(可用 `--api` 或 `BIMDOWN_API` 覆盖)。
+- **目的地**:`https://bim.jouledown.com/api/shares/publish`(可用 `--api` 或 `BIMDOWN_API` 覆盖)。
 - **上传内容**:整个项目打包(所有 CSV、所有 GeoJSON、任何 GLB、`project_metadata.json`)。
 - **匿名**:无账号;服务器返回随机分享 token。任何持链人都可在过期前(默认 7 天)查看和下载。
 - **同意要求**:每个项目**首次发布前**必须显式得到用户许可,不要自主上传。

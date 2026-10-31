@@ -4,7 +4,7 @@ import { zipSync } from 'fflate';
 import { discoverLayout, listFiles } from '../utils/fs.js';
 
 // bim-claw.com (CLI <= 0.4) still serves /api/shares/publish
-const DEFAULT_API = 'https://bimdown.com';
+const DEFAULT_API = 'https://bim.jouledown.com';
 const DEFAULT_EXPIRES = '7d';
 
 export async function publish(dir: string, opts: { expires?: string; api?: string; name?: string }) {

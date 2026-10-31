@@ -8,7 +8,7 @@
 
 An open-source, plain-text building data format for lightweight BIM, with a CLI, an **AI Agent Skill**, and **round-trip support for Autodesk Revit**.
 
-**Try it in the browser at [bimdown.com](https://bimdown.com)**: the hosted editor and share viewer, plus an AI agent that builds models of existing buildings from drawings, photos, or text.
+**Try it in the browser at [bim.jouledown.com](https://bim.jouledown.com)**: the hosted editor and share viewer, plus an AI agent that builds models of existing buildings from drawings, photos, or text. BimDown is part of [JouleDown](https://jouledown.com).
 
 BimDown uses **CSV** for attributes and a **geometry layer** that can be encoded as either **SVG** (2D) or **GeoJSON** (2D/3D) — simple enough for any LLM to read and write, structured enough for real BIM workflows. Both geometry encodings are first-class and interchangeable; GeoJSON is the default for new projects. The included Revit add-in enables **bidirectional sync**: export from Revit to BimDown, let AI agents modify the data, then import back into Revit with changes preserved.
 
@@ -112,7 +112,7 @@ bimdown merge ./projectA ./projectB -o ./merged  # merge projects, resolving ID 
 ### Publishing
 
 ```bash
-bimdown publish ./my-project          # publish to bimdown.com and get a shareable link
+bimdown publish ./my-project          # publish to bim.jouledown.com and get a shareable link
 ```
 
 ### MEP Topology
@@ -255,7 +255,7 @@ The following Revit scenarios fall outside BimDown's scope and will be exported 
 
 ## Related Projects
 
-- **[BimDown on the web](https://bimdown.com)**: hosted editor and viewer, with an AI agent that builds models from drawings, photos, or text
+- **[BimDown on the web](https://bim.jouledown.com)**: hosted editor and viewer, with an AI agent that builds models from drawings, photos, or text
 - **[BimEditor](https://github.com/NovaShang/BimEditor)**: the browser-based 2D/3D editor component behind it
 
 ## License
