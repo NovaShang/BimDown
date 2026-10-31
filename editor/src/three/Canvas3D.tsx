@@ -9,7 +9,7 @@ import { computeBounds } from '../model/elements.ts';
 import type { OverlayItem } from '../hooks/useOverlayItems.ts';
 
 /** Derive initial camera position from element bounds so the camera
- *  starts roughly above the model center, even before Bounds.fit() runs. */
+ *  starts roughly above the model center, before CameraFit frames it. */
 function useInitialCamera(): { position: [number, number, number]; far: number } {
   const { project, currentLevel } = useEditorState();
 

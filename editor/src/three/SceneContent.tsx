@@ -12,7 +12,8 @@ import DrawingOverlay3D from './overlays/DrawingOverlay3D.tsx';
 import SnapOverlay3D from './overlays/SnapOverlay3D.tsx';
 import ResizeHandles3D from './overlays/ResizeHandles3D.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane } from 'three';
+import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane, PerspectiveCamera } from 'three';
+import { modelBox, fitCameraToBox } from './cameraFit.ts';
 
 function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const gl = useThree(s => s.gl);
@@ -91,6 +92,36 @@ function useModelBounds() {
     }
     return null;
   }, [project, currentLevel]);
+}
+
+/**
+ * Frames the model once per opened project: orbit target at the model's centre,
+ * camera far enough back that every corner is in view. An empty project is
+ * framed as soon as it gets content (e.g. the AI's first build).
+ */
+function CameraFit() {
+  const { project, modelName, floor3DMode, currentLevel } = useEditorState();
+  const camera = useThree(s => s.camera);
+  const width = useThree(s => s.size.width);
+  const height = useThree(s => s.size.height);
+  const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
+  const fittedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!project || !controls || !(camera instanceof PerspectiveCamera) || width === 0 || height === 0) return;
+    if (fittedFor.current === modelName) return;
+    const box = modelBox(project, floor3DMode, currentLevel);
+    if (!box) return;
+    const { target, position, distance } = fitCameraToBox(box, camera.fov, width / height);
+    controls.target.set(...target);
+    camera.position.set(...position);
+    camera.far = Math.max(camera.far, distance * 10);
+    camera.updateProjectionMatrix();
+    controls.update();
+    fittedFor.current = modelName;
+  }, [project, modelName, floor3DMode, currentLevel, controls, camera, width, height]);
+
+  return null;
 }
 
 /** Makes the shadow-casting light follow the orbit target so shadows always cover the visible area. */
@@ -231,6 +262,7 @@ export default function SceneContent() {
       <hemisphereLight args={['#dce8f5', '#8090a0', 0.4]} />
 
       <TrackpadOrbitControls controlsRef={controlsRef} />
+      <CameraFit />
 
       <FloorGroup />
 
@@ -250,7 +282,7 @@ export default function SceneContent() {
   );
 }
 
-/** Ground grid + shadow plane positioned at model center, set once after Bounds.fit. */
+/** Ground grid + shadow plane positioned at model center, set once after CameraFit. */
 function GroundPlane() {
   const groupRef = useRef<any>(null);
   const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
@@ -260,12 +292,12 @@ function GroundPlane() {
   const elevation = modelBounds?.elevation ?? 0;
   const gridDivisions = Math.max(10, Math.round(size / 2));
 
-  // After Bounds.fit, orbit target = model center. Snap grid there once.
+  // After CameraFit, orbit target = model center. Snap grid there once.
   const prevLevel = useRef('');
   useEffect(() => {
     if (!groupRef.current || !controls || currentLevel === prevLevel.current) return;
     prevLevel.current = currentLevel;
-    // Small delay to let Bounds.fit finish first
+    // Small delay to let CameraFit run first
     const timer = setTimeout(() => {
       const target = (controls as any).target as Vector3;
       groupRef.current.position.set(target.x, elevation, target.z);
