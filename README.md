@@ -6,7 +6,9 @@
 
 [中文文档](./README.zh-CN.md)
 
-An open-source, AI-native building data format and **AI Agent Skill for BIM** — with **full round-trip support for Autodesk Revit**.
+An open-source, plain-text building data format for lightweight BIM, with a CLI, an **AI Agent Skill**, and **round-trip support for Autodesk Revit**.
+
+**Try it in the browser at [bimdown.com](https://bimdown.com)**: the hosted editor and share viewer, plus an AI agent that builds models of existing buildings from drawings, photos, or text.
 
 BimDown uses **CSV** for attributes and a **geometry layer** that can be encoded as either **SVG** (2D) or **GeoJSON** (2D/3D) — simple enough for any LLM to read and write, structured enough for real BIM workflows. Both geometry encodings are first-class and interchangeable; GeoJSON is the default for new projects. The included Revit add-in enables **bidirectional sync**: export from Revit to BimDown, let AI agents modify the data, then import back into Revit with changes preserved.
 
@@ -110,7 +112,7 @@ bimdown merge ./projectA ./projectB -o ./merged  # merge projects, resolving ID 
 ### Publishing
 
 ```bash
-bimdown publish ./my-project          # publish to BimClaw and get a shareable link
+bimdown publish ./my-project          # publish to bimdown.com and get a shareable link
 ```
 
 ### MEP Topology
@@ -184,7 +186,7 @@ d-1,w-1,3.0,0.9,2.1,single_swing
 
 ## Positioning
 
-BimDown is a **LOD 200 lightweight alternative to Revit**, targeting the schematic design phase. It captures building elements at the level of "what, where, and how big" — not "how exactly it's constructed."
+BimDown is a **LOD 200 lightweight format**, aimed at documenting existing buildings and early design. It is not a Revit replacement. It captures building elements at the level of "what, where, and how big" — not "how exactly it's constructed."
 
 Use BimDown when you need:
 - AI agents to read, write, and reason about building data directly
@@ -253,8 +255,8 @@ The following Revit scenarios fall outside BimDown's scope and will be exported 
 
 ## Related Projects
 
-- **[bimdown-editor](https://github.com/nicepkg/bimdown-editor)** — browser-based 2D/3D building editor
-- **[BimClaw](https://bim-claw.com)** — SaaS platform with hosted AI agent, real-time collaboration, and domain-specific analysis tools
+- **[BimDown on the web](https://bimdown.com)**: hosted editor and viewer, with an AI agent that builds models from drawings, photos, or text
+- **[BimEditor](https://github.com/NovaShang/BimEditor)**: the browser-based 2D/3D editor component behind it
 
 ## License
 

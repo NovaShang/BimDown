@@ -1,8 +1,14 @@
 # BimDown CLI
 
-TypeScript CLI tool that serves as middleware between AI agents and the BimDown file format. Validates project structure, hydrates CSVs + SVGs into DuckDB for relational queries, and syncs changes back.
+Command-line tool for [BimDown](https://bimdown.com), an open building data format (CSV attributes + GeoJSON or SVG geometry, one folder per level). Validates and builds projects, renders plans, loads models into DuckDB for SQL queries, diffs and merges, and publishes share links to bimdown.com. Format spec and agent skill: [NovaShang/BimDown](https://github.com/NovaShang/BimDown).
 
 ## Install
+
+```bash
+npm install -g bimdown-cli
+```
+
+From source:
 
 ```bash
 cd cli
@@ -11,6 +17,10 @@ npm run build
 ```
 
 ## Commands
+
+### `bimdown publish <dir>`
+
+Uploads the project anonymously and prints a public share link on bimdown.com (default expiry 7 days, `--expires 24h`). Override the server with `--api <url>` or `BIMDOWN_API`.
 
 ### `bimdown validate <dir>`
 
