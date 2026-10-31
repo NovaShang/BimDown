@@ -214,9 +214,9 @@ BimDown 是一个 **LOD 200 级别的轻量格式**，面向既有建筑记录�
 
 完整的格式规范在 [`spec/`](./spec/) 目录。核心概念：
 
-- **所有坐标单位为米**，Y 轴 = 北
+- **单位由项目声明**（`project_metadata.json` 的 `units`：m、ft、in、mm；默认 m），Y 轴 = 北
 - **ID 按楼层隔离** — 在每个 `lv-N/` 目录内唯一
-- **宿主构件**（门、窗、洞口）使用 `host_id` + `position`（距宿主墙起点的距离，单位米）
+- **宿主构件**（门、窗、洞口）使用 `host_id` + `position`（距宿主墙起点的距离）
 - **空间**是种子点 — 边界从周围的墙自动推导
 - **材料**使用固定枚举：`concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite`
 - **几何层**为 SVG **或** GeoJSON，由 `format_version` 选择（`1` = SVG，`2` = GeoJSON）：

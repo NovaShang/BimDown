@@ -32,7 +32,7 @@
 ## Per-Element Guide
 
 ### level (`global/level.csv`)
-Must be first. `elevation` = cumulative meters from ground (0). Basements negative. Directory name = level id (e.g., `lv-1`, `lv-B1`, `lv-R`).
+Must be first. `elevation` = cumulative height from ground (0), in project units. Basements negative. Directory name = level id (e.g., `lv-1`, `lv-B1`, `lv-R`).
 
 **Pitfall**: using floor height instead of cumulative elevation.
 
@@ -49,7 +49,7 @@ Most critical element. One wall = one straight line (`LineString` with 2 coordin
 **Pitfalls**: endpoints not aligned, splitting walls at doors.
 
 ### door (`lv-N/door.csv` — CSV only)
-**Recommended**: use `host_x, host_y` (2D coordinate of door center) — `bimdown build` auto-resolves to nearest wall + position. Alternative: manual `host_id` + `position` (meters from wall start to center). Validate: `position ± width/2` within wall length. No overlaps on same wall.
+**Recommended**: use `host_x, host_y` (2D coordinate of door center) — `bimdown build` auto-resolves to nearest wall + position. Alternative: manual `host_id` + `position` (distance from wall start to center). Validate: `position ± width/2` within wall length. No overlaps on same wall.
 
 **Before placing doors, write a room connectivity graph** (e.g., `Stair→Corridor→Office`, `Corridor→Meeting Room`). Each connection = one door. Verify every room traces back to a stair/elevator.
 

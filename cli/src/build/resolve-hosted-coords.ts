@@ -4,8 +4,9 @@ import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
 import { readCsv, writeCsv } from '../utils/csv.js';
 import { discoverLayout, listFiles } from '../utils/fs.js';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
+import { metersToProject, projectUnits } from '../utils/units.js';
 
-const TOLERANCE = 0.05; // 5cm snap tolerance for finding nearest wall
+const TOLERANCE_M = 0.05; // 5 cm snap tolerance for finding the nearest wall, converted to project units
 
 interface WallGeo {
   id: string;
@@ -27,6 +28,8 @@ const HOSTED_TABLES = ['door', 'window', 'opening'];
 export function resolveHostedCoords(dir: string): string[] {
   const issues: string[] = [];
   const layout = discoverLayout(dir);
+  const units = projectUnits(dir);
+  const tolerance = metersToProject(dir, TOLERANCE_M);
 
   const allDirs = [
     { name: 'global', path: layout.globalDir },
@@ -88,11 +91,11 @@ export function resolveHostedCoords(dir: string): string[] {
         if (!isNaN(existingPosition) && row.position !== '') continue;
 
         // Find the nearest wall to this point
-        const match = findNearestWall(hostX, hostY, walls, row.host_id);
+        const match = findNearestWall(hostX, hostY, walls, tolerance, row.host_id);
 
         if (!match) {
           issues.push(
-            `${d.name}/${table}.csv:${i + 2}  ${row.id} host_x=${hostX}, host_y=${hostY} — no wall found within ${TOLERANCE}m`,
+            `${d.name}/${table}.csv:${i + 2}  ${row.id} host_x=${hostX}, host_y=${hostY} — no wall found within ${+tolerance.toPrecision(3)} ${units}`,
           );
           continue;
         }
@@ -136,6 +139,7 @@ function findNearestWall(
   px: number,
   py: number,
   walls: WallGeo[],
+  tolerance: number,
   preferredHostId?: string,
 ): { wallId: string; position: number } | null {
   let bestWallId = '';
@@ -171,7 +175,7 @@ function findNearestWall(
     }
   }
 
-  if (bestDist > TOLERANCE && !preferredHostId) return null;
+  if (bestDist > tolerance && !preferredHostId) return null;
   if (!bestWallId) return null;
 
   return { wallId: bestWallId, position: bestPosition };

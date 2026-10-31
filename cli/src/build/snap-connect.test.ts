@@ -61,3 +61,44 @@ describe('build: endpoint snapping and wall connectivity', () => {
     expect(g2.features[0].geometry.coordinates[0]).toEqual([5.01, 0]);
   });
 });
+
+describe('build: tolerances follow the project units', () => {
+  beforeEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+    mkdirSync(join(dir, 'global'), { recursive: true });
+    writeFileSync(join(dir, 'project_metadata.json'), JSON.stringify({ format_version: 2, units: 'ft' }));
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\nlv-1,1,1F,0\nlv-2,2,2F,12\n');
+  });
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('merges ends within 5 cm (0.164 ft) in a feet project, not within 0.05 ft only', () => {
+    writeLevel('lv-1', [
+      ['w-1', [0, 0], [20, 0], 0.67],
+      ['w-2', [20.1, 0.05], [20, 15], 0.67],  // 0.11 ft = 3.4 cm → merged
+      ['w-3', [21, 0], [30, 0], 0.67],        // 1 ft away → left alone
+    ]);
+    const r = build(dir);
+    expect(r.snaps.length).toBe(1);
+    expect(r.snaps[0].elementId).toBe('w-2');
+  });
+
+  it('resolves host_x/host_y within 5 cm and reports the tolerance in project units', () => {
+    writeLevel('lv-1', [['w-1', [0, 0], [20, 0], 0.67]]);
+    writeFileSync(join(dir, 'lv-1', 'door.csv'), 'id,number,host_x,host_y,width,height\nd-1,P01,10,0.1,3,7\nd-2,P02,15,1,3,7\n');
+    const r = build(dir);
+    const door = readFileSync(join(dir, 'lv-1', 'door.csv'), 'utf-8');
+    expect(door).toMatch(/d-1,w-1,10\.0000/);
+    expect(r.issues.some((i) => i.includes('d-2') && i.includes('within 0.164 ft'))).toBe(true);
+  });
+
+  it('checks GeoJSON coordinate ranges in the project units', () => {
+    writeFileSync(join(dir, 'project_metadata.json'), JSON.stringify({ format_version: 2, units: 'mm' }));
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\nlv-1,1,1F,0\nlv-2,2,2F,4000\n');
+    writeLevel('lv-1', [['w-1', [0, 0], [6000, 0], 200]]);
+    expect(build(dir).issues.filter((i) => i.includes('out of range'))).toEqual([]);
+    writeFileSync(join(dir, 'project_metadata.json'), JSON.stringify({ format_version: 2, units: 'm' }));
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\nlv-1,1,1F,0\nlv-2,2,2F,4\n');
+    writeLevel('lv-1', [['w-1', [0, 0], [6000, 0], 0.2]]);
+    expect(build(dir).issues.some((i) => i.includes('coordinate 6000 is out of range for project units "m"'))).toBe(true);
+  });
+});

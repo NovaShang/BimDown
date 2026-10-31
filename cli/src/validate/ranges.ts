@@ -6,6 +6,7 @@
  */
 import type { ResolvedTable } from '../schema/types.js';
 import type { CsvData } from '../utils/csv.js';
+import { UNIT_TO_M } from '../utils/units.js';
 
 /** Per-field max reasonable values in meters. */
 const FIELD_MAX: Record<string, number> = {
@@ -30,9 +31,6 @@ const FIELD_MAX: Record<string, number> = {
 
 /** Default max for any float field not in FIELD_MAX. */
 const DEFAULT_MAX = 1000;
-
-/** Project units → meters. The limits above are in meters; values are stored in the project unit. */
-const UNIT_TO_M: Record<string, number> = { m: 1, ft: 0.3048, in: 0.0254, mm: 0.001 };
 
 /** Deep foundations (drilled piers, piles) are far thicker than any wall or slab. */
 const TABLE_FIELD_MAX: Record<string, Record<string, number>> = {

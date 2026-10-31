@@ -115,7 +115,7 @@ Complete typical floor (usually lv-2) → validate → copy to other lv-N dirs �
 
 **Columns** (`structure_column`): At grid intersections. Sizes: residential 0.3–0.4m, office 0.5–0.6m, tall 0.6–0.8m. GeoJSON `Point` coordinates are the column center; CSV carries shape/size_x/size_y.
 
-**Beams**: Primary along grid (rect 0.3×0.6m), secondary perpendicular at 2–3m (rect 0.2×0.4m). Spatial 3D `LineString` — write the actual Z of each endpoint (absolute meters).
+**Beams**: Primary along grid (rect 0.3×0.6m), secondary perpendicular at 2–3m (rect 0.2×0.4m). Spatial 3D `LineString` — write the actual Z of each endpoint (absolute).
 
 **Structure slabs**: If needed separately from architectural slabs.
 

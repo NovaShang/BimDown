@@ -1,5 +1,6 @@
 import { parseGeoJsonFile, featureId, type BimDownFeature } from '../utils/geojson.js';
 import { SPATIAL_3D_TABLES } from '../schema/registry.js';
+import { UNIT_TO_M } from '../utils/units.js';
 
 /** Expected GeoJSON geometry type(s) per table */
 const EXPECTED_GEOMETRY: Record<string, Set<'Point' | 'LineString' | 'Polygon'>> = {
@@ -39,6 +40,7 @@ export function validateGeoJsonFile(
   fullPath: string,
   csvIds: Set<string>,
   tableName: string,
+  units = 'm',
 ): string[] {
   const issues: string[] = [];
 
@@ -88,19 +90,24 @@ export function validateGeoJsonFile(
       issues.push(`${ctx}  id "${id}" geometry type ${g.type} not allowed for ${tableName} (expected ${allowed})`);
     }
 
-    issues.push(...validateGeometryCoords(ctx, id, g, isSpatial));
+    issues.push(...validateGeometryCoords(ctx, id, g, isSpatial, units));
   }
 
   return issues;
 }
+
+/** Coordinates beyond this (in meters, converted to the project's units) are almost surely a unit mistake. */
+const MAX_COORD_M = 1000;
 
 function validateGeometryCoords(
   ctx: string,
   id: string,
   g: { type: string; coordinates: any },
   isSpatial: boolean,
+  units: string,
 ): string[] {
   const issues: string[] = [];
+  const max = MAX_COORD_M / (UNIT_TO_M[units] ?? 1);
 
   const checkPosition = (p: any, where: string) => {
     if (!Array.isArray(p) || p.length < 2 || p.length > 3) {
@@ -113,8 +120,8 @@ function validateGeometryCoords(
         issues.push(`${ctx}  id "${id}" ${where} non-numeric coordinate at index ${k}`);
         return;
       }
-      if (Math.abs(v) > 1000) {
-        issues.push(`${ctx}  id "${id}" ${where} coordinate ${v} looks like millimeters — must be in meters`);
+      if (Math.abs(v) > max) {
+        issues.push(`${ctx}  id "${id}" ${where} coordinate ${v} is out of range for project units "${units}" (max reasonable: ${+max.toPrecision(4)} ${units}) — check the unit`);
         return;
       }
     }

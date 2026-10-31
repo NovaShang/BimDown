@@ -53,7 +53,7 @@ project/
 - `project_metadata.json` takes only the known keys (`format_version`, `units`, …); unknown keys such as `name` fail `build`.
 - Start with `bimdown init <dir>`, then edit `global/level.csv` (elevations are absolute, basements negative) and `global/grid.csv`.
 - An element's base level is **always the directory it is in**. Put it in the level it starts from; only elements spanning more than one level go to `global/`.
-- **Units**: whatever `project_metadata.json` declares (`m` default; also `ft`, `in`, `mm`). Every number in every file is in that unit. Use metres unless told otherwise.
+- **Units**: use the units `project_metadata.json` declares (`m`, `ft`, `in`, `mm`; new project: the user's units, else `m`). Every number in every file is in that unit — never convert a project's declared units.
 - **IDs**: `{prefix}-{n}` with digits (`w-12`, `sc-3`, `f-40`); `lv-*` / `gr-*` may use any suffix. IDs are unique per table **per level**. The CSV row and its GeoJSON Feature share the id (`properties.id`).
 - Coordinates: project-local, `+X` east, `+Y` north, `+Z` up. No `crs`, no Y flip.
 
@@ -152,7 +152,7 @@ Run `bimdown schema <table>` for the exact columns of any table. Use `number` fo
 
 1. **Read the brief or drawings first** and collect the numbers (grid, levels, sizes, elevations) before writing files.
 2. **Generate the model from a script** (Python or Node) that holds the data and writes every CSV/GeoJSON. Re-running the script is how you fix things; hand-editing hundreds of rows is error-prone.
-3. `bimdown build <dir>` after every generation. It validates the schema, snaps endpoints within 10 cm, normalises geometry and computes room boundaries. **Errors must be fixed; warnings are advice** (see below).
+3. `bimdown build <dir>` after every generation. It validates the schema, snaps endpoints within 5 cm, normalises geometry and computes room boundaries. **Errors must be fixed; warnings are advice** (see below).
 4. `bimdown render <dir> -l <level> -o /tmp/lv.png` and look at the image. Write renders **outside** the project directory. Render is a plan view of one level.
 5. **Check Z with a query**, because the render is 2D:
    ```bash
@@ -167,7 +167,7 @@ Run `bimdown schema <table>` for the exact columns of any table. Use `number` fo
 
 ## 7. Doors and windows
 
-Hosted on a wall, CSV only. Either give `host_id` + `position` (metres from the wall's start point to the opening centre), or give `host_x`, `host_y` (the opening centre) and let `build` resolve the nearest wall and position.
+Hosted on a wall, CSV only. Either give `host_id` + `position` (distance from the wall's start point to the opening centre), or give `host_x`, `host_y` (the opening centre) and let `build` resolve the nearest wall and position.
 
 ```csv
 id,number,host_id,position,width,height,base_offset,operation,material
@@ -198,7 +198,7 @@ wn-1,C1515,w-7,4.2,1.5,1.5,0.9,aluminum
 
 `publish` is the only network command. It uploads the whole project (CSV, GeoJSON, GLB, metadata) anonymously to `https://bim.jouledown.com/api/shares/publish` (override with `--api` or `BIMDOWN_API`); the link is public until it expires (default 7 days).
 
-## 9. Typical values (metres)
+## 9. Typical values (metres — scale to the project's units)
 
 | Element | Field | Typical |
 |---|---|---|

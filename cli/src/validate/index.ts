@@ -1,4 +1,4 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import type { ResolvedTable } from '../schema/types.js';
@@ -9,6 +9,7 @@ import { validateCsvHeaders, validateCsvRequired, validateCsvEnums } from './csv
 import { validateIdFormat, createIdRegistry, registerIds } from './ids.js';
 import { validateReferences } from './references.js';
 import { validateRanges } from './ranges.js';
+import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
 
 interface CsvEntry {
@@ -88,16 +89,12 @@ export function validate(dir: string): string[] {
   }
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
-  let units = 'm';
-  try {
-    const meta = JSON.parse(readFileSync(join(dir, 'project_metadata.json'), 'utf8'));
-    if (typeof meta.units === 'string') units = meta.units;
-  } catch { /* missing or invalid metadata is reported by validateStructure */ }
+  const units = projectUnits(dir);
   for (const entry of csvEntries) {
     issues.push(...validateRanges(entry.path, entry.table, entry.data, units));
   }
 
-  // 8b. Hosted element position validation (must be non-negative distance in meters)
+  // 8b. Hosted element position validation (must be a non-negative distance)
   for (const entry of csvEntries) {
     if (!entry.table.hostType) continue;
     for (let i = 0; i < entry.data.rows.length; i++) {
@@ -107,7 +104,7 @@ export function validate(dir: string): string[] {
       const val = Number(pos);
       if (isNaN(val) || val < 0) {
         issues.push(
-          `${entry.path}:${i + 2}  position=${pos} must be a non-negative distance in meters`,
+          `${entry.path}:${i + 2}  position=${pos} must be a non-negative distance`,
         );
       }
     }
@@ -139,7 +136,7 @@ export function validate(dir: string): string[] {
 
       const fullPath = join(d.path, f);
       const relPath = `${d.name}/${f}`;
-      issues.push(...validateGeoJsonFile(relPath, fullPath, csvIds, tableName));
+      issues.push(...validateGeoJsonFile(relPath, fullPath, csvIds, tableName, units));
     }
   }
 

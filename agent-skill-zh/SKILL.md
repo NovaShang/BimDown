@@ -103,7 +103,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 
 ### Spatial 元素(beam、brace、stair、ramp、railing、duct、pipe、cable_tray、conduit、equipment、terminal、mep_node)
 
-- GeoJSON `geometry.coordinates` 是 **3D** `[x, y, z]`,Z 为绝对值(米)。
+- GeoJSON `geometry.coordinates` 是 **3D** `[x, y, z]`,Z 为绝对值(项目单位)。
 - `base_level_id`(CSV)仍然记录用于分区,但几何本身在 3D 中自洽。
 
 ## GeoJSON 几何参考
@@ -198,7 +198,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 ## 关键规则
 
 - **ID 格式**:`{prefix}-{n}`(纯数字)适用于多数元素;`lv-{any}` / `gr-{any}` 适用于 level/grid。
-- **GeoJSON 坐标系**:项目局部米制坐标,`+X=东`,`+Y=北`,`+Z=上`。**不要写 `crs` 字段**,**不要做 `scale(1,-1)` 翻转** —— GeoJSON 原生 Y 向上。
+- **GeoJSON 坐标系**:项目局部坐标(项目单位),`+X=东`,`+Y=北`,`+Z=上`。**不要写 `crs` 字段**,**不要做 `scale(1,-1)` 翻转** —— GeoJSON 原生 Y 向上。
 - **CSV vs 计算字段**:只写非计算字段。**绝对不要写** `length`、`area`、`start_x/y/z`、`end_x/y/z`、`x`、`y`、`rotation`、`points`、`height`、`volume`、`bbox_*`、`level_id`。
 - **GeoJSON properties vs CSV**:
   - `id` —— 两边都有(字符串相等匹配)。
@@ -223,11 +223,11 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 
 ### 房间边界连通性
 要让 `build` 能正确计算空间:
-- 线元素端点必须在共享坐标处相遇(build 在 10cm 内会自动 snap)。
+- 线元素端点必须在共享坐标处相遇(build 在 5cm 内会自动 snap)。
 - `bimdown build` 会对未连通的端点发出警告,并基于闭合环计算空间面。
 
 ### 门窗位置
-门窗依附在墙上,**没有 GeoJSON 文件** —— 只在 CSV 中通过 `host_id` + `position`(墙起点到开洞中心的距离,米)定位。
+门窗依附在墙上,**没有 GeoJSON 文件** —— 只在 CSV 中通过 `host_id` + `position`(墙起点到开洞中心的距离,项目单位)定位。
 
 ```csv
 id,host_id,position,width,height,operation,material

@@ -214,9 +214,9 @@ Use Revit (or other full BIM tools) when you need:
 
 The full format specification lives in [`spec/`](./spec/). Key concepts:
 
-- **All coordinates in meters**, Y-axis = North
+- **Units are declared per project** (`units` in `project_metadata.json`: m, ft, in, mm; default m), Y-axis = North
 - **IDs are level-scoped** — unique within each `lv-N/` directory
-- **Hosted elements** (doors, windows, openings) use `host_id` + `position` (distance in meters from wall start)
+- **Hosted elements** (doors, windows, openings) use `host_id` + `position` (distance from wall start)
 - **Spaces** are seed points — boundary auto-derived from surrounding walls
 - **Materials** use a fixed enum: `concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite`
 - **Geometry layer** is SVG **or** GeoJSON, selected by `format_version` (`1` = SVG, `2` = GeoJSON):
