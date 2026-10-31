@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { fitCameraToBox, DEFAULT_VIEW_DIR, type Box3D, type Vec3 } from './cameraFit.ts';
+import { BoxGeometry, Group, Mesh } from 'three';
+import { fitCameraToBox, visibleBox, DEFAULT_VIEW_DIR, type Box3D, type Vec3 } from './cameraFit.ts';
 
 /** Normalized device coords of a world point for a camera at `pos` looking at `target` (y up). */
 function project(p: Vec3, pos: Vec3, target: Vec3, fovDeg: number, aspect: number): [number, number] {
@@ -30,7 +31,7 @@ describe('fitCameraToBox', () => {
       const extent = Math.max(...ndc.flatMap(([x, y]) => [Math.abs(x), Math.abs(y)]));
       expect(extent).toBeLessThanOrEqual(1);
       // tight: the model spans most of the view, not a corner of it
-      expect(extent).toBeGreaterThan(0.8);
+      expect(extent).toBeGreaterThan(0.65);
     });
   }
 
@@ -40,5 +41,25 @@ describe('fitCameraToBox', () => {
     expect(big.distance / small.distance).toBeCloseTo(10, 5);
     const d = norm(sub(small.position, small.target));
     d.forEach((v, k) => expect(v).toBeCloseTo(DEFAULT_VIEW_DIR[k], 6));
+  });
+});
+
+describe('visibleBox', () => {
+  it('measures placed meshes and skips hidden floors', () => {
+    const root = new Group();
+    const floor1 = new Group();
+    const wall = new Mesh(new BoxGeometry(40, 4, 0.3));
+    wall.position.set(120, 2, -215);
+    floor1.add(wall);
+    const hidden = new Group();
+    hidden.visible = false;
+    const far = new Mesh(new BoxGeometry(1, 1, 1));
+    far.position.set(-500, 0, 0);
+    hidden.add(far);
+    root.add(floor1, hidden);
+    const b = visibleBox(root)!;
+    [100, 0, -215.15].forEach((v, k) => expect(b.min[k]).toBeCloseTo(v, 6));
+    [140, 4, -214.85].forEach((v, k) => expect(b.max[k]).toBeCloseTo(v, 6));
+    expect(visibleBox(new Group())).toBeNull();
   });
 });

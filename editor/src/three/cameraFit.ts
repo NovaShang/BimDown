@@ -1,37 +1,21 @@
-import type { ProjectData } from '../types.ts';
-import type { Floor3DMode } from '../state/editorTypes.ts';
-import { parseLayer } from '../model/parse.ts';
-import { computeBounds } from '../model/elements.ts';
+import { Box3, type Object3D, type BufferGeometry } from 'three';
 
 export type Vec3 = [number, number, number];
 export interface Box3D { min: Vec3; max: Vec3 }
 
-/** Storey height assumed above the topmost floor with content (no level above it). */
-const TOP_STOREY = 4;
-
-/** World-space box (three.js axes: x, y up, z = -plan y) of the floors the 3D view shows. */
-export function modelBox(project: ProjectData, mode: Floor3DMode, currentLevel: string): Box3D | null {
-  const levels = [...project.levels].sort((a, b) => a.elevation - b.elevation);
-  const idx = levels.findIndex(l => l.id === currentLevel);
-  const shown = mode === 'all' || idx < 0
-    ? levels
-    : levels.slice(mode === 'current+below' && idx > 0 ? idx - 1 : idx, idx + 1);
-
-  let box: Box3D | null = null;
-  for (const level of shown) {
-    const floor = project.floors.get(level.id);
-    if (!floor) continue;
-    const b = computeBounds(floor.layers.flatMap(l => parseLayer(l)));
-    if (!b) continue;
-    const i = levels.indexOf(level);
-    const top = i < levels.length - 1 ? levels[i + 1].elevation : level.elevation + TOP_STOREY;
-    const min: Vec3 = [b.x, level.elevation, -(b.y + b.h)];
-    const max: Vec3 = [b.x + b.w, Math.max(top, level.elevation + 0.1), -b.y];
-    box = box
-      ? { min: [0, 1, 2].map(k => Math.min(box!.min[k], min[k])) as Vec3, max: [0, 1, 2].map(k => Math.max(box!.max[k], max[k])) as Vec3 }
-      : { min, max };
-  }
-  return box;
+/** World-space box of the visible geometry under `root` (hidden floors are skipped), or null if empty. */
+export function visibleBox(root: Object3D): Box3D | null {
+  root.updateWorldMatrix(true, true);
+  const box = new Box3();
+  const part = new Box3();
+  root.traverseVisible(o => {
+    const geo = (o as Object3D & { geometry?: BufferGeometry }).geometry;
+    if (!geo?.attributes?.position) return;
+    if (!geo.boundingBox) geo.computeBoundingBox();
+    if (!geo.boundingBox || geo.boundingBox.isEmpty()) return;
+    box.union(part.copy(geo.boundingBox).applyMatrix4(o.matrixWorld));
+  });
+  return box.isEmpty() ? null : { min: box.min.toArray() as Vec3, max: box.max.toArray() as Vec3 };
 }
 
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
@@ -47,7 +31,7 @@ export const DEFAULT_VIEW_DIR: Vec3 = norm([1, 0.8, 1]);
  * `dir` points from the target towards the camera; `margin` > 1 leaves a border.
  */
 export function fitCameraToBox(
-  box: Box3D, fovDeg: number, aspect: number, dir: Vec3 = DEFAULT_VIEW_DIR, margin = 1.15,
+  box: Box3D, fovDeg: number, aspect: number, dir: Vec3 = DEFAULT_VIEW_DIR, margin = 1.3,
 ): { target: Vec3; position: Vec3; distance: number } {
   const target: Vec3 = [0, 1, 2].map(k => (box.min[k] + box.max[k]) / 2) as Vec3;
   const back = norm(dir);

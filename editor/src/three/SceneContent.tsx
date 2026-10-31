@@ -1,4 +1,4 @@
-import { useRef, useEffect, useMemo, Suspense } from 'react';
+import { useRef, useEffect, useMemo, useCallback, Suspense } from 'react';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
@@ -12,8 +12,8 @@ import DrawingOverlay3D from './overlays/DrawingOverlay3D.tsx';
 import SnapOverlay3D from './overlays/SnapOverlay3D.tsx';
 import ResizeHandles3D from './overlays/ResizeHandles3D.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
-import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane, PerspectiveCamera } from 'three';
-import { modelBox, fitCameraToBox } from './cameraFit.ts';
+import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane, PerspectiveCamera, type Group } from 'three';
+import { visibleBox, fitCameraToBox } from './cameraFit.ts';
 
 function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const gl = useThree(s => s.gl);
@@ -95,11 +95,12 @@ function useModelBounds() {
 }
 
 /**
- * Frames the model once per opened project: orbit target at the model's centre,
- * camera far enough back that every corner is in view. An empty project is
- * framed as soon as it gets content (e.g. the AI's first build).
+ * Frames the model: orbit target at the centre of the rendered floors, camera
+ * far enough back that every corner is in view. Runs once per opened project
+ * (an empty project is framed as soon as it gets content, e.g. the AI's first
+ * build) and on the toolbar's zoom-to-fit (`zoom-to-fit-3d` window event).
  */
-function CameraFit() {
+function CameraFit({ modelRef }: { modelRef: React.RefObject<Group | null> }) {
   const { project, modelName, floor3DMode, currentLevel } = useEditorState();
   const camera = useThree(s => s.camera);
   const width = useThree(s => s.size.width);
@@ -107,19 +108,30 @@ function CameraFit() {
   const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
   const fittedFor = useRef<string | null>(null);
 
-  useEffect(() => {
-    if (!project || !controls || !(camera instanceof PerspectiveCamera) || width === 0 || height === 0) return;
-    if (fittedFor.current === modelName) return;
-    const box = modelBox(project, floor3DMode, currentLevel);
-    if (!box) return;
+  const fit = useCallback((): boolean => {
+    if (!project || !modelRef.current || !controls || !(camera instanceof PerspectiveCamera) || width === 0 || height === 0) return false;
+    const box = visibleBox(modelRef.current);
+    if (!box) return false;
     const { target, position, distance } = fitCameraToBox(box, camera.fov, width / height);
     controls.target.set(...target);
     camera.position.set(...position);
     camera.far = Math.max(camera.far, distance * 10);
     camera.updateProjectionMatrix();
     controls.update();
-    fittedFor.current = modelName;
-  }, [project, modelName, floor3DMode, currentLevel, controls, camera, width, height]);
+    return true;
+  // project/floor mode/level: re-measure after the model or the visible floors change
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [project, floor3DMode, currentLevel, modelRef, controls, camera, width, height]);
+
+  useEffect(() => {
+    if (fittedFor.current !== modelName && fit()) fittedFor.current = modelName;
+  }, [fit, modelName]);
+
+  useEffect(() => {
+    const onFit = () => { fit(); };
+    window.addEventListener('zoom-to-fit-3d', onFit);
+    return () => window.removeEventListener('zoom-to-fit-3d', onFit);
+  }, [fit]);
 
   return null;
 }
@@ -242,6 +254,7 @@ function InteractionLayer({ controlsRef }: { controlsRef: React.RefObject<OrbitC
 
 export default function SceneContent() {
   const controlsRef = useRef<OrbitControlsImpl>(null);
+  const modelRef = useRef<Group>(null);
 
   return (
     <>
@@ -262,9 +275,11 @@ export default function SceneContent() {
       <hemisphereLight args={['#dce8f5', '#8090a0', 0.4]} />
 
       <TrackpadOrbitControls controlsRef={controlsRef} />
-      <CameraFit />
+      <CameraFit modelRef={modelRef} />
 
-      <FloorGroup />
+      <group ref={modelRef}>
+        <FloorGroup />
+      </group>
 
       <ClippingController />
 
