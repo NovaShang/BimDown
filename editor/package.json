@@ -11,6 +11,7 @@
   "type": "module",
   "exports": {
     ".": "./src/exports.ts",
+    "./data-sources": "./src/dataSources/index.ts",
     "./style.css": "./src/editor.css",
     "./src/i18n/en.json": "./src/i18n/en.json",
     "./src/i18n/zh.json": "./src/i18n/zh.json"
@@ -35,6 +36,7 @@
     "dxf-writer": "^1.18.4",
     "i18next": "^25.10.10",
     "jspdf": "^4.2.1",
+    "jszip": "^3.10.1",
     "lucide-react": "^0.577.0",
     "postprocessing": "^6.39.0",
     "react": "^19.2.4",

@@ -1,12 +1,9 @@
-import { Component, useEffect, useMemo, useRef } from 'react';
+import { Component, useMemo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { EditorProvider, useEditorDispatch, useEditorState } from './state/EditorContext.tsx';
-import { loadProject, loadGrids, loadLayer, loadMepSystems } from './utils/loader.ts';
-import { parseLayer } from './model/parse.ts';
-import { resolveHostedGeometry } from './geometry/hosted.ts';
-import type { LineElement } from './model/elements.ts';
+import { EditorProvider } from './state/EditorContext.tsx';
+import { useLiveProject } from './hooks/useLiveProject.ts';
 import { createLocalDataSource } from './utils/dataSource.ts';
-import { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
+import { DataSourceProvider } from './utils/DataSourceContext.tsx';
 import { TooltipProvider } from './components/ui/tooltip';
 import EditorShell from './components/EditorShell.tsx';
 
@@ -49,100 +46,7 @@ const projectId = params.get('project');
 const readonly = params.get('readonly') === 'true';
 
 function AppInner() {
-  const dispatch = useEditorDispatch();
-  const state = useEditorState();
-  const ds = useDataSource();
-
-  // Ref to access current document elements without adding effect dependencies
-  const stateRef = useRef(state);
-  stateRef.current = state;
-
-  useEffect(() => {
-    let active = true;
-
-    const loadData = async () => {
-      const [project, grids] = await Promise.all([loadProject(ds), loadGrids(ds)]);
-      if (active) {
-        dispatch({ type: 'SET_PROJECT', model: projectId ?? model, project, grids });
-      }
-    };
-
-    loadData();
-
-    const disconnect = ds.watchChanges(async (path) => {
-      // Ignore non-project files (e.g. .DS_Store)
-      if (!path.endsWith('.csv') && !path.endsWith('.geojson') && !path.endsWith('.json')) return;
-
-      const parts = path.split('/');
-      if (parts.length < 2) { loadData(); return; }
-
-      const levelId = parts[0];
-      const fileName = parts.slice(1).join('/');
-
-      if (levelId === 'global' && fileName === 'level.csv') {
-        loadData();
-        return;
-      }
-      if (levelId === 'global' && fileName === 'grid.csv') {
-        const grids = await loadGrids(ds);
-        if (active) dispatch({ type: 'UPDATE_GRIDS', grids });
-        return;
-      }
-      if (levelId === 'global' && fileName === 'mep_system.csv') {
-        const mepSystems = await loadMepSystems(ds);
-        if (active) dispatch({ type: 'UPDATE_MEP_SYSTEMS', mepSystems });
-        return;
-      }
-
-      let tableName = '';
-      if (fileName.endsWith('.csv')) tableName = fileName.slice(0, -4);
-      else if (fileName.endsWith('.geojson')) tableName = fileName.slice(0, -8);
-
-      if (tableName) {
-        const layer = await loadLayer(ds, levelId, tableName);
-        if (layer && active) {
-          dispatch({ type: 'UPDATE_LAYER', levelId, layer });
-
-          // Parse and merge into the active document for immediate rendering (skip if different level)
-          const doc = stateRef.current.document;
-          if (doc && doc.levelId === levelId) {
-            const parsed = parseLayer(layer);
-            // Resolve hosted elements (doors/windows) using walls from current document
-            const wallMap = new Map<string, LineElement>();
-            for (const el of doc.elements.values()) {
-              if (el.geometry === 'line' && (el.tableName === 'wall' || el.tableName === 'structure_wall' || el.tableName === 'curtain_wall')) {
-                wallMap.set(el.id, el as LineElement);
-              }
-            }
-            for (const el of parsed) {
-              if (el.geometry === 'line' && (el.tableName === 'wall' || el.tableName === 'structure_wall' || el.tableName === 'curtain_wall')) {
-                wallMap.set(el.id, el as LineElement);
-              }
-            }
-            for (const el of parsed) {
-              if (el.geometry !== 'line') continue;
-              const line = el as LineElement;
-              if (!line.hostId) continue;
-              const hostWall = wallMap.get(line.hostId);
-              if (!hostWall) continue;
-              const position = line.locationParam ?? 0.5;
-              const width = parseFloat(line.attrs.width ?? '0.9');
-              const resolved = resolveHostedGeometry(hostWall, position, width);
-              line.start = resolved.start;
-              line.end = resolved.end;
-            }
-            dispatch({ type: 'EXTERNAL_LAYER_UPDATE', levelId, elements: parsed });
-          }
-        }
-      }
-    });
-
-    return () => {
-      active = false;
-      disconnect();
-    };
-  }, [dispatch, ds]);
-
+  useLiveProject(projectId ?? model);
   return <EditorShell />;
 }
 
