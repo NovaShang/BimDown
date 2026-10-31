@@ -153,11 +153,32 @@ function hasElevatedSpatialZ(geojsonContent: string, elevation: number, tableNam
   return /\[\s*-?[\d.eE+-]+\s*,\s*-?[\d.eE+-]+\s*,\s*-?[\d.eE+-]+\s*\]/.test(geojsonContent);
 }
 
+/** In-flight `listFiles()` per data source: a project load and the grid load
+ *  that runs beside it share one listing. Cleared once settled, so a later
+ *  load (e.g. after a file change) lists afresh. */
+const pendingManifests = new WeakMap<DataSource, Promise<Set<string> | null>>();
+
+function listManifest(ds: DataSource): Promise<Set<string> | null> {
+  if (!ds.listFiles) return Promise.resolve(null);
+  let pending = pendingManifests.get(ds);
+  if (!pending) {
+    pending = ds.listFiles().then(files => new Set(files));
+    pendingManifests.set(ds, pending);
+    const clear = () => { if (pendingManifests.get(ds) === pending) pendingManifests.delete(ds); };
+    pending.then(clear, clear);
+  }
+  return pending;
+}
+
+/** Fetch `path` unless the manifest says it isn't there (no 404 for optional files). */
+function fetchListed(ds: DataSource, manifest: Set<string> | null, path: string): Promise<string | null> {
+  return manifest && !manifest.has(path) ? Promise.resolve(null) : ds.fetchText(path);
+}
+
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const metadataPromise = loadProjectMetadata(ds);
-  const manifest = ds.listFiles ? new Set(await ds.listFiles()) : null;
-  const fetchIfPresent = (p: string) =>
-    manifest && !manifest.has(p) ? Promise.resolve(null) : ds.fetchText(p);
+  const manifest = await listManifest(ds);
+  const fetchIfPresent = (p: string) => fetchListed(ds, manifest, p);
 
   const metadata = await metadataPromise;
   let elevatedSpatialZ = false;
@@ -271,7 +292,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   // system_type found on MEP elements but not declared (e.g. Revit exports with
   // no mep_system.csv) — auto-registered with a palette color so they show in
   // the systems panel and color 2D/3D consistently.
-  const declared = await loadMepSystems(ds);
+  const declared = parseMepSystems(await fetchIfPresent('global/mep_system.csv'));
   const derived = deriveMepSystems(declared, floors, globalLayers);
   const mepSystems = [...declared, ...derived];
 
@@ -339,7 +360,10 @@ function deriveMepSystems(
 /** Load `global/mep_system.csv` if present. Returns [] when the file is
  *  missing or empty so existing projects keep their auto-coloring behavior. */
 export async function loadMepSystems(ds: DataSource): Promise<SystemDef[]> {
-  const text = await ds.fetchText('global/mep_system.csv');
+  return parseMepSystems(await ds.fetchText('global/mep_system.csv'));
+}
+
+function parseMepSystems(text: string | null): SystemDef[] {
   if (!text) return [];
   const rows = parseCsv(text);
   return rows
@@ -354,7 +378,7 @@ export async function loadMepSystems(ds: DataSource): Promise<SystemDef[]> {
 }
 
 export async function loadGrids(ds: DataSource): Promise<GridData[]> {
-  const text = await ds.fetchText('global/grid.csv');
+  const text = await fetchListed(ds, await listManifest(ds), 'global/grid.csv');
   if (text) {
     const rows = parseCsv(text);
     return rows.map(r => ({

@@ -66,7 +66,9 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
       <Canvas
-        shadows="soft"
+        // three r18x deprecated PCFSoftShadowMap and falls back to PCFShadowMap
+        // with a console warning; ask for PCF ("percentage") directly.
+        shadows="percentage"
         camera={{ position, fov: 50, near: 0.1, far }}
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
         raycaster={{ params: { Line: { threshold: 0.5 } } as any }}

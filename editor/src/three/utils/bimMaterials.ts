@@ -1,4 +1,4 @@
-import { MeshPhysicalMaterial, DoubleSide } from 'three';
+import { MeshPhysicalMaterial, DoubleSide, FrontSide } from 'three';
 
 export type BimMaterial =
   | 'concrete' | 'concrete_precast' | 'steel' | 'aluminum' | 'glass'
@@ -119,7 +119,7 @@ export function getBimMaterial(bimMat: BimMaterial): MeshPhysicalMaterial {
     clearcoat: def.clearcoat,
     transparent: isTransparent,
     opacity: def.opacity,
-    side: isTransparent ? DoubleSide : undefined,
+    side: isTransparent ? DoubleSide : FrontSide,
     envMapIntensity: def.metalness > 0.3 ? 1.0 : 0.5,
     // Glass: clearcoat for reflection + slight metalness to pick up env map
     ...(bimMat === 'glass' && {
