@@ -38,7 +38,7 @@ export default function SnapSettingsPanel() {
   if (!isSnapInteraction(activeTool, drawingState)) return null;
 
   return (
-    <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 items-center gap-1 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none">
+    <div className="absolute left-1/2 top-3 max-md:top-16 z-30 flex -translate-x-1/2 items-center gap-1 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none">
       <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
         {t('snap.title')}
       </span>
