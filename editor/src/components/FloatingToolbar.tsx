@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { LAYER_STYLES, DISCIPLINE_TABLES, DISCIPLINE_COLORS } from '../types.ts';
@@ -202,6 +203,10 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  // The variant menu is portalled with fixed coordinates: on phones the toolbar
+  // scrolls sideways, and an absolutely placed menu would be clipped by it.
+  const [menuPos, setMenuPos] = useState<{ left: number; bottom: number } | null>(null);
 
   const isEntryActive = useCallback((e: ToolbarEntry) =>
     activeDiscipline === discipline
@@ -219,12 +224,25 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
   useEffect(() => {
     if (!open) return;
     const handler = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
+      const target = e.target as Node;
+      if (containerRef.current?.contains(target) || menuRef.current?.contains(target)) return;
+      setOpen(false);
     };
+    const place = () => {
+      const r = containerRef.current?.getBoundingClientRect();
+      if (r) setMenuPos({ left: r.left + r.width / 2, bottom: window.innerHeight - r.top + 6 });
+    };
+    place();
+    // Scrolling the toolbar or resizing moves the anchor: close rather than float off
+    const close = (e: Event) => { if (!menuRef.current?.contains(e.target as Node)) setOpen(false); };
     document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
+    window.addEventListener('resize', close);
+    document.addEventListener('scroll', close, true);
+    return () => {
+      document.removeEventListener('mousedown', handler);
+      window.removeEventListener('resize', close);
+      document.removeEventListener('scroll', close, true);
+    };
   }, [open]);
 
   const handleMainClick = useCallback(() => {
@@ -299,9 +317,9 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
       </button>
 
       {/* Dropdown */}
-      {open && (
-        <div className="absolute bottom-full left-1/2 z-50 mb-1.5 -translate-x-1/2 glass-panel rounded-lg border border-border py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-1 duration-150"
-          style={{ minWidth: '7rem' }}
+      {open && menuPos && createPortal(
+        <div ref={menuRef} className="fixed z-50 -translate-x-1/2 glass-panel rounded-lg border border-border py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-1 duration-150"
+          style={{ minWidth: '7rem', left: Math.max(64, Math.min(menuPos.left, window.innerWidth - 64)), bottom: menuPos.bottom }}
         >
           {entries.map((entry, idx) => {
             const isItemActive = isEntryActive(entry);
@@ -322,7 +340,8 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
               </button>
             );
           })}
-        </div>
+        </div>,
+        document.body,
       )}
     </div>
   );
@@ -413,7 +432,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   }
 
   return (
-    <div data-tour="toolbar" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div data-tour="toolbar" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 max-md:inset-x-3 max-md:mx-auto max-md:w-fit max-md:max-w-[calc(100%-1.5rem)] max-md:translate-x-0 max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&>*]:shrink-0 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
         {tools.map(tool => (
