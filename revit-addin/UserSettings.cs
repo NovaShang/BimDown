@@ -25,7 +25,7 @@ static class UserSettings
 
     public static string ShareApiBase
     {
-        get => Get("ShareApiBase") ?? "https://bim-claw.com";
+        get => Get("ShareApiBase") ?? "https://bimdown.com";
         set => Set("ShareApiBase", value);
     }
 

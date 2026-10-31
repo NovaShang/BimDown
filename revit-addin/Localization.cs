@@ -70,11 +70,11 @@ static class L
 
     // ── Share ──
     public static string ShareButton => S("Share", "分享");
-    public static string ShareTooltip => S("Export and share model via BimClaw", "导出并通过 BimClaw 分享模型");
+    public static string ShareTooltip => S("Export and share model via bimdown.com", "导出并通过 bimdown.com 分享模型");
     public static string ShareProgressTitle => S("BimDown Share", "BimDown 分享中");
     public static string ShareExporting => S("Exporting model...", "正在导出模型...");
     public static string SharePacking => S("Packing files...", "正在打包文件...");
-    public static string ShareUploading => S("Uploading to BimClaw...", "正在上传到 BimClaw...");
+    public static string ShareUploading => S("Uploading to bimdown.com...", "正在上传到 bimdown.com...");
     public static string ShareResultTitle => S("Share Link", "分享链接");
     public static string ShareSuccess(string url, string expiresAt) =>
         S($"Share link created!\n\n{url}\n\nExpires: {expiresAt}", $"分享链接已创建！\n\n{url}\n\n过期时间: {expiresAt}");

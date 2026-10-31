@@ -1,14 +1,14 @@
 {
   "name": "bimdown-cli",
-  "version": "0.4.0",
-  "description": "An open-source, AI-native building data format using CSV and SVG.",
+  "version": "0.5.0",
+  "description": "CLI for BimDown, an open building data format (CSV + GeoJSON): build, render, query with SQL, diff, publish.",
   "author": "NovaShang",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/NovaShang/BimDown.git"
   },
-  "homepage": "https://github.com/NovaShang/BimDown#readme",
+  "homepage": "https://bimdown.com",
   "bugs": {
     "url": "https://github.com/NovaShang/BimDown/issues"
   },
@@ -18,6 +18,8 @@
     "duckdb",
     "csv",
     "svg",
+    "geojson",
+    "ifc",
     "llm",
     "ai",
     "agent",

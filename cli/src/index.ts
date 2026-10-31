@@ -304,9 +304,9 @@ program
   .command('publish')
   .argument('<dir>', 'BimDown project directory')
   .option('--expires <duration>', 'Expiration time (e.g. 7d, 24h, 30m)', '7d')
-  .option('--api <url>', 'BimClaw API base URL')
+  .option('--api <url>', 'API base URL (default https://bimdown.com, or $BIMDOWN_API)')
   .option('--name <name>', 'Project name')
-  .description('Publish a BimDown project to BimClaw for sharing')
+  .description('Publish a BimDown project to bimdown.com and get a share link')
   .action(async (dir: string, opts: { expires?: string; api?: string; name?: string }) => {
     const { publish } = await import('./commands/publish.js');
     await publish(dir, opts);

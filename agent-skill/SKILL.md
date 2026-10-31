@@ -1,7 +1,7 @@
 ---
 name: bimdown
 version: 2.1.0
-description: Read, create and edit BIM models in the BimDown format (CSV attributes + GeoJSON geometry, one folder per level) with the `bimdown` CLI — architecture, structure, foundations and MEP. Use when asked to build a building model from drawings or a brief, to query or check an existing BimDown project, or when a task mentions BimDown / BimClaw.
+description: Read, create and edit BIM models in the BimDown format (CSV attributes + GeoJSON geometry, one folder per level) with the `bimdown` CLI — architecture, structure, foundations and MEP. Use when asked to build a building model from drawings or a brief, to query or check an existing BimDown project, or when a task mentions BimDown / bimdown.com / BimClaw.
 metadata:
   {
     "openclaw": {
@@ -10,13 +10,13 @@ metadata:
         "bins": ["bimdown"],
         "install": { "npm": "bimdown-cli" }
       },
-      "optionalEnv": ["BIMCLAW_API"],
+      "optionalEnv": ["BIMDOWN_API"],
       "network": {
         "publish": {
-          "endpoint": "https://bim-claw.com/api/shares/publish",
+          "endpoint": "https://bimdown.com/api/shares/publish",
           "method": "POST",
-          "description": "Optional sharing step. Uploads project CSV/GeoJSON/GLB files as a zip to BimClaw and returns a public share URL. Anonymous (no account or token required). The agent MUST ask the user for explicit permission before the first publish of any given project.",
-          "override": "Set BIMCLAW_API to point at a different backend (self-hosted)."
+          "description": "Optional sharing step. Uploads project CSV/GeoJSON/GLB files as a zip to bimdown.com and returns a public share URL. Anonymous (no account or token required). The agent MUST ask the user for explicit permission before the first publish of any given project.",
+          "override": "Set BIMDOWN_API (or the older BIMCLAW_API) to point at a different backend (self-hosted)."
         }
       }
     }
@@ -196,7 +196,7 @@ wn-1,C1515,w-7,4.2,1.5,1.5,0.9,aluminum
 | `bimdown resolve-topology <dir>` | connect MEP runs (after all MEP is placed) |
 | `bimdown publish <dir>` | upload for a 3D share link — **network; ask the user first** |
 
-`publish` is the only network command. It uploads the whole project (CSV, GeoJSON, GLB, metadata) anonymously to `https://bim-claw.com/api/shares/publish` (override with `--api` or `BIMCLAW_API`); the link is public until it expires (default 7 days).
+`publish` is the only network command. It uploads the whole project (CSV, GeoJSON, GLB, metadata) anonymously to `https://bimdown.com/api/shares/publish` (override with `--api` or `BIMDOWN_API`); the link is public until it expires (default 7 days).
 
 ## 9. Typical values (metres)
 
