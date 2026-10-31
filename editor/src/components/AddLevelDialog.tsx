@@ -82,7 +82,7 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
             type="submit"
             className={cn(
               'rounded px-3 py-1.5 text-[11px] font-medium transition-colors',
-              'border-none cursor-pointer bg-primary text-primary-foreground hover:opacity-90'
+              'border-none cursor-pointer bg-[var(--color-accent)] text-white hover:opacity-90'
             )}
           >
             {dialogConfirm}

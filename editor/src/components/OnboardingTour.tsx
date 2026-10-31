@@ -144,7 +144,7 @@ export default function OnboardingTour() {
             {t('tour.skip')}
           </button>
           <button
-            className="rounded-lg bg-primary px-3 py-1 text-[11px] font-medium text-primary-foreground hover:brightness-110 transition-all cursor-pointer"
+            className="rounded-lg bg-[var(--color-accent)] px-3 py-1 text-[11px] font-medium text-white hover:brightness-110 transition-all cursor-pointer"
             onClick={next}
           >
             {step + 1 >= STEPS.length ? t('tour.done') : t('tour.next')}
