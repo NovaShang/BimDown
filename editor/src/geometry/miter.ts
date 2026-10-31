@@ -197,6 +197,14 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
         let right = pick([intR1, intR2], tRight);
         if (!left || !right) continue;
 
+        // Stop a hair short of the main wall's far face. Ending exactly on it
+        // makes the T-wall's end face coplanar with that (usually exterior)
+        // face, which z-fights in 3D as light stripes down the facade. The
+        // end edge stays inside the main wall, so 2D outline clipping is unchanged.
+        const inset = mainHw * 0.02;
+        left = { x: left.x - backDir.x * inset, y: left.y - backDir.y * inset };
+        right = { x: right.x - backDir.x * inset, y: right.y - backDir.y * inset };
+
         result.push({ tWallId: seg.id, tWhich: which, mainWallId: other.id, left, right });
         break;
       }
