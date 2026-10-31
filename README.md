@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/brand/bimdown-lockup-dark.png" />
+    <img src="assets/brand/bimdown-lockup-light.png" alt="BimDown" width="360" />
+  </picture>
+</p>
+
 # BimDown
 
 [![NPM Version](https://img.shields.io/npm/v/bimdown-cli.svg)](https://www.npmjs.com/package/bimdown-cli)
