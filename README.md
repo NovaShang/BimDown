@@ -30,6 +30,8 @@ Once configured, the agent can:
 - Modify geometry and attributes, then validate the result
 - Render visual blueprints for review
 
+To watch the agent work, open the project folder in [bim.jouledown.com/editor](https://bim.jouledown.com/editor) (Open local folder, Chrome or Edge): its edits show up in 2D/3D within about 10 seconds, yours are written back to the folder, and nothing is uploaded.
+
 ### Custom Skills
 
 To add custom domain capabilities (e.g. energy modeling, ESG reports), generate your own skill definition:

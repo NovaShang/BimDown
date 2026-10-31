@@ -30,6 +30,8 @@ BimDown 天生为 AI Agent 设计，支持 **OpenClaw**、**Claude Code**、**Ge
 - 修改几何和属性，然后验证结果
 - 渲染可视化蓝图供审查
 
+想看着 Agent 建模：在 [bim.jouledown.com/editor](https://bim.jouledown.com/editor) 用“打开本地文件夹”打开项目目录（Chrome 或 Edge）。Agent 的修改约 10 秒内出现在二维/三维视图中，你的编辑会写回该文件夹，不会上传任何内容。
+
 ### 自定义 Skill
 
 要添加自定义领域能力（如能耗模型、ESG 报告），可以生成你自己的 Skill 定义：
