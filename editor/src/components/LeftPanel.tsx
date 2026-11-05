@@ -209,7 +209,7 @@ export default function LeftPanel({
   })();
 
   return (
-    <div className="absolute left-3 top-16 bottom-[52px] z-30 flex w-52 flex-col gap-2 select-none">
+    <div data-canvas-overlay="left" className="absolute left-3 top-16 bottom-[52px] z-30 flex w-52 flex-col gap-2 select-none">
       {/* Floor Switcher */}
       <div data-tour="floors" className="glass-panel flex shrink-0 max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
         <div className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2.5">

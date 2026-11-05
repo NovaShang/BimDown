@@ -21,6 +21,7 @@ import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
 import { SVGGeometryProvider } from '../adapters/svg/context.tsx';
 import { getProjectUnits } from '../utils/units.ts';
+import { getContentBounds } from '../state/selectors.ts';
 
 import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
@@ -90,11 +91,16 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   const uiScale = uiScaleRef.current;
 
   // ────── TRANSFORM (ref-based, pan bypasses React) ──────
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const contentBounds = useMemo(() => getContentBounds(state), [state.document, state.project, state.currentLevel]);
   const {
     transformRef, updateTransform,
     applyZoomBy, applyZoomToFit, applyZoomToPercent, applyZoomToBBox,
     subscribeTransform,
-  } = useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, currentLevel: state.currentLevel });
+  } = useCanvasTransform({
+    svgRef, containerRef, uiScaleRef, viewBox, currentLevel: state.currentLevel,
+    contentBounds, userEdited: state.lastMutation !== null,
+  });
 
   useImperativeHandle(ref, () => ({
     zoomToFit: applyZoomToFit,

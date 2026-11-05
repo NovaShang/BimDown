@@ -318,7 +318,8 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
           />
         )}
         <DrawingHints />
-        <OnboardingTour />
+        {/* The tour teaches editing tools: not for read-only / shared views */}
+        {!state.readonly && <OnboardingTour />}
       </div>
     </div>
   );

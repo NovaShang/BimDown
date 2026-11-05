@@ -432,7 +432,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   }
 
   return (
-    <div data-tour="toolbar" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 max-md:inset-x-3 max-md:mx-auto max-md:w-fit max-md:max-w-[calc(100%-1.5rem)] max-md:translate-x-0 max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&>*]:shrink-0 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div data-tour="toolbar" data-canvas-overlay="bottom" className="absolute bottom-3 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 max-md:inset-x-3 max-md:mx-auto max-md:w-fit max-md:max-w-[calc(100%-1.5rem)] max-md:translate-x-0 max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&>*]:shrink-0 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
         {tools.map(tool => (

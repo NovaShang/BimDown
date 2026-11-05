@@ -1,5 +1,6 @@
-import { useRef, useCallback, useEffect, useState } from 'react';
+import { useRef, useCallback, useLayoutEffect, useState } from 'react';
 import type { ViewTransform } from '../state/editorTypes.ts';
+import { fitTransform, keepInPlace, measureOverlayInsets, sameBox, shouldAutoFit, type Box } from '../utils/fitView.ts';
 
 export type TransformUpdater = ViewTransform | ((prev: ViewTransform) => ViewTransform);
 
@@ -7,8 +8,12 @@ interface UseCanvasTransformOptions {
   svgRef: React.RefObject<SVGSVGElement | null>;
   containerRef: React.RefObject<HTMLDivElement | null>;
   uiScaleRef: React.MutableRefObject<number>;
-  viewBox: { x: number; y: number; w: number; h: number } | null;
+  viewBox: Box | null;
   currentLevel: string;
+  /** Current level's content extent (SVG units, grids excluded); null when the level is empty */
+  contentBounds: Box | null;
+  /** The user has edited this level (drawing the first wall must not refit the view) */
+  userEdited: boolean;
 }
 
 /**
@@ -16,8 +21,10 @@ interface UseCanvasTransformOptions {
  * Pan updates bypass React entirely — only scale changes trigger re-renders
  * for overlays that need scale-dependent stroke widths.
  */
-export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, currentLevel }: UseCanvasTransformOptions) {
+export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, currentLevel, contentBounds, userEdited }: UseCanvasTransformOptions) {
   const transformRef = useRef<ViewTransform>({ x: 0, y: 0, scale: 1 });
+  // Set by any user pan/zoom; auto-fit leaves the view alone after that
+  const userMovedRef = useRef(false);
   // Incremented only when scale changes — triggers re-render for overlays
   const [, setScaleTick] = useState(0);
   // Listeners for external subscribers (Minimap)
@@ -34,8 +41,7 @@ export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, 
     for (const cb of listenersRef.current) cb();
   }, [svgRef, containerRef, uiScaleRef]);
 
-  /** Update transform. Direct DOM update; only triggers React re-render when scale changes. */
-  const updateTransform = useCallback((updater: TransformUpdater, animated = false) => {
+  const setTransform = useCallback((updater: TransformUpdater, animated = false) => {
     const prev = transformRef.current;
     const next = typeof updater === 'function' ? updater(prev) : updater;
     transformRef.current = next;
@@ -48,12 +54,53 @@ export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, 
     }
   }, [syncDOM, svgRef]);
 
-  // Reset transform when level changes
-  useEffect(() => {
-    transformRef.current = { x: 0, y: 0, scale: 1 };
-    syncDOM();
-    setScaleTick(v => v + 1);
-  }, [currentLevel, syncDOM]);
+  /** Update transform (user pan/zoom). Direct DOM update; only triggers React re-render when scale changes. */
+  const updateTransform = useCallback((updater: TransformUpdater, animated = false) => {
+    userMovedRef.current = true;
+    setTransform(updater, animated);
+  }, [setTransform]);
+
+  /** Fit the level's content into the canvas area not covered by floating panels. */
+  const fitView = useCallback((animated: boolean) => {
+    const el = containerRef.current;
+    if (!el || !viewBox) return;
+    const next = contentBounds
+      ? fitTransform(contentBounds, viewBox, { w: el.clientWidth, h: el.clientHeight }, measureOverlayInsets(el))
+      : { x: 0, y: 0, scale: 1 };
+    if (!animated) { setTransform(next); return; }
+    if (svgRef.current) {
+      svgRef.current.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)';
+    }
+    setTransform(next, true);
+    setTimeout(() => {
+      if (svgRef.current) {
+        svgRef.current.style.transition = 'none';
+      }
+    }, 300);
+  }, [containerRef, viewBox, contentBounds, svgRef, setTransform]);
+
+  // ────── AUTO-FIT ──────
+  // Fit on project open / floor switch, and once when an empty level first
+  // gets content (unless the user moved or edited meanwhile). When the viewBox
+  // follows new content otherwise, keep the drawing where it is on screen.
+  const fitStateRef = useRef<{ level: string | null; hadContent: boolean }>({ level: null, hadContent: false });
+  const prevViewBoxRef = useRef<Box | null>(null);
+  const hasContent = contentBounds !== null;
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el || !viewBox) return;
+    const prevViewBox = prevViewBoxRef.current;
+    prevViewBoxRef.current = viewBox;
+    const levelChanged = fitStateRef.current.level !== currentLevel;
+    if (levelChanged) userMovedRef.current = false;
+    const fit = shouldAutoFit(fitStateRef.current, { level: currentLevel, hasContent, userMoved: userMovedRef.current, userEdited });
+    fitStateRef.current = { level: currentLevel, hadContent: hasContent };
+    if (fit) {
+      fitView(false);
+    } else if (prevViewBox && !sameBox(prevViewBox, viewBox)) {
+      setTransform(keepInPlace(transformRef.current, prevViewBox, viewBox, { w: el.clientWidth, h: el.clientHeight }));
+    }
+  }, [viewBox, currentLevel, hasContent, userEdited, containerRef, fitView, setTransform]);
 
   // ────── ZOOM FUNCTIONS ──────
 
@@ -72,17 +119,7 @@ export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, 
     });
   }, [updateTransform]);
 
-  const applyZoomToFit = useCallback(() => {
-    if (svgRef.current) {
-      svgRef.current.style.transition = 'transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1)';
-    }
-    updateTransform({ x: 0, y: 0, scale: 1 }, true);
-    setTimeout(() => {
-      if (svgRef.current) {
-        svgRef.current.style.transition = 'none';
-      }
-    }, 300);
-  }, [updateTransform, svgRef]);
+  const applyZoomToFit = useCallback(() => fitView(true), [fitView]);
 
   const applyZoomToPercent = useCallback((percent: number) => {
     updateTransform(prev => ({ ...prev, scale: percent / 100 }));

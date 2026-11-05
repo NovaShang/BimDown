@@ -1,5 +1,6 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
+import { placeTourBubble } from '../utils/tourPlacement.ts';
 
 const STORAGE_KEY = 'bim-tour-done';
 
@@ -20,6 +21,8 @@ export default function OnboardingTour() {
   const { t } = useTranslation();
   const [step, setStep] = useState(-1); // -1 = not started / dismissed
   const [rect, setRect] = useState<DOMRect | null>(null);
+  const bubbleRef = useRef<HTMLDivElement>(null);
+  const [bubbleSize, setBubbleSize] = useState({ w: 256, h: 140 });
 
   // Start tour if not done before
   useEffect(() => {
@@ -28,17 +31,6 @@ export default function OnboardingTour() {
     const timer = setTimeout(() => setStep(0), 800);
     return () => clearTimeout(timer);
   }, []);
-
-  // Find target element rect for current step
-  useEffect(() => {
-    if (step < 0 || step >= STEPS.length) return;
-    const el = document.querySelector(STEPS[step].targetSelector);
-    if (el) {
-      setRect(el.getBoundingClientRect());
-    } else {
-      setRect(null);
-    }
-  }, [step]);
 
   const finish = useCallback(() => {
     localStorage.setItem(STORAGE_KEY, '1');
@@ -52,6 +44,28 @@ export default function OnboardingTour() {
       setStep(step + 1);
     }
   }, [step, finish]);
+
+  // Find target element rect for current step (and follow window resizes).
+  // A step whose target isn't on screen (e.g. the floors panel on mobile) is skipped.
+  useEffect(() => {
+    if (step < 0 || step >= STEPS.length) return;
+    const measure = () => {
+      const el = document.querySelector(STEPS[step].targetSelector);
+      setRect(el ? el.getBoundingClientRect() : null);
+      return !!el;
+    };
+    if (!measure()) { next(); return; }
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [step, next]);
+
+  // Measure the bubble so it can be kept inside the viewport
+  useLayoutEffect(() => {
+    const el = bubbleRef.current;
+    if (!el) return;
+    const w = el.offsetWidth, h = el.offsetHeight;
+    if (w !== bubbleSize.w || h !== bubbleSize.h) setBubbleSize({ w, h });
+  }, [step, rect, bubbleSize.w, bubbleSize.h]);
 
   // Keyboard: Enter → next, Escape → skip
   useEffect(() => {
@@ -69,25 +83,10 @@ export default function OnboardingTour() {
   const current = STEPS[step];
   const pad = 8;
 
-  // Tooltip position relative to highlighted rect
-  const tooltipStyle: React.CSSProperties = {};
-  if (current.position === 'top') {
-    tooltipStyle.left = rect.left + rect.width / 2;
-    tooltipStyle.bottom = window.innerHeight - rect.top + pad;
-    tooltipStyle.transform = 'translateX(-50%)';
-  } else if (current.position === 'bottom') {
-    tooltipStyle.left = rect.left + rect.width / 2;
-    tooltipStyle.top = rect.bottom + pad;
-    tooltipStyle.transform = 'translateX(-50%)';
-  } else if (current.position === 'right') {
-    tooltipStyle.left = rect.right + pad;
-    tooltipStyle.top = rect.top + rect.height / 2;
-    tooltipStyle.transform = 'translateY(-50%)';
-  } else {
-    tooltipStyle.right = window.innerWidth - rect.left + pad;
-    tooltipStyle.top = rect.top + rect.height / 2;
-    tooltipStyle.transform = 'translateY(-50%)';
-  }
+  // Tooltip position relative to highlighted rect, clamped to the viewport
+  const tooltipStyle: React.CSSProperties = placeTourBubble(
+    rect, current.position, bubbleSize, { w: window.innerWidth, h: window.innerHeight }, pad,
+  );
 
   return (
     <div className="fixed inset-0 z-[100]">
@@ -120,7 +119,8 @@ export default function OnboardingTour() {
 
       {/* Tooltip bubble */}
       <div
-        className="absolute z-[101] w-64 glass-panel rounded-xl border border-border p-4 shadow-[var(--shadow-panel)] animate-in fade-in duration-200"
+        ref={bubbleRef}
+        className="absolute z-[101] w-64 max-w-[calc(100vw-1rem)] glass-panel rounded-xl border border-border p-4 shadow-[var(--shadow-panel)] animate-in fade-in duration-200"
         style={tooltipStyle}
       >
         <p className="mb-3 text-[12px] leading-relaxed text-foreground">{t(current.labelKey)}</p>

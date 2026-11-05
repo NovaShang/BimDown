@@ -2,9 +2,9 @@ import type { EditorState, ProcessedLayer, LayerGroup } from './editorTypes.ts';
 import type { LayerData, CsvRow } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import { groupByLayer } from '../model/serialize.ts';
-import { parseLayer } from '../model/parse.ts';
+import { parseLayer, parseFloorLayers } from '../model/parse.ts';
 import { renderZIndexForTable } from '../model/tableRegistry.ts';
-import { computeBounds } from '../model/elements.ts';
+import { computeBounds, type CanonicalElement, type Point } from '../model/elements.ts';
 
 /** Check if a discipline should be visible given current discipline filter settings. */
 export function isDisciplineVisible(discipline: string, state: EditorState): boolean {
@@ -62,25 +62,36 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   return result;
 }
 
-export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
-  // Compute from document elements when available (reflects edits)
-  // Exclude grid lines — they're reference elements that shouldn't drive the view extent
-  if (state.document) {
-    const elements = Array.from(state.document.elements.values()).filter(e => e.tableName !== 'grid');
-    const bounds = computeBounds(elements);
+/**
+ * Bounds of the elements that define a level's extent. Grids are excluded —
+ * they're reference lines that shouldn't drive the view extent — and so are
+ * doors/windows not resolved onto a wall (e.g. the wall isn't loaded yet):
+ * they're zero-length lines at the origin.
+ */
+function extentBounds(elements: CanonicalElement[]) {
+  const atOrigin = (p: Point) => p.x === 0 && p.y === 0;
+  return computeBounds(elements.filter(e =>
+    e.tableName !== 'grid' && !(e.geometry === 'line' && atOrigin(e.start) && atOrigin(e.end))));
+}
+
+/** Extent of the current level's content in SVG coordinates, or null when the level is empty. */
+export function getContentBounds(state: EditorState): { x: number; y: number; w: number; h: number } | null {
+  // Compute from document elements when available (reflects edits). Right
+  // after a level switch the document still holds the previous level (it is
+  // re-created one render later), so only trust it for the current level.
+  if (state.document && state.document.levelId === state.currentLevel) {
+    const bounds = extentBounds(Array.from(state.document.elements.values()));
     if (bounds) return bounds;
   }
 
-  // Fallback: compute from floor layer elements
+  // Fallback: floor layer elements, with hosted doors/windows resolved onto their walls
   const floor = getVisibleFloor(state);
-  if (floor) {
-    const allElements = floor.layers.flatMap(l => parseLayer(l));
-    const bounds = computeBounds(allElements);
-    if (bounds) return bounds;
-  }
+  return floor ? extentBounds(parseFloorLayers(floor.layers)) : null;
+}
 
+export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {
   // Empty project fallback
-  return state.currentLevel ? { x: -15, y: -15, w: 30, h: 30 } : null;
+  return getContentBounds(state) ?? (state.currentLevel ? { x: -15, y: -15, w: 30, h: 30 } : null);
 }
 
 export function getLayerGroups(state: EditorState): LayerGroup[] {
