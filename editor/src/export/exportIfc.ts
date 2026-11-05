@@ -3,6 +3,9 @@ import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { elementTo3DParams } from '../three/utils/elementTo3D.ts';
 import { triggerDownload } from './download.ts';
+// Ship the wasm as a build asset: web-ifc's default looks for it next to the
+// page URL, which an SPA host answers with index.html.
+import wasmUrl from 'web-ifc/web-ifc.wasm?url';
 
 // BimDown table → IFC entity factory name
 const TABLE_TO_IFC: Record<string, string> = {
@@ -51,7 +54,8 @@ export async function buildIfc(project: ProjectData, modelName = 'BimDown'): Pro
   const Handle: any = WebIFC.Handle;
 
   const api = new IfcAPI();
-  await api.Init();
+  // Node (tests) resolves its own wasm; the browser loads the emitted asset.
+  await api.Init(typeof window === 'undefined' ? undefined : () => wasmUrl, true);
 
   const modelID = api.CreateModel({ schema: 'IFC2X3' });
 
