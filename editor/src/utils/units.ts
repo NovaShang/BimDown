@@ -85,3 +85,13 @@ export function formatLength(value: number, unit: ProjectUnit): string {
       return `${value.toFixed(0)} mm`;
   }
 }
+
+/** Format a level elevation: one fixed precision per unit (no `mm` flip for
+ *  small metric values), so a floor list reads `0.000 m`, `4.000 m`, `12.000 m`. */
+export function formatElevation(value: number, unit: ProjectUnit): string {
+  const v = Number.isFinite(value) ? value : 0;
+  const digits = unit === 'm' ? 3 : unit === 'mm' ? 0 : 2;
+  // toFixed keeps the sign of a tiny negative (-0.000); elevation 0 reads as 0
+  const text = Math.abs(v) < 0.5 * 10 ** -digits ? (0).toFixed(digits) : v.toFixed(digits);
+  return `${text}${getUnitSuffix(unit)}`;
+}
