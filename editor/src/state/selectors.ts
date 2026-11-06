@@ -5,6 +5,8 @@ import { groupByLayer } from '../model/serialize.ts';
 import { parseLayer, parseFloorLayers } from '../model/parse.ts';
 import { renderZIndexForTable } from '../model/tableRegistry.ts';
 import { computeBounds, type CanonicalElement, type Point } from '../model/elements.ts';
+import { gridsToElements } from '../utils/gridBridge.ts';
+import { GRID_BUBBLE_RADIUS } from '../elements/grid.tsx';
 
 /** Check if a discipline should be visible given current discipline filter settings. */
 export function isDisciplineVisible(discipline: string, state: EditorState): boolean {
@@ -62,16 +64,39 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   return result;
 }
 
+/** Grid bubble extent around its centre: radius plus half the outline stroke. */
+const GRID_BUBBLE_EXTENT = GRID_BUBBLE_RADIUS + 0.05;
+/** Bubbles further from the model than this share of its larger side are left
+ *  out, so a far-off reference grid can't shrink the fitted model. */
+const GRID_BUBBLE_REACH = 0.5;
+
 /**
- * Bounds of the elements that define a level's extent. Grids are excluded —
- * they're reference lines that shouldn't drive the view extent — and so are
- * doors/windows not resolved onto a wall (e.g. the wall isn't loaded yet):
- * they're zero-length lines at the origin.
+ * Bounds of the elements that define a level's extent. Grid lines don't drive
+ * it (they're references, often drawn well past the building), but their
+ * label bubbles near the model are included so a fit keeps them on screen.
+ * Doors/windows not resolved onto a wall (e.g. the wall isn't loaded yet) are
+ * skipped: they're zero-length lines at the origin.
  */
 function extentBounds(elements: CanonicalElement[]) {
   const atOrigin = (p: Point) => p.x === 0 && p.y === 0;
-  return computeBounds(elements.filter(e =>
+  const model = computeBounds(elements.filter(e =>
     e.tableName !== 'grid' && !(e.geometry === 'line' && atOrigin(e.start) && atOrigin(e.end))));
+  if (!model) return null;
+
+  const reach = GRID_BUBBLE_REACH * Math.max(model.w, model.h);
+  const r = GRID_BUBBLE_EXTENT;
+  let x0 = model.x, y0 = model.y, x1 = model.x + model.w, y1 = model.y + model.h;
+  for (const g of elements) {
+    if (g.tableName !== 'grid' || g.geometry !== 'line') continue;
+    if (g.start.x === g.end.x && g.start.y === g.end.y) continue; // not drawn
+    // The bubble sits on the start point; SVG y is flipped.
+    const bx = g.start.x, by = -g.start.y;
+    if (bx - r < model.x - reach || bx + r > model.x + model.w + reach
+      || by - r < model.y - reach || by + r > model.y + model.h + reach) continue;
+    x0 = Math.min(x0, bx - r); y0 = Math.min(y0, by - r);
+    x1 = Math.max(x1, bx + r); y1 = Math.max(y1, by + r);
+  }
+  return { x: x0, y: y0, w: x1 - x0, h: y1 - y0 };
 }
 
 /** Extent of the current level's content in SVG coordinates, or null when the level is empty. */
@@ -84,9 +109,10 @@ export function getContentBounds(state: EditorState): { x: number; y: number; w:
     if (bounds) return bounds;
   }
 
-  // Fallback: floor layer elements, with hosted doors/windows resolved onto their walls
+  // Fallback: floor layer elements, with hosted doors/windows resolved onto
+  // their walls, plus the project grids (the document gets the same ones)
   const floor = getVisibleFloor(state);
-  return floor ? extentBounds(parseFloorLayers(floor.layers)) : null;
+  return floor ? extentBounds([...parseFloorLayers(floor.layers), ...gridsToElements(state.grids ?? [])]) : null;
 }
 
 export function getComputedViewBox(state: EditorState): { x: number; y: number; w: number; h: number } | null {

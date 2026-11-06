@@ -5,6 +5,8 @@ import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
 import { getContentBounds, getComputedViewBox } from './selectors.ts';
 import type { EditorState } from './editorTypes.ts';
+import type { GridData } from '../types.ts';
+import { gridsToElements } from '../utils/gridBridge.ts';
 import { memoryDataSource, fc } from '../test/memoryDataSource.ts';
 
 /** lv-1: a 10 x 6 m slab and a wall with a door, far from the origin; lv-2: a 4 m wall; lv-3: empty. */
@@ -54,6 +56,27 @@ describe('getContentBounds', () => {
     const settled = getContentBounds(await stateFor('lv-2', 'lv-2'))!;
     expect(onSwitch).toEqual(settled);
     expect(onSwitch.x).toBeLessThan(0);
+  });
+
+  it('keeps grid bubbles near the model in view, but not far-off grids', async () => {
+    const grids: GridData[] = [
+      { id: 'gr-1', number: '1', x1: 100, y1: 47, x2: 100, y2: 59 },  // bubble 3 m below the slab
+      { id: 'gr-A', number: 'A', x1: 97, y1: 50, x2: 113, y2: 50 },   // bubble 3 m left of it
+      { id: 'gr-Z', number: 'Z', x1: 500, y1: 50, x2: 520, y2: 50 },  // a stray grid far away
+    ];
+    const r = 0.55; // bubble radius + stroke
+    for (const documentLevel of ['lv-1', null]) {
+      const state = { ...(await stateFor('lv-1', null)), grids };
+      if (documentLevel) {
+        const floor = state.project!.floors.get('lv-1')!;
+        state.document = createDocument('lv-1', [...parseFloorLayers(floor.layers), ...gridsToElements(grids)]);
+      }
+      const b = getContentBounds(state)!;
+      expect(b.x, `left (${documentLevel})`).toBeCloseTo(97 - r, 6);
+      expect(b.y + b.h, `bottom (${documentLevel})`).toBeCloseTo(-47 + r, 6);
+      expect(b.x + b.w).toBeLessThan(111); // gr-Z ignored
+      expect(b.y).toBeGreaterThan(-57);
+    }
   });
 
   it('is null for an empty level, where the viewBox falls back to a default square', async () => {

@@ -3,6 +3,9 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 
+/** Radius of the axis-label bubble drawn at a grid's start point (model units). */
+export const GRID_BUBBLE_RADIUS = 0.5;
+
 export interface GridFacts {
   id: string;
   ex1: number; ey1: number; ex2: number; ey2: number;
@@ -56,7 +59,7 @@ export const gridModule: ElementModule<GridFacts> = {
         {/* Bubble label at the start endpoint — Revit-style filled circle so
             the grid id pops against the floor plan instead of blending in. */}
         <g transform={`translate(${facts.startLabel.x},${facts.startLabel.y}) scale(1,-1)`}>
-          <circle cx={0} cy={0} r={0.5} fill="#ffffff" stroke={color}
+          <circle cx={0} cy={0} r={GRID_BUBBLE_RADIUS} fill="#ffffff" stroke={color}
             strokeWidth={0.05} opacity={0.95} />
           <text x={0} y={0} textAnchor="middle" dominantBaseline="central"
             fontSize={0.45} fontFamily="Inter, sans-serif" fontWeight="700"
