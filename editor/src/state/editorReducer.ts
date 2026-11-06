@@ -14,6 +14,7 @@ import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
+import { pickStartLevel } from './startLevel.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -251,10 +252,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         visibleLayers = state.visibleLayers;
         activeDiscipline = state.activeDiscipline;
       } else if (project.floors.size > 0) {
-        const firstLevel = project.levels.find(l => project.floors.has(l.id));
-        if (firstLevel) {
-          currentLevel = firstLevel.id;
-          const floor = project.floors.get(firstLevel.id);
+        const startId = pickStartLevel(project) || project.levels.find(l => project.floors.has(l.id))?.id;
+        if (startId) {
+          currentLevel = startId;
+          const floor = project.floors.get(startId);
           if (floor) {
             visibleLayers = new Set(floor.layers
               .filter(l => !HIDDEN_BY_DEFAULT.has(l.tableName))
