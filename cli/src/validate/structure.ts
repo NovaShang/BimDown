@@ -18,6 +18,9 @@ const KNOWN_GLOBAL_EXTRAS = new Set(['_IdMap.csv']);
 // accept any version >= this (v2, v3, ...) since they share the GeoJSON format.
 const MIN_FORMAT_VERSION = 2;
 
+/** Fields of project_metadata.json — keep in sync with spec/project_metadata.schema.yaml. */
+export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'units', 'source', 'spatial_z'];
+
 export function validateStructure(dir: string): string[] {
   const issues: string[] = [];
   const layout = discoverLayout(dir);
@@ -136,7 +139,7 @@ export function validateStructure(dir: string): string[] {
           // identifier, so don't hard-fail builds on a "newer" minor bump.
         }
         for (const key of Object.keys(metadata)) {
-          if (!['format_version', 'project_name', 'units', 'source', 'spatial_z'].includes(key)) {
+          if (!PROJECT_METADATA_FIELDS.includes(key)) {
             issues.push(`project_metadata.json  unknown field "${key}"`);
           }
         }
