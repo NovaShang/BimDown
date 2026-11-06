@@ -32,7 +32,7 @@ const MATERIAL_DEFS: Record<BimMaterial, MaterialDef> = {
   brick:            { color: '#9e7057', roughness: 0.92, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
   gypsum:           { color: '#e8e4e0', roughness: 0.95, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
   metal_panel:      { color: '#a8acb0', roughness: 0.4,  metalness: 0.6,  clearcoat: 0.05, opacity: 1.0  },
-  insulation:       { color: '#e8d850', roughness: 0.98, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
+  insulation:       { color: '#cfc3a1', roughness: 0.98, metalness: 0.0,  clearcoat: 0,    opacity: 1.0  },
   stone:            { color: '#c8c0b4', roughness: 0.88, metalness: 0.0,  clearcoat: 0.02, opacity: 1.0  },
   ceramic:          { color: '#e0dcd8', roughness: 0.4,  metalness: 0.0,  clearcoat: 0.3,  opacity: 1.0  },
   copper:           { color: '#b87333', roughness: 0.35, metalness: 0.85, clearcoat: 0.1,  opacity: 1.0  },

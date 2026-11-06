@@ -52,7 +52,7 @@
   --text-dim: #737373;
   --text-bright: #171717;
   --shadow-panel: 0 4px 24px rgba(0,0,0,0.08);
-  --glass-bg: rgba(255, 255, 255, 0.88);
+  --glass-bg: rgba(255, 255, 255, 0.97);
   --dropdown-bg: #ffffff;
 }
 
@@ -98,7 +98,7 @@
   --text-dim: #555;
   --text-bright: #ddd;
   --shadow-panel: 0 4px 24px rgba(0,0,0,0.4);
-  --glass-bg: rgba(30, 30, 30, 0.9);
+  --glass-bg: rgba(30, 30, 30, 0.97);
   --dropdown-bg: #222;
 }
 
