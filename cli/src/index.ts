@@ -42,6 +42,21 @@ function runBuild(dir: string, opts: { verbose?: boolean } = {}) {
     console.log(`\n${result.warnings.length} warning(s). Warnings are advisory; issues are errors.`);
   }
 
+  if (result.roomIssues.length > 0) {
+    const label = { shared: 'share one enclosed area', contains: 'encloses', unbounded: 'has no enclosing boundary' } as const;
+    console.log(`\nRoom problems (${result.roomIssues.length}): derived room areas are wrong until fixed`);
+    const shown = opts.verbose ? result.roomIssues : result.roomIssues.slice(0, WARN_LIST_LIMIT);
+    for (const r of shown) {
+      const text = r.kind === 'contains'
+        ? `${r.spaceIds.join(', ')} ${label.contains} ${(r.inside ?? []).join(', ')}`
+        : `${r.spaceIds.join(', ')} ${label[r.kind]}`;
+      console.log(`  ${r.level}: ${text}`);
+    }
+    if (shown.length < result.roomIssues.length) {
+      console.log(`  ... ${result.roomIssues.length - shown.length} more (use --verbose to list all)`);
+    }
+  }
+
   if (result.snaps.length > 0) {
     console.log(`Snapped ${result.snaps.length} endpoint(s) closer than 5 cm:`);
     const shown = opts.verbose ? result.snaps : result.snaps.slice(0, WARN_LIST_LIMIT);

@@ -213,4 +213,92 @@ describe('computeSpaceBoundaries', () => {
     expect(result.geojsonWritten).toBe(false);
     expect(result.warnings.some((w) => w.includes('no boundary elements'))).toBe(true);
   });
+
+  describe('derived-room overlap and leak warnings', () => {
+    const box = (p: string, x0: number, y0: number, x1: number, y1: number) => [
+      { id: `${p}-1`, x1: x0, y1: y0, x2: x1, y2: y0 },
+      { id: `${p}-2`, x1: x1, y1: y0, x2: x1, y2: y1 },
+      { id: `${p}-3`, x1: x1, y1: y1, x2: x0, y2: y1 },
+      { id: `${p}-4`, x1: x0, y1: y1, x2: x0, y2: y0 },
+    ];
+
+    it('reports no room issues for clean adjacent rooms', () => {
+      const levelDir = setupLevel(
+        [...box('w', 0, 0, 10, 5), { id: 'w-5', x1: 5, y1: 0, x2: 5, y2: 5 }],
+        [{ id: 'sp-1', x: 2.5, y: 2.5 }, { id: 'sp-2', x: 7.5, y: 2.5 }],
+      );
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.roomIssues).toEqual([]);
+    });
+
+    it('warns when two seeds land in the same enclosed area', () => {
+      const levelDir = setupLevel(box('w', 0, 0, 10, 5), [
+        { id: 'sp-1', x: 2.5, y: 2.5 },
+        { id: 'sp-2', x: 7.5, y: 2.5 },
+      ]);
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.geojsonWritten).toBe(true);
+      expect(result.roomIssues).toEqual([{ kind: 'shared', level: 'lv-1', spaceIds: ['sp-1', 'sp-2'] }]);
+      const w = result.warnings.find((x) => x.includes('share one enclosed area'));
+      expect(w).toContain('lv-1/space.csv');
+      expect(w).toContain('sp-1, sp-2');
+      expect(w).toContain('50.0 m²');
+    });
+
+    it('warns when a partition leaks (stops short) and merges two rooms', () => {
+      const levelDir = setupLevel(
+        [...box('w', 0, 0, 10, 5), { id: 'w-5', x1: 5, y1: 0, x2: 5, y2: 4 }],
+        [{ id: 'sp-1', x: 2.5, y: 2.5 }, { id: 'sp-2', x: 7.5, y: 2.5 }],
+      );
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.roomIssues.map((r) => r.kind)).toEqual(['shared']);
+      expect(result.roomIssues[0].spaceIds).toEqual(['sp-1', 'sp-2']);
+    });
+
+    it('warns when a room polygon contains another room', () => {
+      // A free-standing 2x2 room inside a 10x10 hall: its walls never touch the hall's.
+      const levelDir = setupLevel([...box('w', 0, 0, 10, 10), ...box('wi', 4, 4, 6, 6)], [
+        { id: 'sp-1', x: 1, y: 1 },
+        { id: 'sp-2', x: 5, y: 5 },
+      ]);
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.roomIssues).toEqual([
+        { kind: 'contains', level: 'lv-1', spaceIds: ['sp-1'], inside: ['sp-2'] },
+      ]);
+      const w = result.warnings.find((x) => x.includes(' contains '));
+      expect(w).toContain('lv-1/space.csv  sp-1 polygon (100.0 m²) contains sp-2');
+    });
+
+    it('reports only the immediate container for nested rooms', () => {
+      const levelDir = setupLevel(
+        [...box('w', 0, 0, 20, 20), ...box('wa', 2, 2, 12, 12), ...box('wb', 5, 5, 7, 7)],
+        [{ id: 'sp-1', x: 1, y: 1 }, { id: 'sp-2', x: 3, y: 3 }, { id: 'sp-3', x: 6, y: 6 }],
+      );
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.roomIssues).toEqual([
+        { kind: 'contains', level: 'lv-1', spaceIds: ['sp-1'], inside: ['sp-2'] },
+        { kind: 'contains', level: 'lv-1', spaceIds: ['sp-2'], inside: ['sp-3'] },
+      ]);
+    });
+
+    it('reports an unbounded seed with its id and level', () => {
+      const levelDir = setupLevel(box('w', 0, 0, 10, 5), [
+        { id: 'sp-1', x: 5, y: 2.5 },
+        { id: 'sp-2', x: 20, y: 20 },
+      ]);
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.roomIssues).toEqual([{ kind: 'unbounded', level: 'lv-1', spaceIds: ['sp-2'] }]);
+      expect(result.warnings.some((w) => w.startsWith('[warn] lv-1/space.csv  sp-2') && w.includes('no enclosing boundary'))).toBe(true);
+    });
+
+    it('labels areas in the project units', () => {
+      writeFileSync(join(testDir, 'project_metadata.json'), JSON.stringify({ format_version: '3.0', units: 'ft' }));
+      const levelDir = setupLevel(box('w', 0, 0, 10, 5), [
+        { id: 'sp-1', x: 2.5, y: 2.5 },
+        { id: 'sp-2', x: 7.5, y: 2.5 },
+      ]);
+      const result = computeSpaceBoundaries(levelDir);
+      expect(result.warnings.find((x) => x.includes('share one'))).toContain('50.0 ft²');
+    });
+  });
 });

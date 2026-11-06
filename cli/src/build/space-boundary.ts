@@ -1,5 +1,5 @@
 import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import {
   parseGeoJsonFile,
   stringifyFeatureCollection,
@@ -9,6 +9,7 @@ import {
 } from '../utils/geojson.js';
 import { readCsv } from '../utils/csv.js';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
+import { projectUnits } from '../utils/units.js';
 
 const TOLERANCE = 0.01; // 1cm in meters
 const MAX_FACE_EDGES = 10000; // safety limit for face tracing
@@ -47,9 +48,27 @@ interface Segment {
   id: string;
 }
 
+/**
+ * A derived-room problem: the polygons are still written (backward compatible),
+ * but their areas are wrong.
+ *   shared    — several seeds land in one enclosed area, so the rooms get
+ *               identical polygons (usually a wall gap or a missing room_separator)
+ *   contains  — the polygon of spaceIds encloses the rooms in `inside`, whose
+ *               walls don't touch it, so its area double-counts them
+ *   unbounded — the seed is outside every closed loop; no polygon is generated
+ */
+export interface RoomIssue {
+  kind: 'shared' | 'contains' | 'unbounded';
+  level: string;
+  spaceIds: string[];
+  /** For `contains`: the enclosed rooms. */
+  inside?: string[];
+}
+
 export interface SpaceBoundaryResult {
   warnings: string[];
   geojsonWritten: boolean;
+  roomIssues: RoomIssue[];
 }
 
 // ─── Main entry point ───────────────────────────────────
@@ -59,12 +78,13 @@ export function computeSpaceBoundaries(
   globalDir?: string,
 ): SpaceBoundaryResult {
   const warnings: string[] = [];
+  const roomIssues: RoomIssue[] = [];
 
   const spaceCsvPath = join(levelDir.path, 'space.csv');
-  if (!existsSync(spaceCsvPath)) return { warnings, geojsonWritten: false };
+  if (!existsSync(spaceCsvPath)) return { warnings, geojsonWritten: false, roomIssues };
 
   const spaceCsv = readCsv(spaceCsvPath);
-  if (spaceCsv.rows.length === 0) return { warnings, geojsonWritten: false };
+  if (spaceCsv.rows.length === 0) return { warnings, geojsonWritten: false, roomIssues };
 
   // 1. Collect all boundary line segments (level-local + global)
   const segments = collectBoundarySegments(levelDir.path);
@@ -73,7 +93,7 @@ export function computeSpaceBoundaries(
   }
   if (segments.length === 0) {
     warnings.push(`${levelDir.name}/  no boundary elements found for space boundary computation`);
-    return { warnings, geojsonWritten: false };
+    return { warnings, geojsonWritten: false, roomIssues };
   }
 
   // 2. Split segments at T-junctions AND proper crossings so the half-edge
@@ -99,6 +119,7 @@ export function computeSpaceBoundaries(
 
   // 7. Match seed points to faces
   const matchedSpaces = new Map<string, Face>();
+  const seeds = new Map<string, { x: number; y: number }>();
   for (const row of spaceCsv.rows) {
     const seedX = parseFloat(row.x ?? '');
     const seedY = parseFloat(row.y ?? '');
@@ -118,18 +139,90 @@ export function computeSpaceBoundaries(
 
     if (bestFace) {
       matchedSpaces.set(row.id, bestFace);
+      seeds.set(row.id, { x: seedX, y: seedY });
     } else {
+      roomIssues.push({ kind: 'unbounded', level: levelDir.name, spaceIds: [row.id] });
       warnings.push(
-        `[warn] ${levelDir.name}/space.csv  ${row.id} at (${row.x}, ${row.y}) has no enclosing boundary`,
+        `[warn] ${levelDir.name}/space.csv  ${row.id} at (${row.x}, ${row.y}) has no enclosing boundary — the seed is outside every closed loop of walls/room separators (wall gap or seed outside the building); no polygon generated`,
       );
     }
   }
 
-  if (matchedSpaces.size === 0) return { warnings, geojsonWritten: false };
+  // 8. Overlap / leak checks on the derived rooms (warnings only).
+  const units = projectUnits(dirname(levelDir.path));
+  const overlap = findRoomOverlaps(levelDir.name, matchedSpaces, seeds, units);
+  roomIssues.push(...overlap.roomIssues);
+  warnings.push(...overlap.warnings);
 
-  // 8. Write space.svg
+  if (matchedSpaces.size === 0) return { warnings, geojsonWritten: false, roomIssues };
+
+  // 9. Write space.geojson
   writeSvg(levelDir.path, matchedSpaces);
-  return { warnings, geojsonWritten: true };
+  return { warnings, geojsonWritten: true, roomIssues };
+}
+
+// ─── Derived-room overlap checks ────────────────────────
+
+/**
+ * Faces of one planar subdivision never overlap, except that a face's traced
+ * outline ignores holes: a loop of walls that doesn't touch the surrounding
+ * walls (an island) lies inside the outer face's polygon. So derived rooms can
+ * only overlap in two ways — two seeds in the same face, or one room's seed
+ * inside another room's (larger) face.
+ */
+function findRoomOverlaps(
+  level: string,
+  matched: Map<string, Face>,
+  seeds: Map<string, { x: number; y: number }>,
+  units: string,
+): { warnings: string[]; roomIssues: RoomIssue[] } {
+  const warnings: string[] = [];
+  const roomIssues: RoomIssue[] = [];
+
+  const byFace = new Map<Face, string[]>();
+  for (const [id, face] of matched) {
+    const ids = byFace.get(face);
+    if (ids) ids.push(id);
+    else byFace.set(face, [id]);
+  }
+
+  for (const [face, ids] of byFace) {
+    if (ids.length < 2) continue;
+    roomIssues.push({ kind: 'shared', level, spaceIds: ids });
+    warnings.push(
+      `[warn] ${level}/space.csv  ${ids.join(', ')} share one enclosed area (${fmtArea(face.signedArea, units)}) and get identical polygons — a wall gap or missing room_separator likely merges these rooms`,
+    );
+  }
+
+  // Each room's immediate container: the smallest other matched face holding its seed.
+  const contained = new Map<Face, string[]>();
+  for (const [id, face] of matched) {
+    const seed = seeds.get(id)!;
+    let parent: Face | null = null;
+    for (const other of byFace.keys()) {
+      if (other === face || other.signedArea <= face.signedArea) continue;
+      if (parent && other.signedArea >= parent.signedArea) continue;
+      if (pointInPolygon(seed.x, seed.y, other.polygon)) parent = other;
+    }
+    if (!parent) continue;
+    const list = contained.get(parent);
+    if (list) list.push(id);
+    else contained.set(parent, [id]);
+  }
+
+  for (const [outer, inner] of contained) {
+    const outerIds = byFace.get(outer)!;
+    roomIssues.push({ kind: 'contains', level, spaceIds: outerIds, inside: inner });
+    warnings.push(
+      `[warn] ${level}/space.csv  ${outerIds.join(', ')} polygon (${fmtArea(outer.signedArea, units)}) contains ${inner.join(', ')} — their walls don't connect to the surrounding walls, so the outer area also counts them; join the walls or add a room_separator`,
+    );
+  }
+
+  return { warnings, roomIssues };
+}
+
+function fmtArea(a: number, units: string): string {
+  return `${a.toFixed(1)} ${units}²`;
 }
 
 // ─── Segment collection ─────────────────────────────────

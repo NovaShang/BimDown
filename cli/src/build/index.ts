@@ -2,10 +2,12 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { validate } from '../validate/index.js';
 import { discoverLayout } from '../utils/fs.js';
-import { computeSpaceBoundaries } from './space-boundary.js';
+import { computeSpaceBoundaries, type RoomIssue } from './space-boundary.js';
 import { validateGeometry } from './geometry-warnings.js';
 import { resolveHostedCoords } from './resolve-hosted-coords.js';
 import { snapEndpoints, type SnapRecord } from './snap-endpoints.js';
+
+export type { RoomIssue };
 
 export interface BuildResult {
   issues: string[];
@@ -13,6 +15,8 @@ export interface BuildResult {
   artifacts: string[];
   snappedEndpoints: number;
   snaps: SnapRecord[];
+  /** Derived-room overlaps/leaks; each one also appears in `warnings`. */
+  roomIssues: RoomIssue[];
 }
 
 export function build(dir: string): BuildResult {
@@ -30,6 +34,7 @@ export function build(dir: string): BuildResult {
 
   // 3. Compute space boundaries per level → write space.geojson
   const artifacts: string[] = [];
+  const roomIssues: RoomIssue[] = [];
   const layout = discoverLayout(dir);
 
   for (const levelDir of layout.levelDirs) {
@@ -38,10 +43,11 @@ export function build(dir: string): BuildResult {
 
     const result = computeSpaceBoundaries(levelDir, layout.globalDir);
     warnings.push(...result.warnings);
+    roomIssues.push(...result.roomIssues);
     if (result.geojsonWritten) {
       artifacts.push(`${levelDir.name}/space.geojson`);
     }
   }
 
-  return { issues, warnings, artifacts, snappedEndpoints: snaps.length, snaps };
+  return { issues, warnings, artifacts, snappedEndpoints: snaps.length, snaps, roomIssues };
 }
