@@ -19,14 +19,14 @@ const STARTER_OPTIONS_EQUIPMENT = [
   { value: '', label: 'None' },
   ...equipmentStarters
     .filter((s) => s.table === 'equipment')
-    .map((s) => ({ value: s.key, label: s.label_zh })),
+    .map((s) => ({ value: s.key, label: s.label_en })), // translated via option.*
 ];
 
 const STARTER_OPTIONS_TERMINAL = [
   { value: '', label: 'None' },
   ...equipmentStarters
     .filter((s) => s.table === 'terminal')
-    .map((s) => ({ value: s.key, label: s.label_zh })),
+    .map((s) => ({ value: s.key, label: s.label_en })), // translated via option.*
 ];
 
 const DEFAULT_POINT_HEIGHT = 0.5;

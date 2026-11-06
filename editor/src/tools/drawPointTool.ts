@@ -41,7 +41,7 @@ export const drawPointTool: ToolHandler = {
       ctx.dispatch({
         type: 'CREATE_ELEMENTS',
         elements,
-        description: `Place ${starter.label_zh}`,
+        description: `Place ${starter.label_en}`,
       });
       ctx.setSnap(null);
       return;
