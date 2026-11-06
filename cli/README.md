@@ -8,6 +8,8 @@ Command-line tool for [BimDown](https://bim.jouledown.com), an open building dat
 npm install -g bimdown-cli
 ```
 
+On npm 11+ the install may end with an `npm warn install-scripts … sharp@…` notice. It is harmless: sharp (used only for `bimdown render` PNG output) ships prebuilt binaries, so its skipped install check isn't needed.
+
 From source:
 
 ```bash
