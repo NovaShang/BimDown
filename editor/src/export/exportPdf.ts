@@ -3,7 +3,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import { triggerDownload } from './download.ts';
-import { formatLength, getProjectUnits } from '../utils/units.ts';
+import { formatElevation, getProjectUnits } from '../utils/units.ts';
 
 // Color palette matching cli/src/render.ts
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
@@ -55,12 +55,38 @@ function elementToSvgString(el: CanonicalElement, style: { stroke: string; fill?
   }
 }
 
-function buildFloorSvg(elements: CanonicalElement[]): { svg: string; width: number; height: number } | null {
+/** A room label in plan coordinates (y up). */
+interface RoomLabel { x: number; y: number; number: string; name: string }
+
+function roomLabels(elements: CanonicalElement[]): RoomLabel[] {
+  const out: RoomLabel[] = [];
+  for (const el of elements) {
+    if (el.tableName !== 'space') continue;
+    const number = (el.attrs.number ?? '').trim();
+    const name = (el.attrs.name ?? '').trim();
+    if (!number && !name) continue;
+    if (el.geometry === 'point') out.push({ x: el.position.x, y: el.position.y, number, name });
+    else if (el.geometry === 'polygon' && el.vertices.length > 0) {
+      const n = el.vertices.length;
+      out.push({ x: el.vertices.reduce((s, v) => s + v.x, 0) / n, y: el.vertices.reduce((s, v) => s + v.y, 0) / n, number, name });
+    }
+  }
+  return out;
+}
+
+/** jsPDF's built-in fonts only cover Latin-1: drop text they would garble. */
+function latin1(text: string): string {
+  return /^[\x20-\xff]*$/.test(text) ? text : '';
+}
+
+function buildFloorSvg(elements: CanonicalElement[]): { svg: string; x: number; y: number; width: number; height: number } | null {
   if (elements.length === 0) return null;
 
   // Group by table name
   const byTable = new Map<string, CanonicalElement[]>();
   for (const el of elements) {
+    // A room seed is drawn as its label instead (see roomLabels)
+    if (el.tableName === 'space' && el.geometry === 'point') continue;
     const list = byTable.get(el.tableName) ?? [];
     list.push(el);
     byTable.set(el.tableName, list);
@@ -103,7 +129,7 @@ function buildFloorSvg(elements: CanonicalElement[]): { svg: string; width: numb
   }
 
   parts.push('</svg>');
-  return { svg: parts.join('\n'), width: vbW, height: vbH };
+  return { svg: parts.join('\n'), x: vbX, y: vbY, width: vbW, height: vbH };
 }
 
 export async function exportPdf(project: ProjectData, modelName: string): Promise<void> {
@@ -140,7 +166,7 @@ export async function exportPdf(project: ProjectData, modelName: string): Promis
     pdf.text(`${modelName} — ${level.name || level.id}`, marginLR, 10);
     pdf.setFontSize(8);
     pdf.setTextColor(120, 120, 120);
-    pdf.text(`Elevation: ${formatLength(level.elevation, projectUnit)} | ${new Date().toLocaleDateString()}`, pageW - marginLR, 10, { align: 'right' });
+    pdf.text(`Elevation: ${formatElevation(level.elevation, projectUnit)} | ${new Date().toLocaleDateString()}`, pageW - marginLR, 10, { align: 'right' });
 
     // Draw border
     pdf.setDrawColor(200, 200, 200);
@@ -167,6 +193,23 @@ export async function exportPdf(project: ProjectData, modelName: string): Promis
       width: scaledW,
       height: scaledH,
     });
+
+    // Room number and name, centred on the room (as in the editor's plan)
+    pdf.setTextColor(40, 90, 200);
+    for (const label of roomLabels(elements)) {
+      const x = offsetX + (label.x - result.x) * scale;
+      const y = offsetY + (-label.y - result.y) * scale;
+      const number = latin1(label.number);
+      const name = latin1(label.name);
+      if (number) {
+        pdf.setFontSize(8);
+        pdf.text(number, x, name ? y - 0.6 : y + 1, { align: 'center' });
+      }
+      if (name) {
+        pdf.setFontSize(6);
+        pdf.text(name, x, number ? y + 2.4 : y + 1, { align: 'center' });
+      }
+    }
   }
 
   if (isFirstPage) return; // No data
