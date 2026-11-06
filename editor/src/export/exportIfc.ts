@@ -1,7 +1,9 @@
 import type { ProjectData } from '../types.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
-import { elementTo3DParams } from '../three/utils/elementTo3D.ts';
+import { elementTo3DParams, type Mesh3DParams } from '../three/utils/elementTo3D.ts';
+import { MEP_LINE_TABLES } from '../model/mepTopology.ts';
+import { portRefTargetsHost } from '../utils/portRef.ts';
 import { triggerDownload } from './download.ts';
 // Ship the wasm as a build asset: web-ifc's default looks for it next to the
 // page URL, which an SPA host answers with index.html.
@@ -26,7 +28,113 @@ const TABLE_TO_IFC: Record<string, string> = {
   pipe: 'IfcFlowSegment',
   cable_tray: 'IfcFlowSegment',
   conduit: 'IfcFlowSegment',
+  equipment: 'IfcEnergyConversionDevice', // refined per equipment_type below
+  terminal: 'IfcFlowTerminal',
+  mep_node: 'IfcFlowFitting',
 };
+
+/** IFC2X3 distribution element per equipment_type (default: energy conversion device). */
+const EQUIPMENT_TO_IFC: Record<string, string> = {
+  pump: 'IfcFlowMovingDevice',
+  fan: 'IfcFlowMovingDevice',
+  tank: 'IfcFlowStorageDevice',
+  panelboard: 'IfcFlowController',
+};
+
+/** IfcDistributionFlowElement subtypes: all share the (…, Representation, Tag) constructor. */
+const FLOW_ELEMENT_TYPES = new Set([
+  'IfcFlowSegment', 'IfcFlowFitting', 'IfcFlowTerminal', 'IfcFlowMovingDevice',
+  'IfcFlowController', 'IfcFlowStorageDevice', 'IfcEnergyConversionDevice',
+]);
+
+const MEP_SEGMENT_TABLES = new Set<string>(MEP_LINE_TABLES);
+const DEFAULT_POINT_HEIGHT = 0.5;
+const DEFAULT_FITTING_SIZE = 0.12;
+
+type Vec3 = { x: number; y: number; z: number };
+
+/** Body geometry to write: a mesh-param box/extrusion, or a section swept along a 3D axis. */
+type Body =
+  | { kind: 'params'; params: Mesh3DParams }
+  | { kind: 'sweep'; start: Vec3; end: Vec3; round: boolean; sizeX: number; sizeY: number };
+
+/**
+ * MEP segment (duct / pipe / cable tray / conduit) → its centre line swept by
+ * the cross-section, storey-relative. Unlike the 3D view's box params (which
+ * need a plan direction) this keeps vertical risers and sloped runs.
+ */
+function mepSegmentBody(el: CanonicalElement): Body | null {
+  if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
+  let startZ: number, endZ: number;
+  if (el.geometry === 'spatial_line') {
+    startZ = el.startZ; endZ = el.endZ;
+  } else {
+    const base = parseFloat(el.attrs.base_offset) || 0;
+    startZ = parseFloat(el.attrs.start_z || `${base}`) || base;
+    endZ = parseFloat(el.attrs.end_z || `${startZ}`) || startZ;
+  }
+  const start = { x: el.start.x, y: el.start.y, z: startZ };
+  const end = { x: el.end.x, y: el.end.y, z: endZ };
+  if (Math.hypot(end.x - start.x, end.y - start.y, end.z - start.z) < 0.001) return null;
+  const defaultShape = el.tableName === 'pipe' || el.tableName === 'conduit' ? 'round' : 'rect';
+  const round = (el.attrs.shape || defaultShape) === 'round';
+  const sizeX = parseFloat(el.attrs.size_x) || 0.2;
+  const sizeY = round ? sizeX : parseFloat(el.attrs.size_y) || 0.2;
+  return { kind: 'sweep', start, end, round, sizeX, sizeY };
+}
+
+/** Equipment / terminal: the 3D view's box (from base_offset up by `height`, plan size, rotation). */
+function mepPointBody(el: CanonicalElement, levelElevation: number): Body | null {
+  if (el.geometry !== 'point') return null;
+  const base = parseFloat(el.attrs.base_offset) || 0;
+  const h = parseFloat(el.attrs.height) || DEFAULT_POINT_HEIGHT;
+  return { kind: 'params', params: {
+    kind: 'box',
+    cx: el.position.x, cy: levelElevation + base + h / 2, cz: -el.position.y,
+    sx: el.width, sy: h, sz: el.height,
+    rotY: -((parseFloat(el.attrs.rotation) || 0) * Math.PI) / 180,
+  } };
+}
+
+/**
+ * MEP node → fitting body: a cube centred on the node (its Z is the run's
+ * centre line), sized by a declared accessory size, else the largest
+ * connected section.
+ */
+function mepFittingBody(el: CanonicalElement, levelElevation: number, floorElements: CanonicalElement[]): Body | null {
+  if (el.geometry !== 'point') return null;
+  let size = parseFloat(el.attrs.size_w) || 0;
+  if (!size) {
+    for (const ln of floorElements) {
+      if (!MEP_SEGMENT_TABLES.has(ln.tableName)) continue;
+      if (!portRefTargetsHost(ln.attrs.from, el.id) && !portRefTargetsHost(ln.attrs.to, el.id)) continue;
+      const sx = parseFloat(ln.attrs.size_x) || 0;
+      const sy = ln.attrs.shape === 'round' ? sx : parseFloat(ln.attrs.size_y) || sx;
+      size = Math.max(size, sx, sy);
+    }
+  }
+  if (!size) size = DEFAULT_FITTING_SIZE;
+  const z = parseFloat(el.attrs.base_offset) || 0;
+  return { kind: 'params', params: {
+    kind: 'box',
+    cx: el.position.x, cy: levelElevation + z, cz: -el.position.y,
+    sx: size, sy: size, sz: size,
+    rotY: -((parseFloat(el.attrs.rotation) || 0) * Math.PI) / 180,
+  } };
+}
+
+function ifcTypeFor(el: CanonicalElement): string | undefined {
+  if (el.tableName === 'equipment') return EQUIPMENT_TO_IFC[el.attrs.equipment_type] ?? TABLE_TO_IFC.equipment;
+  return TABLE_TO_IFC[el.tableName];
+}
+
+function bodyFor(el: CanonicalElement, levelElevation: number, levelElevations: Map<string, number>, floorElements: CanonicalElement[]): Body | null {
+  if (MEP_SEGMENT_TABLES.has(el.tableName)) return mepSegmentBody(el);
+  if (el.tableName === 'equipment' || el.tableName === 'terminal') return mepPointBody(el, levelElevation);
+  if (el.tableName === 'mep_node') return mepFittingBody(el, levelElevation, floorElements);
+  const params = elementTo3DParams(el, levelElevation, levelElevations);
+  return params ? { kind: 'params', params } : null;
+}
 
 function guid(): string {
   // IFC GUID: 22-char base64-like encoding
@@ -260,14 +368,13 @@ export async function buildIfc(project: ProjectData, modelName = 'BimDown'): Pro
     const elementHandles: any[] = [];
 
     for (const el of elements) {
-      const params = elementTo3DParams(el, level.elevation, levelElevations);
-      if (!params) continue;
-
-      const ifcType = TABLE_TO_IFC[el.tableName];
+      const ifcType = ifcTypeFor(el);
       if (!ifcType) continue;
+      const body = bodyFor(el, level.elevation, levelElevations, elements);
+      if (!body) continue;
 
       const handle = createIfcElement(
-        api, modelID, el, params, ifcType,
+        api, modelID, el, body, ifcType,
         ownerHistory, context, storeyPlacement, level.elevation,
         IFC2X3, Handle,
       );
@@ -309,7 +416,7 @@ function createIfcElement(
   api: any,
   modelID: number,
   el: CanonicalElement,
-  params: ReturnType<typeof elementTo3DParams>,
+  body: Body,
   ifcType: string,
   ownerHistory: any,
   context: any,
@@ -320,14 +427,51 @@ function createIfcElement(
   IFC2X3: any,
   Handle: any,
 ): any | null {
-  if (!params) return null;
-
-  // Create geometry based on params type
+  // Create geometry based on body type
   let profileDef: any;
   let position: any;
   let depth: number;
+  const params = body.kind === 'params' ? body.params : null;
 
-  if (params.kind === 'box') {
+  if (body.kind === 'sweep') {
+    // Section centred on the run's axis: placement at the start point, local Z
+    // along the run, local X horizontal (plan X for vertical risers), extruded
+    // by the 3D length.
+    const profileOrigin = new IFC2X3.IfcCartesianPoint([0, 0]);
+    api.WriteLine(modelID, profileOrigin);
+    const profilePos = new IFC2X3.IfcAxis2Placement2D(new Handle(profileOrigin.expressID), null);
+    api.WriteLine(modelID, profilePos);
+    profileDef = body.round
+      ? new IFC2X3.IfcCircleProfileDef(
+        IFC2X3.IfcProfileTypeEnum.AREA, null, new Handle(profilePos.expressID),
+        new IFC2X3.IfcPositiveLengthMeasure(body.sizeX / 2))
+      : new IFC2X3.IfcRectangleProfileDef(
+        IFC2X3.IfcProfileTypeEnum.AREA, null, new Handle(profilePos.expressID),
+        new IFC2X3.IfcPositiveLengthMeasure(body.sizeX),
+        new IFC2X3.IfcPositiveLengthMeasure(body.sizeY));
+    api.WriteLine(modelID, profileDef);
+
+    const { start, end } = body;
+    const d = { x: end.x - start.x, y: end.y - start.y, z: end.z - start.z };
+    depth = Math.hypot(d.x, d.y, d.z);
+    const axis = { x: d.x / depth, y: d.y / depth, z: d.z / depth };
+    // ref = up × axis (horizontal, perpendicular to the run); plan X when vertical
+    const horiz = Math.hypot(axis.x, axis.y);
+    const ref = horiz < 1e-6 ? { x: 1, y: 0 } : { x: -axis.y / horiz, y: axis.x / horiz };
+
+    const posPoint = new IFC2X3.IfcCartesianPoint([start.x, start.y, start.z]);
+    api.WriteLine(modelID, posPoint);
+    const axisDir = new IFC2X3.IfcDirection([axis.x, axis.y, axis.z]);
+    api.WriteLine(modelID, axisDir);
+    const refDir = new IFC2X3.IfcDirection([ref.x, ref.y, 0]);
+    api.WriteLine(modelID, refDir);
+    position = new IFC2X3.IfcAxis2Placement3D(
+      new Handle(posPoint.expressID),
+      new Handle(axisDir.expressID),
+      new Handle(refDir.expressID),
+    );
+    api.WriteLine(modelID, position);
+  } else if (params?.kind === 'box') {
     // Rectangle profile for boxes (Position is mandatory in IFC2X3)
     const profileOrigin = new IFC2X3.IfcCartesianPoint([0, 0]);
     api.WriteLine(modelID, profileOrigin);
@@ -368,7 +512,7 @@ function createIfcElement(
       refDir ? new Handle(refDir.expressID) : null,
     );
     api.WriteLine(modelID, position);
-  } else {
+  } else if (params) {
     // Arbitrary closed profile for extrusions
     const points: any[] = [];
     for (const v of params.vertices) {
@@ -405,9 +549,11 @@ function createIfcElement(
       null,
     );
     api.WriteLine(modelID, position);
+  } else {
+    return null;
   }
 
-  // Extrusion direction (Z up)
+  // Extrusion direction (local Z)
   const extrudeDir = new IFC2X3.IfcDirection([0, 0, 1]);
   api.WriteLine(modelID, extrudeDir);
 
@@ -443,6 +589,23 @@ function createIfcElement(
   // Create the IFC entity
   const elementName = new IFC2X3.IfcLabel(`${el.tableName}:${el.id}`);
   let ifcElement: any;
+
+  if (FLOW_ELEMENT_TYPES.has(ifcType)) {
+    // ObjectType carries the BimDown category (equipment_type, terminal_type,
+    // node kind) or, for segments, the system.
+    const objectType = el.attrs.equipment_type || el.attrs.terminal_type || el.attrs.kind || el.attrs.system_type;
+    ifcElement = new IFC2X3[ifcType](
+      new IFC2X3.IfcGloballyUniqueId(guid()),
+      new Handle(ownerHistory.expressID),
+      elementName, null,
+      objectType ? new IFC2X3.IfcLabel(objectType) : null,
+      new Handle(elPlacement.expressID),
+      new Handle(productShape.expressID),
+      null,
+    );
+    api.WriteLine(modelID, ifcElement);
+    return new Handle(ifcElement.expressID);
+  }
 
   switch (ifcType) {
     case 'IfcWall':
@@ -491,16 +654,6 @@ function createIfcElement(
       break;
     case 'IfcBeam':
       ifcElement = new IFC2X3.IfcBeam(
-        new IFC2X3.IfcGloballyUniqueId(guid()),
-        new Handle(ownerHistory.expressID),
-        elementName, null, null,
-        new Handle(elPlacement.expressID),
-        new Handle(productShape.expressID),
-        null,
-      );
-      break;
-    case 'IfcFlowSegment':
-      ifcElement = new IFC2X3.IfcFlowSegment(
         new IFC2X3.IfcGloballyUniqueId(guid()),
         new Handle(ownerHistory.expressID),
         elementName, null, null,
