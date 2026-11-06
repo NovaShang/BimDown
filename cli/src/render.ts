@@ -23,6 +23,7 @@ const COLORS: Record<string, { stroke: string; fill?: string }> = {
   window:             { stroke: '#2a9d8f' },
   stair:              { stroke: '#f4a261', fill: 'rgba(244,162,97,0.2)' },
   beam:               { stroke: '#9b5de5' },
+  brace:              { stroke: '#9b5de5' },
   duct:               { stroke: '#00b4d8' },
   pipe:               { stroke: '#48bfe3' },
   cable_tray:         { stroke: '#90be6d' },
@@ -42,19 +43,24 @@ const DEFAULT_STROKE_WIDTH: Record<string, number> = {
   stair: 1.0,
   ramp: 1.0,
   railing: 0.05,
-  beam: 0.2,
-  brace: 0.2,
   duct: 0.3,
   pipe: 0.1,
   cable_tray: 0.2,
   conduit: 0.05,
 };
 
+// Overhead framing (beams, braces) is drawn as a thin dashed centerline — the
+// plan-drawing convention for elements above the cut plane — and under the
+// walls, so a dense framing grid never hides walls and rooms.
+const OVERHEAD_LINE_TABLES = new Set(['beam', 'brace']);
+const OVERHEAD_STROKE_WIDTH = 0.04;
+const OVERHEAD_DASH = '0.3,0.15';
+
 const RENDER_ORDER = [
   'slab', 'structure_slab',
+  'beam', 'brace',
   'wall', 'structure_wall', 'room_separator', 'curtain_wall',
   'column', 'structure_column',
-  'beam', 'brace',
   'stair', 'ramp', 'railing',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
@@ -175,20 +181,22 @@ function renderFeature(
   const id = String(feat.properties?.id ?? '');
   if (!id) return null;
   const color = COLORS[tableName] ?? DEFAULT_COLOR;
-  const isDashed = tableName === 'room_separator';
+  const isOverhead = OVERHEAD_LINE_TABLES.has(tableName);
+  const dashArray = isOverhead ? OVERHEAD_DASH : tableName === 'room_separator' ? '0.2,0.1' : undefined;
 
   const g = feat.geometry;
   switch (g.type) {
     case 'LineString': {
       if (g.coordinates.length < 2) return null;
       const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
-      const sw = thicknessMap?.get(id) ?? DEFAULT_STROKE_WIDTH[tableName] ?? 0.1;
+      const sw = isOverhead ? OVERHEAD_STROKE_WIDTH : thicknessMap?.get(id) ?? DEFAULT_STROKE_WIDTH[tableName] ?? 0.1;
       const arc = feat.properties.arc as ArcParams | undefined;
       const d = arc
         ? `M ${fmt(a[0])},${fmt(a[1])} A ${fmt(arc.radius)},${fmt(arc.radius)} 0 ${arc.large_arc ? 1 : 0},${arc.sweep ? 1 : 0} ${fmt(b[0])},${fmt(b[1])}`
         : `M ${fmt(a[0])},${fmt(a[1])} L ${fmt(b[0])},${fmt(b[1])}`;
-      const dash = isDashed ? ' stroke-dasharray="0.2,0.1"' : '';
-      const svg = `    <path id="${id}" d="${d}" stroke="${color.stroke}" stroke-width="${fmt(sw)}" stroke-linecap="square" fill="none"${dash} />`;
+      const dash = dashArray ? ` stroke-dasharray="${dashArray}"` : '';
+      const cap = isOverhead ? 'butt' : 'square';
+      const svg = `    <path id="${id}" d="${d}" stroke="${color.stroke}" stroke-width="${fmt(sw)}" stroke-linecap="${cap}" fill="none"${dash} />`;
       const hw = sw / 2;
       return {
         tableName, svg,
