@@ -7,19 +7,46 @@ bases:
 fields:
   - name: u_grid_count
     type: integer
-    description: Number of horizontal (U) grid lines
+    description: Uniform grid, number of panel rows (cells stacked between horizontal U grid lines). Ignored when u_grids is set; empty → derived from u_spacing, else 3.
 
   - name: v_grid_count
     type: integer
-    description: Number of vertical (V) grid lines
+    description: Uniform grid, number of panel columns along the wall (cells between vertical V grid lines). Ignored when v_grids is set; empty → derived from v_spacing, else 3.
 
   - name: u_spacing
     type: float
-    description: Uniform U grid spacing in meters (null if irregular)
+    description: Uniform U grid spacing in meters, used when u_grid_count is empty (a line every u_spacing up from the base).
 
   - name: v_spacing
     type: float
-    description: Uniform V grid spacing in meters (null if irregular)
+    description: Uniform V grid spacing in meters, used when v_grid_count is empty (a line every v_spacing from the start).
+
+  - name: u_grids
+    type: string
+    description: "Explicit horizontal grid lines: heights above the wall base, semicolon-separated (e.g. `0.9;2.4`). Overrides u_grid_count / u_spacing."
+
+  - name: v_grids
+    type: string
+    description: "Explicit vertical grid lines: distances from the wall start, semicolon-separated (e.g. `1.2;2.4;3.9`). Overrides v_grid_count / v_spacing."
+
+  - name: panels
+    type: string
+    description: "Panel overrides, semicolon-separated `col:row=kind` (0-based; col counted from the wall start, row from the bottom; `*` = every col or row; later entries win). Kinds: glass, solid, door, double_door, empty. Unlisted cells are glass."
+
+  - name: mullion_width
+    type: float
+    description: Mullion face width along the wall in meters (round profile → diameter). Default 0.05.
+
+  - name: mullion_depth
+    type: float
+    description: Mullion depth across the wall in meters. Default 0.05.
+
+  - name: mullion_profile
+    type: enum
+    values:
+      - rect
+      - round
+    description: Interior mullion / transom section (default rect). Border mullions are always rect.
 
   - name: panel_count
     type: integer
@@ -28,9 +55,13 @@ fields:
 
   - name: panel_material
     type: string
-    description: Dominant panel material name
+    description: Glass panel material name
+
+  - name: solid_material
+    type: string
+    description: Material of `solid` (opaque spandrel) panels. Default aluminum.
 
   - name: type_id
     type: reference
     reference: curtain_wall_type
-    description: Optional curtain_wall_type id. Empty type parameters (u_spacing, v_spacing, panel_material, material) inherit the type's value; a set value overrides it for this element.
+    description: Optional curtain_wall_type id. Empty type parameters (u_spacing, v_spacing, panel_material, solid_material, mullion_width, mullion_depth, mullion_profile, material) inherit the type's value; a set value overrides it for this element.

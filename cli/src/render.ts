@@ -13,6 +13,7 @@ import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 import { renderAnnotations } from './annotations.js';
 import { projectUnits } from './utils/units.js';
 import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
+import { cellKinds, gridLines, parsePanels } from './curtain-grid.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -208,7 +209,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 // ─── Per-feature rendering ────────────────────────────────
 
 /** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
-const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof']);
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall']);
 
 function renderFeature(
   tableName: string,
@@ -220,6 +221,9 @@ function renderFeature(
   if (!id) return null;
   if (tableName === 'foundation') return renderFoundation(id, feat, row ?? {});
   if (tableName === 'roof' && feat.geometry.type === 'Polygon') return renderRoof(id, feat, row ?? {});
+  if (tableName === 'curtain_wall' && feat.geometry.type === 'LineString' && !feat.properties.arc) {
+    return renderCurtainWall(id, feat, thicknessMap?.get(id) ?? DEFAULT_STROKE_WIDTH.curtain_wall, row ?? {});
+  }
   if ((tableName === 'column' || tableName === 'structure_column') && feat.geometry.type === 'Point') {
     return renderColumn(tableName, id, feat, row ?? {});
   }
@@ -264,6 +268,72 @@ function renderFeature(
     }
   }
   return null;
+}
+
+// ─── Curtain walls ─────────────────────────────────────────
+
+const CURTAIN_STROKE = '#2f8fb8';
+const CURTAIN_FILL = '#d6eaf8';
+
+/**
+ * Curtain wall: glazing strip with a tick at every vertical grid line (spec
+ * readme "Curtain Wall Grids and Panels"); bottom-row door cells are left open
+ * and drawn with their swing.
+ */
+function renderCurtainWall(id: string, feat: BimDownFeature, width: number, row: Record<string, string>): RenderedElement | null {
+  const c = (feat.geometry as { coordinates: number[][] }).coordinates;
+  if (c.length < 2) return null;
+  const a = { x: c[0][0], y: c[0][1] }, b = { x: c[c.length - 1][0], y: c[c.length - 1][1] };
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (len < 1e-6) return null;
+  const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  const n = { x: -u.y, y: u.x };
+  const at = (t: number, s = 0) => [a.x + u.x * t + n.x * s, a.y + u.y * t + n.y * s];
+  const xs = [0, ...gridLines(row.v_grids, row.v_grid_count, row.v_spacing, len), len];
+  const rowsN = gridLines(row.u_grids, row.u_grid_count, row.u_spacing, Number.MAX_VALUE).length + 1;
+  const kinds = cellKinds(parsePanels(row.panels).rules, xs.length - 1, rowsN);
+  const mw = num(row.mullion_width) || 0.05;
+  const hw = width / 2;
+  const parts: string[] = [];
+  const pts: number[][] = [];
+
+  // Glazing strip, one run per stretch of non-door bottom cells.
+  const isDoor = (i: number) => kinds[i][0] === 'door' || kinds[i][0] === 'double_door';
+  for (let i = 0; i < xs.length - 1;) {
+    if (isDoor(i)) { i++; continue; }
+    let j = i;
+    while (j + 1 < xs.length - 1 && !isDoor(j + 1)) j++;
+    const ring = [at(xs[i], hw), at(xs[j + 1], hw), at(xs[j + 1], -hw), at(xs[i], -hw)];
+    pts.push(...ring);
+    parts.push(`<polygon points="${pointsAttr(ring)}" fill="${CURTAIN_FILL}" stroke="${CURTAIN_STROKE}" stroke-width="0.02" />`);
+    i = j + 1;
+  }
+  // Mullion ticks at every vertical grid line, ends included.
+  const tick = Math.max(hw * 1.6, 0.08);
+  const d = xs.map((x) => { const p = at(x, tick), q = at(x, -tick); pts.push(p, q); return `M ${fmt(p[0])},${fmt(p[1])} L ${fmt(q[0])},${fmt(q[1])}`; });
+  parts.push(`<path d="${d.join(' ')}" stroke="${CURTAIN_STROKE}" stroke-width="0.03" fill="none" />`);
+  // Door swings (leaf open at 90° to the wall's left, quarter arc back to the closed position).
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (!isDoor(i)) continue;
+    const x0 = xs[i] + mw / 2, x1 = xs[i + 1] - mw / 2;
+    if (x1 - x0 < 0.05) continue;
+    const leaves = kinds[i][0] === 'double_door'
+      ? [{ hinge: x0, dir: 1, l: (x1 - x0) / 2 }, { hinge: x1, dir: -1, l: (x1 - x0) / 2 }]
+      : [{ hinge: x0, dir: 1, l: x1 - x0 }];
+    for (const lf of leaves) {
+      const arc: number[][] = [];
+      for (let k = 0; k <= 12; k++) {
+        const th = (Math.PI / 2) * (1 - k / 12);
+        arc.push(at(lf.hinge + lf.dir * lf.l * Math.cos(th), lf.l * Math.sin(th)));
+      }
+      pts.push(...arc);
+      const h = at(lf.hinge);
+      parts.push(`<path d="M ${fmt(h[0])},${fmt(h[1])} L ${fmt(arc[0][0])},${fmt(arc[0][1])}" stroke="${COLORS.door.stroke}" stroke-width="0.03" fill="none" />`);
+      parts.push(`<polyline points="${pointsAttr(arc)}" stroke="${COLORS.door.stroke}" stroke-width="0.015" fill="none" />`);
+    }
+  }
+  const svg = `    <g id="${id}">${parts.join('')}</g>`;
+  return { tableName: 'curtain_wall', svg, bounds: ringBounds(pts) };
 }
 
 // ─── Structure: columns, foundations, grids ───────────────
@@ -508,7 +578,8 @@ function readRows(dirPath: string, tableName: string): Map<string, Record<string
   const out = new Map<string, Record<string, string>>();
   const csvPath = join(dirPath, `${tableName}.csv`);
   if (!existsSync(csvPath)) return out;
-  for (const row of readCsv(csvPath).rows) if (row.id) out.set(row.id, row);
+  // Effective rows: a typed element's empty parameters come from its type.
+  for (const row of effectiveRows(dirname(dirPath), tableName, readCsv(csvPath).rows)) if (row.id) out.set(row.id, row);
   return out;
 }
 

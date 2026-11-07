@@ -14,6 +14,7 @@ import { validateGeoJsonFile } from './geojson.js';
 import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.js';
 import { validateAnnotations } from './annotations.js';
 import { validateEnvelope } from './envelope.js';
+import { validateCurtainWallCsv } from './curtain-wall.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -111,6 +112,11 @@ export function validate(dir: string): string[] {
     for (const row of entry.data.rows) if (row.id) levelElevation.set(row.id, Number(row.elevation) || 0);
   }
   issues.push(...validateEnvelope(dir, csvEntries, idRegistry, levelElevation));
+
+  // 7e. Curtain walls: grid line lists and panel overrides
+  for (const entry of csvEntries) {
+    if (entry.tableName === 'curtain_wall') issues.push(...validateCurtainWallCsv(entry.path, entry.data));
+  }
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);
