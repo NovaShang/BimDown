@@ -5,6 +5,7 @@ import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { PROPERTY_GROUPS, type PropertyField } from '../elements/_propertyFields.ts';
+import { MepSizeInput, isMepSizeField } from '../mep/MepSizeInput.tsx';
 import { systemFitsTable } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import type { ProjectUnit } from '../types.ts';
@@ -235,6 +236,8 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
                         onChange={handleChange}
                         projectUnit={projectUnit}
                         t={(key: string, fallback?: string) => t(key, { defaultValue: fallback }) as string}
+                        table={firstData.tableName}
+                        rowAttrs={csv}
                       />
                     ))}
                   </div>
@@ -272,6 +275,8 @@ function PropertyRow({
   onChange,
   projectUnit,
   t,
+  table,
+  rowAttrs,
 }: {
   field: PropertyField;
   value: string;
@@ -284,6 +289,9 @@ function PropertyRow({
   onChange: (key: string, value: string) => void;
   projectUnit: ProjectUnit;
   t: (key: string, fallback?: string) => string;
+  /** Table and values of the (first) selected row, for MEP size fields. */
+  table?: string;
+  rowAttrs?: Record<string, string>;
 }) {
   const label = t(`field.${f.label}`, f.label);
   // Length fields are tagged with `unit: 'm'` in the registry; substitute the
@@ -342,6 +350,9 @@ function PropertyRow({
               ))}
             </SelectContent>
           </Select>
+        ) : isMepSizeField(table, f.key) && !mixed ? (
+          <MepSizeInput table={table!} sizeKey={f.key} attrs={rowAttrs ?? {}} value={value} unit={projectUnit}
+            onChange={v => onChange(f.key, v)} className={FIELD_INPUT} />
         ) : f.type === 'number' ? (
           <>
             <NumberInput

@@ -119,7 +119,7 @@ export function terminalSymbol(type: string, w: number, d: number, stroke: strin
 }
 
 const EQUIPMENT_ABBR: Record<string, string> = {
-  ahu: 'AHU', fcu: 'FCU', vav: 'VAV', chiller: 'CH', boiler: 'B', cooling_tower: 'CT', fan: 'F', pump: 'P',
+  ahu: 'AHU', fcu: 'FCU', vav: 'VAV', chiller: 'CH', boiler: 'B', cooling_tower: 'CT', fan: 'F', pump: 'P', coil: 'C',
   transformer: 'TX', panelboard: 'PNL', generator: 'GEN', water_heater: 'WH', tank: 'T', other: 'EQ',
 };
 

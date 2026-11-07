@@ -192,12 +192,71 @@ describe('sanitary branches', () => {
   });
 });
 
-describe('device placement', () => {
-  it('puts the pump on the run height', () => {
+describe('inline equipment', () => {
+  it('a VAV clicked on the supply trunk splits it, faces the flow and takes its system and size', () => {
+    const h = createHarness();
+    h.pick('equipment', { [STARTER_KEY_ATTR]: 'ahu_chw_2pipe' });
+    h.click(0, 0);
+    h.done();
+    // AHU sa port at (-1.2, 0, 1.05) facing -x: the supply runs towards -x.
+    h.pick('duct', { start_z: '3', system_type: 'SA' });
+    h.click(-1.2, 0); h.click(-12, 0);
+    h.done();
+    h.pick('equipment', { [STARTER_KEY_ATTR]: 'vav_box' });
+    h.click(-6, 0.05);
+    const vav = els(h.state, 'equipment').find(e => e.attrs.equipment_type === 'vav') as PointElement;
+    expect(vav).toBeTruthy();
+    expect(Math.abs(parseFloat(vav.attrs.rotation))).toBeCloseTo(180, 6); // inlet towards the AHU
+    expect(parseFloat(vav.attrs.base_offset) + 0.175).toBeCloseTo(1.05, 6);
+    const ports = els(h.state, 'connector').filter(c => c.attrs.host_id === vav.id);
+    expect(ports.map(p => p.attrs.system_type)).toEqual(['SA', 'SA']);
+    expect(ports.map(p => p.attrs.size_w)).toEqual(['0.8', '0.8']);
+    const ds = ducts(h.state);
+    expect(ds.some(d => d.attrs.to === `${vav.id}:inlet`)).toBe(true);
+    expect(ds.some(d => d.attrs.from === `${vav.id}:outlet`)).toBe(true);
+    const bad = checkDocument(h.state.document!.elements).filter(p => p.severity === 'warning' && p.code !== 'open_end' && p.code !== 'unused_port');
+    expect(bad).toEqual([]);
+  });
+
+  it('an inline pump on a CHWR pipe joins CHWR (no system mismatch)', () => {
+    const h = createHarness();
+    h.pick('pipe', { start_z: '1', system_type: 'CHWR', size_x: '0.1' });
+    h.click(0, 0); h.click(10, 0);
+    h.done();
+    h.pick('equipment', { [STARTER_KEY_ATTR]: 'pump_inline' });
+    h.click(5, 0.03);
+    const pump = els(h.state, 'equipment')[0] as PointElement;
+    expect(pump.position.y).toBeCloseTo(0, 9);
+    expect(pump.attrs.system_type).toBe('CHWR');
+    expect(pipes(h.state)).toHaveLength(2);
+    expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
+  });
+
+  it('placed off a run, it is a free-standing device', () => {
     const h = createHarness();
     h.pick('equipment', { [STARTER_KEY_ATTR]: 'pump_inline' });
     h.click(10, 0);
     const pump = els(h.state, 'equipment')[0] as PointElement;
     expect(pump.position).toEqual({ x: 10, y: 0 });
+  });
+});
+
+describe('wall-mounted devices', () => {
+  it('go onto the wall face (not the centre line), back to the wall, at their mounting height', () => {
+    const h = createHarness();
+    h.pick('wall', { thickness: '0.2' });
+    h.click(0, 9); h.click(10, 9);
+    h.done();
+    h.pick('terminal', { [STARTER_KEY_ATTR]: 'receptacle' });
+    h.click(4, 8.7);
+    const r = els(h.state, 'terminal')[0] as PointElement;
+    expect(r.position.x).toBeCloseTo(4, 9);
+    expect(r.position.y).toBeCloseTo(9 - 0.1 - 0.045, 9);
+    expect(parseFloat(r.attrs.rotation)).toBeCloseTo(180, 6);
+    expect(r.attrs.base_offset).toBe('0.3');
+    h.click(6, 9.4); // other side of the wall
+    const r2 = els(h.state, 'terminal')[1] as PointElement;
+    expect(r2.position.y).toBeCloseTo(9 + 0.1 + 0.045, 9);
+    expect(parseFloat(r2.attrs.rotation)).toBeCloseTo(0, 6);
   });
 });

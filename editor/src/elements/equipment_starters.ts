@@ -52,6 +52,8 @@ export interface EquipmentStarter {
   extra?: Record<string, string>;
   /** Default rotation in degrees. */
   default_rotation?: number;
+  /** Placed on the nearest wall face, back (local -Y) to the wall. */
+  wall_mounted?: boolean;
   ports: StarterPort[];
 }
 
@@ -139,6 +141,17 @@ export const equipmentStarters: EquipmentStarter[] = [
     ],
   },
   {
+    key: 'coil_duct', label_en: 'Duct Coil (CHW, inline)', label_zh: '风管盘管（冷冻水，串入风管）',
+    table: 'equipment', type_enum: 'coil', family: 'Coil - Duct mounted', type: 'Cooling',
+    default_size: { w: 0.4, d: 0.8, h: 0.5 }, default_base_offset: '2.8', extra: { flow: '500' },
+    ports: [
+      duct('inlet', [-0.2, 0, 0.25], [-1, 0, 0], 0.6, 0.4, 'sa', 'in'),
+      duct('outlet', [0.2, 0, 0.25], [1, 0, 0], 0.6, 0.4, 'sa', 'out'),
+      pipe('chws', [0.1, -0.4, 0.1], [0, -1, 0], 0.025, 'chw_supply', 'in'),
+      pipe('chwr', [-0.1, -0.4, 0.1], [0, -1, 0], 0.025, 'chw_return', 'out'),
+    ],
+  },
+  {
     key: 'pump_end_suction', label_en: 'End-suction Pump', label_zh: '端吸泵',
     table: 'equipment', type_enum: 'pump', family: 'Pump - End suction', type: 'Standard',
     default_size: { w: 1.1, d: 0.45, h: 0.6 }, extra: { load: '5500', flow: '15' },
@@ -215,6 +228,7 @@ export const equipmentStarters: EquipmentStarter[] = [
     key: 'panelboard', label_en: 'Panelboard', label_zh: '配电箱',
     table: 'equipment', type_enum: 'panelboard', family: 'Panelboard', type: '230/400V',
     default_size: { w: 0.6, d: 0.2, h: 1.0 }, default_base_offset: '0.5',
+    wall_mounted: true,
     ports: [],
   },
   // ─── Air terminals ────────────────────────────────────────────
@@ -248,6 +262,7 @@ export const equipmentStarters: EquipmentStarter[] = [
     key: 'water_closet', label_en: 'Water Closet', label_zh: '坐便器',
     table: 'terminal', type_enum: 'water_closet', family: 'WC - Floor mounted', type: 'Standard',
     default_size: { w: 0.4, d: 0.7, h: 0.8 }, extra: { flow: '0.1' },
+    wall_mounted: true,
     ports: [
       pipe('cold_in', [0.12, -0.35, 0.25], [0, -1, 0], 0.015, 'dcw', 'in'),
       pipe('drain', [0, -0.1, 0], [0, 0, -1], 0.1, 'drain', 'out'),
@@ -257,6 +272,7 @@ export const equipmentStarters: EquipmentStarter[] = [
     key: 'urinal', label_en: 'Urinal', label_zh: '小便器',
     table: 'terminal', type_enum: 'urinal', family: 'Urinal - Wall hung', type: 'Standard',
     default_size: { w: 0.4, d: 0.35, h: 0.7 }, extra: { flow: '0.1' },
+    wall_mounted: true,
     ports: [
       pipe('cold_in', [0, -0.175, 1.1], [0, -1, 0], 0.015, 'dcw', 'in'),
       pipe('drain', [0, -0.1, 0.45], [0, 0, -1], 0.05, 'drain', 'out'),
@@ -266,6 +282,7 @@ export const equipmentStarters: EquipmentStarter[] = [
     key: 'lavatory', label_en: 'Lavatory (wash basin)', label_zh: '洗手盆',
     table: 'terminal', type_enum: 'lavatory', family: 'Lavatory - Wall hung', type: 'Standard',
     default_size: { w: 0.55, d: 0.45, h: 0.85 }, extra: { flow: '0.1' },
+    wall_mounted: true,
     ports: [
       pipe('cold_in', [0.1, -0.225, 0.55], [0, -1, 0], 0.015, 'dcw', 'in'),
       pipe('hot_in', [-0.1, -0.225, 0.55], [0, -1, 0], 0.015, 'dhw_supply', 'in'),
@@ -276,6 +293,7 @@ export const equipmentStarters: EquipmentStarter[] = [
     key: 'sink', label_en: 'Sink', label_zh: '洗涤盆',
     table: 'terminal', type_enum: 'sink', family: 'Sink - Kitchen', type: 'Single bowl',
     default_size: { w: 0.8, d: 0.5, h: 0.9 }, extra: { flow: '0.2' },
+    wall_mounted: true,
     ports: [
       pipe('cold_in', [0.1, -0.25, 0.55], [0, -1, 0], 0.015, 'dcw', 'in'),
       pipe('hot_in', [-0.1, -0.25, 0.55], [0, -1, 0], 0.015, 'dhw_supply', 'in'),
@@ -315,24 +333,28 @@ export const equipmentStarters: EquipmentStarter[] = [
     key: 'emergency_light', label_en: 'Emergency Light', label_zh: '应急灯',
     table: 'terminal', type_enum: 'emergency_light', family: 'Light - Emergency', type: 'LED 5W',
     default_size: { w: 0.35, d: 0.15, h: 0.1 }, default_base_offset: '2.5', extra: { load: '5' },
+    wall_mounted: true,
     ports: [power([0, 0, 0.1])],
   },
   {
     key: 'receptacle', label_en: 'Receptacle', label_zh: '插座',
     table: 'terminal', type_enum: 'power_outlet', family: 'Receptacle - Duplex', type: '16A',
     default_size: { w: 0.09, d: 0.09, h: 0.09 }, default_base_offset: '0.3', extra: { load: '180' },
+    wall_mounted: true,
     ports: [power()],
   },
   {
     key: 'light_switch', label_en: 'Light Switch', label_zh: '开关',
     table: 'terminal', type_enum: 'switch', family: 'Switch - Single pole', type: '10A',
     default_size: { w: 0.09, d: 0.09, h: 0.09 }, default_base_offset: '1.3',
+    wall_mounted: true,
     ports: [power()],
   },
   {
     key: 'data_outlet', label_en: 'Data Outlet', label_zh: '信息插座',
     table: 'terminal', type_enum: 'data_outlet', family: 'Data Outlet', type: 'RJ45 x2',
     default_size: { w: 0.09, d: 0.09, h: 0.09 }, default_base_offset: '0.3',
+    wall_mounted: true,
     ports: [],
   },
   {

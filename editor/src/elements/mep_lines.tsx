@@ -11,7 +11,7 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import { resolvePropertyFields } from './_propertyFields.ts';
 import type { CanonicalElement } from '../model/elements.ts';
-import { BOOLEAN_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
+import { BOOLEAN_OPTIONS, PIPE_MATERIAL_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
 import { SLOPE_KEY, rememberedRouteAttrs } from '../mep/routeTool.ts';
 
 /** Run height while routing; a change mid-run inserts a rise / drop. */
@@ -108,11 +108,12 @@ export const ductModule = makeMepLineModule({
 
 export const pipeModule = makeMepLineModule({
   table: 'pipe', prefix: 'pi',
-  extraHeaders: ['insulation_thickness'],
+  extraHeaders: ['insulation_thickness', 'material'],
   defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: '' },
   drawingFields: [
     { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'material', label: 'Material', type: 'select', options: PIPE_MATERIAL_OPTIONS },
     OFFSET_FIELD,
     { key: SLOPE_KEY, label: 'Slope', type: 'number', unit: '%', min: -10, max: 10, step: 0.5 },
     RISER_TOP_FIELD,

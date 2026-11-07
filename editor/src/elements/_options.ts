@@ -51,6 +51,20 @@ export const MATERIAL_OPTIONS: DrawingField['options'] = [
   { value: 'composite', label: 'Composite' },
 ];
 
+/** pipe.material: picks the size series (DN for metal, de for plastic). */
+export const PIPE_MATERIAL_OPTIONS: DrawingField['options'] = [
+  { value: 'steel', label: 'Steel' },
+  { value: 'galvanized_steel', label: 'Galvanized Steel' },
+  { value: 'stainless_steel', label: 'Stainless Steel' },
+  { value: 'copper', label: 'Copper' },
+  { value: 'cast_iron', label: 'Cast Iron' },
+  { value: 'ductile_iron', label: 'Ductile Iron' },
+  { value: 'pvc', label: 'PVC' },
+  { value: 'ppr', label: 'PP-R' },
+  { value: 'hdpe', label: 'HDPE' },
+  { value: 'pex', label: 'PEX' },
+];
+
 export const OPERATION_OPTIONS: DrawingField['options'] = [
   { value: 'single_swing', label: 'Single' },
   { value: 'double_swing', label: 'Double' },
@@ -158,6 +172,7 @@ export const EQUIPMENT_TYPE_OPTIONS: DrawingField['options'] = [
   { value: 'cooling_tower', label: 'Cooling Tower' },
   { value: 'fan', label: 'Fan' },
   { value: 'pump', label: 'Pump' },
+  { value: 'coil', label: 'Coil' },
   { value: 'transformer', label: 'Transformer' },
   { value: 'panelboard', label: 'Panelboard' },
   { value: 'generator', label: 'Generator' },

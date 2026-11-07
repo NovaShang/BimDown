@@ -12,6 +12,11 @@ import { getStarter, materializeStarter } from '../elements/equipment_starters.t
 import { getElementModule } from '../elements/registry.ts';
 import { accessoryPointerDown } from '../mep/accessoryTool.ts';
 import { arrayPointerDown, arrayPointerMove } from '../mep/arrayTool.ts';
+import { inlinePorts, insertInlineEquipment } from '../mep/inlineEquipment.ts';
+import { wallMount } from '../mep/wallMount.ts';
+import { findPipeBodyHit } from '../utils/pipeBodyHit.ts';
+import { reservedIds } from '../mep/reservedIds.ts';
+import type { CanonicalElement } from '../model/elements.ts';
 
 /** A module's own place tool (e.g. library furniture), if it declares one. */
 function moduleTool(ctx: ToolContext): ToolHandler | undefined {
@@ -54,12 +59,30 @@ export const drawPointTool: ToolHandler = {
     // as a single CREATE_ELEMENTS dispatch (one undo entry).
     const starter = getStarter(da[STARTER_KEY_ATTR]);
     if (starter && (target.tableName === 'equipment' || target.tableName === 'terminal')) {
+      const levelId = resolveNextLevelId(state);
+      const doc = state.document?.elements;
+      // Inline devices (VAV, pump, inline fan, coil) clicked onto a run go into it.
+      const inline = inlinePorts(starter);
+      if (inline && doc) {
+        const hit = findPipeBodyHit(svgPt, doc, { tolerance: 0.2, pickPadding: 0.15, endZoneRatio: 0.02 });
+        if (hit && hit.pipe.tableName === inline.table) {
+          const els = insertInlineEquipment(hit.pipe, hit.point, starter, levelId, reservedIds(doc), doc);
+          if (els) {
+            ctx.dispatch({ type: 'APPLY_PATCH', patches: new Map<string, CanonicalElement | null>(els.map(el => [el.id, el])), description: `Insert ${starter.label_en}` });
+            ctx.setSnap(null);
+            return;
+          }
+        }
+      }
       const existing = new Set(state.document?.elements.keys() ?? []);
-      const rotationOverride = da.rotation !== undefined && da.rotation !== ''
+      let rotationOverride = da.rotation !== undefined && da.rotation !== ''
         ? parseFloat(da.rotation) || 0
         : undefined;
-      const levelId = resolveNextLevelId(state);
-      const elements = materializeStarter(starter, pt, levelId, existing, rotationOverride, da.base_offset);
+      // Wall-mounted devices (receptacles, switches, wash basins…) go on the nearest wall face.
+      let at = pt;
+      const mount = starter.wall_mounted && doc ? wallMount(svgPt, doc, starter.default_size.d) : null;
+      if (mount) { at = mount.point; rotationOverride = mount.rotation; }
+      const elements = materializeStarter(starter, at, levelId, existing, rotationOverride, da.base_offset);
       ctx.dispatch({
         type: 'CREATE_ELEMENTS',
         elements,
@@ -117,7 +140,11 @@ export const drawPointTool: ToolHandler = {
 
     const state = ctx.getState();
     const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
-    const pt = snap.point;
+    let pt = snap.point;
+    const starter = getStarter(state.drawingAttrs[STARTER_KEY_ATTR]);
+    const doc = state.document?.elements;
+    const mount = starter?.wall_mounted && doc ? wallMount(svgPt, doc, starter.default_size.d) : null;
+    if (mount) pt = mount.point;
 
     ctx.dispatch({
       type: 'SET_DRAWING_STATE',
