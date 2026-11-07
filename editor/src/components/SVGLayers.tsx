@@ -28,10 +28,10 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
         // active.
         const isArchContext = layer.discipline === 'architecture' && activeDiscipline !== 'architecture'
           && !(activeDiscipline === 'structure' && ARCH_SHARED_WITH_STRUCTURE.has(layer.tableName));
-        // Structure draws grids too, so they stay clickable there (the marquee
-        // still skips them: isBackgroundDiscipline).
+        // Architecture and structure lay out on grids, so they stay clickable
+        // there (the marquee still skips them: isBackgroundDiscipline).
         const isReferenceContext = layer.discipline === 'reference' && activeDiscipline !== 'reference'
-          && activeDiscipline !== 'structure';
+          && activeDiscipline !== 'structure' && activeDiscipline !== 'architecture';
         const layerStyle = isArchContext
           ? { pointerEvents: 'none' as const, opacity: 0.35 }
           : isReferenceContext
