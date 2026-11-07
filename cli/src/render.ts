@@ -112,9 +112,14 @@ export interface RenderOptions {
 export function renderLevel(projectDir: string, levelId: string, opts: RenderOptions = {}): string {
   const layout = discoverLayout(projectDir);
   const gridSvg: RenderedElement[] = opts.grids === false ? [] : renderGrids(layout.globalDir);
-  const levelDir = layout.levelDirs.find((d) => d.name === levelId);
+  // A level of global/level.csv without a directory of its own still renders:
+  // the global elements, multi-storey stairs repeating on it, shafts through it.
+  const known = levelElevations(layout.globalDir);
+  const levelDir = layout.levelDirs.find((d) => d.name === levelId)
+    ?? (known.has(levelId) ? { name: levelId, path: join(projectDir, levelId) } : undefined);
   if (!levelDir) {
-    throw new Error(`Level "${levelId}" not found. Available: ${layout.levelDirs.map((d) => d.name).join(', ')}`);
+    const ids = [...new Set([...layout.levelDirs.map((d) => d.name), ...known.keys()])];
+    throw new Error(`Level "${levelId}" not found. Available: ${ids.join(', ')}`);
   }
 
   // Render sources (drawn back to front): global/ underlay, then current level.

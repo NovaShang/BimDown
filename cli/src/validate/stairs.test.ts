@@ -98,4 +98,12 @@ describe('stairs and railings', () => {
     expect(upper).toMatch(/<polyline id="rl-2"/);
     expect(renderLevel(testDir, 'lv-3')).not.toContain('<g id="st-1">');
   });
+
+  it('renders a level that has no directory of its own (stair repetitions on it)', () => {
+    lStair({ multistory: 'lv-3' });
+    rmSync(join(testDir, 'lv-2'), { recursive: true, force: true });
+    const upper = renderLevel(testDir, 'lv-2');
+    expect(upper).toContain('<g id="st-1">');
+    expect(() => renderLevel(testDir, 'lv-9')).toThrow(/Available: .*lv-2/);
+  });
 });

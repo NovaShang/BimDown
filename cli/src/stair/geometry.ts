@@ -1,9 +1,15 @@
 /**
- * Stair by component (spec stair.yaml) — plan / path / calculator geometry,
- * ported from the editor (bimdown-editor/editor/src/geometry/stair.ts; keep
- * the two in step). Runs are ordered by start Z and share one riser; stair
- * railings follow the run edges and go round landings; multi-storey stairs
- * repeat per storey with the riser adapted to each storey height.
+ * Copy of bimdown-editor/editor/src/geometry/stairCore.ts (the editor's stair
+ * geometry without element types), so validate / render derive the same runs,
+ * railings and repetitions. Keep the two identical (shared-code-drift test).
+ */
+/**
+ * Stair geometry without element types: runs, landings, the riser rule,
+ * multi-storey repetitions, derived railing paths, plan symbols and the stair
+ * calculator. Shared by the editor (geometry/stair.ts adds the element-level
+ * helpers) and the CLI, which keeps a verbatim copy in
+ * bimdown-spec/cli/src/stair/geometry.ts (web/src/lib/shared-code-drift.test.ts).
+ * Values are in model units (metres for the built-in rule limits).
  */
 export interface Point { x: number; y: number }
 
@@ -56,8 +62,6 @@ const len = (a: Point) => Math.hypot(a.x, a.y);
 const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 /** Left normal of a direction (model coordinates are Y up). */
 const leftOf = (u: Point): Point => ({ x: -u.y, y: u.x });
-
-// ─── Riser rule / consistency ────────────────────────────────────────────────
 
 export function totalRisers(asm: StairAssembly): number {
   return asm.runs.reduce((s, r) => s + r.stepCount, 0);
@@ -172,6 +176,29 @@ export function stairRepetitions(
 
 export function repZ(rep: StairRepetition, z: number): number {
   return rep.dz + z * rep.scale;
+}
+
+/**
+ * Side profile of a solid flight in (u along the run, v up) from the bottom
+ * of the first riser: steps on top, a soffit parallel to the pitch line
+ * `waist` below it. Matches the IFC flight body.
+ */
+export function flightProfile(length: number, rise: number, steps: number, waist = STAIR_WAIST): Point[] {
+  const n = Math.max(1, steps);
+  if (Math.abs(rise) < 0.01) {
+    return [{ x: 0, y: -waist }, { x: length, y: -waist }, { x: length, y: 0 }, { x: 0, y: 0 }];
+  }
+  const d = length / n, h = rise / n;
+  const out: Point[] = [{ x: 0, y: 0 }];
+  for (let i = 0; i < n; i++) {
+    out.push({ x: i * d, y: (i + 1) * h });
+    out.push({ x: (i + 1) * d, y: (i + 1) * h });
+  }
+  // Soffit: the pitch line dropped by the vertical waist, meeting the floor at u0.
+  const waistV = Math.min(waist * Math.hypot(d, h) / d, rise * 0.6);
+  out.push({ x: length, y: rise - waistV });
+  out.push({ x: (waistV * length) / rise, y: 0 });
+  return out;
 }
 
 // ─── Railing path ────────────────────────────────────────────────────────────
@@ -582,4 +609,74 @@ export function stairCalc(asm: StairAssembly, upm = 1, scales: readonly number[]
   ];
   if (asm.landings.length > 0) checks.push({ key: 'landing', ok: landingWorst <= 0.01, value: landingWorst, where: landingAt || undefined });
   return { risers, rise, riser, going, blondel, width, checks };
+}
+
+// ─── Placement layout ────────────────────────────────────────────────────────
+
+export interface StairLayout {
+  runs: { start: Point; end: Point; startZ: number; endZ: number; steps: number }[];
+  landings: { vertices: Point[]; top: number }[];
+}
+
+/**
+ * Runs and landings for clicked walking-line points: straight (2 points),
+ * L / quarter turn (start, corner, end) or U / half turn (start, landing
+ * entry, landing exit, end). Runs stop at the landing edge; risers are shared
+ * out in proportion to the run lengths, all of one height.
+ */
+export function layoutStair(points: readonly Point[], width: number, steps: number, baseZ: number, topZ: number): StairLayout | null {
+  const n = Math.max(1, Math.round(steps));
+  const hw = width / 2;
+  const unitDir = (a: Point, b: Point): Point | null => {
+    const l = dist(a, b);
+    return l < 1e-6 ? null : { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+  };
+  let segs: [Point, Point][];
+  const landings: Point[][] = [];
+  if (points.length === 2) {
+    segs = [[points[0], points[1]]];
+  } else if (points.length === 3) {
+    const [s, c, e] = points;
+    const u0 = unitDir(s, c), u1 = unitDir(c, e);
+    if (!u0 || !u1) return null;
+    segs = [[s, add(c, u0, -hw)], [add(c, u1, hw), e]];
+    const n0 = leftOf(u0);
+    landings.push([
+      add(add(c, u0, -hw), n0, -hw), add(add(c, u0, hw), n0, -hw),
+      add(add(c, u0, hw), n0, hw), add(add(c, u0, -hw), n0, hw),
+    ]);
+  } else if (points.length === 4) {
+    const [s, m1, m2, e] = points;
+    const u0 = unitDir(s, m1), across = unitDir(m1, m2), u1 = unitDir(m2, e);
+    if (!u0 || !across || !u1) return null;
+    segs = [[s, add(m1, u0, -hw)], [add(m2, u1, hw), e]];
+    // Landing: one run width deep, from the outer edge of run 1 to the outer edge of run 2.
+    const a = add(m1, across, -hw), b = add(m2, across, hw);
+    landings.push([add(a, u0, -hw), add(b, u0, -hw), add(b, u0, hw), add(a, u0, hw)]);
+  } else return null;
+  const lengths = segs.map(([a, b]) => dist(a, b));
+  if (lengths.some(l => l < 1e-3)) return null;
+  const total = lengths.reduce((s, l) => s + l, 0);
+  const counts: number[] = [];
+  let left = n;
+  for (let i = 0; i < segs.length; i++) {
+    const rest = segs.length - i - 1;
+    const c = i === segs.length - 1 ? left : Math.max(1, Math.min(left - rest, Math.round(n * lengths[i] / total)));
+    counts.push(c);
+    left -= c;
+  }
+  if (counts.some(c => c < 1)) return null;
+  const riser = (topZ - baseZ) / n;
+  let z = baseZ;
+  const runs = segs.map(([a, b], i) => {
+    const z1 = z + riser * counts[i];
+    const run = { start: a, end: b, startZ: round4(z), endZ: round4(z1), steps: counts[i] };
+    z = z1;
+    return run;
+  });
+  // Landing polygons counter-clockwise; each at the top of the run before it.
+  return {
+    runs,
+    landings: landings.map((v, i) => ({ vertices: signedArea(v) < 0 ? [...v].reverse() : v, top: runs[i].endZ })),
+  };
 }
