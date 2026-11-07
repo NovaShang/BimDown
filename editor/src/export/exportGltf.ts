@@ -3,6 +3,12 @@ import { parseFloorLayers } from '../model/parse.ts';
 import { elementTo3DParams } from '../three/utils/elementTo3D.ts';
 import type { BoxParams, ExtrudeParams } from '../three/utils/elementTo3D.ts';
 import { triggerDownload } from './download.ts';
+import type { GeometryContext } from '../elements/archetypes.ts';
+import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
+import { curtainWallModule, type CurtainWallFacts } from '../elements/curtain_wall.tsx';
+import { curtainWallPieces } from '../elements/curtainWallLayout.ts';
+import { doorParts } from '../elements/_opening3D.tsx';
+import { bimMaterialAppearance, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 
 // Color palette per table name (matches editor 2D layer styles)
 const TABLE_COLORS: Record<string, number> = {
@@ -30,7 +36,8 @@ const TABLE_COLORS: Record<string, number> = {
 const DEFAULT_COLOR = 0x888888;
 
 export async function exportGltf(project: ProjectData, modelName: string): Promise<void> {
-  const { Scene, Mesh, BoxGeometry, ExtrudeGeometry, MeshStandardMaterial, Shape, Group } = await import('three');
+  const three = await import('three');
+  const { Scene, Mesh, BoxGeometry, ExtrudeGeometry, MeshStandardMaterial, Shape, Group } = three;
   const { GLTFExporter } = await import('three/addons/exporters/GLTFExporter.js');
 
   const scene = new Scene();
@@ -62,7 +69,22 @@ export async function exportGltf(project: ProjectData, modelName: string): Promi
     const group = new Group();
     group.name = `Level: ${level.name || level.id}`;
 
+    let ctx: GeometryContext | undefined;
     for (const el of elements) {
+      if (el.tableName === 'curtain_wall') {
+        // Members, panels and doors as the 3D view draws them.
+        ctx ??= buildGeometryContext({
+          level, allLevels: project.levels, allElements: new Map(elements.map(e => [e.id, e])),
+          mepSystems: project.mepSystems, types: project.types,
+        });
+        const facts = curtainWallModule.geometry(el, ctx);
+        if (facts) {
+          const g = curtainWallGltf(facts, three);
+          g.name = `${el.tableName}:${el.id}`;
+          group.add(g);
+        }
+        continue;
+      }
       const params = elementTo3DParams(el, level.elevation, levelElevations);
       if (!params) continue;
 
@@ -99,6 +121,45 @@ function createBoxMesh(
   mesh.position.set(p.cx, p.cy, p.cz);
   mesh.rotation.y = p.rotY;
   return mesh;
+}
+
+/** Curtain wall pieces (curtainWallPieces) → one group of meshes in the 3D view's frame (Y up, plan Y = −Z). */
+function curtainWallGltf(f: CurtainWallFacts, three: typeof import('three')) {
+  const { Group, Mesh, BoxGeometry, CylinderGeometry, MeshStandardMaterial } = three;
+  const mats = new Map<string, InstanceType<typeof MeshStandardMaterial>>();
+  const mat = (name: string) => {
+    let m = mats.get(name);
+    if (!m) {
+      const { color, opacity } = bimMaterialAppearance(resolveBimMaterial(name, 'curtain_wall'));
+      m = new MeshStandardMaterial({ color, roughness: 0.5, metalness: 0.2, transparent: opacity < 1, opacity });
+      mats.set(name, m);
+    }
+    return m;
+  };
+  const out = new Group();
+  for (const p of curtainWallPieces(f)) {
+    if (p.role === 'door') {
+      const door = new Group();
+      door.position.set(p.c.x, p.z0 + p.h / 2, -p.c.y);
+      door.rotation.y = p.angle;
+      const parts = doorParts({ length: p.along, height: p.h, strokeWidth: p.across, operation: p.kind === 'double_door' ? 'double_swing' : 'single_swing' });
+      for (const q of parts) {
+        const m = new Mesh(new BoxGeometry(...q.size), mat(q.role === 'frame' ? f.frameMaterial : f.panelMaterial));
+        m.position.set(...q.pos);
+        door.add(m);
+      }
+      out.add(door);
+      continue;
+    }
+    const geo = p.round
+      ? (p.role === 'mullion' ? new CylinderGeometry(p.along / 2, p.along / 2, p.h, 16) : new CylinderGeometry(p.h / 2, p.h / 2, p.along, 16))
+      : new BoxGeometry(p.along, p.h, p.across);
+    const m = new Mesh(geo, mat(p.material));
+    m.position.set(p.c.x, p.z0 + p.h / 2, -p.c.y);
+    m.rotation.set(0, p.angle, p.round && p.role !== 'mullion' ? Math.PI / 2 : 0);
+    out.add(m);
+  }
+  return out;
 }
 
 function createExtrudeMesh(

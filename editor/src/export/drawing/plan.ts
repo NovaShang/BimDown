@@ -30,6 +30,7 @@ import type { StairFacts } from '../../elements/stair.tsx';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
 import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
+import { doorSwings, planStripRuns } from '../../elements/curtainWallLayout.ts';
 import type { BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { EquipmentFacts } from '../../elements/equipment.tsx';
@@ -374,14 +375,32 @@ function drawWindow(env: DrawEnv, el: LineElement, f: WindowFacts) {
 function drawCurtainWall(env: DrawEnv, f: CurtainWallFacts) {
   const { e } = env;
   e.phase = Phase.Cut;
-  e.poly(LAYERS.curtainWall, f.footprint2D, true);
   const u = unit(sub(f.end, f.start));
   const n = perp(u);
-  const half = Math.max(len(sub(f.footprint2D[0], f.footprint2D[3])) / 2, 0.6 * env.pm);
-  e.line(LAYERS.curtainWall, f.start, f.end, { weight: 0.13 });
-  for (let i = 0; i <= f.uGridCount; i++) {
-    const c = add(f.start, u, (f.length * i) / Math.max(1, f.uGridCount));
-    e.line(LAYERS.curtainWall, add(c, n, -half * 1.6), add(c, n, half * 1.6));
+  const hw = len(sub(f.footprint2D[0], f.footprint2D[3])) / 2;
+  const half = Math.max(hw, 0.6 * env.pm);
+  const at = (t: number, s = 0) => add(add(f.start, u, t), n, s);
+  // Glazing strip and centreline, open at bottom-row door cells.
+  const runs = planStripRuns(f.grid);
+  const whole = runs.length === 1 && runs[0][0] === 0 && runs[0][1] === f.length;
+  if (whole) e.poly(LAYERS.curtainWall, f.footprint2D, true);
+  else for (const [t0, t1] of runs) e.poly(LAYERS.curtainWall, [at(t0, hw), at(t1, hw), at(t1, -hw), at(t0, -hw)], true);
+  for (const [t0, t1] of runs) e.line(LAYERS.curtainWall, at(t0), at(t1), { weight: 0.13 });
+  for (const x of f.grid.xs) e.line(LAYERS.curtainWall, at(x, -half * 1.6), at(x, half * 1.6));
+  for (const p of f.corners) {
+    const c = Math.cos(p.angle), s = Math.sin(p.angle), h = p.size / 2;
+    e.poly(LAYERS.curtainWall, [[-h, -h], [h, -h], [h, h], [-h, h]].map(([a, b]) => ({ x: p.at.x + a * c - b * s, y: p.at.y + a * s + b * c })), true);
+  }
+  // Door panels: leaf open to the wall's left + swing arc, as drawDoor.
+  e.phase = Phase.Openings;
+  for (const sw of doorSwings(f)) {
+    const closed = sw.arc[sw.arc.length - 1];
+    const r = len(sub(sw.tip, sw.hinge));
+    const a = unit(sub(closed, sw.hinge)), leafN = unit(sub(sw.tip, sw.hinge));
+    e.line(LAYERS.door, sw.hinge, sw.tip);
+    const angA = Math.atan2(a.y, a.x), angN = Math.atan2(leafN.y, leafN.x);
+    const ccw = a.x * leafN.y - a.y * leafN.x > 0;
+    e.push({ kind: 'arc', layer: e.layer(LAYERS.doorSwing), center: sw.hinge, radius: r, start: ccw ? angA : angN, end: ccw ? angN : angA });
   }
 }
 
