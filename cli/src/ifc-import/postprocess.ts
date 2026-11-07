@@ -28,6 +28,20 @@ function byLevel(ctx: ImportContext, tables = BOUNDARY): Map<number, OutEl[]> {
   return m;
 }
 
+/**
+ * Lines that bound rooms on a level, as build traces them: the level's own
+ * plus global (multi-storey) lines standing on it (base at or below, top above).
+ */
+export function roomLines(ctx: ImportContext, level: number): OutEl[] {
+  const elev = ctx.elevation(level);
+  return ctx.out.filter(el => {
+    if (!BOUNDARY.has(el.table) || el.geometry?.type !== 'LineString') return false;
+    if (!el.global) return el.level === level;
+    const z = ctx.lines.get(el);
+    return !z || (z.zMin <= elev + 0.01 && z.zMax > elev + 0.01);
+  });
+}
+
 function ends(lines: OutEl[]): End[] {
   const out: End[] = [];
   for (const el of lines) {
@@ -217,6 +231,17 @@ export function joinEnds(ctx: ImportContext, lines: OutEl[], only?: Set<OutEl>):
           corners++;
           continue;
         }
+        if (e.el.table === 'room_separator' && dist2(q, best.p) > TOUCH) {
+          // A separator meets the line's extension: bridge to the held end with a short separator
+          setEndpoint(e.el, e.end, best.p);
+          const bridge = ctx.add('room_separator', 0, e.el.level, {}, {
+            type: 'LineString', coordinates: [[round(best.p.x), round(best.p.y)], [round(q.x), round(q.y)]],
+          });
+          ctx.lines.set(bridge, { thickness: 0, zMin: 0, zMax: 0 });
+          lines.push(bridge);
+          tees++;
+          continue;
+        }
         // The other end is held elsewhere: meet it there if that is close
         if (dist2(q, best.p) > 0.15) continue;
         best.p = q;
@@ -322,12 +347,32 @@ function duplicate(added: OutEl[], level: number, p0: V2, p1: V2): boolean {
  * (a wide opening between two rooms) gets its separator on that wall's
  * centre line, from wall end to wall end, so the room closes.
  */
-export function addSeparators(ctx: ImportContext, spaces: SpaceRef[]): OutEl[] {
+export function addSeparators(ctx: ImportContext, spaces: SpaceRef[]): { added: OutEl[]; outlines: Set<OutEl> } {
   const added: OutEl[] = [];
-  const levels = byLevel(ctx);
+  const outlines = new Set<OutEl>();
+  const levels = new Map<number, OutEl[]>();
+  const linesOf = (level: number) => {
+    let l = levels.get(level);
+    if (!l) levels.set(level, l = roomLines(ctx, level));
+    return l;
+  };
+  const add = (level: number, p0: V2, p1: V2) => {
+    const el = ctx.add('room_separator', 0, level, {}, { type: 'LineString', coordinates: [[round(p0.x), round(p0.y)], [round(p1.x), round(p1.y)]] });
+    ctx.lines.set(el, { thickness: 0, zMin: 0, zMax: 0 });
+    added.push(el);
+    return el;
+  };
   for (const s of spaces) {
-    const lines = levels.get(s.el.level) ?? [];
+    const lines = linesOf(s.el.level);
     const ring = s.outline.outer;
+    // A level without walls (MEP or space-only model): each room keeps its own outline
+    if (!lines.some(l => l.table !== 'room_separator')) {
+      for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        if (dist2(a, b) >= 0.01) outlines.add(add(s.el.level, a, b));
+      }
+      continue;
+    }
     for (let i = 0; i < ring.length; i++) {
       const a = ring[i], b = ring[(i + 1) % ring.length];
       const L = dist2(a, b);
@@ -350,13 +395,11 @@ export function addSeparators(ctx: ImportContext, spaces: SpaceRef[]): OutEl[] {
       for (const [t0, t1] of runs) {
         const p0 = add2(add2(a, scale2(u, t0)), shift), p1 = add2(add2(a, scale2(u, t1)), shift);
         if (duplicate(added, s.el.level, p0, p1)) continue;
-        const el = ctx.add('room_separator', 0, s.el.level, {}, { type: 'LineString', coordinates: [[round(p0.x), round(p0.y)], [round(p1.x), round(p1.y)]] });
-        ctx.lines.set(el, { thickness: 0, zMin: 0, zMax: 0 });
-        added.push(el);
+        add(s.el.level, p0, p1);
       }
     }
   }
-  return added;
+  return { added, outlines };
 }
 
 const round = (v: number) => Math.round(v * 1000) / 1000;
@@ -375,14 +418,10 @@ export function checkRooms(ctx: ImportContext, spaces: SpaceRef[]): RoomCheck {
   const issues: RoomIssue[] = [];
   const warnings: string[] = [];
   const netArea = new Map<string, number>();
-  const levels = byLevel(ctx);
-  const global = ctx.out.filter(el => el.global && BOUNDARY.has(el.table));
   for (const level of ctx.levels) {
     const seeds = spaces.filter(s => s.el.level === level.index);
     if (seeds.length === 0) continue;
-    // Global (multi-storey) lines count on the levels they stand on, as in build
-    const standing = global.filter(el => { const z = ctx.lines.get(el); return !z || (z.zMin <= level.elevation + 0.01 && z.zMax > level.elevation + 0.01); });
-    const lines = [...(levels.get(level.index) ?? []).filter(el => !el.global), ...standing];
+    const lines = roomLines(ctx, level.index);
     const segments: Segment[] = lines.map(el => {
       const [a, b] = endpoints(el);
       return { startX: a.x, startY: a.y, endX: b.x, endY: b.y, id: el.id };

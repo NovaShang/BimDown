@@ -22,7 +22,7 @@ import { convertFlight, convertRailing, convertStairOrRamp } from './circulation
 import { convertBeam, convertColumn, convertFooting, memberOrientation } from './structure.js';
 import { Systems, convertEquipment, convertNode, convertSegment, convertTerminal, linkSegments, segmentTable } from './mep.js';
 import { convertFurniture, convertGrid } from './misc.js';
-import { addSeparators, checkRooms, danglingEnds, extendIntoBodies, joinEnds, settleTees, snapEnds } from './postprocess.js';
+import { addSeparators, checkRooms, danglingEnds, extendIntoBodies, joinEnds, roomLines, settleTees, snapEnds } from './postprocess.js';
 import { emitFiles } from './emit.js';
 import { BOUNDARY } from './lines.js';
 import { ID_PREFIXES } from '../schema/prefixes.js';
@@ -256,7 +256,7 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   // ─── Clean-up: wall joins, hosted elements ─────────────────────────────
   progress('cleanup', 0.82);
   let snapped = 0, corners = 0, tees = 0;
-  for (const lines of groupLines(ctx, BOUNDARY).values()) {
+  for (const lines of ctx.levels.map(l => roomLines(ctx, l.index)).filter(l => l.length)) {
     snapped += snapEnds(lines);
     const j = joinEnds(ctx, lines);
     corners += j.corners; tees += j.tees;
@@ -284,18 +284,28 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   const obstacles = wallObstacles(ctx);
   for (const id of spaces) {
     const r = convertSpace(ctx, id, obstacles);
-    if (r) spaceRefs.push(r);
+    if (!r) continue;
+    // Revit MEP models carry each room twice (room + space): keep one
+    const twin = spaceRefs.find(o => o.el.level === r.el.level && sameOutline(o.outline.outer, r.outline.outer));
+    if (twin) {
+      ctx.remove(r.el);
+      ctx.skip(id, 'same outline as another space on the level');
+      continue;
+    }
+    spaceRefs.push(r);
   }
-  const separators = addSeparators(ctx, spaceRefs);
-  if (separators.length) {
-    const only = new Set(separators);
-    for (const lines of groupLines(ctx, BOUNDARY).values()) {
+  const { added: separators, outlines } = addSeparators(ctx, spaceRefs);
+  // Join separators to the walls; outline loops on wall-less levels stay as they are
+  const only = new Set(separators.filter(s => !outlines.has(s)));
+  if (only.size) {
+    for (const lines of ctx.levels.map(l => roomLines(ctx, l.index)).filter(l => l.length)) {
       if (!lines.some(l => only.has(l))) continue;
       joinEnds(ctx, lines, only);
       snapEnds(lines);
       settleTees(ctx, lines);
     }
   }
+  if (outlines.size) ctx.note(`${outlines.size} room separators trace the spaces of levels without walls (an MEP or space-only model)`);
   const linked = linkSegments(ctx);
   if (linked) ctx.note(`${linked} duct / pipe ends linked to their fittings, terminals or equipment from IFC port connections`);
   const rooms = checkRooms(ctx, spaceRefs);
@@ -315,14 +325,18 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   return { files, report, debug };
 }
 
-function groupLines(ctx: ImportContext, tables: Set<string>): Map<number, OutEl[]> {
-  const m = new Map<number, OutEl[]>();
-  for (const el of ctx.out) {
-    if (!tables.has(el.table) || el.geometry?.type !== 'LineString') continue;
-    const l = m.get(el.level);
-    if (l) l.push(el); else m.set(el.level, [el]);
-  }
-  return m;
+/** Two plan rings with (almost) the same area and centre. */
+function sameOutline(a: { x: number; y: number }[], b: { x: number; y: number }[]): boolean {
+  const stats = (r: { x: number; y: number }[]) => {
+    let area = 0, cx = 0, cy = 0;
+    for (let i = 0, j = r.length - 1; i < r.length; j = i++) {
+      const f = r[j].x * r[i].y - r[i].x * r[j].y;
+      area += f; cx += (r[j].x + r[i].x) * f; cy += (r[j].y + r[i].y) * f;
+    }
+    return area ? { area: area / 2, x: cx / (3 * area), y: cy / (3 * area) } : { area: 0, x: 0, y: 0 };
+  };
+  const sa = stats(a), sb = stats(b);
+  return Math.abs(Math.abs(sa.area) - Math.abs(sb.area)) <= 0.01 * Math.abs(sa.area) && Math.hypot(sa.x - sb.x, sa.y - sb.y) < 0.1;
 }
 
 // ─── Levels ──────────────────────────────────────────────────────────────────

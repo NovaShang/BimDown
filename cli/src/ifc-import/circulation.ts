@@ -132,9 +132,12 @@ export function convertRailing(ctx: ImportContext, id: number): OutEl[] {
   }
   for (const [a, b] of segments) {
     if (Math.hypot(b.x - a.x, b.y - a.y) < 0.05) continue;
-    const za = zNear(mesh, a, b, 0), zb = zNear(mesh, a, b, 1);
+    let za = zNear(mesh, a, b, 0), zb = zNear(mesh, a, b, 1);
     const rise = Math.abs(zb - za);
-    const h = typeof psetH === 'number' ? psetH * model.scale : Math.max(0.3, mesh.max.z - mesh.min.z - rise);
+    const body = mesh.max.z - mesh.min.z - rise;
+    const h = typeof psetH === 'number' ? psetH * model.scale : Math.max(0.3, body);
+    // A handrail without posts: the body is only the rail, its foot is a railing height lower
+    if (body < h * 0.5) { za -= h - body; zb -= h - body; }
     out.push(ctx.add('railing', id, level, { number: ctx.label(id), height: r3(h) }, line3({ x: a.x, y: a.y, z: za }, { x: b.x, y: b.y, z: zb })));
   }
   return out;
