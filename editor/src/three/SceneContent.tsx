@@ -3,7 +3,7 @@ import { OrbitControls, Environment } from '@react-three/drei';
 import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
 import FloorGroup from './FloorGroup.tsx';
-import { useEditorState } from '../state/EditorContext.tsx';
+import { useEditorState, useCoreEditorState } from '../state/EditorContext.tsx';
 import { parseLayer } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import { useToolContext3D } from './hooks/useToolContext3D.ts';
@@ -14,7 +14,11 @@ import ResizeHandles3D from './overlays/ResizeHandles3D.tsx';
 import Grids3D from './overlays/Grids3D.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane, PerspectiveCamera, type Group } from 'three';
-import { visibleBox, fitCameraToBox } from './cameraFit.ts';
+import { visibleBox, fitCameraToBox, type Vec3 } from './cameraFit.ts';
+import { SectionBoxController, type SectionBoxBridge } from './SectionBox.tsx';
+import SectionCaps from './SectionCaps.tsx';
+import { sectionBoxPlanes, toWorldPlane } from '../views/viewGeometry.ts';
+import type { SectionBoxBounds } from '../views/viewTypes.ts';
 
 function TrackpadOrbitControls({ controlsRef }: { controlsRef: React.RefObject<OrbitControlsImpl | null> }) {
   const gl = useThree(s => s.gl);
@@ -102,7 +106,9 @@ function useModelBounds() {
  * build) and on the toolbar's zoom-to-fit (`zoom-to-fit-3d` window event).
  */
 function CameraFit({ modelRef }: { modelRef: React.RefObject<Group | null> }) {
-  const { project, modelName, floor3DMode, currentLevel } = useEditorState();
+  const { project, modelName, floor3DMode, currentLevel, views } = useEditorState();
+  const sectionBoxRef = useRef(views.sectionBox.enabled ? views.sectionBox.bounds : null);
+  sectionBoxRef.current = views.sectionBox.enabled ? views.sectionBox.bounds : null;
   const camera = useThree(s => s.camera);
   const width = useThree(s => s.size.width);
   const height = useThree(s => s.size.height);
@@ -111,7 +117,9 @@ function CameraFit({ modelRef }: { modelRef: React.RefObject<Group | null> }) {
 
   const fit = useCallback((): boolean => {
     if (!project || !modelRef.current || !controls || !(camera instanceof PerspectiveCamera) || width === 0 || height === 0) return false;
-    const box = visibleBox(modelRef.current);
+    // With the section box on, frame the box rather than the whole model.
+    const sb = sectionBoxRef.current;
+    const box = sb ? { min: [sb.minX, sb.minZ, -sb.maxY] as Vec3, max: [sb.maxX, sb.maxZ, -sb.minY] as Vec3 } : visibleBox(modelRef.current);
     if (!box) return false;
     const { target, position, distance } = fitCameraToBox(box, camera.fov, width / height);
     controls.target.set(...target);
@@ -138,7 +146,7 @@ function CameraFit({ modelRef }: { modelRef: React.RefObject<Group | null> }) {
 }
 
 /** Makes the shadow-casting light follow the orbit target so shadows always cover the visible area. */
-function ShadowLight() {
+function ShadowLight({ castShadow = true }: { castShadow?: boolean }) {
   const lightRef = useRef<DirectionalLight>(null);
   const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
 
@@ -162,7 +170,7 @@ function ShadowLight() {
     <directionalLight
       ref={lightRef}
       intensity={2.0}
-      castShadow
+      castShadow={castShadow}
       shadow-mapSize={[1024, 1024]}
       shadow-bias={-0.0002}
       shadow-radius={8}
@@ -176,36 +184,60 @@ function ShadowLight() {
   );
 }
 
-/** Horizontal clipping planes to trim cross-floor elements to the visible elevation range. */
-function ClippingController() {
+/** Elevation range [bottom, top] shown in single-floor modes, or null for all floors. */
+function useFloorZRange(): [number, number] | null {
   const { currentLevel, floor3DMode, project } = useEditorState();
-  const gl = useThree(s => s.gl);
-
-  useEffect(() => {
-    gl.localClippingEnabled = true;
-
-    if (floor3DMode === 'all' || !project) {
-      gl.clippingPlanes = [];
-      return;
-    }
-
+  return useMemo(() => {
+    if (floor3DMode === 'all' || !project) return null;
     const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
     const idx = sorted.findIndex(l => l.id === currentLevel);
-    if (idx < 0) { gl.clippingPlanes = []; return; }
-
+    if (idx < 0) return null;
     const bottomIdx = floor3DMode === 'current+below' && idx > 0 ? idx - 1 : idx;
     const bottomElev = sorted[bottomIdx].elevation - 0.5; // margin below to avoid z-fighting
     const topElev = (idx < sorted.length - 1
       ? sorted[idx + 1].elevation
       : sorted[idx].elevation + 10) + 0.01; // margin above to avoid z-fighting with slab tops
+    return [bottomElev, topElev];
+  }, [currentLevel, floor3DMode, project]);
+}
 
+/**
+ * Renderer clipping planes: the section box when it is on, otherwise two
+ * horizontal planes trimming cross-floor elements to the visible floor range.
+ */
+function ClippingController({ zRange, bridge }: { zRange: [number, number] | null; bridge: SectionBoxBridge }) {
+  const { views } = useEditorState();
+  const gl = useThree(s => s.gl);
+  const invalidate = useThree(s => s.invalidate);
+  const { enabled, bounds } = views.sectionBox;
+
+  useEffect(() => {
+    gl.localClippingEnabled = true;
+
+    if (enabled && bounds) {
+      const planes = sectionBoxPlanes(bounds).map(() => new Plane());
+      const apply = (b: SectionBoxBounds) => {
+        sectionBoxPlanes(b).forEach((p, i) => {
+          const w = toWorldPlane(p);
+          planes[i].normal.set(...w.normal);
+          planes[i].constant = w.constant;
+        });
+        invalidate();
+      };
+      apply(bounds);
+      gl.clippingPlanes = planes;
+      bridge.applyLive = apply;
+      return () => { gl.clippingPlanes = []; bridge.applyLive = null; };
+    }
+
+    if (!zRange) { gl.clippingPlanes = []; return; }
     gl.clippingPlanes = [
-      new Plane(new Vector3(0, 1, 0), -bottomElev),
-      new Plane(new Vector3(0, -1, 0), topElev),
+      new Plane(new Vector3(0, 1, 0), -zRange[0]),
+      new Plane(new Vector3(0, -1, 0), zRange[1]),
     ];
 
     return () => { gl.clippingPlanes = []; };
-  }, [currentLevel, floor3DMode, project, gl]);
+  }, [zRange, enabled, bounds, gl, bridge, invalidate]);
 
   return null;
 }
@@ -253,9 +285,18 @@ function InteractionLayer({ controlsRef }: { controlsRef: React.RefObject<OrbitC
   );
 }
 
-export default function SceneContent() {
+export default function SceneContent({ sectionBox }: { sectionBox: SectionBoxBridge }) {
   const controlsRef = useRef<OrbitControlsImpl>(null);
   const modelRef = useRef<Group>(null);
+  const zRange = useFloorZRange();
+  // Section box: clipped solids get filled cut faces; shadows are off because
+  // renderer planes don't clip the shadow pass (a removed roof would still shade).
+  const state = useCoreEditorState();
+  const { enabled: boxOn, bounds: boxBounds } = state.views.sectionBox;
+  const capPlanes = useMemo(() => (boxOn && boxBounds ? sectionBoxPlanes(boxBounds).map(p => {
+    const w = toWorldPlane(p);
+    return new Plane(new Vector3(...w.normal), w.constant);
+  }) : []), [boxOn, boxBounds]);
 
   return (
     <>
@@ -268,7 +309,7 @@ export default function SceneContent() {
       <ambientLight intensity={0.25} />
 
       {/* Key light: follows camera target, casts shadows */}
-      <ShadowLight />
+      <ShadowLight castShadow={!boxOn} />
 
       {/* Fill lights for depth */}
       <directionalLight position={[-40, 60, -30]} intensity={0.4} color="#c4d4e8" />
@@ -282,7 +323,10 @@ export default function SceneContent() {
         <FloorGroup />
       </group>
 
-      <ClippingController />
+      <ClippingController zRange={zRange} bridge={sectionBox} />
+      <SectionCaps rootRef={modelRef} planes={capPlanes} color="#4b5563" isHidden={() => sectionBox.dragging}
+        deps={[state.project, state.document, state.documentVersion, state.visibleLayers, state.activeDiscipline, state.showArchContext, state.floor3DMode, state.currentLevel]} />
+      <SectionBoxController modelRef={modelRef} bridge={sectionBox} zRange={zRange} />
 
       {/* Grid axes at the current level (view option) */}
       <Grids3D />

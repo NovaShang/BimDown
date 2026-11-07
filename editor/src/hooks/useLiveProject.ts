@@ -1,8 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
-import { loadProject, loadGrids, loadLayer, loadMepSystems, loadTypeCatalog } from '../utils/loader.ts';
+import { loadProject, loadGrids, loadLayer, loadMepSystems, loadTypeCatalog, loadSections } from '../utils/loader.ts';
 import { TYPE_FILE_PATHS } from '../model/types/catalog.ts';
+import { VIEW_CSV_PATH } from '../views/sectionsIO.ts';
 import { parseLayer } from '../model/parse.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import type { LineElement } from '../model/elements.ts';
@@ -58,6 +59,11 @@ export function useLiveProject(model: string): void {
       if (levelId === 'global' && fileName === 'grid.csv') {
         const grids = await loadGrids(ds);
         if (active) dispatch({ type: 'UPDATE_GRIDS', grids });
+        return;
+      }
+      if (path === VIEW_CSV_PATH) {
+        const sections = await loadSections(ds);
+        if (active) dispatch({ type: 'UPDATE_SECTIONS', sections });
         return;
       }
       if (levelId === 'global' && fileName === 'mep_system.csv') {

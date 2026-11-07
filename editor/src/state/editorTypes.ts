@@ -7,10 +7,12 @@ import type { WallJoin } from '../geometry/wallJoins.ts';
 import type { ArcParams } from '../geometry/arc.ts';
 import type { TypeCatalog } from '../model/types/catalog.ts';
 import type { ViewOptions, ViewOptionKey } from './viewOptions.ts';
+import type { ViewsState, ViewsAction } from '../views/viewTypes.ts';
 
 export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region'
   | 'trim_corner' | 'trim_single' | 'split'
-  | 'draw_dimension' | 'draw_text' | 'draw_tag';
+  | 'draw_dimension' | 'draw_text' | 'draw_tag'
+  | 'draw_section';
 
 export interface ViewTransform {
   x: number;
@@ -63,6 +65,9 @@ export interface EditorState {
   drawingState: DrawingState | null;
   documentVersion: number;  // bumped on every mutation, triggers auto-persist
   lastMutation: { version: number; keys: string[] } | null;
+
+  /** Elevation / section pane, 3D section box, plan view range (views/viewsReducer.ts). */
+  views: ViewsState;
 }
 
 export interface DrawingState {
@@ -148,7 +153,8 @@ export type EditorAction =
   | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData }
   | { type: 'ADD_LEVEL'; level: Level }
   | { type: 'REMOVE_LEVEL'; levelId: string }
-  | { type: 'RENAME_LEVEL'; levelId: string; name: string; elevation: number };
+  | { type: 'RENAME_LEVEL'; levelId: string; name: string; elevation: number }
+  | ViewsAction;
 
 
 export interface ProcessedLayer {

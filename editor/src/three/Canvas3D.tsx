@@ -7,6 +7,7 @@ import { CanvasOverlay3DProjector, CanvasOverlay3DContainer } from './CanvasOver
 import { parseLayer } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import type { OverlayItem } from '../hooks/useOverlayItems.ts';
+import { SectionBoxGizmo, createSectionBoxBridge } from './SectionBox.tsx';
 
 /** Derive initial camera position from element bounds so the camera
  *  starts roughly above the model center, before CameraFit frames it. */
@@ -62,6 +63,7 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
   }, []);
 
   const items = overlayItems ?? [];
+  const [sectionBox] = useState(createSectionBoxBridge);
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative' }}>
@@ -75,7 +77,7 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
       >
         <color attach="background" args={[bgColor]} />
         <fog attach="fog" args={[bgColor, far * 0.3, far * 0.9]} />
-        <SceneContent />
+        <SceneContent sectionBox={sectionBox} />
         {items.length > 0 && (
           <CanvasOverlay3DProjector
             items={items}
@@ -84,6 +86,7 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
           />
         )}
       </Canvas>
+      <SectionBoxGizmo bridge={sectionBox} />
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
       <CanvasOverlay3DContainer>
         {items.map((item) => (

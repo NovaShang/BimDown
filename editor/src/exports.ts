@@ -9,7 +9,7 @@ export { EditorProvider, useEditorState, useSelectionState, useEditorDispatch } 
 export { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 export { createLocalDataSource } from './utils/dataSource.ts';
 export type { DataSource } from './utils/dataSource.ts';
-export { loadProject, loadGrids, loadLayer, loadProjectMetadata, loadMepSystems } from './utils/loader.ts';
+export { loadProject, loadGrids, loadLayer, loadProjectMetadata, loadMepSystems, loadSections } from './utils/loader.ts';
 export { useLiveProject } from './hooks/useLiveProject.ts';
 export { parseLayer } from './model/parse.ts';
 export { elementQuantities, sectionArea } from './model/quantities.ts';

@@ -56,7 +56,7 @@ export function EditorProvider({ children, readonly }: { children: ReactNode; re
     state.selectedIds, state.marquee,
     state.document, state.history, state.editMode,
     state.drawingTarget, state.drawingAttrs, state.drawingState,
-    state.documentVersion, state.lastMutation,
+    state.documentVersion, state.lastMutation, state.views,
   ]);
 
   return (

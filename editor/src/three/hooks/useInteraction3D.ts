@@ -7,6 +7,7 @@ import { getToolHandler } from '../../tools/registry.ts';
 import type { ToolContext } from '../../tools/types.ts';
 import { useEditorState } from '../../state/EditorContext.tsx';
 import { resolveBatchElementId } from '../staticBatch.ts';
+import { isPointVisible } from '../clipHit.ts';
 
 /**
  * Resolves an element ID from a raycast intersection.
@@ -19,6 +20,10 @@ function resolveElementId(intersection: Intersection): string | null {
   while (obj) {
     if (obj.userData.indexToId && intersection.instanceId !== undefined) {
       return obj.userData.indexToId[intersection.instanceId] ?? null;
+    }
+    // Section-box caps: one element id per cap triangle
+    if (obj.userData.faceToId && intersection.faceIndex != null) {
+      return obj.userData.faceToId[intersection.faceIndex] || null;
     }
     if (obj.userData.elementId) {
       return obj.userData.elementId as string;
@@ -86,11 +91,12 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
         obj = obj.parent;
       }
       if (hidden) continue;
+      if (!isPointVisible(hit.point, gl.clippingPlanes)) continue;
       const id = resolveElementId(hit);
       if (id) return id;
     }
     return null;
-  }, [camera, scene]);
+  }, [camera, scene, gl]);
 
   useEffect(() => {
     const canvas = gl.domElement;

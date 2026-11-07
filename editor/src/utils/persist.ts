@@ -4,6 +4,8 @@ import { groupByLayer, serializeToGeoJson, serializeToCsv, isCsvOnlyTable } from
 import type { DataSource } from './dataSource.ts';
 import { allTableNames } from '../model/tableRegistry.ts';
 import { serializeTypeFiles, type TypeCatalog } from '../model/types/catalog.ts';
+import { sectionsToCsv, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
+import type { SectionDef } from '../views/viewTypes.ts';
 
 /**
  * Persist document state via the data source.
@@ -136,6 +138,11 @@ export async function persistMepSystems(systems: SystemDef[], ds: DataSource): P
 /** Write every type file (global/*_type.csv + type_layer.csv) from the catalog. */
 export async function persistTypes(types: TypeCatalog, ds: DataSource): Promise<void> {
   await Promise.all(Object.entries(serializeTypeFiles(types)).map(([path, content]) => ds.saveFile(path, content)));
+}
+
+/** Write the saved section views back to global/view.csv. */
+export async function persistSections(sections: SectionDef[], ds: DataSource): Promise<void> {
+  await ds.saveFile(VIEW_CSV_PATH, sectionsToCsv(sections));
 }
 
 function csvEscape(value: string): string {

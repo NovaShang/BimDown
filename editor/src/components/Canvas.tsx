@@ -31,6 +31,7 @@ import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseLayer } from '../model/parse.ts';
+import SectionMarks2D from '../views/SectionMarks2D.tsx';
 
 /** Look up an element by selection ID, checking document first, then globalLayers. */
 function findCanonicalElement(
@@ -533,6 +534,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           }
           return handles;
         })()}
+
+        <SectionMarks2D scale={scale} />
 
         <SnapOverlay snap={activeSnap} scale={scale} />
 

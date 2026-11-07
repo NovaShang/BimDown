@@ -6,6 +6,7 @@ import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
+import ViewControls from '../views/ViewControls.tsx';
 
 interface ViewToolbarProps {
   onZoomToFit?: () => void;
@@ -112,6 +113,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
         </>
       )}
 
+      <ViewControls />
     </div>
   );
 }

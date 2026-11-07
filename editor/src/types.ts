@@ -66,6 +66,8 @@ export interface ProjectData {
    *  catalog (saved: false) when the project has none. See model/types/catalog.ts. */
   types?: TypeCatalog;
   metadata: ProjectMetadata;
+  /** Saved section views from `global/view.csv` (absent/empty = none). */
+  sections?: import('./views/viewTypes.ts').SectionDef[];
   /** Editor may write `spatial_z: "absolute"` on save: the project lacks the
    *  marker but has no elevated spatial Z that could be legacy level-relative. */
   spatialZMarkable?: boolean;
