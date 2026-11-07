@@ -77,6 +77,14 @@ node dist/index.js schema wall
 node dist/index.js schema        # all tables
 ```
 
+### `bimdown import-ifc <file.ifc> <outdir>`
+
+Convert an IFC2x3 / IFC4 model (Revit, ArchiCAD, …) into a new BimDown project with web-ifc: storeys become levels; walls (with layered wall types), curtain walls, doors / windows / openings hosted on their walls, slabs, roofs, ceilings, spaces, columns, beams, footings, stairs, railings, grids and MEP runs / fittings / terminals / equipment with their systems become BimDown elements. Wall ends are joined and room separators added so rooms close; then `build` runs and the report lists what was skipped (with reasons) and any room problems. `--json <path>` also writes the report. The same converter runs in the browser (Import IFC in the web app).
+
+```bash
+bimdown import-ifc Duplex_A.ifc ./duplex
+```
+
 ## Development
 
 ```bash

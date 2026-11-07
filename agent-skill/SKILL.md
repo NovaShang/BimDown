@@ -195,6 +195,7 @@ Optional Revit-style types in `global/` (`bimdown init` writes a metric starter 
 | Command | Purpose |
 |---|---|
 | `bimdown init <dir>` | new empty project |
+| `bimdown import-ifc <file.ifc> <dir>` | new project from an IFC2x3 / IFC4 model (Revit, ArchiCAD …); builds it and reports skipped elements and room problems |
 | `bimdown build <dir>` | validate, snap, normalise, compute spaces — run after every edit |
 | `bimdown render <dir> [-l level] [-o out.png] [-w width]` | plan image of a level |
 | `bimdown query <dir> "<sql>" [--json]` | DuckDB SQL over all tables incl. computed fields |

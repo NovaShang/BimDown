@@ -351,6 +351,26 @@ program
     diffProjects(absA, absB);
   });
 
+// ─── import-ifc ────────────────────────────────────────
+program
+  .command('import-ifc')
+  .argument('<file>', 'IFC file (IFC2x3 / IFC4 / IFC4x3, .ifc)')
+  .argument('<outdir>', 'Directory for the new BimDown project')
+  .option('--force', 'Write into a non-empty directory')
+  .option('--json <path>', 'Also write the import report as JSON')
+  .description('Convert an IFC model into a BimDown project, then build it and report room problems')
+  .action(async (file: string, outdir: string, opts: { force?: boolean; json?: string }) => {
+    const { runImportIfc, printImportResult } = await import('./commands/import-ifc.js');
+    try {
+      const r = await runImportIfc(file, outdir, opts);
+      printImportResult(r, outdir);
+      if (r.build.issues.length > 0) process.exitCode = 1;
+    } catch (e) {
+      console.error(`import-ifc: ${(e as Error).message}`);
+      process.exitCode = 1;
+    }
+  });
+
 // ─── publish ───────────────────────────────────────────
 program
   .command('publish')

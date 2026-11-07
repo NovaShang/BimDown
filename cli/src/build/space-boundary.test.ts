@@ -202,6 +202,32 @@ describe('computeSpaceBoundaries', () => {
     expect(result.warnings).toHaveLength(0);
   });
 
+  it('counts a global wall only on the levels it stands on', () => {
+    // A 10 × 4 room on lv-1 and on lv-3; a global wall from lv-1 up to lv-3's floor halves it
+    const square = [
+      { id: 'w-1', x1: 0, y1: 0, x2: 10, y2: 0 }, { id: 'w-2', x1: 10, y1: 0, x2: 10, y2: 4 },
+      { id: 'w-3', x1: 10, y1: 4, x2: 0, y2: 4 }, { id: 'w-4', x1: 0, y1: 4, x2: 0, y2: 0 },
+    ];
+    const lv1 = setupLevel(square, [{ id: 'sp-1', x: 2, y: 2 }]);
+    const lv3Path = join(testDir, 'lv-3');
+    mkdirSync(lv3Path, { recursive: true });
+    for (const f of ['wall.geojson', 'wall.csv', 'space.csv']) writeFileSync(join(lv3Path, f), readFileSync(join(lv1.path, f)));
+    const globalDir = join(testDir, 'global');
+    mkdirSync(globalDir, { recursive: true });
+    writeFileSync(join(globalDir, 'level.csv'), 'id,number,name,elevation\nlv-1,1,,0\nlv-2,2,,3\nlv-3,3,,6\n');
+    writeFileSync(join(globalDir, 'wall.csv'), 'id,base_level_id,top_level_id,thickness\nw-9,lv-1,lv-3,0.2\n');
+    writeFileSync(join(globalDir, 'wall.geojson'), stringifyFeatureCollection({
+      type: 'FeatureCollection',
+      features: [{ type: 'Feature', properties: { id: 'w-9' }, geometry: { type: 'LineString', coordinates: [[5, 0], [5, 4]] } }],
+    }));
+    computeSpaceBoundaries(lv1, globalDir);
+    computeSpaceBoundaries({ name: 'lv-3', path: lv3Path }, globalDir);
+    const ring1 = (readSpaceFc(lv1.path).features[0].geometry.coordinates as number[][][])[0];
+    expect(Math.max(...ring1.map((p) => p[0]))).toBe(5); // halved by the global wall
+    const ring3 = (readSpaceFc(lv3Path).features[0].geometry.coordinates as number[][][])[0];
+    expect(Math.max(...ring3.map((p) => p[0]))).toBe(10); // whole room
+  });
+
   it('warns when no boundary elements exist', () => {
     const levelPath = join(testDir, 'lv-1');
     mkdirSync(levelPath, { recursive: true });

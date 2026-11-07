@@ -185,6 +185,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 9. **`bimdown resolve-topology <dir>`** —— 自动解析 MEP 曲线连接关系。
 10. **`bimdown merge <dirs...> -o <out>`** —— 合并多个项目。
 11. **`bimdown sync <dir>`** —— 灌入 DuckDB 后再写回文件(应用归一化)。
+12. **`bimdown import-ifc <file.ifc> <dir>`** —— 把 IFC2x3 / IFC4 模型(Revit、ArchiCAD 等)转成新的 BimDown 项目,自动 build,并报告未导入的构件和房间问题。
 
 ## 发布与数据上传
 
