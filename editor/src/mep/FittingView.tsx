@@ -280,7 +280,8 @@ export function Accessory2D({ look, id, color, selected, system }: { look: Acces
   );
 }
 
-function accessoryGeometry(look: AccessoryLook): BufferGeometry[] {
+/** Accessory body parts in its local frame (x along the run, y up). */
+export function accessoryGeometry(look: AccessoryLook): BufferGeometry[] {
   const out: BufferGeometry[] = [];
   const L = look.length, r = look.width / 2;
   if (look.kind.includes('damper')) {
@@ -311,17 +312,20 @@ function accessoryGeometry(look: AccessoryLook): BufferGeometry[] {
   return out;
 }
 
+/** Rotation taking an accessory's local frame (x along the run, y up) to world (three) axes. */
+export function accessoryBasis(look: AccessoryLook): Matrix4 {
+  const f = new Vector3(look.dir3[0], look.dir3[2], -look.dir3[1]).normalize();
+  let up = new Vector3(0, 1, 0);
+  if (Math.abs(f.dot(up)) > 0.999) up = new Vector3(0, 0, 1);
+  const side = new Vector3().crossVectors(f, up).normalize();
+  const up2 = new Vector3().crossVectors(side, f).normalize();
+  return new Matrix4().makeBasis(f, up2, side);
+}
+
 export function Accessory3D({ look, id, color, baseY, isHL, system }: { look: AccessoryLook; id: string; color: string; baseY: number; isHL: boolean; system: string }) {
   const view = useMepView();
   const geos = useMemo(() => accessoryGeometry(look), [look]);
-  const quat = useMemo(() => {
-    const f = new Vector3(look.dir3[0], look.dir3[2], -look.dir3[1]).normalize();
-    let up = new Vector3(0, 1, 0);
-    if (Math.abs(f.dot(up)) > 0.999) up = new Vector3(0, 0, 1);
-    const side = new Vector3().crossVectors(f, up).normalize();
-    const up2 = new Vector3().crossVectors(side, f).normalize();
-    return new Quaternion().setFromRotationMatrix(new Matrix4().makeBasis(f, up2, side));
-  }, [look]);
+  const quat = useMemo(() => new Quaternion().setFromRotationMatrix(accessoryBasis(look)), [look]);
   const ghost = isolateOpacity(view, system) < 1;
   const tint = look.kind === 'fire_damper' ? '#d33' : color;
   const material = ghost ? ghostMaterial(tint) : solidMaterial(tint, 0.4);

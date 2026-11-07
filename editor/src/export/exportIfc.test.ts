@@ -129,15 +129,16 @@ describe('IFC export of MEP runs', () => {
     const { data, keys } = await exportFiles(files);
     const got = await readBack(data, keys);
     // Riser section kept upright like the 3D view: width along plan Y for a vertical run.
-    expectBox(got, 'duct:du-1', [0.8, 0.7, 2], [1.2, 1.3, 3]);
-    expectBox(got, 'duct:du-2', [1, 0.7, 2.8], [5, 1.3, 3.2]);   // 0.6 wide, 0.4 high around z 3
+    // Runs stop at the elbow faces (as drawn); the elbow body fills the corner.
+    expectBox(got, 'duct:du-1', [0.8, 0.7, 2], [1.2, 1.3, 2.6]);
+    expectBox(got, 'duct:du-2', [1.4, 0.7, 2.8], [5, 1.3, 3.2]);   // 0.6 wide, 0.4 high around z 3
     expect(got.get('duct:du-3')!.lo).toBeLessThan(2);           // sloped: spans 2 → 3 (± section)
     expect(got.get('duct:du-3')!.hi).toBeGreaterThan(3);
     expectBox(got, 'pipe:pi-1', [5.95, 5.95, 0.5], [6.05, 6.05, 5], 2); // round riser (tessellated circle)
     expectBox(got, 'equipment:eq-1', [0, 0.5, 0], [2, 1.5, 2]);
     expectBox(got, 'terminal:tm-1', [4.7, 0.7, 2.6], [5.3, 1.3, 2.8]);
-    // Elbow: one stub per leg (riser down, run along +X), closing the corner.
-    expectBox(got, 'mep_node:mn-1', [0.7, 0.7, 2.7], [1.3, 1.3, 3.3]);
+    // Elbow: the 3D view's radiused bend from the riser top (z 2.6) round to the run (x 1.4).
+    expectBox(got, 'mep_node:mn-1', [0.8, 0.7, 2.6], [1.4, 1.3, 3.2], 3);
     expect(Object.fromEntries([...got].map(([n, r]) => [n, r.type]))).toEqual({
       'duct:du-1': 'IfcFlowSegment', 'duct:du-2': 'IfcFlowSegment', 'duct:du-3': 'IfcFlowSegment',
       'pipe:pi-1': 'IfcFlowSegment',
@@ -145,6 +146,61 @@ describe('IFC export of MEP runs', () => {
       'terminal:tm-1': 'IfcFlowTerminal',
       'mep_node:mn-1': 'IfcFlowFitting',
     });
+  });
+
+  it('exports fittings by kind, accessories, sanitary / electrical terminals, insulation and circuits', async () => {
+    const F = (id: string, coordinates: number[] | number[][], props: Record<string, unknown> = {}) =>
+      ({ type: 'Feature', properties: { id, ...props }, geometry: { type: Array.isArray(coordinates[0]) ? 'LineString' : 'Point', coordinates } });
+    const mep = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\n',
+      'lv-1/pipe.csv': 'id,number,shape,size_x,system_type,from,to,insulation_thickness\n'
+        + 'pi-1,,round,0.1,CHWS,,mn-1,0.025\npi-2,,round,0.1,CHWS,mn-1,mn-2,\npi-3,,round,0.05,CHWS,mn-1,,\n',
+      'lv-1/pipe.geojson': fc([F('pi-1', [[0, 0, 2.8], [4, 0, 2.8]]), F('pi-2', [[4, 0, 2.8], [8, 0, 2.8]]), F('pi-3', [[4, 0, 2.8], [4, 3, 2.8]])]),
+      'lv-1/duct.csv': 'id,number,shape,size_x,size_y,system_type,from,to,flexible\ndu-1,,rect,0.4,0.3,SA,,mn-3,\ndu-2,,round,0.2,,SA,mn-3,,true\n',
+      'lv-1/duct.geojson': fc([F('du-1', [[0, 5, 3], [5, 5, 3]]), F('du-2', [[5, 5, 3], [7, 5, 3]])]),
+      'lv-1/mep_node.csv': 'id,system_type,kind\nmn-1,CHWS,\nmn-2,CHWS,balancing_valve\nmn-3,SA,fire_damper\n',
+      'lv-1/mep_node.geojson': fc([F('mn-1', [4, 0, 2.8]), F('mn-2', [8, 0, 2.8]), F('mn-3', [5, 5, 3])]),
+      'lv-1/terminal.csv': 'id,number,terminal_type,system_type,load,circuit_id\n'
+        + 'tm-1,,water_closet,,,\ntm-2,,floor_drain,,,\ntm-3,,switch,,,ci-1\ntm-4,,junction_box,,,ci-1\ntm-5,,light_fixture,,60,ci-1\n',
+      'lv-1/terminal.geojson': fc([F('tm-1', [1, 8, 0]), F('tm-2', [2, 8, 0]), F('tm-3', [3, 8, 1.2]), F('tm-4', [4, 8, 2.5]), F('tm-5', [5, 8, 2.8])]),
+      'lv-1/equipment.csv': 'id,number,equipment_type,system_type,flow\neq-1,VAV-1,vav,SA,250\neq-2,DB-1,panelboard,,\n',
+      'lv-1/equipment.geojson': fc([F('eq-1', [9, 5, 2.5]), F('eq-2', [9, 8, 0])]),
+      'lv-1/circuit.csv': 'id,number,host_id,name,voltage,poles,rating\nci-1,1,eq-2,Lighting,230,1,16\n',
+    };
+    for (const schema of ['IFC2X3', 'IFC4'] as const) {
+      const { data, ents, keys } = await exportFiles(mep, schema);
+      const got = await readBack(data, keys);
+      const type = (k: string) => byKey(ents, keys, k).type;
+      const pre = (k: string) => byKey(ents, keys, k).args[8];
+      if (schema === 'IFC4') {
+        expect([type('mep_node:mn-1'), pre('mep_node:mn-1')]).toEqual(['IFCPIPEFITTING', '.JUNCTION.']);
+        expect([type('mep_node:mn-2'), pre('mep_node:mn-2')]).toEqual(['IFCVALVE', '.REGULATING.']);
+        expect([type('mep_node:mn-3'), pre('mep_node:mn-3')]).toEqual(['IFCDAMPER', '.FIREDAMPER.']);
+        expect([type('terminal:tm-1'), pre('terminal:tm-1')]).toEqual(['IFCSANITARYTERMINAL', '.TOILETPAN.']);
+        expect([type('terminal:tm-2'), pre('terminal:tm-2')]).toEqual(['IFCWASTETERMINAL', '.FLOORWASTE.']);
+        expect(type('terminal:tm-3')).toBe('IFCSWITCHINGDEVICE');
+        expect(type('terminal:tm-4')).toBe('IFCJUNCTIONBOX');
+        expect(type('equipment:eq-1')).toBe('IFCAIRTERMINALBOX');
+        expect(pre('duct:du-2')).toBe('.FLEXIBLESEGMENT.');
+        const circuit = [...ents.values()].find(e => e.type === 'IFCDISTRIBUTIONCIRCUIT')!;
+        expect(str(circuit.args[2])).toBe('Lighting');
+        const group = [...ents.values()].find(e => e.type === 'IFCRELASSIGNSTOGROUP' && ref(e.args[6]) === circuit.id)!;
+        expect(refs(group.args[4]).map(id => keys.get(id)).sort()).toEqual(['equipment:eq-2', 'terminal:tm-3', 'terminal:tm-4', 'terminal:tm-5']);
+      } else {
+        expect(type('mep_node:mn-1')).toBe('IFCFLOWFITTING');
+        expect(type('mep_node:mn-2')).toBe('IFCFLOWCONTROLLER');
+        expect(type('terminal:tm-3')).toBe('IFCFLOWCONTROLLER');
+        expect(countTypes(ents).IFCSYSTEM).toBeGreaterThanOrEqual(1);
+      }
+      // Insulation: a covering of the insulated size on pi-1
+      const covers = [...ents.values()].find(e => e.type === 'IFCRELCOVERSBLDGELEMENTS')!;
+      expect(keys.get(ref(covers.args[4]))).toBe('pipe:pi-1');
+      expect(ents.get(refs(covers.args[5])[0])!.type).toBe('IFCCOVERING');
+      expect(propertyOf(ents, byKey(ents, keys, 'equipment:eq-1').id, 'BimDown_MEPDesign', 'FlowRate')).toBe('IFCREAL(250.)');
+      // Real bodies: the tee and the valve have geometry
+      for (const k of ['mep_node:mn-1', 'mep_node:mn-2', 'mep_node:mn-3']) expect(got.get(k)!.triangles, k).toBeGreaterThan(0);
+    }
   });
 
   it('writes ports, port connections and systems', async () => {

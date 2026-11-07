@@ -41,6 +41,10 @@ import type { SpaceFacts } from '../elements/space.tsx';
 import type { FurnitureFacts } from '../elements/furniture.tsx';
 import { furnitureMass, MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
 import { furniturePartGeometry } from '../library/furniture3D.ts';
+import { effectiveMepLine } from '../model/mepFittingRender.ts';
+import type { MepNodeFacts } from '../elements/mep_node.tsx';
+import { accessoryBasis, accessoryGeometry, fittingGeometry } from '../mep/FittingView.tsx';
+import { Matrix4 } from 'three';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
 import { triggerDownload } from './download.ts';
@@ -98,12 +102,13 @@ const TABLE_ORDER = [
 
 /** IFC2X3 distribution element per equipment_type (default: energy conversion device). */
 const EQUIPMENT_2X3: Record<string, string> = {
-  pump: 'IfcFlowMovingDevice', fan: 'IfcFlowMovingDevice',
+  pump: 'IfcFlowMovingDevice', fan: 'IfcFlowMovingDevice', vav: 'IfcFlowController',
   tank: 'IfcFlowStorageDevice', panelboard: 'IfcFlowController',
 };
 /** IFC4 entity + PredefinedType per equipment_type. */
 const EQUIPMENT_4: Record<string, [string, string]> = {
   ahu: ['IfcUnitaryEquipment', 'AIRHANDLER'], fcu: ['IfcUnitaryEquipment', 'USERDEFINED'],
+  vav: ['IfcAirTerminalBox', 'VARIABLEFLOWPRESSUREDEPENDANT'],
   chiller: ['IfcChiller', 'NOTDEFINED'], boiler: ['IfcBoiler', 'NOTDEFINED'],
   cooling_tower: ['IfcCoolingTower', 'NOTDEFINED'], fan: ['IfcFan', 'NOTDEFINED'], pump: ['IfcPump', 'NOTDEFINED'],
   transformer: ['IfcTransformer', 'NOTDEFINED'], panelboard: ['IfcElectricDistributionBoard', 'NOTDEFINED'],
@@ -115,11 +120,21 @@ const TERMINAL_4: Record<string, [string, string]> = {
   fire_alarm_device: ['IfcAlarm', 'NOTDEFINED'], light_fixture: ['IfcLightFixture', 'NOTDEFINED'],
   power_outlet: ['IfcOutlet', 'POWEROUTLET'], data_outlet: ['IfcOutlet', 'DATAOUTLET'],
   plumbing_fixture: ['IfcSanitaryTerminal', 'NOTDEFINED'],
+  water_closet: ['IfcSanitaryTerminal', 'TOILETPAN'], urinal: ['IfcSanitaryTerminal', 'URINAL'],
+  lavatory: ['IfcSanitaryTerminal', 'WASHHANDBASIN'], sink: ['IfcSanitaryTerminal', 'SINK'],
+  shower: ['IfcSanitaryTerminal', 'SHOWER'], floor_drain: ['IfcWasteTerminal', 'FLOORWASTE'],
+  switch: ['IfcSwitchingDevice', 'TOGGLESWITCH'], junction_box: ['IfcJunctionBox', 'POWER'],
+  emergency_light: ['IfcLightFixture', 'SECURITYLIGHTING'],
 };
+/** IFC2X3 class per terminal_type where it isn't a flow terminal. */
+const TERMINAL_2X3: Record<string, string> = { switch: 'IfcFlowController', junction_box: 'IfcFlowFitting' };
 /** Accessory mep_node kinds: IFC2X3 entity, IFC4 entity + PredefinedType. */
 const ACCESSORY: Record<string, [string, string, string]> = {
   valve: ['IfcFlowController', 'IfcValve', 'NOTDEFINED'], check_valve: ['IfcFlowController', 'IfcValve', 'CHECK'],
-  damper: ['IfcFlowController', 'IfcDamper', 'NOTDEFINED'], pump: ['IfcFlowMovingDevice', 'IfcPump', 'NOTDEFINED'],
+  gate_valve: ['IfcFlowController', 'IfcValve', 'ISOLATING'], ball_valve: ['IfcFlowController', 'IfcValve', 'ISOLATING'],
+  butterfly_valve: ['IfcFlowController', 'IfcValve', 'ISOLATING'], globe_valve: ['IfcFlowController', 'IfcValve', 'ISOLATING'],
+  balancing_valve: ['IfcFlowController', 'IfcValve', 'REGULATING'],
+  damper: ['IfcFlowController', 'IfcDamper', 'BALANCINGDAMPER'], fire_damper: ['IfcFlowController', 'IfcDamper', 'FIREDAMPER'], pump: ['IfcFlowMovingDevice', 'IfcPump', 'NOTDEFINED'],
   strainer: ['IfcFlowTreatmentDevice', 'IfcFilter', 'STRAINER'], flow_meter: ['IfcFlowController', 'IfcFlowMeter', 'NOTDEFINED'],
   sensor: ['IfcFlowController', 'IfcSensor', 'NOTDEFINED'],
 };
@@ -1124,9 +1139,12 @@ class Exporter {
   private segmentByEl = new Map<CanonicalElement, Segment>();
   private nodeIndex: Map<Scope, Map<string, CanonicalElement>> | null = null;
   private nodeLegs = new Map<string, { scope: Scope; legs: (FittingLeg & { seg: Segment })[] }>();
+  private circuitMembers = new Map<string, H[]>(); // `${scope}/${circuit id}` → devices
 
-  private segmentOf(scope: Scope, el: CanonicalElement, ctx: GeometryContext): Segment | null {
-    if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
+  private segmentOf(scope: Scope, raw: CanonicalElement, ctx: GeometryContext): Segment | null {
+    if (raw.geometry !== 'line' && raw.geometry !== 'spatial_line') return null;
+    // The drawn run: ends on their fitting nodes, pulled back to the fitting faces.
+    const el = effectiveMepLine(raw, ctx);
     let startZ: number, endZ: number;
     if (el.geometry === 'spatial_line') {
       startZ = (el as SpatialLineElement).startZ; endZ = (el as SpatialLineElement).endZ;
@@ -1142,7 +1160,7 @@ class Exporter {
     const round = (el.attrs.shape || defaultShape) === 'round';
     const sizeX = num(el.attrs.size_x) || 0.2;
     const sizeY = round ? sizeX : num(el.attrs.size_y) || 0.2;
-    return { scope, el, start, end, round, sizeX, sizeY };
+    return { scope, el: raw, start, end, round, sizeX, sizeY };
   }
 
   /** Segments are collected up front so fittings know their legs. */
@@ -1209,14 +1227,21 @@ class Exporter {
       const solid = sweep(seg.start, seg.end, profile);
       if (!solid) return;
       geom = { frame: memberFrame(seg.start, seg.end)!, solids: [solid], axis: [seg.start, seg.end] };
+      const flexible = el.attrs.flexible === 'true';
       objectType = el.attrs.system_type || t;
-      if (w.ifc4) { type = SEGMENT_4[t][0]; tail = [w.enumv(`${type}TypeEnum`, SEGMENT_4[t][1])]; } else type = 'IfcFlowSegment';
+      if (w.ifc4) {
+        type = SEGMENT_4[t][0];
+        tail = [w.enumv(`${type}TypeEnum`, flexible && (t === 'duct' || t === 'pipe') ? 'FLEXIBLESEGMENT' : SEGMENT_4[t][1])];
+      } else type = 'IfcFlowSegment';
       const rec = this.mepRec(scope, el, type, geom, objectType, tail);
       seg.rec = rec;
+      const insulation = num(el.attrs.insulation_thickness);
       this.pset(rec, 'BimDown_MEP', {
         Shape: w.label(seg.round ? 'round' : 'rect'), Width: w.len(seg.sizeX), Height: w.len(seg.sizeY),
         Length: w.len(length(sub(seg.end, seg.start))), SystemType: w.label(el.attrs.system_type),
+        InsulationThickness: insulation > 0 ? w.len(insulation) : null, Flexible: flexible ? w.bool(true) : null,
       });
+      if (insulation > 0) this.insulationCovering(scope, el, rec, seg, insulation);
       return;
     }
     if (t === 'equipment' || t === 'terminal') {
@@ -1227,27 +1252,51 @@ class Exporter {
       objectType = kind || t;
       const m4 = (t === 'equipment' ? EQUIPMENT_4 : TERMINAL_4)[kind];
       if (w.ifc4 && m4 && w.has(m4[0])) { type = m4[0]; tail = [w.enumv(`${type}TypeEnum`, m4[1])]; }
-      else type = t === 'equipment' ? (w.ifc4 ? 'IfcEnergyConversionDevice' : EQUIPMENT_2X3[kind] ?? 'IfcEnergyConversionDevice') : 'IfcFlowTerminal';
-      this.mepRec(scope, el, type, geom, objectType, tail);
+      else type = t === 'equipment' ? (w.ifc4 ? 'IfcEnergyConversionDevice' : EQUIPMENT_2X3[kind] ?? 'IfcEnergyConversionDevice') : (w.ifc4 ? 'IfcFlowTerminal' : TERMINAL_2X3[kind] ?? 'IfcFlowTerminal');
+      const rec = this.mepRec(scope, el, type, geom, objectType, tail);
+      this.designPset(rec, el);
+      if (el.attrs.circuit_id) {
+        let list = this.circuitMembers.get(`${scope.id}/${el.attrs.circuit_id}`);
+        if (!list) this.circuitMembers.set(`${scope.id}/${el.attrs.circuit_id}`, list = []);
+        list.push(rec.handle);
+      }
       return;
     }
-    // mep_node: passive fitting (stubs per leg) or functional accessory (box).
+    // mep_node: passive fitting (the 3D view's elbow / tee / reducer body) or
+    // functional accessory (valve / damper body); stubs or a box as fallback.
     if (el.geometry !== 'point') return;
     const center = v3(el.position.x, el.position.y, ctx.levelElevation + num(el.attrs.base_offset));
     const legs = this.nodeLegs.get(`${scope.id}/${el.id}`)?.legs ?? [];
     const kind = (el.attrs.kind || '').trim();
-    if (!kind && legs.length > 0) {
-      geom = { solids: fittingStubs(center, legs) };
-      objectType = fittingKind(legs);
-      const segTable = legs[0].seg.el.tableName;
-      if (w.ifc4) { type = SEGMENT_4[segTable][2]; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
+    const facts = getElementModule('mep_node')?.geometry(el, ctx) as MepNodeFacts | null;
+    if (!kind && (facts?.fitting || legs.length > 0)) {
+      const info = facts?.fitting ?? null;
+      const body = info ? this.threeSolids(fittingGeometry(info, facts!.levelY, facts!.riserRight)) : [];
+      geom = { solids: body.length > 0 ? body : fittingStubs(center, legs) };
+      objectType = info?.kind ?? fittingKind(legs);
+      const segTable = info?.legs[0]?.table ?? legs[0]?.seg.el.tableName ?? 'duct';
+      if (w.ifc4) { type = (SEGMENT_4[segTable] ?? SEGMENT_4.duct)[2]; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
     } else {
-      let size = num(el.attrs.size_w);
-      if (!size) for (const l of legs) size = Math.max(size, l.sizeX, l.sizeY);
-      if (!size) size = DEFAULT_FITTING_SIZE;
-      const h = num(el.attrs.size_h) || size;
-      const angle = legs.length > 0 ? Math.atan2(legs[0].dir.y, legs[0].dir.x) : num(el.attrs.rotation) * Math.PI / 180;
-      geom = { solids: [box(el.position, center.z - h / 2, size, size, h, angle)] };
+      const look = facts?.accessory ?? null;
+      let solids: Solid[] = [];
+      if (look) {
+        const m = new Matrix4().makeTranslation(look.at.x, facts!.levelY + look.z, -look.at.y).multiply(accessoryBasis(look));
+        for (const g of accessoryGeometry(look)) {
+          g.applyMatrix4(m);
+          const solid = brepFromBuffer(g.index ? g.toNonIndexed() : g);
+          g.dispose();
+          if (solid) solids.push(solid);
+        }
+      }
+      if (solids.length === 0) {
+        let size = num(el.attrs.size_w);
+        if (!size) for (const l of legs) size = Math.max(size, l.sizeX, l.sizeY);
+        if (!size) size = DEFAULT_FITTING_SIZE;
+        const h = num(el.attrs.size_h) || size;
+        const angle = legs.length > 0 ? Math.atan2(legs[0].dir.y, legs[0].dir.x) : num(el.attrs.rotation) * Math.PI / 180;
+        solids = [box(el.position, center.z - h / 2, size, size, h, angle)];
+      }
+      geom = { solids };
       objectType = kind || 'fitting';
       const acc = ACCESSORY[kind];
       if (w.ifc4) {
@@ -1267,6 +1316,44 @@ class Exporter {
     }
     this.bimdownPset(rec);
     return rec;
+  }
+
+  /** A three.js world-frame geometry (fitting / accessory body) as faceted breps. */
+  private threeSolids(geo: import('three').BufferGeometry | null): Solid[] {
+    if (!geo) return [];
+    const flat = geo.index ? geo.toNonIndexed() : geo;
+    const solid = brepFromBuffer(flat);
+    if (flat !== geo) flat.dispose();
+    geo.dispose();
+    return solid ? [solid] : [];
+  }
+
+  /** Design data of a device (flow L/s, load W, circuit) as a property set. */
+  private designPset(rec: Rec, el: CanonicalElement): void {
+    const { w } = this;
+    const flow = num(el.attrs.flow), load = num(el.attrs.load);
+    this.pset(rec, 'BimDown_MEPDesign', {
+      FlowRate: flow > 0 ? w.real(flow) : null, FlowRateUnit: flow > 0 ? w.label('L/s') : null,
+      ElectricalLoad: load > 0 ? w.real(load) : null, ElectricalLoadUnit: load > 0 ? w.label('W') : null,
+      Circuit: w.label(el.attrs.circuit_id || null),
+    });
+  }
+
+  /** Insulation around a duct / pipe: an IfcCovering (INSULATION) of the insulated outer size, covering the segment. */
+  private insulationCovering(scope: Scope, el: CanonicalElement, rec: Rec, seg: Segment, t: number): void {
+    const { w } = this;
+    const profile = seg.round ? { kind: 'circle' as const, r: seg.sizeX / 2 + t } : { kind: 'rect' as const, w: seg.sizeX + 2 * t, d: seg.sizeY + 2 * t };
+    const solid = sweep(seg.start, seg.end, profile);
+    if (!solid) return;
+    const cov = this.product({
+      scope, el, key: `${rec.key}#insulation`, type: 'IfcCovering', register: false,
+      geom: { frame: memberFrame(seg.start, seg.end)!, solids: [solid] },
+      styles: w.surfaceStyle('insulation', '#e8e4d8', 0.5), objectType: 'insulation',
+      name: `${el.attrs.number || el.id} insulation`, tail: [w.enumv('IfcCoveringTypeEnum', 'INSULATION')],
+    });
+    this.singleMaterial(cov.handle, 'insulation');
+    this.pset(cov, 'Pset_CoveringCommon', { Reference: w.ident(el.attrs.number) });
+    w.add('IfcRelCoversBldgElements', w.guid(this.relKey('covers')), w.ownerHistory, null, null, rec.handle, [cov.handle]);
   }
 
   /** Ports on every MEP product end / connector, plus IfcRelConnectsPorts for each from / to reference. */
@@ -1388,6 +1475,29 @@ class Exporter {
 
   private writeSystems(): void {
     const { w } = this;
+    // Electrical circuits: IFC4 IfcDistributionCircuit, IFC2X3 IfcSystem; members = the panel and its devices.
+    for (const scope of this.scopes) {
+      for (const c of scope.elements) {
+        if (c.tableName !== 'circuit') continue;
+        const panel = this.findRec(scope, c.attrs.host_id || c.hostId || '');
+        const members = [...(panel ? [panel.handle] : []), ...(this.circuitMembers.get(`${scope.id}/${c.id}`) ?? [])];
+        const name = w.label(c.attrs.name || `Circuit ${c.attrs.number || c.id}`);
+        const handle = w.ifc4
+          ? w.add('IfcDistributionCircuit', w.guid(`circuit:${scope.id}/${c.id}`), w.ownerHistory, name, null, w.label('circuit'),
+            w.label(c.attrs.number || null), w.enumv('IfcDistributionSystemEnum', 'ELECTRICAL'))
+          : w.add('IfcSystem', w.guid(`circuit:${scope.id}/${c.id}`), w.ownerHistory, name, null, w.label('circuit'));
+        w.add('IfcRelServicesBuildings', w.guid(this.relKey('services')), w.ownerHistory, null, null, handle, [this.building]);
+        if (members.length > 0) w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, members, null, handle);
+        const props: Record<string, any> = {
+          Id: w.ident(c.id), Table: w.label('circuit'), Number: w.label(c.attrs.number || null),
+          Voltage: num(c.attrs.voltage) > 0 ? w.real(num(c.attrs.voltage)) : null,
+          Poles: num(c.attrs.poles) > 0 ? w.int(num(c.attrs.poles)) : null,
+          Rating: num(c.attrs.rating) > 0 ? w.real(num(c.attrs.rating)) : null,
+        };
+        const ps = w.propertySet(`circuit:${scope.id}/${c.id}#pset`, 'BimDown', props);
+        if (ps) w.add('IfcRelDefinesByProperties', w.guid(this.relKey('props')), w.ownerHistory, null, null, [handle], ps);
+      }
+    }
     const defs: SystemDef[] = [...this.project.mepSystems];
     for (const sys of this.systemMembers.keys()) {
       if (!defs.some(d => d.system_type === sys)) defs.push({ id: `sys:${sys}`, system_type: sys, name: sys, color: '', discipline: '' });
@@ -1570,9 +1680,12 @@ function fittingKind(legs: FittingLeg[]): string {
 
 function fittingPredefined(kind: string, type: string): string {
   if (type === 'IfcCableCarrierFitting') {
-    return ({ elbow: 'BEND', tee: 'TEE', cross: 'CROSS', reducer: 'REDUCER' } as Record<string, string>)[kind] ?? 'NOTDEFINED';
+    return ({ elbow: 'BEND', tee: 'TEE', tap: 'TEE', cross: 'CROSS', reducer: 'REDUCER', transition: 'REDUCER' } as Record<string, string>)[kind] ?? 'NOTDEFINED';
   }
-  return ({ elbow: 'BEND', tee: 'JUNCTION', cross: 'JUNCTION', junction: 'JUNCTION', reducer: 'TRANSITION', coupling: 'CONNECTOR', cap: 'EXIT' } as Record<string, string>)[kind] ?? 'NOTDEFINED';
+  return ({
+    elbow: 'BEND', tee: 'JUNCTION', tap: 'JUNCTION', cross: 'JUNCTION', wye: 'JUNCTION', manifold: 'JUNCTION', junction: 'JUNCTION',
+    reducer: 'TRANSITION', transition: 'TRANSITION', coupling: 'CONNECTOR', cap: 'EXIT', open: 'EXIT',
+  } as Record<string, string>)[kind] ?? 'NOTDEFINED';
 }
 
 function portType(table: string): string {
