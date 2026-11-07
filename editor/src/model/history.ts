@@ -1,9 +1,12 @@
 import type { CanonicalElement } from './elements.ts';
+import type { TypeCatalog } from './types/catalog.ts';
 
 export interface EditCommand {
   description: string;
   before: Map<string, CanonicalElement | null>;  // null = element didn't exist
   after: Map<string, CanonicalElement | null>;   // null = element was deleted
+  /** Set when the command edited the project's element types (undo restores `before`). */
+  types?: { before: TypeCatalog; after: TypeCatalog };
 }
 
 export interface HistoryState {

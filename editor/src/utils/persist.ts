@@ -2,6 +2,7 @@ import type { DocumentState } from '../model/document.ts';
 import type { Level, GridData, SystemDef } from '../types.ts';
 import { groupByLayer, serializeToGeoJson, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
 import type { DataSource } from './dataSource.ts';
+import { serializeTypeFiles, type TypeCatalog } from '../model/types/catalog.ts';
 
 /**
  * Persist document state via the data source.
@@ -12,6 +13,8 @@ export async function persistDocument(
   changedKeys?: Set<string>,
   /** Elevation of `doc.levelId`: spatial Z is written back as absolute (spec §4.2). */
   elevation = 0,
+  /** Project types: values equal to an element's type are written empty. */
+  types?: TypeCatalog,
 ): Promise<void> {
   const elements = Array.from(doc.elements.values()).filter(e => e.tableName !== 'grid');
   const groups = groupByLayer(elements);
@@ -34,7 +37,7 @@ export async function persistDocument(
     }
 
     const csvPath = `${levelId}/${tableName}.csv`;
-    const csvContent = serializeToCsv(groupElements, tableName);
+    const csvContent = serializeToCsv(groupElements, tableName, types);
     saves.push(ds.saveFile(csvPath, csvContent));
   }
 
@@ -53,6 +56,7 @@ export async function persistLevels(levels: Level[], ds: DataSource): Promise<vo
 export async function persistGlobalLayer(
   layer: { tableName: string; geojsonContent: string; csvRows: Map<string, Record<string, string>> },
   ds: DataSource,
+  types?: TypeCatalog,
 ): Promise<void> {
   const elements = parseLayerToElements(layer);
   const saves: Promise<void>[] = [];
@@ -61,7 +65,7 @@ export async function persistGlobalLayer(
     saves.push(ds.saveFile(`global/${layer.tableName}.geojson`, layer.geojsonContent));
   }
 
-  const csvContent = serializeToCsv(elements, layer.tableName);
+  const csvContent = serializeToCsv(elements, layer.tableName, types);
   saves.push(ds.saveFile(`global/${layer.tableName}.csv`, csvContent));
 
   await Promise.all(saves);
@@ -95,6 +99,11 @@ export async function persistMepSystems(systems: SystemDef[], ds: DataSource): P
     s.discipline,
   ].join(','));
   await ds.saveFile('global/mep_system.csv', [header, ...rows].join('\n') + '\n');
+}
+
+/** Write every type file (global/*_type.csv + type_layer.csv) from the catalog. */
+export async function persistTypes(types: TypeCatalog, ds: DataSource): Promise<void> {
+  await Promise.all(Object.entries(serializeTypeFiles(types)).map(([path, content]) => ds.saveFile(path, content)));
 }
 
 function csvEscape(value: string): string {

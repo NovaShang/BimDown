@@ -2,6 +2,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, P
 import { computeBounds } from './elements.ts';
 import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
+import { stripTypeAttrs, type TypeCatalog } from './types/catalog.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector']);
@@ -266,8 +267,16 @@ function r2(n: number): number {
 /**
  * Serialize elements of one layer to CSV string.
  */
-export function serializeToCsv(elements: CanonicalElement[], tableName: string): string {
+export function serializeToCsv(elements: CanonicalElement[], tableName: string, types?: TypeCatalog): string {
   if (elements.length === 0) return '';
+  // Typed elements hold effective values in memory; on disk a value equal to
+  // the type's stays empty so later type edits reach the element.
+  if (types && types.types.length > 0) {
+    elements = elements.map(el => {
+      const attrs = stripTypeAttrs(tableName, el.attrs, types);
+      return attrs === el.attrs ? el : { ...el, attrs };
+    });
+  }
 
   // Collect all attribute keys (preserve order from first element, then add any extras)
   const headerSet = new Set<string>();
