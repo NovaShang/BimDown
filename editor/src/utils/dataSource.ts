@@ -16,6 +16,27 @@ export interface DataSource {
   /** Optional: list all existing project files. When provided, the loader skips
    *  probing paths that aren't present, avoiding 404 storms on sparse projects. */
   listFiles?(): Promise<string[]>;
+  /** Optional: write raw bytes (underlay images, PDFs, DXFs). Without it the
+   *  editor can't import underlays into this source. */
+  saveBinary?(path: string, data: ArrayBuffer): Promise<void>;
+  /** Optional: read raw bytes. Falls back to fetching `resolveUrl(path)`. */
+  fetchBinary?(path: string): Promise<ArrayBuffer | null>;
+  /** Optional: delete a file (e.g. a removed underlay). */
+  deleteFile?(path: string): Promise<void>;
+}
+
+/** Read a binary file through `ds.fetchBinary`, else by fetching its URL. */
+export async function fetchBinaryFile(ds: DataSource, path: string): Promise<ArrayBuffer | null> {
+  if (ds.fetchBinary) return ds.fetchBinary(path);
+  try {
+    const url = await ds.resolveUrl(path);
+    if (!url) return null;
+    const resp = await fetch(url);
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    return resp.ok ? await resp.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -15,6 +15,7 @@ const SNAP_CATEGORIES: { labelKey: string; types: SnapType[] }[] = [
   { labelKey: 'snap.angle', types: ['angle'] },
   { labelKey: 'snap.length', types: ['length'] },
   { labelKey: 'snap.connector', types: ['connector'] },
+  { labelKey: 'snap.underlay', types: ['underlay'] },
 ];
 
 /** True while the user is in a snap-using interaction (drawing or moving).
@@ -24,6 +25,7 @@ export function isSnapInteraction(activeTool: string, drawingState: unknown | nu
   return (
     activeTool.startsWith('draw') ||
     activeTool.startsWith('relocate') ||
+    activeTool === 'underlay' ||
     drawingState !== null
   );
 }

@@ -21,6 +21,8 @@ import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
+import { UnderlayProvider } from '../underlay/UnderlayContext.tsx';
+import { UnderlayHint, CalibrateDialog } from '../underlay/UnderlayDialogs.tsx';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
@@ -249,6 +251,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   }, []);
 
   return (
+    <UnderlayProvider>
     <div className="relative h-full w-full">
       <div className="relative h-full overflow-hidden">
         {/* Mobile panel toggle buttons */}
@@ -318,9 +321,12 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
           />
         )}
         <DrawingHints />
+        <UnderlayHint />
+        <CalibrateDialog />
         {/* The tour teaches editing tools: not for read-only / shared views */}
         {!state.readonly && <OnboardingTour />}
       </div>
     </div>
+    </UnderlayProvider>
   );
 }

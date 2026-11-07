@@ -22,7 +22,7 @@ export async function downloadProjectAsZip(
 }
 
 /** File extensions that must be read as binary (ArrayBuffer) instead of text. */
-const BINARY_EXTENSIONS = new Set(['.glb', '.gltf', '.obj', '.bin', '.png', '.jpg', '.jpeg', '.webp', '.ktx2']);
+const BINARY_EXTENSIONS = new Set(['.glb', '.gltf', '.obj', '.bin', '.png', '.jpg', '.jpeg', '.webp', '.ktx2', '.pdf', '.dxf']);
 
 export function isBinaryFile(path: string): boolean {
   const ext = path.slice(path.lastIndexOf('.')).toLowerCase();

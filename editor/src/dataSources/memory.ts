@@ -34,6 +34,20 @@ export function createMemoryDataSource(initialFiles?: ProjectFileMap): MemoryDat
       files.set(path, content);
     },
 
+    async saveBinary(path, data) {
+      files.set(path, data.slice(0));
+    },
+
+    async fetchBinary(path) {
+      const content = files.get(path);
+      if (content == null) return null;
+      return typeof content === 'string' ? new TextEncoder().encode(content).buffer : content.slice(0);
+    },
+
+    async deleteFile(path) {
+      files.delete(path);
+    },
+
     // The editor is the only writer; its own saves are already in its state.
     watchChanges() {
       return () => {};
@@ -57,8 +71,11 @@ export function createMemoryDataSource(initialFiles?: ProjectFileMap): MemoryDat
       for (const [path, content] of files) {
         if (typeof content === 'string') {
           await fsDs.saveFile(path, content);
+        } else if (path.startsWith('underlays/')) {
+          // Underlays were imported by the user and are referenced by global/underlay.csv
+          await fsDs.saveBinary!(path, content);
         }
-        // Binary files (GLB etc.) are not saved to FS — they're read-only mesh assets
+        // Other binary files (GLB etc.) are not saved to FS — they're read-only mesh assets
       }
       return fsDs;
     },

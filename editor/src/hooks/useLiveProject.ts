@@ -5,6 +5,8 @@ import { loadProject, loadGrids, loadLayer, loadMepSystems } from '../utils/load
 import { parseLayer } from '../model/parse.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import type { LineElement } from '../model/elements.ts';
+import { notifyUnderlayCsvChanged } from '../underlay/store.ts';
+import { UNDERLAY_CSV } from '../underlay/types.ts';
 
 const isWall = (tableName: string) =>
   tableName === 'wall' || tableName === 'structure_wall' || tableName === 'curtain_wall';
@@ -59,6 +61,7 @@ export function useLiveProject(model: string): void {
         if (active) dispatch({ type: 'UPDATE_GRIDS', grids });
         return;
       }
+      if (path === UNDERLAY_CSV) { notifyUnderlayCsvChanged(); return; }
       if (levelId === 'global' && fileName === 'mep_system.csv') {
         const mepSystems = await loadMepSystems(ds);
         if (active) dispatch({ type: 'UPDATE_MEP_SYSTEMS', mepSystems });

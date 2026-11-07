@@ -32,7 +32,7 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
   }
 }
 
-function parseCsv(text: string): CsvRow[] {
+export function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const headers = parseCsvLine(lines[0]);

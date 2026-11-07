@@ -4,7 +4,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import type { HistoryState } from '../model/history.ts';
 import type { SnapType } from '../utils/snap.ts';
 
-export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted';
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'underlay';
 
 export interface ViewTransform {
   x: number;

@@ -22,6 +22,9 @@ import CanvasOverlay from './CanvasOverlay.tsx';
 import { SVGGeometryProvider } from '../adapters/svg/context.tsx';
 import { getProjectUnits } from '../utils/units.ts';
 import { getContentBounds } from '../state/selectors.ts';
+import UnderlayLayer from '../underlay/UnderlayLayer.tsx';
+import UnderlayToolOverlay from '../underlay/UnderlayToolOverlay.tsx';
+import { useUnderlayStore } from '../underlay/UnderlayContext.tsx';
 
 import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
@@ -196,6 +199,20 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     const svgPt = pt.matrixTransform(ctm.inverse());
     return { x: svgPt.x, y: -svgPt.y };
   }, []);
+
+  // Underlay imports are placed in the visible part of the plan.
+  const underlayStore = useUnderlayStore();
+  useEffect(() => {
+    if (!underlayStore) return;
+    underlayStore.setViewport(() => {
+      const rect = containerRef.current?.getBoundingClientRect();
+      const a = rect && screenToSvg(rect.left, rect.top);
+      const b = rect && screenToSvg(rect.right, rect.bottom);
+      if (!a || !b) return null;
+      return { minX: Math.min(a.x, b.x), minY: Math.min(a.y, b.y), maxX: Math.max(a.x, b.x), maxY: Math.max(a.y, b.y) };
+    });
+    return () => underlayStore.setViewport(null);
+  }, [underlayStore, screenToSvg]);
 
   const toolCtx = useMemo<ToolContext>(() => ({
     dispatch,
@@ -494,6 +511,9 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           transition: 'none',
         }}
       >
+        {/* Reference drawings under everything (underlay/) */}
+        <UnderlayLayer />
+
         {/* Heavy SVG content — React.memo, never re-renders during pan/zoom */}
         <SVGLayers layers={layers} activeFilter={activeFilter} activeDiscipline={activeDiscipline} />
 
@@ -511,6 +531,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           }
           return handles;
         })()}
+
+        <UnderlayToolOverlay scale={scale} />
 
         <SnapOverlay snap={activeSnap} scale={scale} />
 
