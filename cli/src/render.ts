@@ -229,7 +229,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 // ─── Per-feature rendering ────────────────────────────────
 
 /** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
-const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall']);
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall', 'structure_slab']);
 
 function renderFeature(
   tableName: string,
@@ -284,6 +284,9 @@ function renderFeature(
       // All rings: inner rings (shafts, holes) cut the fill (even-odd).
       let svg = `    <path id="${id}" d="${polygonPath(g.coordinates)}" fill-rule="evenodd" fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
       if (tableName === 'opening') svg += '\n' + crossLines(ring, color.stroke);
+      // One-way slab / deck: span direction arrow through the centroid (as the editor draws it)
+      const span = tableName === 'structure_slab' ? parseFloat(row?.span_direction ?? '') : NaN;
+      if (Number.isFinite(span)) svg += '\n' + spanArrow(id, ring, span, color.stroke);
       return { tableName, svg, bounds: ringBounds(ring) };
     }
   }
@@ -386,6 +389,68 @@ const num = (v: string | undefined) => {
 };
 
 const pointsAttr = (pts: number[][]) => pts.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(' ');
+
+/**
+ * Span direction symbol of a one-way slab: a double-headed arrow along
+ * `deg` (CCW from +X) through the outline's centroid, ~40 % of the slab
+ * extent (1–4 m), and a short tick across it.
+ */
+export function spanArrow(id: string, ring: number[][], deg: number, stroke: string): string {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < ring.length; i++) {
+    const p = ring[i], q = ring[(i + 1) % ring.length];
+    const c = p[0] * q[1] - q[0] * p[1];
+    a += c; cx += (p[0] + q[0]) * c; cy += (p[1] + q[1]) * c;
+  }
+  const c = Math.abs(a) > 1e-9 ? [cx / (3 * a), cy / (3 * a)] : ring[0];
+  const r = (deg * Math.PI) / 180, ux = Math.cos(r), uy = Math.sin(r), nx = -uy, ny = ux;
+  let lo = Infinity, hi = -Infinity;
+  for (const p of ring) {
+    const t = (p[0] - c[0]) * ux + (p[1] - c[1]) * uy;
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+  }
+  const half = Math.max(0.5, Math.min(2, (hi - lo) * 0.2));
+  const p1 = [c[0] - ux * half, c[1] - uy * half], p2 = [c[0] + ux * half, c[1] + uy * half];
+  const h = 0.25;
+  const head = (t: number[], d: number) =>
+    `M ${fmt(t[0] - d * ux * h + nx * h * 0.5)},${fmt(t[1] - d * uy * h + ny * h * 0.5)} L ${fmt(t[0])},${fmt(t[1])} L ${fmt(t[0] - d * ux * h - nx * h * 0.5)},${fmt(t[1] - d * uy * h - ny * h * 0.5)}`;
+  const d = `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])} ${head(p2, 1)} ${head(p1, -1)} `
+    + `M ${fmt(c[0] - nx * 0.3)},${fmt(c[1] - ny * 0.3)} L ${fmt(c[0] + nx * 0.3)},${fmt(c[1] + ny * 0.3)}`;
+  return `    <path id="${id}-span" class="span-direction" d="${d}" stroke="${stroke}" stroke-width="0.03" fill="none" />`;
+}
+
+/** Plan outline rings of a structural section (outer + hollow-section inner ring), local, centred. */
+function sectionRings(row: Record<string, string>, sx: number, sy: number): number[][][] {
+  const shape = row.shape ?? '';
+  const t = num(row.thickness), fl = num(row.flange), wb = num(row.web);
+  const hw = sx / 2, hd = sy / 2;
+  const box = (w: number, d: number) => [[-w, -d], [w, -d], [w, d], [-w, d]];
+  const circle = (rad: number) => Array.from({ length: 32 }, (_, i) => [Math.cos((i / 32) * 2 * Math.PI) * rad, Math.sin((i / 32) * 2 * Math.PI) * rad]);
+  switch (shape) {
+    case 'rect_hollow': {
+      const w = Number.isFinite(t) ? t : Math.min(sx, sy) * 0.05;
+      return [box(hw, hd), box(hw - w, hd - w)];
+    }
+    case 'round_hollow': {
+      const w = Number.isFinite(t) ? t : sx * 0.04;
+      return [circle(hw), circle(hw - w)];
+    }
+    case 'i_shape': {
+      const f = Number.isFinite(fl) ? fl : Math.min(sy * 0.15, 0.025), e = (Number.isFinite(wb) ? wb : Math.min(sx * 0.1, 0.015)) / 2;
+      return [[[-hw, -hd], [hw, -hd], [hw, -hd + f], [e, -hd + f], [e, hd - f], [hw, hd - f], [hw, hd], [-hw, hd],
+        [-hw, hd - f], [-e, hd - f], [-e, -hd + f], [-hw, -hd + f]]];
+    }
+    case 'c_shape': {
+      const f = Number.isFinite(fl) ? fl : Math.min(sy * 0.15, 0.012), e = Number.isFinite(wb) ? wb : Math.min(sx * 0.2, 0.008);
+      return [[[-hw, -hd], [hw, -hd], [hw, -hd + f], [-hw + e, -hd + f], [-hw + e, hd - f], [hw, hd - f], [hw, hd], [-hw, hd]]];
+    }
+    case 'l_shape': {
+      const w = Number.isFinite(t) ? t : Math.min(sx, sy) * 0.15;
+      return [[[-hw, -hd], [hw, -hd], [hw, -hd + w], [-hw + w, -hd + w], [-hw + w, hd], [-hw, hd]]];
+    }
+  }
+  return [box(hw, hd)];
+}
 
 /** Rectangle w × d centred on (x, y), turned by `rotDeg` (CCW), as polygon points. */
 function rotatedRect(x: number, y: number, w: number, d: number, rotDeg: number): number[][] {
@@ -510,6 +575,14 @@ function renderColumn(tableName: string, id: string, feat: BimDownFeature, row: 
     return { tableName, svg, bounds: { minX: x - r, minY: y - r, maxX: x + r, maxY: y + r } };
   }
   const rot = typeof feat.properties.rotation === 'number' ? feat.properties.rotation : 0;
+  const shape = row.shape ?? '';
+  if (shape && shape !== 'rect' && tableName === 'structure_column') {
+    // Steel / hollow sections at their real outline (hollow ones as a ring)
+    const a = (rot * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+    const rings = sectionRings(row, sx, shape === 'round_hollow' ? sx : sy).map(r => r.map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]));
+    const svg = `    <path id="${id}" d="${polygonPath(rings)}" fill-rule="evenodd" fill="${fill}" stroke="${color.stroke}" stroke-width="0.02" />`;
+    return { tableName, svg, bounds: ringBounds(rings[0]) };
+  }
   const pts = rotatedRect(x, y, sx, sy, rot);
   const svg = `    <polygon id="${id}" points="${pointsAttr(pts)}" fill="${fill}" stroke="${color.stroke}" stroke-width="0.02" />`;
   return { tableName, svg, bounds: ringBounds(pts) };
