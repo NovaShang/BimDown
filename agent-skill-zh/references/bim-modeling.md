@@ -83,6 +83,10 @@ Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `
 - A curtain wall door: make the bottom-row cell the door width (`v_grids`) and door height (first `u_grids`), set it `door`; don't host a `door` row on it. Mullions: `mullion_width`/`mullion_depth`/`mullion_profile` (rect/round).
 - Ceiling: polygon, `height_offset` above level
 - Roof: polygon, `roof_type` (flat/gable/hip/shed/mansard), `slope` in degrees. Top floor only.
+- Roof outline = eave line incl. overhang (wall exterior face + 0.3–0.6 m); `base_offset` = underside at the eave (wall top − overhang·tan slope). Any footprint (L / T / U) is exact.
+- Per-edge slopes: `edge_slopes` = one value per polygon edge (`;`, edge i = vertex i→i+1, 0 = gable end), e.g. L gable `35;35;0;35;35;0`. Flat roof drainage: `1.2;0;0;0`. Barrel / custom: `roof_type` extrusion + `profile` `u,z;u,z` across edge 1.
+- Walls under a roof: set `top_attach_id` = roof id (any level) — the wall top follows the roof underside (gable triangles, no manual top_offset). Same for walls under a slab.
+- Skylight / dormer opening: `opening` Polygon with `host_id` = roof (or slab). Shaft through floors: `opening` Polygon with `top_level_id` (+`top_offset`), no host, cuts every slab/roof it spans — one row, not one per level.
 
 ### Structure (structure_column, beam, foundation)
 - structure_column: like column but `structural_section_profile` supports i/t/l/c/cross shapes
