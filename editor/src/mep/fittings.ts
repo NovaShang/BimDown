@@ -331,5 +331,24 @@ export function fittingKindOf(nodeId: string, ctx: GeometryContext): FittingKind
   return analyzeFittings(ctx).byNode.get(nodeId)?.kind ?? null;
 }
 
+/**
+ * True when the curve's start continues a straight run of the same section
+ * through a coupling / tee / cross (so a plan tag on the run's first
+ * segment is enough).
+ */
+export function continuesStraight(analysis: FittingAnalysis, curveId: string, sameRun: (otherId: string) => boolean): boolean {
+  for (const info of analysis.byNode.values()) {
+    const i = info.legs.findIndex(l => l.curveId === curveId && l.side === 'start');
+    if (i < 0) continue;
+    if (info.kind === 'coupling') return sameRun(info.legs[1 - i].curveId);
+    if (info.main && (info.main[0] === i || info.main[1] === i)) {
+      const j = info.main[0] === i ? info.main[1] : info.main[0];
+      return sameRun(info.legs[j].curveId);
+    }
+    return false;
+  }
+  return false;
+}
+
 /** Plan point helper. */
 export const xy = (p: V3): Point => ({ x: p[0], y: p[1] });

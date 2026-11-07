@@ -73,16 +73,25 @@ export function sizeDuct(flowLs: number, shape: 'round' | 'rect', currentH: numb
     const d = Math.ceil(D / DUCT_STEP - 1e-9) * DUCT_STEP;
     return { shape, sizeX: d, sizeY: d, velocity: q / (Math.PI * d * d / 4), friction: frictionRate(q, d, 'air') };
   }
-  let h = currentH > 0 ? currentH : 0;
+  // Smallest width (50 mm steps) giving the equivalent diameter at height hh.
   const widthFor = (hh: number) => {
-    let w = hh;
-    while (equivalentDiameter(w, hh) < D && w < 4) w += 0.01;
-    return Math.ceil(w / DUCT_STEP - 1e-9) * DUCT_STEP;
+    let w = DUCT_STEP;
+    while (equivalentDiameter(w, hh) < D && w < 4) w += DUCT_STEP;
+    return Math.round(w * 1000) / 1000;
   };
+  // Keep the current height when the aspect stays between 1:1 and 4:1,
+  // otherwise pick the height (50 mm steps) closest to a 1.5:1 aspect.
+  let h = currentH > 0 ? currentH : 0;
   let w = h > 0 ? widthFor(h) : 0;
-  if (!(h > 0) || w / h > 4 || w < h * 0.5) {
-    h = Math.max(0.1, Math.ceil((D / 1.4) / DUCT_STEP) * DUCT_STEP);
-    w = widthFor(h);
+  if (!(h > 0) || w / h > 4 || w / h < 1) {
+    let best = { score: Infinity, w: 0, h: 0 };
+    for (let hh = 0.1; hh <= 1.2 + 1e-9; hh += DUCT_STEP) {
+      const ww = widthFor(hh);
+      if (ww < hh) continue;
+      const score = Math.abs(Math.log(ww / hh / 1.5));
+      if (score < best.score) best = { score, w: ww, h: Math.round(hh * 1000) / 1000 };
+    }
+    w = best.w; h = best.h;
   }
   const De = equivalentDiameter(w, h);
   return { shape, sizeX: w, sizeY: h, velocity: q / (w * h), friction: frictionRate(q, De, 'air') };

@@ -21,7 +21,7 @@ import {
   type CornerAdjustment,
 } from '../geometry/miter.ts';
 import { effectiveMepLine } from '../model/mepFittingRender.ts';
-import { analyzeFittings, curveZ } from '../mep/fittings.ts';
+import { analyzeFittings, continuesStraight, curveZ } from '../mep/fittings.ts';
 import { mepCrossingGaps } from '../mep/crossings.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { MepLine2D, MepLine3D } from '../mep/MepLineView.tsx';
@@ -261,7 +261,13 @@ export function mepLineGeometry(
     segments,
     horLen,
     gaps: vertical ? [] : (mepCrossingGaps(ctx).get(ln.id) ?? []),
-    label: mepSizeLabel(table, systemType, shape, sizeX, sizeY),
+    // One tag per straight run: segments continuing a same-size run through a
+    // coupling / tee don't repeat it.
+    label: continuesStraight(fittings, el.id, other => {
+      const o = ctx.elementById(other);
+      return !!o && o.tableName === table && (o.attrs.system_type || '') === systemType
+        && o.attrs.size_x === ln.attrs.size_x && (o.attrs.size_y || '') === (ln.attrs.size_y || '');
+    }) ? '' : mepSizeLabel(table, systemType, shape, sizeX, sizeY),
     slope: !vertical && horLen > 0 ? (endZ - startZ) / horLen : 0,
     riser: vertical ? riserDirection(el as LineElement | SpatialLineElement, rawZ, fittings) : null,
     insulation: parseFloat(ln.attrs.insulation_thickness || '0') || 0,
@@ -362,6 +368,9 @@ const SYSTEM_COLORS: Record<string, string> = {
   // Plumbing: blue cold, red hot, brown drain
   DW: '#1d4ed8', DCW: '#3b82f6', DHW: '#dc2626', DHWR: '#b91c1c',
   SS: '#92400e', VENT: '#a16207', SD: '#0369a1', GAS: '#facc15',
+  // Port-convention tags (spec/mep-port-conventions.md)
+  DHWS: '#dc2626', SAN: '#92400e', V: '#a16207', G: '#facc15', CD: '#14b8a6', FP: '#ef4444',
+  PWR: '#eab308', LTG: '#f59e0b',
   // Electrical
   NP: '#fde047', EM: '#f43f5e', LV: '#eab308', HV: '#ca8a04',
   DATA: '#22c55e', FA: '#ef4444', SEC: '#a3a3a3',
