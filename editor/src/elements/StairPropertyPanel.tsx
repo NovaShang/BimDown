@@ -5,17 +5,19 @@
  */
 import { useTranslation } from 'react-i18next';
 import type { PropertyPanelProps } from './archetypes.ts';
+import type { SpatialLineElement } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { Select, SelectTrigger, SelectContent, SelectItem } from '../components/ui/select';
 import { NumberInput } from '../components/NumberInput.tsx';
 import {
-  assembleStair, hostRefOf, stairCalc, stairRepetitions, STAIR_LIMITS,
+  assembleStair, comfortableStair, hostRefOf, layoutStair, stairCalc, stairRepetitions, STAIR_LIMITS,
   type RailSide, type StairCheck,
 } from '../geometry/stair.ts';
 import { STAIR_PART_TABLES, stairRailingElement } from '../model/stairElements.ts';
 import { generateId } from '../model/ids.ts';
 import { getProjectUnits } from '../utils/units.ts';
-import { stairSpan } from '../tools/drawStairTool.ts';
+import { STAIR_GOING_KEY, clicksRequired, stairSpan } from '../tools/drawStairTool.ts';
+import { CommitNumberInput } from '../components/CommitNumberInput.tsx';
 import { cn } from '../lib/utils';
 
 const ROW = 'flex items-center gap-2 px-3 py-[3px] text-[11px]';
@@ -65,6 +67,19 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
   const railings = children.filter(c => c.tableName === 'railing');
   const above = [...levels].filter(l => here && l.elevation > here.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation);
   const multistory = element.attrs.multistory_top_level_id ?? '';
+  const upm = upmOf(getProjectUnits(state));
+  // A single-run stair: risers and going are typed here (the run's end moves with the going)
+  const single = asm.runs.length === 1 && asm.ownIsRun && (element.geometry === 'line' || element.geometry === 'spatial_line') ? element as SpatialLineElement : null;
+  const reshape = (steps: number, going: number, description: string) => {
+    if (!single) return;
+    const u = { x: single.end.x - single.start.x, y: single.end.y - single.start.y };
+    const l = Math.hypot(u.x, u.y);
+    if (l < 1e-9 || !(going > 0) || !(steps >= 1)) return;
+    const len = going * steps * upm;
+    const end = { x: single.start.x + (u.x / l) * len, y: single.start.y + (u.y / l) * len };
+    dispatch({ type: 'APPLY_PATCH', description, patches: new Map([[single.id, { ...single, end, attrs: { ...single.attrs, step_count: String(steps) } }]]) });
+  };
+  const failing = calc ? calc.checks.some(c => !c.ok && c.key !== 'width' && c.key !== 'landing') : false;
 
   const toggleRailing = (side: RailSide, on: boolean) => {
     if (on) {
@@ -83,7 +98,15 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
         <>
           <div className={ROW}>
             <span className={LABEL}>{t('stair.calc.risers')}</span>
-            <span className={VALUE}>{calc.risers} × {mm(calc.riser)}</span>
+            {single && editable ? (
+              <CommitNumberInput className={INPUT} value={String(calc.risers)} testId="stair-risers"
+                onCommit={v => {
+                  const n = Math.round(parseFloat(v));
+                  // Same run length: the going follows the riser count
+                  if (n >= 1 && n !== calc.risers) dispatch({ type: 'UPDATE_ATTRS', id: element.id, attrs: { step_count: String(n) } });
+                }} />
+            ) : <span className={VALUE}>{calc.risers}</span>}
+            <span className={VALUE}>× {mm(calc.riser)}</span>
           </div>
           <div className={ROW}>
             <span className={LABEL}>{t('stair.calc.rise')}</span>
@@ -91,7 +114,14 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
           </div>
           <div className={ROW}>
             <span className={LABEL}>{t('stair.calc.going')}</span>
-            <span className={VALUE}>{mm(calc.going)}</span>
+            {single && editable ? (
+              <>
+                <CommitNumberInput className={INPUT} value={String(Math.round(calc.going * 1000))} testId="stair-going"
+                  title={t('stair.calc.goingEditTip')}
+                  onCommit={v => reshape(calc.risers, parseFloat(v) / 1000, 'Stair going')} />
+                <span className="text-[10px] text-muted-foreground">mm</span>
+              </>
+            ) : <span className={VALUE}>{mm(calc.going)}</span>}
           </div>
           <div className={ROW}>
             <span className={LABEL}>2R+G</span>
@@ -105,6 +135,17 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
                 <span>{c.ok ? t(`stair.calc.ok.${c.key}`) : checkText(t, c)}</span>
               </div>
             ))}
+            {failing && single && editable && (
+              <button type="button" data-testid="stair-fix"
+                className="mt-1 h-[22px] rounded-md border border-amber-500/50 px-2 text-[10px] text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+                title={t('stair.calc.fixTip')}
+                onClick={() => {
+                  const f = comfortableStair(calc.rise);
+                  reshape(f.risers, f.going, 'Fix stair');
+                }}>
+                {t('stair.calc.fix')}
+              </button>
+            )}
           </div>
         </>
       )}
@@ -128,7 +169,7 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
       )}
 
       <div className={cn(ROW, 'pt-1')}>
-        <span className={LABEL}>{t('stair.multistoryTop')}</span>
+        <span className={LABEL} title={t('stair.multistoryTip')}>{t('stair.repeatTo')}</span>
         <Select value={multistory || NONE} disabled={!editable}
           onValueChange={v => dispatch({ type: 'UPDATE_ATTRS', id: element.id, attrs: { multistory_top_level_id: v === NONE || !v ? '' : v } })}>
           <SelectTrigger size="sm" className="h-6 min-w-24 flex-1 rounded-md border-input bg-transparent px-1.5 text-[11px]" data-testid="stair-multistory">
@@ -161,18 +202,93 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
   );
 }
 
-/** Drawing-bar hint while placing a stair: the riser the storey and step count give, with a warning. */
+/** Calculator values while placing: riser from the storey and step count, going typed or from the drawn line. */
+function drawCalc(state: ReturnType<typeof useEditorState>) {
+  const da = state.drawingAttrs;
+  const upm = upmOf(getProjectUnits(state));
+  const { baseZ, topZ } = stairSpan(state);
+  const rise = (topZ - baseZ) / upm;
+  const steps = Math.max(1, Math.round(parseFloat(da.step_count ?? '') || 18));
+  const riser = rise / steps;
+  const typed = parseFloat(da[STAIR_GOING_KEY] ?? '');
+  let going: number | null = typed > 0 ? typed / upm : null;
+  if (going === null) {
+    const pts = state.drawingState?.points ?? [];
+    const cur = state.drawingState?.cursor;
+    const all = cur ? [...pts, cur] : pts;
+    if (all.length === clicksRequired(da.stair_type) && pts.length > 0) {
+      const layout = layoutStair(all, parseFloat(da.width ?? '') || 1.2, steps, 0, 1);
+      if (layout) going = layout.runs.reduce((acc, r) => acc + Math.hypot(r.end.x - r.start.x, r.end.y - r.start.y), 0) / steps / upm;
+    }
+  }
+  const L = STAIR_LIMITS;
+  const riserOk = riser >= L.riserMin - 1e-9 && riser <= L.riserMax + 1e-9;
+  const goingOk = going === null || going >= L.goingMin - 1e-9;
+  const blondel = going === null ? null : 2 * riser + going;
+  const blondelOk = blondel === null || (blondel >= L.blondelMin - 1e-9 && blondel <= L.blondelMax + 1e-9);
+  return { upm, rise, steps, riser, going, blondel, riserOk, goingOk, blondelOk };
+}
+
+const BAR_INPUT = 'h-[22px] w-[52px] rounded-md border border-input bg-transparent px-1.5 text-right text-[11px]';
+
+/**
+ * Drawing-bar stair calculator (Revit's stair type parameters): riser height
+ * (sets the riser count), typed going (the last click's run is made to fit),
+ * a live riser / going / 2R+G check with a one-click fix, and the multi-storey
+ * "repeat up to" level.
+ */
 export function StairDrawHint() {
   const { t } = useTranslation();
   const state = useEditorState();
-  const { baseZ, topZ } = stairSpan(state);
-  const steps = Math.max(1, Math.round(parseFloat(state.drawingAttrs.step_count ?? '') || 18));
-  const riser = (topZ - baseZ) / steps / upmOf(getProjectUnits(state));
-  const ok = riser >= STAIR_LIMITS.riserMin - 1e-9 && riser <= STAIR_LIMITS.riserMax + 1e-9;
+  const dispatch = useEditorDispatch();
+  const da = state.drawingAttrs;
+  const c = drawCalc(state);
+  const set = (patch: Record<string, string>) => dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...da, ...patch } });
+  const levels = state.project?.levels ?? [];
+  const here = levels.find(l => l.id === state.currentLevel);
+  const above = levels.filter(l => here && l.elevation > here.elevation + 1e-6).sort((a, b) => a.elevation - b.elevation);
+  const multistory = da.multistory_top_level_id ?? '';
+  const ok = c.riserOk && c.goingOk && c.blondelOk;
+  const L = STAIR_LIMITS;
+  const warn = 'text-amber-600 dark:text-amber-400';
+  const fix = () => {
+    const f = comfortableStair(c.rise);
+    set({ step_count: String(f.risers), [STAIR_GOING_KEY]: String(Math.round(f.going * c.upm * 1e4) / 1e4) });
+  };
+  const fmtLen = (m: number) => String(Math.round(m * c.upm * 1e4) / 1e4);
   return (
-    <span className={cn('text-[10px] tabular-nums', ok ? 'text-muted-foreground' : 'text-amber-600 dark:text-amber-400')}
-      data-testid="stair-draw-hint" title={ok ? undefined : t('stair.calc.riserWarn', { value: mm(riser), min: mm(STAIR_LIMITS.riserMin), max: mm(STAIR_LIMITS.riserMax) })}>
-      {t('stair.calc.riserShort', { value: mm(riser) })}{ok ? '' : ' ⚠'}
-    </span>
+    <div className="flex items-center gap-1.5" data-testid="stair-draw-calc">
+      <label className="text-[10px] text-muted-foreground" title={t('stair.calc.riserTip')}>{t('stair.calc.riserLabel')}</label>
+      <CommitNumberInput className={cn(BAR_INPUT, !c.riserOk && 'border-amber-500')} value={fmtLen(c.riser)} testId="stair-draw-riser"
+        title={c.riserOk ? undefined : t('stair.calc.riserWarn', { value: mm(c.riser), min: mm(L.riserMin), max: mm(L.riserMax) })}
+        onCommit={v => set({ step_count: String(Math.max(1, Math.round(c.rise / (parseFloat(v) / c.upm)))) })} />
+      <label className="text-[10px] text-muted-foreground" title={t('stair.calc.goingTip')}>{t('stair.calc.going')}</label>
+      <CommitNumberInput className={cn(BAR_INPUT, !c.goingOk && 'border-amber-500')} value={da[STAIR_GOING_KEY] ?? ''} allowEmpty
+        placeholder={c.going !== null && !(parseFloat(da[STAIR_GOING_KEY] ?? '') > 0) ? fmtLen(c.going) : t('stair.calc.auto')}
+        testId="stair-draw-going" title={t('stair.calc.goingTip')}
+        onCommit={v => set({ [STAIR_GOING_KEY]: v })} />
+      <span className={cn('text-[10px] tabular-nums', ok ? 'text-muted-foreground' : warn)} data-testid="stair-draw-hint" data-ok={ok ? 'true' : 'false'}
+        title={[
+          !c.riserOk && t('stair.calc.riserWarn', { value: mm(c.riser), min: mm(L.riserMin), max: mm(L.riserMax) }),
+          !c.goingOk && c.going !== null && t('stair.calc.goingWarn', { value: mm(c.going), min: mm(L.goingMin) }),
+          !c.blondelOk && c.blondel !== null && t('stair.calc.blondelWarn', { value: mm(c.blondel), min: mm(L.blondelMin), max: mm(L.blondelMax) }),
+        ].filter(Boolean).join('\n') || undefined}>
+        {c.steps} × {mm(c.riser)}{c.blondel !== null ? ` · 2R+G ${mm(c.blondel)}` : ''} {ok ? '✓' : '⚠'}
+      </span>
+      {!ok && (
+        <button type="button" className="h-[22px] rounded-md border border-amber-500/50 px-1.5 text-[10px] text-amber-700 hover:bg-amber-500/10 dark:text-amber-400"
+          onClick={fix} title={t('stair.calc.fixTip')} data-testid="stair-draw-fix">{t('stair.calc.fix')}</button>
+      )}
+      <label className="ml-1 text-[10px] text-muted-foreground" title={t('stair.multistoryTip')}>{t('stair.repeatTo')}</label>
+      <Select value={multistory || NONE} onValueChange={v => set({ multistory_top_level_id: v === NONE || !v ? '' : v })}>
+        <SelectTrigger size="sm" className="h-[22px] min-w-20 rounded-md border-input bg-transparent px-1.5 text-[11px]" data-testid="stair-draw-multistory">
+          <span className="truncate">{multistory ? (levels.find(l => l.id === multistory)?.name || multistory) : t('stair.multistoryNone')}</span>
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value={NONE}>{t('stair.multistoryNone')}</SelectItem>
+          {above.map(l => <SelectItem key={l.id} value={l.id}>{l.name || l.number || l.id}</SelectItem>)}
+        </SelectContent>
+      </Select>
+    </div>
   );
 }

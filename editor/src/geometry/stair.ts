@@ -15,7 +15,7 @@
  */
 
 import type { CanonicalElement, LineElement, PolygonElement, SpatialLineElement, Point } from '../model/elements.ts';
-import { LANDING_DEFAULT_THICKNESS, STAIR_DEFAULT_STEPS, STAIR_RUN_DEFAULT_WIDTH, stairRepetitions } from './stairCore.ts';
+import { LANDING_DEFAULT_THICKNESS, STAIR_DEFAULT_STEPS, STAIR_LIMITS, STAIR_RUN_DEFAULT_WIDTH, layoutStair, stairRepetitions } from './stairCore.ts';
 import type { StairAssembly, StairLanding, StairRepetition, StairRun } from './stairCore.ts';
 
 export * from './stairCore.ts';
@@ -126,6 +126,47 @@ export function stairAssemblyIn(ctx: StairLookup, stair: CanonicalElement): Stai
 }
 
 // ─── Riser rule / consistency ────────────────────────────────────────────────
+
+/** Riser target of the auto-fix (m): mid-range of the calculator's limits. */
+const RISER_TARGET = 0.17;
+/** 2R + G target (m), mid-range of 0.60–0.65. */
+const BLONDEL_TARGET = 0.63;
+
+/**
+ * Riser count and going that pass the stair calculator for a `rise` (m):
+ * riser nearest 170 mm inside 150–190 mm, going = 630 mm − 2R (≥ 260 mm),
+ * rounded to the millimetre. The stair tool's and panel's "Fix".
+ */
+export function comfortableStair(rise: number): { risers: number; riser: number; going: number } {
+  const L = STAIR_LIMITS;
+  let n = Math.max(1, Math.round(rise / RISER_TARGET));
+  while (rise / n > L.riserMax + 1e-9) n++;
+  while (n > 1 && rise / (n - 1) <= L.riserMax + 1e-9 && rise / n < L.riserMin - 1e-9) n--;
+  const riser = rise / n;
+  const going = Math.max(L.goingMin, Math.round((BLONDEL_TARGET - 2 * riser) * 1000) / 1000);
+  return { risers: n, riser, going };
+}
+
+/**
+ * Typed going for the stair being drawn: move the last clicked point along
+ * the last run so the runs add up to `going × steps` (Revit's "risers
+ * remaining" completion). Points are the walking line (2–4 clicks); null when
+ * the last run would vanish.
+ */
+export function pointsForGoing(points: readonly Point[], width: number, steps: number, going: number): Point[] | null {
+  if (points.length < 2 || !(going > 0)) return null;
+  const layout = layoutStair(points, width, steps, 0, 1);
+  if (!layout) return null;
+  const total = layout.runs.reduce((acc, r) => acc + dist(r.start, r.end), 0);
+  const a = points[points.length - 2], b = points[points.length - 1];
+  const l = dist(a, b);
+  if (l < 1e-9) return null;
+  const last = layout.runs[layout.runs.length - 1];
+  const lastLen = dist(last.start, last.end) + going * steps - total;
+  if (lastLen < going) return null;
+  const k = (l + going * steps - total) / l;
+  return [...points.slice(0, -1), { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }];
+}
 
 /** The stair's repetitions from a geometry context (`levelElevation` = the stair's level). */
 export function stairRepetitionsIn(

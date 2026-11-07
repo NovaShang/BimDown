@@ -21,7 +21,7 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { getProjectUnits } from '../utils/units.ts';
-import { layoutStair } from '../geometry/stair.ts';
+import { layoutStair, pointsForGoing } from '../geometry/stair.ts';
 import { stairElements, STAIR_RAILINGS_KEY } from '../model/stairElements.ts';
 
 /** Clicks a stair type needs (the walking line's points). */
@@ -60,11 +60,12 @@ export const drawStairTool: ToolHandler = {
     if (!snap) return;
     ctx.setSnap(snap);
     const state = ctx.getState();
-    const points = [...(state.drawingState?.points ?? []), snap.point];
+    let points = [...(state.drawingState?.points ?? []), snap.point];
     if (points.length < clicksRequired(state.drawingAttrs.stair_type)) {
       ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points, cursor: snap.point } });
       return;
     }
+    points = withTypedGoing(state, points);
     placeStair(ctx, state, points);
     ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
     ctx.setSnap(null);
@@ -73,11 +74,29 @@ export const drawStairTool: ToolHandler = {
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
     const snap = snapAt(ctx, e);
     if (!snap) return;
-    const points = ctx.getState().drawingState?.points ?? [];
-    ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points, cursor: snap.point } });
+    const state = ctx.getState();
+    const points = state.drawingState?.points ?? [];
+    // The last click's run is as long as the typed going needs
+    let cursor = snap.point;
+    if (points.length === clicksRequired(state.drawingAttrs.stair_type) - 1) {
+      cursor = withTypedGoing(state, [...points, cursor]).at(-1)!;
+    }
+    ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points, cursor } });
     ctx.setSnap(snap);
   },
 };
+
+/** UI-only drawing attr: the going (tread depth) typed in the drawing bar, project units; empty = by the clicks. */
+export const STAIR_GOING_KEY = '__going';
+
+/** The walking-line points with the last one moved so the treads get the typed going (if any). */
+export function withTypedGoing(state: Pick<ToolStateSnapshot, 'drawingAttrs'>, points: Point[]): Point[] {
+  const da = state.drawingAttrs;
+  const going = num(da[STAIR_GOING_KEY], 0);
+  if (!(going > 0)) return points;
+  const steps = Math.max(2, Math.round(num(da.step_count, 18)));
+  return pointsForGoing(points, num(da.width, 1.2) || 1.2, steps, going) ?? points;
+}
 
 const num = (s: string | undefined, fallback: number) => {
   const v = parseFloat(s ?? '');
