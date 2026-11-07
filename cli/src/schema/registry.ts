@@ -27,6 +27,8 @@ export const ID_PREFIXES: Record<string, string> = {
   dimension: 'dm', text_note: 'tx', tag: 'tg',
   // Tracing references
   underlay: 'ul',
+  // Drawing sheets and the views placed on them
+  sheet: 'sh', sheet_viewport: 'vp',
 };
 
 /** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
@@ -39,11 +41,16 @@ export const TYPE_TABLES = new Set([
 /** Type tables whose build-up is a stack of type_layer rows. */
 export const LAYERED_TYPE_TABLES = new Set(['wall_type', 'slab_type', 'roof_type', 'ceiling_type']);
 
-// Annotation tables: CSV-only plan annotations, allowed in level directories only.
+// Annotation tables: CSV-only plan annotations in level directories; dimension and
+// text_note rows with a view_id (drawn on a section / elevation) live in global/.
 export const ANNOTATION_TABLES = new Set(['dimension', 'text_note', 'tag']);
+export const VIEW_ANNOTATION_TABLES = new Set(['dimension', 'text_note']);
+
+// Drawing sheets: title block + placed views, global/ only, ignored by build / render / query.
+export const SHEET_TABLES = new Set(['sheet', 'sheet_viewport']);
 
 // Tables whose CSV lives only in global/ (not per-level)
-export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', 'underlay', ...TYPE_TABLES, 'type_layer']);
+export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', 'underlay', ...SHEET_TABLES, ...TYPE_TABLES, 'type_layer']);
 
 // Tables that can appear in global/ (cross-floor elements)
 export const GLOBAL_ALLOWED_TABLES = new Set([
@@ -62,7 +69,7 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 // whose source file lives in underlays/)
 const TABLES_WITHOUT_GEOMETRY = new Set([
   'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view', 'underlay',
-  ...TYPE_TABLES, 'type_layer',
+  ...SHEET_TABLES, ...TYPE_TABLES, 'type_layer',
   ...ANNOTATION_TABLES,
 ]);
 

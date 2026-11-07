@@ -1,12 +1,15 @@
 name: dimension
 description: >
-  Linear dimension on a level plan (CSV only, level directories only). Measures
+  Linear dimension on a level plan (level directories) or on a section /
+  elevation view (global/, with view_id). CSV only. Measures
   the distance between two points along a direction and draws the dimension
   line `offset` away from them. Each end may reference an element
   (`start_ref` / `end_ref`) so the dimension follows it when it moves; the
   stored coordinates are then the last resolved points (and the fallback when
   the reference is empty). Chain dimensions are several rows sharing one
-  direction and offset.
+  direction and offset. Text, ticks and gaps are paper sizes (2.2 mm text),
+  drawn at the scale of the view or sheet viewport. View dimensions (view_id)
+  use fixed points only (no references).
 
 fields:
   - name: id
@@ -63,3 +66,12 @@ fields:
   - name: text
     type: string
     description: Text shown instead of the measured value (e.g. "EQ"). Empty = the value.
+
+  - name: view_id
+    type: string
+    description: >
+      View the annotation is drawn in instead of a level plan: a section id of
+      global/view.csv, or north / south / east / west for the derived
+      elevations. Rows with a view_id live in global/{table}.csv and their
+      coordinates are view coordinates: x along the view (left to right as
+      seen), y = absolute elevation. Empty = a plan annotation (level directory).

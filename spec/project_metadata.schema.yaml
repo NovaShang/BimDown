@@ -16,6 +16,18 @@ fields:
     type: string
     description: Human-readable project name
 
+  - name: project_number
+    type: string
+    description: Project number shown in sheet title blocks
+
+  - name: client
+    type: string
+    description: Client name shown in sheet title blocks
+
+  - name: address
+    type: string
+    description: Site address shown in sheet title blocks
+
   - name: units
     type: enum
     values: [m, ft, in, mm]

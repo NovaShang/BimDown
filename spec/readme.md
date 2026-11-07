@@ -22,6 +22,8 @@ BimDown uses **CSV for attributes** and a **geometry layer** that may be encoded
 │   ├── grid.csv                     # structural grid lines
 │   ├── wall_type.csv, door_type.csv, …, type_layer.csv   # element types (optional)
 │   ├── view.csv                     # saved section views (optional)
+│   ├── sheet.csv, sheet_viewport.csv # drawing sheets and the views placed on them (optional)
+│   ├── dimension.csv, text_note.csv # annotations on sections / elevations (view_id, optional)
 │   ├── wall.csv / wall.geojson      # multi-story walls (span > 1 level above)
 │   ├── stair.csv / stair.geojson    # multi-story stairs
 │   ├── pipe.csv / pipe.geojson      # vertical risers
@@ -51,7 +53,7 @@ All elements belong to a **base level** (their `base_level_id`).
 
 - **`base_level_id` always equals the containing directory's level** — no cross-directory references. To express a multi-level element, place it in `global/`.
 - **Level directory** (e.g. `1F/`, `2F/`): elements whose vertical extent stays within one level above their base.
-- **Global directory** (`global/`): elements that span **more than one level above** their base (multi-story walls, vertical pipe risers, etc.), plus `level.csv`, `grid.csv` and `view.csv`.
+- **Global directory** (`global/`): elements that span **more than one level above** their base (multi-story walls, vertical pipe risers, etc.), plus `level.csv`, `grid.csv`, `view.csv`, the sheets and the annotations drawn on sections / elevations.
 - **Spatial elements** (beams, ramps, ducts, etc.) should be placed in the level directory they primarily belong to. Only truly cross-level instances go in `global/`.
 
 Consequence: editing or rendering one level view requires loading at most **two directories** — the current level and `global/`.
@@ -116,12 +118,14 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 
 ### Annotation
 
-Plan annotations, CSV only, in level directories only (never `global/`). They reference model elements by id, so they follow edits; see [csv-schema/annotation/](csv-schema/annotation/).
+Plan annotations, CSV only, in level directories. They reference model elements by id, so they follow edits; see [csv-schema/annotation/](csv-schema/annotation/). Dimensions and text notes drawn on a section or elevation live in `global/` with `view_id` (a `view.csv` section id, or `north` / `south` / `east` / `west`) and view coordinates: x along the view as seen, y = absolute elevation.
+
+Annotation sizes are **paper sizes**: text, ticks and tag boxes are millimetres on the sheet, drawn at `mm × scale / 1000` metres in the model (2.5 mm = 0.25 m at 1:100, 0.5 m at 1:200), so a note reads the same at every scale. `text_note.paper_size` stores the height in mm; the legacy `size` (project units, fixed) is used only when `paper_size` is empty.
 
 | Table        | Geometry file | Description |
 |--------------|---------------|-------------|
 | `dimension`  | No (CSV points) | Linear dimension: two measured points, each optionally stuck to an element (`start_ref` / `end_ref`: `w-1`, `w-1:left`, `w-1:end`, `d-1:start`, …), a `direction` (empty = aligned) and an `offset` for the dimension line |
-| `text_note`  | No (CSV point) | Free text at `x`,`y` with `size` and `rotation` |
+| `text_note`  | No (CSV point) | Free text at `x`,`y` with `paper_size` (mm) and `rotation` |
 | `tag`        | No (CSV point) | Label of one element (`host_id`): door/window mark, room name + number + area, number/name/type/size; empty `x`,`y` = default spot that follows the host |
 
 ### Fallback
@@ -137,6 +141,15 @@ Plan annotations, CSV only, in level directories only (never `global/`). They re
 | `underlay` | No (file in `underlays/`) | `global/underlay.csv`: an image, PDF page or DXF placed under one level for tracing |
 
 An underlay row places `file` (under `underlays/`) on `level_id`: plan = `(x, y)` + rotate(`rotation`°) · (`scale` · local), where local is image pixels (origin bottom-left), PDF points or DXF drawing units; `scale` is project units per local unit. `opacity`, `visible`, `locked`, `page` (PDF) and `hidden_layers` (DXF, `;`-separated) are display settings. Underlays are not building elements: `build`, `render`, `query` and the exports ignore them; `validate` checks only that the file exists.
+
+### Sheets (drawings for print)
+
+| Table | Geometry file | Description |
+|-------|---------------|-------------|
+| `sheet` | No | `global/sheet.csv`: one sheet: `number` (unique, e.g. A-101), `name`, `paper` (A0–A4 landscape), revision fields, `issue_date`, `drawn_by`, `checked_by` |
+| `sheet_viewport` | No | `global/sheet_viewport.csv`: a view on a sheet: `view_type` plan (`level_id`, `discipline`), section (`view_id`), elevation (`view_id` = direction), schedule (`schedule`) or legend, at `scale` (100 = 1:100), centred at `x`,`y` mm from the paper's bottom-left |
+
+The title block shows `project_name`, `project_number`, `client` and `address` from `project_metadata.json`, the sheet number / name, date, revision and the scale of each viewport. Sheets are not building elements: `build` and `render` ignore them (`query` reads them like any table).
 
 ---
 
@@ -239,6 +252,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `text_note` | `tx` | `tx-1` |
 | `tag` | `tg` | `tg-1` |
 | `underlay` | `ul` | `ul-1` |
+| `sheet` / `sheet_viewport` | `sh` / `vp` | `sh-1`, `vp-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
 

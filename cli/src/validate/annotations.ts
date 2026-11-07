@@ -12,9 +12,17 @@ export const DIMENSION_ANCHORS = ['start', 'end', 'left', 'right', 'center'];
 
 const NUMERIC_FIELDS: Record<string, string[]> = {
   dimension: ['start_x', 'start_y', 'end_x', 'end_y', 'direction', 'offset'],
-  text_note: ['x', 'y', 'size', 'rotation'],
+  text_note: ['x', 'y', 'size', 'paper_size', 'rotation'],
   tag: ['x', 'y'],
 };
+
+/** `view_id` values of the derived elevations (sections use their view.csv id). */
+export const ELEVATION_VIEW_IDS = ['north', 'south', 'east', 'west'];
+
+/** A view_id names a section of global/view.csv or a derived elevation. */
+export function isViewId(registry: IdRegistry, viewId: string): boolean {
+  return ELEVATION_VIEW_IDS.includes(viewId) || registry.allIds.get(viewId)?.table === 'view';
+}
 
 /** Split "w-1:left" into { id: "w-1", anchor: "left" }; anchor is '' when absent. */
 export function parseDimensionRef(ref: string): { id: string; anchor: string } {
@@ -44,6 +52,15 @@ export function validateAnnotations(
   for (let i = 0; i < data.rows.length; i++) {
     const row = data.rows[i];
     const at = `${path}:${i + 2}`;
+    // View annotations (sections / elevations) live in global/ and carry view_id
+    const viewId = (row.view_id ?? '').trim();
+    if (level === 'global') {
+      if (!viewId) issues.push(`${at}  a ${tableName} in global/ needs a view_id (section id or north/south/east/west); plan annotations belong in a level directory`);
+      else if (!isViewId(registry, viewId)) issues.push(`${at}  view_id "${viewId}" is neither a section of global/view.csv nor north/south/east/west`);
+      if (tableName === 'dimension' && (row.start_ref || row.end_ref)) issues.push(`${at}  view dimensions use fixed points — leave start_ref / end_ref empty`);
+    } else if (viewId) {
+      issues.push(`${at}  view_id is set — annotations on a section / elevation belong in global/${tableName}.csv`);
+    }
     for (const f of numeric) {
       const v = row[f];
       if (v !== undefined && v !== '' && !Number.isFinite(Number(v))) {
