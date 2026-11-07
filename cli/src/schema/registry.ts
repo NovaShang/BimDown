@@ -30,6 +30,8 @@ export const ID_PREFIXES: Record<string, string> = {
   furniture: 'fu',
   // Drawing sheets and the views placed on them
   sheet: 'sh', sheet_viewport: 'vp',
+  // Model group instances (members carry group_id)
+  model_group: 'mg',
 };
 
 /** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
@@ -49,6 +51,10 @@ export const VIEW_ANNOTATION_TABLES = new Set(['dimension', 'text_note']);
 
 // Drawing sheets: title block + placed views, global/ only, ignored by build / render / query.
 export const SHEET_TABLES = new Set(['sheet', 'sheet_viewport']);
+
+// Tables allowed in level directories only (never global/); plan annotations are
+// checked on their own (view annotations may sit in global/).
+export const LEVEL_ONLY_TABLES = new Set(['model_group']);
 
 // Tables whose CSV lives only in global/ (not per-level)
 export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', 'underlay', ...SHEET_TABLES, ...TYPE_TABLES, 'type_layer']);
@@ -72,6 +78,7 @@ const TABLES_WITHOUT_GEOMETRY = new Set([
   'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view', 'underlay', 'circuit',
   ...SHEET_TABLES, ...TYPE_TABLES, 'type_layer',
   ...ANNOTATION_TABLES,
+  'model_group',
 ]);
 
 // GeoJSON file name mapping: table name -> geojson file name (without extension)

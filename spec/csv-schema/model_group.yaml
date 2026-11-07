@@ -1,0 +1,40 @@
+name: model_group
+description: >
+  Model group instance (Revit "model group"), CSV only, level directories only.
+  Its members are ordinary elements of the same level whose `group_id` is this
+  row's id; their geometry is stored as usual (absolute plan coordinates), so
+  every tool that ignores groups still reads them correctly. Instances with the
+  same `name` are copies of one group: their members are identical in the
+  group's local frame, and an editor that edits one instance propagates the
+  change to the others. Local frame of an instance: plan = (x, y) +
+  rotate(rotation°) · (mirrored ? flip-Y : identity) · local.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: name
+    type: string
+    required: true
+    description: Group name. Instances sharing a name are copies of the same group.
+
+  - name: x
+    type: float
+    required: true
+    description: Group origin X (plan, project units).
+
+  - name: y
+    type: float
+    required: true
+    description: Group origin Y.
+
+  - name: rotation
+    type: float
+    default: 0
+    description: Rotation of the instance in degrees CCW.
+
+  - name: mirrored
+    type: enum
+    values: ["true", "false"]
+    description: '"true" = the instance is a mirror image (local Y flipped before the rotation).'

@@ -39,7 +39,7 @@ describe('furniture library', () => {
   it('stores size/rotation the spec way (CSV sizes, rotation + base_offset in GeoJSON)', () => {
     const t = buildRegistry(getSpecDir()).get('furniture')!;
     expect(t.prefix).toBe('fu');
-    expect(t.csvFields.map(f => f.name)).toEqual(['id', 'number', 'mesh_file', 'family', 'variant', 'size_x', 'size_y', 'height', 'mirror', 'type_id']);
+    expect(t.csvFields.map(f => f.name)).toEqual(['id', 'number', 'mesh_file', 'group_id', 'pinned', 'family', 'variant', 'size_x', 'size_y', 'height', 'mirror', 'type_id']);
     expect(t.geojsonPropertyFields.map(f => f.name)).toEqual(['base_offset']);
   });
 
@@ -151,7 +151,7 @@ describe('furniture in a project', () => {
     expect(mm.size.w).toBeCloseTo(m.size.w * 1000, 6);
     const outline = (r: typeof m) => furniturePlan(r).find(p => p.k === 'rect')!;
     expect((outline(mm) as { w: number }).w).toBeCloseTo((outline(m) as { w: number }).w * 1000, 6);
-    expect(furnitureMass(mm)[0].h).toBeCloseTo(furnitureMass(m)[0].h * 1000, 6);
+    expect((furnitureMass(mm)[0] as { h: number }).h).toBeCloseTo((furnitureMass(m)[0] as { h: number }).h * 1000, 6);
     const sized = resolveFurniture({ family: 'desk', size_x: '1600', size_y: '800' }, 1000);
     expect([sized.params.w, sized.size.w]).toEqual([1.6, 1600]);
     const b = furnitureToSvg('fu-1', { family: 'desk', size_x: '1600', size_y: '800' }, 0, 0, 0, 1000).bounds;
