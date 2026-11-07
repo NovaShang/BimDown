@@ -90,6 +90,8 @@ export interface DrawingState {
   typed?: TypedInput;
   /** Two-pick modify tools (trim / extend): the first picked element. */
   pick?: { id: string; point: { x: number; y: number }; line?: { start: { x: number; y: number }; end: { x: number; y: number } } };
+  /** Live rotation of a module place tool's preview (degrees CCW). */
+  rotation?: number;
 }
 
 export interface TypedInput {

@@ -8,6 +8,7 @@ import { formatLength } from '../utils/units.ts';
 import { isWallDrawTable } from '../tools/wallDrawTool.ts';
 import WallDrawPreview, { TypedBadge } from './WallDrawPreview.tsx';
 import { pointSizeAttrsForTable } from '../model/tableRegistry.ts';
+import { getElementModule } from '../elements/registry.ts';
 
 /** Length label positioned at the midpoint of a line, offset perpendicular to it */
 function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point; scale: number; projectUnit: ProjectUnit }) {
@@ -383,6 +384,10 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   }
 
   if (activeTool === 'draw_point') {
+    const Preview = tableName ? getElementModule(tableName)?.placementPreview : undefined;
+    if (cursor && Preview) {
+      return <Preview cursor={cursor} rotation={drawingState.rotation} attrs={drawingAttrs} scale={scale} />;
+    }
     if (cursor) {
       // Plan size attrs: size_x/size_y, foundation width/length.
       const [sxKey, syKey] = tableName ? pointSizeAttrsForTable(tableName) : ['size_x', 'size_y'];

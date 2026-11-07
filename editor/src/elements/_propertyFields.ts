@@ -43,6 +43,8 @@ export interface PropertyField {
   max?: number;
   step?: number;
   group: PropertyGroup;
+  /** See DrawingField.optionsFor. */
+  optionsFor?: DrawingField['optionsFor'];
 }
 
 // ─── Global property field definitions ───────────────────────────────────────
@@ -167,6 +169,7 @@ export function resolvePropertyFields(
         if (drawing.max !== undefined) resolved.max = drawing.max;
         if (drawing.step !== undefined) resolved.step = drawing.step;
         if (drawing.unit) resolved.unit = drawing.unit;
+        if (drawing.optionsFor) resolved.optionsFor = drawing.optionsFor;
       }
       fields.push(resolved);
     } else if (drawing) {
@@ -180,6 +183,7 @@ export function resolvePropertyFields(
         max: drawing.max,
         step: drawing.step,
         group: 'geometry',
+        optionsFor: drawing.optionsFor,
       });
     } else {
       fields.push({

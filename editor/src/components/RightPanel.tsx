@@ -56,7 +56,7 @@ export default function RightPanel({ selectedData, levels, offsetRight: _, reado
 // ─── Properties Content ──────────────────────────────────────────────────────
 
 function PropertiesContent({ selectedData, levels, readonly }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>; levels: Level[]; readonly?: boolean }) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const dispatch = useEditorDispatch();
   const state = useEditorState();
   const projectUnit = getProjectUnits(state);
@@ -105,6 +105,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     return mod.propertyFields.filter(f => !mixedTables || shared(f.key)).map(f => {
       if (f.key === 'top_level_id') return { ...f, options: levelOptions };
       if (f.key === 'system_type' && systemOptions.length > 0) return { ...f, options: systemOptions };
+      if (f.optionsFor) return { ...f, options: f.optionsFor(csv, i18n.language) };
       return f;
     });
   })();

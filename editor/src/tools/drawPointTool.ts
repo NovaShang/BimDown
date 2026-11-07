@@ -9,11 +9,20 @@ import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { STARTER_KEY_ATTR } from '../elements/equipment.tsx';
 import { getStarter, materializeStarter } from '../elements/equipment_starters.ts';
+import { getElementModule } from '../elements/registry.ts';
+
+/** A module's own place tool (e.g. library furniture), if it declares one. */
+function moduleTool(ctx: ToolContext): ToolHandler | undefined {
+  const target = ctx.getState().drawingTarget;
+  return target ? getElementModule(target.tableName)?.placeTool : undefined;
+}
 
 export const drawPointTool: ToolHandler = {
   cursor: 'crosshair',
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
+    const custom = moduleTool(ctx);
+    if (custom) return custom.onPointerDown?.(ctx, e);
     if (e.button !== 0) return;
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
@@ -88,6 +97,8 @@ export const drawPointTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
+    const custom = moduleTool(ctx);
+    if (custom) return custom.onPointerMove?.(ctx, e);
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
 
