@@ -6,6 +6,7 @@ import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
 import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
 import { MODIFY_TOOL_SHORTCUTS, enterModifyTool } from '../tools/wallModifyTools.ts';
+import { consumeRouteEnded, isRouteTool } from '../mep/routeTool.ts';
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
   hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
@@ -83,6 +84,8 @@ export function useCanvasKeyboard({
             globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
           } else if (stateRef.current.drawingState?.points.length) {
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+          } else if (consumeRouteEnded() && isRouteTool(stateRef.current)) {
+            // MEP run that ended by itself: this Esc ends the run, the tool stays (Esc again leaves).
           } else if (stateRef.current.activeTool.startsWith('draw_')) {
             globalDispatch({ type: 'SET_TOOL', tool: 'select' });
             globalDispatch({ type: 'SET_DRAWING_STATE', state: null });

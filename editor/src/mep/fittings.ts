@@ -292,7 +292,9 @@ function classify(nodeId: string, node: PointElement, center: V3, legs: FittingL
     const autoTap = table === 'duct'
       && ((br.sec.shape === 'round' && mainBig.sec.shape === 'rect') || brExt <= 0.5 * mainBig.planWidth);
     const tap = hint === 'tap' || (hint !== 'tee' && autoTap);
-    info.kind = tap ? 'tap' : 'tee';
+    // A branch joining the main at an angle (45° drainage branch) is a wye.
+    const angled = Math.abs(dot(br.dir, m1.dir)) > 0.3;
+    info.kind = tap ? 'tap' : angled ? 'wye' : 'tee';
     if (tap) {
       br.trim = clampTrim(br, mainExt / 2);
     } else {

@@ -16,6 +16,7 @@ import { parseFloorLayers } from '../model/parse.ts';
 import { persistDocument, persistGrids, persistLevels } from '../utils/persist.ts';
 import { memoryDataSource } from './memoryDataSource.ts';
 import type { Level } from '../types.ts';
+import { resetRouteMemory } from '../mep/routeTool.ts';
 
 /** Screen pixels per model meter in the fake viewport. */
 const PX = 100;
@@ -26,12 +27,13 @@ export interface Harness {
   /** Activate the placement tool for `table` (like clicking it in the toolbar). */
   pick(table: string, attrs?: Record<string, string>, variantId?: string): void;
   /** Click at model coordinates with the active placement tool. */
-  click(x: number, y: number, button?: number): void;
+  click(x: number, y: number, button?: number, mods?: { shiftKey?: boolean }): void;
   /** Leave the placement tool (Esc). */
   done(): void;
 }
 
 export function createHarness(levels: Level[] = [{ id: 'lv-1', number: '1', name: 'Level 1', elevation: 0 }]): Harness {
+  resetRouteMemory();
   let state: EditorState = { ...initialState, disabledSnapTypes: new Set() };
   const dispatch = (a: EditorAction) => { state = editorReducer(state, a); };
   dispatch({
@@ -62,9 +64,9 @@ export function createHarness(levels: Level[] = [{ id: 'lv-1', number: '1', name
       dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
       tool = getElementTool(table, 'place');
     },
-    click(x, y, button = 0) {
+    click(x, y, button = 0, mods = {}) {
       if (!tool) throw new Error('no tool picked');
-      const e = { clientX: x * PX, clientY: y * PX, button, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false,
+      const e = { clientX: x * PX, clientY: y * PX, button, shiftKey: !!mods.shiftKey, ctrlKey: false, metaKey: false, altKey: false,
         preventDefault() {}, stopPropagation() {} } as unknown as React.PointerEvent;
       tool.onPointerMove?.(ctx, e);
       tool.onPointerDown?.(ctx, e);

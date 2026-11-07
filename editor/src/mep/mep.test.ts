@@ -30,12 +30,14 @@ describe('continuous routing', () => {
     h.pick('duct', { start_z: '3.2', system_type: 'SA', size_x: '0.4', size_y: '0.25', shape: 'rect' });
     h.click(0, 0); h.click(6, 0); h.click(6, 4); // last click lands on the diffuser port
     const ducts = els(h.state, 'duct') as SpatialLineElement[];
-    // two horizontal runs + the drop into the diffuser neck (2.75)
-    expect(ducts.map(d => [d.startZ, d.endZ])).toEqual([[3.2, 3.2], [3.2, 3.2], [3.2, 2.75]]);
-    expect(ducts[2].attrs.to).toMatch(/^tm-\d+:inlet$/);
+    // two horizontal runs + the drop into the diffuser neck (2.75), its last
+    // stretch at the neck size (300×300) behind a transition
+    expect(ducts.map(d => [d.startZ, d.endZ])).toEqual([[3.2, 3.2], [3.2, 3.2], [3.2, 2.9374], [2.9374, 2.75]]);
+    expect(ducts[3].attrs.to).toMatch(/^tm-\d+:inlet$/);
+    expect([ducts[3].attrs.size_x, ducts[3].attrs.size_y]).toEqual(['0.3', '0.3']);
     expect(h.state.drawingState?.points ?? []).toHaveLength(0); // connecting ends the run
     const kinds = [...analyzeFittings(ctxOf(h.state)).byNode.values()].map(f => f.kind).sort();
-    expect(kinds).toEqual(['elbow', 'elbow']);
+    expect(kinds).toEqual(['elbow', 'elbow', 'reducer']);
     // one open end left at the start of the run
     expect(warnings(h.state).map(p => p.code)).toEqual(['open_end']);
   });
@@ -178,6 +180,10 @@ describe('flow and sizing', () => {
     const ducts = els(h.state, 'duct') as SpatialLineElement[];
     const first = ducts.find(d => (d.attrs.from ?? '').endsWith(':sa'))!;
     expect(flows.get(first.id)).toBe(200);
+    // the AHU is rated 1500 L/s for 200 L/s of diffusers: flagged until they agree
+    expect(warnings(h.state).map(p => p.code)).toEqual(['flow_balance']);
+    const ahu = els(h.state, 'equipment')[0];
+    h.dispatch({ type: 'UPDATE_ATTRS', id: ahu.id, attrs: { flow: '210' } });
     expect(warnings(h.state).map(p => p.code)).toEqual([]);
   });
 

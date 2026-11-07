@@ -38,6 +38,7 @@ import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseLayer } from '../model/parse.ts';
 import SectionMarks2D from '../views/SectionMarks2D.tsx';
+import { consumeRouteEnded, isRouteTool } from '../mep/routeTool.ts';
 
 /** Look up an element by selection ID, checking document first, then globalLayers. */
 function findCanonicalElement(
@@ -511,6 +512,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           if (isDrawingPolygon(stateRef.current) && finishPolygon(stateRef.current, globalDispatch)) return;
           if (stateRef.current.drawingState?.points.length) {
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+          } else if (consumeRouteEnded() && isRouteTool(stateRef.current)) {
+            // MEP run that ended by itself: keep the tool armed.
           } else {
             globalDispatch({ type: 'SET_TOOL', tool: 'select' });
             globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
