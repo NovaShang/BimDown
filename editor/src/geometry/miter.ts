@@ -202,6 +202,10 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
         let left = pick([intL1, intL2], tLeft);
         let right = pick([intR1, intR2], tRight);
         if (!left || !right) continue;
+        // A wall meeting another at a grazing angle (nearly along it) is no
+        // tee: its sides would only meet the main wall's faces far away.
+        const reach = MITER_LIMIT * (mainHw + tHw);
+        if (Math.hypot(left.x - tLeft.x, left.y - tLeft.y) > reach || Math.hypot(right.x - tRight.x, right.y - tRight.y) > reach) continue;
 
         // Stop a hair short of the main wall's far face. Ending exactly on it
         // makes the T-wall's end face coplanar with that (usually exterior)
@@ -272,6 +276,9 @@ function teeAtJunction(P: Pt, walls: JunctionWall[]): { stem: JunctionWall; stem
     const left = rayIntersect(ccwPt(P, stem), dir, face, along);
     const right = rayIntersect(cwPt(P, stem), dir, face, along);
     if (!left || !right) return null;
+    // A stem almost along the pair: no sensible tee corners
+    const reach = MITER_LIMIT * (hw + stem.halfWidth);
+    if (Math.hypot(left.x - P.x, left.y - P.y) > reach || Math.hypot(right.x - P.x, right.y - P.y) > reach) return null;
     return { stem, stemCorners: { left, right } };
   }
   return null;

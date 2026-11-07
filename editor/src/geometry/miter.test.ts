@@ -35,3 +35,17 @@ describe('three walls at one point, two of them collinear', () => {
     expect(ends('w-2:start')).toEqual([[9.9, 0.1], [10.1, 0.1]]);
   });
 });
+
+describe('walls meeting at a grazing angle', () => {
+  it('get no far-away tee corners (IFC imports: a partition ending on a nearly parallel wall)', () => {
+    const walls: WallSegment[] = [
+      { id: 'w-1', x1: 0, y1: 0, x2: 10, y2: 0, halfWidth: 0.05, fill: '#000' },
+      // ends on w-1's centre line, 0.03° off its direction
+      { id: 'w-2', x1: 5, y1: 0, x2: 11, y2: 0.003, halfWidth: 0.05, fill: '#000' },
+    ];
+    const r = computeCornerAdjustments(walls);
+    for (const adj of [...r.adjustments.values(), ...r.planAdjustments.values()]) {
+      for (const p of [adj.left, adj.right]) expect(Math.hypot(p.x - 5, p.y)).toBeLessThan(2);
+    }
+  });
+});
