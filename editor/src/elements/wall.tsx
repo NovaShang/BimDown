@@ -20,7 +20,7 @@ export const wallModule: ElementModule<WallFacts> = {
   csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness'],
   defaults: { base_offset: '0', thickness: '0.2', top_level_id: '', top_offset: '0', material: 'concrete' },
   drawingFields: [
-    { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.005 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
     BASE_OFFSET_FIELD,
   ],

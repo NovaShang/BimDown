@@ -59,7 +59,7 @@ export const doorModule: ElementModule<DoorFacts> = {
   drawingFields: [
     { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
     { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.5, step: 0.1 },
-    { key: 'operation', label: 'Type', type: 'select', options: OPERATION_OPTIONS },
+    { key: 'operation', label: 'Operation', type: 'select', options: OPERATION_OPTIONS },
     { key: 'hinge_position', label: 'Hinge', type: 'select', options: HINGE_OPTIONS },
     { key: 'swing_side', label: 'Swing', type: 'select', options: SWING_SIDE_OPTIONS },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },

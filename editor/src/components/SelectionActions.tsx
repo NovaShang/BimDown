@@ -1,8 +1,9 @@
 import { useTranslation } from 'react-i18next';
 import { useEditorDispatch, useCoreEditorState } from '../state/EditorContext.tsx';
-import { Move, Copy, Trash2, FlipHorizontal, FlipVertical, RotateCw } from 'lucide-react';
+import { Move, Copy, Trash2, FlipHorizontal, FlipVertical, RotateCw, ArrowLeftRight } from 'lucide-react';
 import { toElementId } from '../model/ids.ts';
 import { isHostedTable } from '../model/elements.ts';
+import { canFlipWalls, flipWalls } from '../state/typeEdits.ts';
 
 const btnClass = 'flex h-7 w-7 items-center justify-center rounded-md text-[var(--text-dim)] hover:text-[var(--text-bright)] hover:bg-[var(--bg-hover)] transition-colors';
 
@@ -20,6 +21,8 @@ export default function SelectionActions() {
   const isHosted = el ? isHostedTable(el.tableName) : false;
   const isDoor = el?.tableName === 'door';
   const isPoint = el?.geometry === 'point';
+  const selectedEls = doc ? [...selectedIds].map(id => doc.elements.get(toElementId(id))) : [];
+  const flippable = canFlipWalls(selectedEls);
 
   const enterRelocate = (mode: 'move' | 'copy') => {
     if (mode === 'move' && isHosted) {
@@ -85,6 +88,23 @@ export default function SelectionActions() {
             }}
           >
             <FlipVertical size={14} />
+          </button>
+        </>
+      )}
+
+      {/* Walls: flip the exterior side (layer order) */}
+      {flippable && doc && (
+        <>
+          <div className="mx-0.5 h-4 w-px bg-[var(--panel-border)]" />
+          <button className={btnClass} title={t('ctx.flipWall')} data-testid="flip-wall"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              const patches = flipWalls(doc.elements, [...selectedIds].map(toElementId));
+              if (patches.size > 0) dispatch({ type: 'APPLY_PATCH', description: 'Flip wall', patches });
+            }}
+          >
+            <ArrowLeftRight size={14} />
           </button>
         </>
       )}

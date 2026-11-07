@@ -14,6 +14,12 @@ import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
 import { disciplinesForMepLine } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import { cn } from '../lib/utils.ts';
+import { useState } from 'react';
+import { Pencil } from 'lucide-react';
+import { TypeSelect } from './TypeSelect.tsx';
+import EditTypeDialog from './EditTypeDialog.tsx';
+import { isTypedTable, typeParamKeys } from '../model/types/catalog.ts';
+import { drawingAttrsForType, rememberDrawingType } from '../model/types/drawingType.ts';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
@@ -21,6 +27,7 @@ export default function DrawingPropertiesBar() {
   const { t } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
 
   const target = state.drawingTarget;
   if (!target) return null;
@@ -35,12 +42,18 @@ export default function DrawingPropertiesBar() {
   const systemOptions = (state.project?.mepSystems ?? [])
     .filter(s => !acceptedDisciplines || acceptedDisciplines.includes(s.discipline))
     .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
-  const fields = getDrawingFields(target.tableName, levels).map(f =>
-    f.key === 'system_type' && systemOptions.length > 0
-      ? { ...f, options: systemOptions }
-      : f,
-  );
-  if (fields.length === 0) return null;
+  const typed = isTypedTable(target.tableName);
+  const drawingTypeId = state.drawingAttrs.type_id ?? '';
+  // With a type picked, its parameters come from the type (Edit Type changes them).
+  const typeKeys = new Set(drawingTypeId ? typeParamKeys(target.tableName) : []);
+  const fields = getDrawingFields(target.tableName, levels)
+    .filter(f => !typeKeys.has(f.key))
+    .map(f =>
+      f.key === 'system_type' && systemOptions.length > 0
+        ? { ...f, options: systemOptions }
+        : f,
+    );
+  if (fields.length === 0 && !typed) return null;
 
   const projectUnit = getProjectUnits(state);
   const projectUnitLabel = getUnitSuffix(projectUnit).trim();
@@ -51,6 +64,14 @@ export default function DrawingPropertiesBar() {
 
   const handleChange = (key: string, value: string) => {
     dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...attrs, [key]: value } });
+  };
+
+  const types = state.project?.types;
+  const pickType = (typeId: string, catalog = types) => {
+    rememberDrawingType(target.tableName, typeId);
+    // First use of a starter type: write the catalog so the new elements' type_id resolves.
+    if (typeId && catalog && !catalog.saved) dispatch({ type: 'SET_TYPES', types: { ...catalog, saved: true, fromDisk: false } });
+    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: drawingAttrsForType(target.tableName, attrs, typeId, catalog) });
   };
 
   // Vertical-pipe toggle: only for MEP topo-line tables (duct / pipe / conduit / cable_tray).
@@ -75,6 +96,29 @@ export default function DrawingPropertiesBar() {
         <Icon name={target.tableName} width={20} height={20} /> {style ? t(`display.${style.displayName}`) : target.tableName}
       </span>
       <Separator orientation="vertical" className="h-4" />
+      {typed && (
+        <div className="flex items-center gap-1" data-testid="drawing-type">
+          <label className="text-[10px] text-muted-foreground">{t('type.label')}</label>
+          <TypeSelect
+            instanceTable={target.tableName}
+            value={drawingTypeId}
+            onChange={id => pickType(id)}
+            size="sm"
+            triggerClassName={`${fieldInputClass} min-w-28 max-w-56 gap-1`}
+          />
+          <Button variant="ghost" size="icon-xs" className="size-[22px] text-muted-foreground"
+            title={t('type.edit')} aria-label={t('type.edit')} onClick={() => setTypeDialogOpen(true)}>
+            <Pencil className="size-3" />
+          </Button>
+          <EditTypeDialog
+            open={typeDialogOpen}
+            instanceTable={target.tableName}
+            typeId={drawingTypeId}
+            onClose={() => setTypeDialogOpen(false)}
+            onApplied={(id, catalog) => pickType(id, catalog)}
+          />
+        </div>
+      )}
       {fields.map(f => (
         <div key={f.key} className="flex items-center gap-1.5">
           <label className="text-[10px] text-muted-foreground">{t(`field.${f.label}`, f.label)}</label>
