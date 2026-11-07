@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
@@ -25,6 +26,8 @@ import { findType, isTypedTable, typeParamState, typeValues } from '../model/typ
 import QuantitiesSection from './QuantitiesSection.tsx';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
 import { ElementWarnings } from './WarningsPanel.tsx';
+import { numericFieldError } from '../geometry/modelChecks.ts';
+import { showNotice } from '../state/modifyUi.ts';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -294,6 +297,25 @@ function PropertyRow({
   // interpreted as the project unit per BimDown's store-as-displayed model.
   const renderedUnit = f.unit === 'm' ? getUnitSuffix(projectUnit).trim() : f.unit;
   const mixedLabel = t('prop.mixed', 'Mixed');
+  // Sign rules (thickness, widths… > 0, geometry/modelChecks.ts, as `bimdown
+  // validate`): a breaking value stays a local draft, shown in red, and is
+  // dropped when the field loses focus — it never reaches the model.
+  const [draft, setDraft] = useState<string | null>(null);
+  const draftRef = useRef<string | null>(null);
+  const draftError = draft !== null ? numericFieldError(f.key, draft) : null;
+  const setNumber = (v: string) => {
+    if (numericFieldError(f.key, v)) { draftRef.current = v; setDraft(v); return; }
+    draftRef.current = null;
+    setDraft(null);
+    onChange(f.key, v);
+  };
+  const dropDraft = () => {
+    if (draftRef.current === null) return;
+    const err = numericFieldError(f.key, draftRef.current);
+    if (err) showNotice(`field.error.${err}`, { field: label });
+    draftRef.current = null;
+    setDraft(null);
+  };
 
   return (
     <div className="-mx-1 flex items-center gap-2 rounded-md px-1 py-[3px] transition-colors hover:bg-foreground/[0.03]">
@@ -345,11 +367,11 @@ function PropertyRow({
             </SelectContent>
           </Select>
         ) : f.type === 'number' ? (
-          <>
+          <div className="contents" onBlur={dropDraft} title={draftError ? i18next.t(`field.error.${draftError}`, { field: label }) : undefined}>
             <NumberInput
-              className={FIELD_INPUT}
-              value={value}
-              onChange={v => onChange(f.key, v)}
+              className={cn(FIELD_INPUT, draftError && 'border-destructive text-destructive ring-1 ring-destructive/40')}
+              value={draft ?? value}
+              onChange={setNumber}
               placeholder={mixed ? mixedLabel : undefined}
               step={f.step}
               min={f.min}
@@ -357,7 +379,7 @@ function PropertyRow({
               parseImperial={f.unit === 'm' && (projectUnit === 'ft' || projectUnit === 'in') ? projectUnit : undefined}
             />
             <span className="w-3 shrink-0 select-none text-left text-[9px] text-muted-foreground/60">{renderedUnit ?? ''}</span>
-          </>
+          </div>
         ) : (
           <Input
             className={FIELD_INPUT}
