@@ -10,6 +10,7 @@ import { arcFromMidpoint, arcMidpoint, tessellateArc } from '../../geometry/arc.
 import { formatLength, getProjectUnits } from '../../utils/units.ts';
 import { supportsArcEdit } from '../../elements/registry.ts';
 import type { ProjectUnit } from '../../types.ts';
+import { snapshotReshape, type WallJoin } from '../../geometry/wallJoins.ts';
 
 function LengthLabel3D({ from, to, midY, projectUnit }: { from: Point; to: Point; midY: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
@@ -62,6 +63,8 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
   const stateRef = useRef(state);
   stateRef.current = state;
   const beforeRef = useRef<CanonicalElement | null>(null);
+  /** Joined walls / hosted doors the drag cascades to (see geometry/wallJoins.ts). */
+  const cascadeRef = useRef<{ joins: WallJoin[]; before: Map<string, CanonicalElement> }>({ joins: [], before: new Map() });
   const { gl, camera, raycaster } = useThree();
   const projectUnit = getProjectUnits(state);
 
@@ -108,6 +111,8 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
       if (controlsRef.current) controlsRef.current.enabled = false;
 
       beforeRef.current = stateRef.current.document?.elements.get(element.id) ?? null;
+      const live = stateRef.current.document?.elements;
+      cascadeRef.current = live ? snapshotReshape(live, element.id) : { joins: [], before: new Map() };
 
       const moveHandler = (me: PointerEvent) => {
         const pt = snapModelPoint(me.clientX, me.clientY);
@@ -121,13 +126,14 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
         resizeDraggingRef.current = false;
         if (controlsRef.current) controlsRef.current.enabled = true;
         if (beforeRef.current) {
-          const after = stateRef.current.document?.elements.get(element.id) ?? null;
-          dispatch({
-            type: 'COMMIT_PREVIEW',
-            description: 'Resize element',
-            before: new Map([[element.id, beforeRef.current]]),
-            after: new Map([[element.id, after]]),
-          });
+          const liveNow = stateRef.current.document?.elements;
+          const before = new Map<string, CanonicalElement | null>([[element.id, beforeRef.current]]);
+          const after = new Map<string, CanonicalElement | null>([[element.id, liveNow?.get(element.id) ?? null]]);
+          for (const [id, el] of cascadeRef.current.before) {
+            before.set(id, el);
+            after.set(id, liveNow?.get(id) ?? null);
+          }
+          dispatch({ type: 'COMMIT_PREVIEW', description: 'Resize element', before, after });
         }
         beforeRef.current = null;
       };
@@ -149,6 +155,8 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
       resizeDraggingRef.current = true;
       if (controlsRef.current) controlsRef.current.enabled = false;
       beforeRef.current = stateRef.current.document?.elements.get(element.id) ?? null;
+      const live = stateRef.current.document?.elements;
+      cascadeRef.current = live ? snapshotReshape(live, element.id) : { joins: [], before: new Map() };
 
       const moveHandler = (me: PointerEvent) => {
         const cur = stateRef.current.document?.elements.get(element.id);
@@ -163,7 +171,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
           if (wy == null) return;
           const z = Math.round((wy - elev) * 1000) / 1000;
           dispatch({
-            type: 'RESIZE_ELEMENT', id: element.id, preview: true,
+            type: 'RESIZE_ELEMENT', id: element.id, preview: true, wallJoins: cascadeRef.current.joins,
             changes: side === 'start'
               ? { startZ: z, attrs: { start_z: String(z) } }
               : { endZ: z, attrs: { end_z: String(z) } },
@@ -173,7 +181,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
           const pt = snapModelPoint(me.clientX, me.clientY);
           if (!pt) return;
           dispatch({
-            type: 'RESIZE_ELEMENT', id: element.id, preview: true,
+            type: 'RESIZE_ELEMENT', id: element.id, preview: true, wallJoins: cascadeRef.current.joins,
             changes: side === 'start' ? { start: { x: pt.x, y: pt.y } } : { end: { x: pt.x, y: pt.y } },
           });
         }
@@ -186,13 +194,14 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
         resizeDraggingRef.current = false;
         if (controlsRef.current) controlsRef.current.enabled = true;
         if (beforeRef.current) {
-          const after = stateRef.current.document?.elements.get(element.id) ?? null;
-          dispatch({
-            type: 'COMMIT_PREVIEW',
-            description: 'Resize element',
-            before: new Map([[element.id, beforeRef.current]]),
-            after: new Map([[element.id, after]]),
-          });
+          const liveNow = stateRef.current.document?.elements;
+          const before = new Map<string, CanonicalElement | null>([[element.id, beforeRef.current]]);
+          const after = new Map<string, CanonicalElement | null>([[element.id, liveNow?.get(element.id) ?? null]]);
+          for (const [id, el] of cascadeRef.current.before) {
+            before.set(id, el);
+            after.set(id, liveNow?.get(id) ?? null);
+          }
+          dispatch({ type: 'COMMIT_PREVIEW', description: 'Resize element', before, after });
         }
         beforeRef.current = null;
       };
@@ -245,7 +254,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
           <HandleSphere position={midPos} color={lineEl.arc ? '#f59e0b' : HANDLE_COLOR} size={HANDLE_SIZE * 0.75}
             onPointerDown={handleDrag((x, yy) => {
               const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y: yy });
-              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
+              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, wallJoins: cascadeRef.current.joins, changes: { arc: newArc } });
             })} />
         )}
         <LengthLabel3D from={element.start} to={element.end} midY={midY} projectUnit={projectUnit} />
@@ -321,7 +330,7 @@ export default function ResizeHandles3D({ element, elevation, screenToSvg, resiz
             onPointerDown={handleDrag((x, yy) => {
               const newVertices = [...element.vertices];
               newVertices[i] = { x, y: yy };
-              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { vertices: newVertices } });
+              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, wallJoins: cascadeRef.current.joins, changes: { vertices: newVertices } });
             })}
           />
         ))}
