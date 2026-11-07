@@ -52,3 +52,11 @@ fields:
       editor, the legacy migration script). Older hosted projects (bim-claw.com, formerly BimClaw) without it
       may hold level-relative Z written by earlier editor versions; see
       bimdown-editor/scripts/migrate-spatial-z.mjs.
+
+  - name: numbering
+    type: object
+    description: |
+      Auto-numbering (marks) per table: table name → prefix, e.g.
+      {"structure_column": "KZ", "beam": "KL", "foundation": "J", "equipment": "AHU-"}.
+      Tools that number elements write `number` = prefix + 1, 2, 3 … (doors and
+      rooms: level number + sequence). Missing tables use the tool defaults.

@@ -5,4 +5,7 @@ bases:
   - structural_section_profile
 type_of: [beam, brace]
 
-fields: []
+fields:
+  - name: material_grade
+    type: string
+    description: Strength grade the type's instances inherit, e.g. C40 (concrete), Q355 / S355 / A992 (steel), GL24h (timber).

@@ -1,0 +1,29 @@
+name: beam_system
+bases:
+  - polygon_element
+description: >
+  Beam system (Revit "Structural Beam System"): parallel infill beams across a
+  bay. The Polygon is the bay; beams run along `direction` (degrees CCW from
+  +X) at most `spacing` apart, excluding the bay edges, and carry
+  `beam_system_id` = this id. Tools regenerate the beams when the bay,
+  spacing, direction or type changes; edit a single beam by removing its
+  `beam_system_id` first.
+
+fields:
+  - name: spacing
+    type: float
+    required: true
+    description: Maximum distance between beams, measured across them.
+
+  - name: direction
+    type: float
+    description: Beam direction, degrees CCW from +X. Empty = along the bay's short side (beams span the short way).
+
+  - name: type_id
+    type: reference
+    reference: beam_type
+    description: beam_type of the generated beams.
+
+  - name: material_grade
+    type: string
+    description: Strength grade of the generated beams (empty = the type's).

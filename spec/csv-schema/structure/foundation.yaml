@@ -18,6 +18,11 @@ description: >
   Computed geometry fields are hydrated from GeoJSON at query time.
 
 fields:
+  - name: type_id
+    type: reference
+    reference: foundation_type
+    description: Optional foundation_type id. Empty type parameters (kind, width, length, thickness, material, material_grade) inherit the type's value; a set value overrides it for this element.
+
   - name: kind
     type: enum
     values:

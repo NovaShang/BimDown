@@ -1,0 +1,7 @@
+id,name,description,material,kind,width,length,thickness,material_grade
+fdt-pad-1500,Pad 1500 x 1500 x 500,Isolated pad footing,concrete,pad,1.5,1.5,0.5,C30
+fdt-pad-2000,Pad 2000 x 2000 x 600,Isolated pad footing,concrete,pad,2,2,0.6,C30
+fdt-pad-2500,Pad 2500 x 2500 x 700,Isolated pad footing,concrete,pad,2.5,2.5,0.7,C30
+fdt-strip-800,Strip 800 x 400,Continuous wall footing,concrete,strip,0.8,,0.4,C30
+fdt-pile-600,Bored pile 600 x 15 m,Bored cast-in-place pile,concrete,pile,0.6,,15,C35
+fdt-cap-1000,Pile cap 1000,Pile cap,concrete,pile_cap,,,1,C35
