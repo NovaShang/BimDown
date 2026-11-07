@@ -1,7 +1,8 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DuckDBConnection } from '@duckdb/node-api';
-import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES, SPATIAL_3D_TABLES } from '../schema/registry.js';
+import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES, SPATIAL_3D_TABLES, LAYERED_TYPE_TABLES } from '../schema/registry.js';
+import { typeParamFields } from '../catalog/index.js';
 import type { ResolvedTable } from '../schema/types.js';
 import { discoverLayout } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
@@ -67,6 +68,10 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
     hydrated.push({ name: tableName, table });
   }
 
+  // Pass 1b — element types: queries see effective values (an empty type
+  // parameter on a typed row reads as its type's value).
+  await applyTypeDefaults(conn, hydrated);
+
   // Pass 2 — inject geometry-derived fields and GeoJSON properties.
   const levelsReady = await tryCreateLevelsTemp(conn);
 
@@ -83,6 +88,53 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
   }
 
   return tables;
+}
+
+async function columnsOf(conn: DuckDBConnection, tableName: string): Promise<Set<string>> {
+  const r = await runQuery(
+    conn,
+    `SELECT column_name FROM information_schema.columns WHERE table_name = '${tableName}'`,
+  );
+  return new Set(r.rows.map((row) => String(row.column_name)));
+}
+
+/**
+ * Fill type parameters: a layered type's empty thickness becomes the sum of its
+ * type_layer rows, then every typed instance row's empty parameter takes its
+ * type's value. dehydrate() clears values equal to the type's again.
+ */
+async function applyTypeDefaults(
+  conn: DuckDBConnection,
+  hydrated: { name: string; table: ResolvedTable }[],
+): Promise<void> {
+  const present = new Set(hydrated.map((h) => h.name));
+  if (present.has('type_layer')) {
+    for (const t of LAYERED_TYPE_TABLES) {
+      if (!present.has(t) || !(await columnsOf(conn, t)).has('thickness')) continue;
+      await runQuery(
+        conn,
+        `UPDATE "${t}" AS t SET thickness = CAST(l.total AS VARCHAR)
+         FROM (SELECT type_id, ROUND(SUM(TRY_CAST(thickness AS DOUBLE)), 6) AS total FROM type_layer GROUP BY type_id) AS l
+         WHERE l.type_id = t.id AND (t.thickness IS NULL OR t.thickness = '')`,
+      );
+    }
+  }
+  for (const { name, table } of hydrated) {
+    const typeTable = table.typeTable;
+    if (!typeTable || !present.has(typeTable)) continue;
+    const instCols = await columnsOf(conn, name);
+    if (!instCols.has('type_id')) continue;
+    const typeCols = await columnsOf(conn, typeTable);
+    for (const f of typeParamFields(name)) {
+      if (!typeCols.has(f)) continue;
+      if (!instCols.has(f)) await runQuery(conn, `ALTER TABLE "${name}" ADD COLUMN "${f}" VARCHAR`);
+      await runQuery(
+        conn,
+        `UPDATE "${name}" AS i SET "${f}" = t."${f}" FROM "${typeTable}" AS t
+         WHERE i.type_id = t.id AND (i."${f}" IS NULL OR i."${f}" = '') AND t."${f}" <> ''`,
+      );
+    }
+  }
 }
 
 /**

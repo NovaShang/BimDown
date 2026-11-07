@@ -271,6 +271,12 @@ program
       if (resolved.hostType) {
         console.log(`  host_type: ${resolved.hostType}`);
       }
+      if (resolved.typeOf) {
+        console.log(`  type of: ${resolved.typeOf.join(', ')} (global/ only; instances inherit shared fields they leave empty)`);
+      }
+      if (resolved.typeTable) {
+        console.log(`  type_id → ${resolved.typeTable}: empty shared fields inherit the type's values`);
+      }
       console.log('  CSV fields:');
       for (const f of resolved.csvFields) {
         const tags: string[] = [];

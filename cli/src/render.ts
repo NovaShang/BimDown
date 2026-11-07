@@ -4,9 +4,10 @@
  * Output is an image (SVG/PNG), not storage.
  */
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { discoverLayout } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
+import { effectiveRows } from './catalog/index.js';
 import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 
@@ -255,8 +256,8 @@ function readThicknessFromCsv(dirPath: string, tableName: string): Map<string, n
   const out = new Map<string, number>();
   const csvPath = join(dirPath, `${tableName}.csv`);
   if (!existsSync(csvPath)) return out;
-  const csv = readCsv(csvPath);
-  for (const row of csv.rows) {
+  // Typed walls may leave thickness empty: take the type's (sum of its layers).
+  for (const row of effectiveRows(dirname(dirPath), tableName, readCsv(csvPath).rows)) {
     const t = parseFloat(row.thickness ?? '');
     if (!isNaN(t)) out.set(row.id, t);
   }
@@ -268,11 +269,11 @@ function readThicknessFromCsv(dirPath: string, tableName: string): Map<string, n
 function renderHostedFromCsv(levelPath: string, tableName: 'door' | 'window', wallById: Map<string, WallRef>): RenderedElement[] {
   const csvPath = join(levelPath, `${tableName}.csv`);
   if (!existsSync(csvPath)) return [];
-  const csv = readCsv(csvPath);
+  const rows = effectiveRows(dirname(levelPath), tableName, readCsv(csvPath).rows);
   const color = COLORS[tableName] ?? DEFAULT_COLOR;
   const out: RenderedElement[] = [];
 
-  for (const row of csv.rows) {
+  for (const row of rows) {
     const hostId = row.host_id;
     const pos = parseFloat(row.position ?? '');
     const width = parseFloat(row.width ?? '0');

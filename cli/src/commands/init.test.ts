@@ -32,5 +32,11 @@ describe('initProject', () => {
     // Marks spatial Z as absolute (spec §4.2) so the project is unambiguous
     const meta = JSON.parse(readFileSync(join(testDir, 'project_metadata.json'), 'utf-8'));
     expect(meta.spatial_z).toBe('absolute');
+
+    // Starter type catalog: walls with layers, doors, windows
+    expect(readFileSync(join(testDir, 'global', 'wall_type.csv'), 'utf-8')).toContain('wt-concrete-200');
+    expect(readFileSync(join(testDir, 'global', 'type_layer.csv'), 'utf-8')).toContain('wt-ext-concrete-eps');
+    expect(existsSync(join(testDir, 'global', 'door_type.csv'))).toBe(true);
+    expect(existsSync(join(testDir, 'global', 'window_type.csv'))).toBe(true);
   });
 });

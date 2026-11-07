@@ -1,5 +1,19 @@
-import { mkdirSync, writeFileSync, existsSync } from 'node:fs';
+import { mkdirSync, writeFileSync, existsSync, readdirSync, copyFileSync } from 'node:fs';
 import { join } from 'node:path';
+import { getSpecDir } from '../schema/registry.js';
+
+/** Copy the built-in starter type catalog (spec/starter-types/global/*.csv) into global/. */
+export function writeStarterTypes(globalDir: string): string[] {
+  const src = join(getSpecDir(), 'starter-types', 'global');
+  if (!existsSync(src)) return [];
+  const written: string[] = [];
+  for (const f of readdirSync(src)) {
+    if (!f.endsWith('.csv') || existsSync(join(globalDir, f))) continue;
+    copyFileSync(join(src, f), join(globalDir, f));
+    written.push(f);
+  }
+  return written.sort();
+}
 
 export function initProject(absDir: string) {
   if (!existsSync(absDir)) {
@@ -43,8 +57,11 @@ export function initProject(absDir: string) {
     writeFileSync(gridCsvPath, gridContent, 'utf-8');
   }
 
+  const types = writeStarterTypes(globalDir);
+
   console.log(`Initialized empty BimDown project at ${absDir}`);
   console.log('Created:');
   console.log('  - global/level.csv (lv-1)');
   console.log('  - global/grid.csv (A, 1)');
+  if (types.length > 0) console.log(`  - starter element types: ${types.map((f) => `global/${f}`).join(', ')}`);
 }
