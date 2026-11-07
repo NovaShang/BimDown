@@ -23,6 +23,7 @@ import EditTypeDialog from './EditTypeDialog.tsx';
 import { isTypedTable, typeParamKeys } from '../model/types/catalog.ts';
 import { drawingAttrsForType, rememberDrawingType } from '../model/types/drawingType.ts';
 import { TagAllButton } from './AnnotationTools.tsx';
+import { StairDrawHint } from '../elements/StairPropertyPanel.tsx';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
@@ -198,6 +199,7 @@ export default function DrawingPropertiesBar() {
         </>
       )}
       {target.tableName === 'tag' && <TagAllButton />}
+      {target.tableName === 'stair' && <StairDrawHint />}
       <Separator orientation="vertical" className="h-4" />
       <Button
         variant="ghost"

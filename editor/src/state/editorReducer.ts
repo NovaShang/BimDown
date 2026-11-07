@@ -25,6 +25,7 @@ import { withDefaultDrawingType } from '../model/types/drawingType.ts';
 import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
 import { followColumnMoves } from '../model/framingCascade.ts';
 import { initialViewsState } from '../views/viewTypes.ts';
+import { applyStairConsistency, stairsTouchedBy } from '../model/stairElements.ts';
 import { isViewsAction, viewsReducer } from '../views/viewsReducer.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
@@ -48,6 +49,14 @@ function saveDisabledSnapTypes(types: Set<SnapType>): void {
 }
 
 /** Add all non-hidden layer keys from every floor to a visibleLayers set. */
+/** Door / window / opening: hosted children that slide along their host line. */
+function isLineHostedChild(tableName: string): boolean {
+  return getElementModule(tableName)?.archetype === 'hosted';
+}
+
+/** Attrs whose edit re-applies the stair riser rule. */
+const STAIR_Z_KEYS = new Set(['step_count', 'base_offset', 'top_level_id', 'top_offset', 'start_z', 'end_z']);
+
 function addAllFloorLayers(visibleLayers: Set<string>, floors: Map<string, import('../types.ts').FloorData>): void {
   for (const [, f] of floors) {
     for (const l of f.layers) {
@@ -566,6 +575,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         if (
           el.hostId && !movedSet.has(el.hostId)
           && (el.geometry === 'line' || el.geometry === 'spatial_line')
+          && isLineHostedChild(el.tableName)
         ) {
           const host = next.get(el.hostId) ?? state.document.elements.get(el.hostId);
           if (host && (host.geometry === 'line' || host.geometry === 'spatial_line')) {
@@ -801,6 +811,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
       if (before.size === 0) return state;
+      for (const id of applyStairConsistency(next, stairsTouchedBy(before.values()), state.project?.levels ?? [], state.document.levelId)) {
+        if (!before.has(id)) before.set(id, state.document.elements.get(id) ?? null);
+        after.set(id, next.get(id) ?? null);
+      }
       // GC passive mep_nodes that lost their last MEP-curve reference when
       // pipes / ducts were deleted above.
       const gced = cleanupOrphanMepNodes(next, before, after);
@@ -954,6 +968,14 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
 
+      // Stairs: runs share one riser, landings follow the runs (spec stair.yaml).
+      if (Object.keys(action.attrs).some(k => STAIR_Z_KEYS.has(k))) {
+        for (const id of applyStairConsistency(next, stairsTouchedBy([updated]), state.project?.levels ?? [], state.document.levelId)) {
+          if (!before.has(id)) before.set(id, state.document.elements.get(id) ?? null);
+          after.set(id, next.get(id) ?? null);
+        }
+      }
+
       // Auto-migrate to globalLayers when top_level_id skips levels
       if ('top_level_id' in action.attrs && isVerticalSpanTable(updated.tableName) && state.project) {
         const migrated = maybeMigrateToGlobal(updated, state);
@@ -976,7 +998,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         document: { ...state.document, elements: next },
         history: pushCommand(state.history, createCommand('Update properties', before, after)),
         documentVersion: state.documentVersion + 1,
-        lastMutation: { version: state.documentVersion + 1, keys: [`${updated.discipline}/${updated.tableName}`] }
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) }
       };
     }
 
@@ -1028,6 +1050,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         el.hostId
         && (resized.geometry === 'line' || resized.geometry === 'spatial_line')
         && ('start' in action.changes || 'end' in action.changes)
+        && isLineHostedChild(el.tableName)
       ) {
         const host = state.document.elements.get(el.hostId);
         if (host && (host.geometry === 'line' || host.geometry === 'spatial_line')) {
@@ -1049,7 +1072,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
       // Re-resolve hosted elements when their host wall is resized: each keeps
       // its distance from the end that stayed put.
-      if (resized.geometry === 'line' || resized.geometry === 'spatial_line') {
+      if ((resized.geometry === 'line' || resized.geometry === 'spatial_line') && el.tableName !== 'stair') {
         rehostChildren(next, el as LineElement, resized as LineElement);
       }
       // Wall joins: corner neighbours follow a dragged end, tees stay on the body.
