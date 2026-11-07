@@ -147,7 +147,15 @@ export function resolveTopology(dir: string): void {
   for (const d of allDirs) {
     if (!existsSync(d.path)) continue;
     const present = listFiles(d.path);
-    for (const f of present) if (f.endsWith('.csv')) for (const r of readCsv(join(d.path, f)).rows) if (r.id) usedIds.add(r.id);
+    // New ids avoid every id and every host a from / to names (a ref to a node
+    // on another level must not be captured by a new node here).
+    for (const f of present) {
+      if (!f.endsWith('.csv')) continue;
+      for (const r of readCsv(join(d.path, f)).rows) {
+        if (r.id) usedIds.add(r.id);
+        for (const ref of [r.from, r.to]) { const h = (ref ?? '').split(':')[0]; if (h) usedIds.add(h); }
+      }
+    }
     for (const table of CURVE_TABLES) {
       if (!present.includes(`${table}.csv`) || !present.includes(`${GEOJSON_FILE_NAMES[table]}.geojson`)) continue;
       const tf = openTable(d.name, table);
