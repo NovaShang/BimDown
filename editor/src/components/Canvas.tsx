@@ -11,6 +11,7 @@ import { useCanvasTransform } from '../hooks/useCanvasTransform.ts';
 import { useCanvasKeyboard } from '../hooks/useCanvasKeyboard.ts';
 import SVGLayers from './SVGLayers.tsx';
 import SelectionOverlay from './SelectionOverlay.tsx';
+import WallFlipArrows from './WallFlipArrows.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
 import ModifyOverlay from './ModifyOverlay.tsx';
@@ -27,7 +28,8 @@ import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
 import { SVGGeometryProvider } from '../adapters/svg/context.tsx';
 import { LayerHatchDefs } from '../elements/_layerHatch.tsx';
-import { getProjectUnits } from '../utils/units.ts';
+import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
+import { applyPlanDetail } from './planDetail.ts';
 import { getContentBounds } from '../state/selectors.ts';
 import UnderlayLayer from '../underlay/UnderlayLayer.tsx';
 import UnderlayToolOverlay from '../underlay/UnderlayToolOverlay.tsx';
@@ -250,6 +252,16 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     findElementId,
     setSnap: setActiveSnap,
   }), [dispatch, screenToSvg, findElementId, transformRef]);
+
+  // Drafting detail and pen widths follow the zoom (planDetail.ts)
+  const upm = unitsPerMetreOf(getProjectUnits(state));
+  useEffect(() => {
+    const apply = () => {
+      if (svgRef.current) applyPlanDetail(svgRef.current, transformRef.current.scale * uiScaleRef.current * 15, upm);
+    };
+    apply();
+    return subscribeTransform(apply);
+  }, [subscribeTransform, transformRef, upm, viewBox]);
 
   // Zoom to fit from the ZF shortcut
   useEffect(() => {
@@ -554,6 +566,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
 
         {/* Lightweight overlays — only re-render when scale or selection changes */}
         <SelectionOverlay document={state.document} project={state.project} selectedIds={selectedIds} scale={scale} />
+        {!state.readonly && activeTool === 'select' && <WallFlipArrows document={state.document} selectedIds={selectedIds} scale={scale} />}
 
         {!state.readonly && (activeTool === 'select' || activeTool === 'orbit') && (() => {
           const handles = [];

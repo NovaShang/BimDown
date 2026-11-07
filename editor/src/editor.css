@@ -31,6 +31,16 @@
   opacity: 0.12;
 }
 
+/* ─── Plan drafting by zoom (components/planDetail.ts) ─── */
+.canvas-svg .pen-cut { stroke-width: calc(var(--pen-cut, 0.03) * 1px); }
+.canvas-svg .pen-med { stroke-width: calc(var(--pen-med, 0.02) * 1px); }
+.canvas-svg .pen-thin { stroke-width: calc(var(--pen-thin, 0.012) * 1px); }
+.canvas-svg .pen-hair { stroke-width: calc(var(--pen-hair, 0.008) * 1px); }
+.canvas-svg .plan-fine { display: none; }
+.canvas-svg[data-detail="fine"] .plan-fine { display: inline; }
+.canvas-svg[data-detail="fine"] .plan-not-fine { display: none; }
+.canvas-svg[data-detail="coarse"] .plan-not-coarse { display: none; }
+
 /* ─── Plan view range: elements above the cut plane (overhead) ─── */
 .vr-overhead {
   opacity: 0.7;

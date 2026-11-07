@@ -2,7 +2,8 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
-import { getBlockSvg } from './_blockLoader.ts';
+import { windowPlan2D } from './_openingPlan.tsx';
+import { hostThicknessOf } from './door.tsx';
 import { windowMesh3D } from './_opening3D.tsx';
 import { SILL_HEIGHT_FIELD, WINDOW_OPERATION_OPTIONS } from './_options.ts';
 
@@ -25,6 +26,8 @@ export interface WindowFacts {
   length: number;
   angleDeg: number;
   strokeWidth: number;
+  /** Host wall thickness (plan drawing). */
+  hostThickness: number;
   height: number;
   baseY: number;
   width: number;
@@ -79,6 +82,7 @@ export const windowModule: ElementModule<WindowFacts> = {
       length: len,
       angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
       strokeWidth: w.strokeWidth,
+      hostThickness: hostThicknessOf(w, ctx, w.strokeWidth || 0.2),
       height,
       baseY: ctx.levelElevation + baseOffset,
       width: parseFloat(w.attrs.width || '1.2') || 1.2,
@@ -88,15 +92,11 @@ export const windowModule: ElementModule<WindowFacts> = {
     };
   },
 
-  draw2D(facts): ReactNode {
-    const svg = getBlockSvg(facts.blockName) ?? getBlockSvg('window_fixed');
-    if (!svg) return null;
-    const hw = facts.strokeWidth / 2;
-    const transform =
-      `translate(${facts.start.x},${facts.start.y}) rotate(${facts.angleDeg}) ` +
-      `translate(0,${-hw}) scale(${facts.length},${facts.strokeWidth})`;
+  draw2D(facts, drawCtx): ReactNode {
     return (
-      <g data-id={facts.id} transform={transform} dangerouslySetInnerHTML={{ __html: svg }} />
+      <g data-id={facts.id}>
+        {windowPlan2D({ ...facts, thickness: facts.hostThickness }, drawCtx.selected)}
+      </g>
     );
   },
 
