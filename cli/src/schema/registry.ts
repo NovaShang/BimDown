@@ -21,6 +21,8 @@ export const ID_PREFIXES: Record<string, string> = {
   door_type: 'dt', window_type: 'wnt', curtain_wall_type: 'cwt',
   column_type: 'colt', beam_type: 'bmt',
   type_layer: 'tl',
+  // Annotations
+  dimension: 'dm', text_note: 'tx', tag: 'tg',
 };
 
 /** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
@@ -32,6 +34,9 @@ export const TYPE_TABLES = new Set([
 
 /** Type tables whose build-up is a stack of type_layer rows. */
 export const LAYERED_TYPE_TABLES = new Set(['wall_type', 'slab_type', 'roof_type', 'ceiling_type']);
+
+// Annotation tables: CSV-only plan annotations, allowed in level directories only.
+export const ANNOTATION_TABLES = new Set(['dimension', 'text_note', 'tag']);
 
 // Tables whose CSV lives only in global/ (not per-level)
 export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', ...TYPE_TABLES, 'type_layer']);
@@ -52,6 +57,7 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 const TABLES_WITHOUT_GEOMETRY = new Set([
   'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector',
   ...TYPE_TABLES, 'type_layer',
+  ...ANNOTATION_TABLES,
 ]);
 
 // GeoJSON file name mapping: table name -> geojson file name (without extension)

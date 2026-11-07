@@ -10,6 +10,8 @@ import { readCsv } from './utils/csv.js';
 import { effectiveRows } from './catalog/index.js';
 import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
+import { renderAnnotations } from './annotations.js';
+import { projectUnits } from './utils/units.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -162,6 +164,12 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 
   // Grids frame the view only when there is model content; drawn under it.
   if (elements.length > 0) elements.unshift(...gridSvg);
+
+  // Dimensions, text notes and tags, drawn on top of everything
+  const annotations = renderAnnotations(levelDir.path, layout.globalDir, projectUnits(projectDir));
+  if (annotations.bounds) {
+    elements.push({ tableName: 'annotation', svg: annotations.parts.join('\n'), bounds: annotations.bounds });
+  }
 
   for (const e of elements) {
     minX = Math.min(minX, e.bounds.minX);
@@ -479,6 +487,9 @@ function renderSpaces(levelPath: string): RenderedElement[] {
 
   const nameMap = new Map<string, string>();
   for (const row of csv.rows) nameMap.set(row.id, row.name ?? row.id ?? '');
+  // A tagged room is labelled by its tag (annotations), not the plain name
+  const tagPath = join(levelPath, 'tag.csv');
+  if (existsSync(tagPath)) for (const t of readCsv(tagPath).rows) if (t.host_id) nameMap.set(t.host_id, '');
 
   const geomPath = join(levelPath, 'space.geojson');
   if (existsSync(geomPath)) {
@@ -499,7 +510,8 @@ function renderSpaces(levelPath: string): RenderedElement[] {
         }
         cx /= ring.length; cy /= ring.length;
         const name = nameMap.get(id) ?? id;
-        const svg = `    <polygon id="${id}" points="${pts}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />\n    <text x="${fmt(cx)}" y="${fmt(cy)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * cy)})">${escapeXml(name)}</text>`;
+        const label = name ? `\n    <text x="${fmt(cx)}" y="${fmt(cy)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * cy)})">${escapeXml(name)}</text>` : '';
+        const svg = `    <polygon id="${id}" points="${pts}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />${label}`;
         out.push({ tableName: 'space', svg, bounds: { minX, minY, maxX, maxY } });
       }
       if (out.length > 0) return out;

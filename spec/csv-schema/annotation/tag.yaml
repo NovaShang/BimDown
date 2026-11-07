@@ -1,0 +1,44 @@
+name: tag
+description: >
+  Label of one element on a level plan (CSV only, level directories only):
+  door/window marks, room name + number + area, element number/type/name.
+  The text is read from the host element, so it never goes stale. A room
+  with a tag shows the tag instead of its plain label.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: host_id
+    type: reference
+    reference: element
+    required: true
+    description: Tagged element (on the same level or in global/).
+
+  - name: x
+    type: float
+    description: >
+      Tag centre X. Empty x and y = default spot at the host (room seed, beside
+      a door/window, element centre) that follows it. Set = pinned; a leader
+      line is drawn when the tag is away from the host.
+
+  - name: y
+    type: float
+    description: Tag centre Y (see x).
+
+  - name: content
+    type: enum
+    default: auto
+    description: >
+      What the tag shows. auto = rooms: name, number and area; others: number
+      (doors/windows fall back to size, others to name). type = the host's type
+      name (else size); size = width×height (doors/windows), thickness (walls)
+      or section size; area = room area.
+    values:
+      - auto
+      - number
+      - name
+      - type
+      - size
+      - area

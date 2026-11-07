@@ -1,0 +1,65 @@
+name: dimension
+description: >
+  Linear dimension on a level plan (CSV only, level directories only). Measures
+  the distance between two points along a direction and draws the dimension
+  line `offset` away from them. Each end may reference an element
+  (`start_ref` / `end_ref`) so the dimension follows it when it moves; the
+  stored coordinates are then the last resolved points (and the fallback when
+  the reference is empty). Chain dimensions are several rows sharing one
+  direction and offset.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: start_x
+    type: float
+    required: true
+    description: Measured start point X.
+
+  - name: start_y
+    type: float
+    required: true
+    description: Measured start point Y.
+
+  - name: end_x
+    type: float
+    required: true
+    description: Measured end point X.
+
+  - name: end_y
+    type: float
+    required: true
+    description: Measured end point Y.
+
+  - name: start_ref
+    type: string
+    description: >
+      Element the start point sticks to. "<id>" = the element's location line
+      (wall/grid/beam centre line: the stored point projected onto it) or its
+      centre (columns, equipment, rooms, doors); "<id>:start" / "<id>:end" =
+      line end points (door/window: the opening edges); "<id>:left" /
+      "<id>:right" = wall face left/right of its start→end direction;
+      "<id>:center" = centre. Empty = fixed point.
+
+  - name: end_ref
+    type: string
+    description: Element the end point sticks to (same syntax as start_ref).
+
+  - name: direction
+    type: float
+    description: >
+      Measurement direction in degrees CCW from +X (0 = horizontal, 90 =
+      vertical). Empty = aligned with start→end.
+
+  - name: offset
+    type: float
+    default: 0
+    description: >
+      Distance from the start point to the dimension line along the left
+      normal of the measurement direction (negative = right side).
+
+  - name: text
+    type: string
+    description: Text shown instead of the measured value (e.g. "EQ"). Empty = the value.

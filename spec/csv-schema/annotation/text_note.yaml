@@ -1,0 +1,32 @@
+name: text_note
+description: Free text on a level plan (CSV only, level directories only).
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: x
+    type: float
+    required: true
+    description: Insertion point X (centre of the text).
+
+  - name: y
+    type: float
+    required: true
+    description: Insertion point Y (centre of the text).
+
+  - name: text
+    type: string
+    required: true
+    description: Text content. A literal "\n" starts a new line.
+
+  - name: size
+    type: float
+    default: 0.25
+    description: Text height in project units.
+
+  - name: rotation
+    type: float
+    default: 0
+    description: Rotation in degrees CCW.

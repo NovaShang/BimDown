@@ -12,6 +12,7 @@ import { validateRanges } from './ranges.js';
 import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
 import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.js';
+import { validateAnnotations } from './annotations.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -96,6 +97,11 @@ export function validate(dir: string): string[] {
 
   // 7b. Element types: layers, thermal values, type_id targets, enum values supplied by types
   issues.push(...validateTypes(csvEntries, catalog, idRegistry));
+
+  // 7c. Annotation tables: numbers, dimension references, same-level hosts
+  for (const entry of csvEntries) {
+    issues.push(...validateAnnotations(entry.path, entry.tableName, entry.data, idRegistry));
+  }
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);
