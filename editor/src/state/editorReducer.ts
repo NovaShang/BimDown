@@ -25,6 +25,7 @@ import { EMPTY_CATALOG, reresolveTypeAttrs } from '../model/types/catalog.ts';
 import { withDefaultDrawingType } from '../model/types/drawingType.ts';
 import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
 import { followColumnMoves } from '../model/framingCascade.ts';
+import { followColumnMovesAbove } from '../model/framingLevels.ts';
 import { initialViewsState } from '../views/viewTypes.ts';
 import { applyStairConsistency, stairsTouchedBy } from '../model/stairElements.ts';
 import { isViewsAction, viewsReducer } from '../views/viewsReducer.ts';
@@ -743,6 +744,9 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
         before.set(id, pre ?? null);
         after.set(id, post ?? null);
       }
+      // Beams on the level above frame into the moved columns' heads: they follow too (one undo step).
+      const above = state.project ? followColumnMovesAbove(state.project, state.document.levelId, state.document.elements, allIds, dx, dy) : new Map();
+      if (above.size > 0) return pushMultiLevel(state, 'Move elements', new Map([[state.document.levelId, after], ...above]));
       return {
         ...state,
         document: { ...state.document, elements: next },

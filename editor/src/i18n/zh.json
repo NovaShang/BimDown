@@ -1085,5 +1085,14 @@
   "schedule.col.typeName": "类型",
   "schedule.col.grade": "强度等级",
   "schedule.col.weight": "重量",
-  "schedule.col.depthLength": "厚度 / 桩长"
+  "schedule.col.depthLength": "厚度 / 桩长",
+  "fdn.padsTitle": "柱下布置基础",
+  "fdn.pilesTitle": "承台内布桩",
+  "fdn.columnsSelected": "{{count}} 根柱",
+  "fdn.capSelected": "{{count}} 个承台",
+  "fdn.custom": "自定义尺寸",
+  "fdn.count": "桩数",
+  "fdn.spacing": "桩距",
+  "fdn.padsHint": "基础顶在柱底；已有基础的柱跳过。",
+  "fdn.pilesHint": "居中于承台、沿长边排布；替换承台内已有的桩。"
 }

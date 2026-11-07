@@ -1085,5 +1085,14 @@
   "schedule.col.typeName": "Type",
   "schedule.col.grade": "Grade",
   "schedule.col.weight": "Weight",
-  "schedule.col.depthLength": "Depth / pile length"
+  "schedule.col.depthLength": "Depth / pile length",
+  "fdn.padsTitle": "Foundations under columns",
+  "fdn.pilesTitle": "Piles in pile cap",
+  "fdn.columnsSelected": "{{count}} columns",
+  "fdn.capSelected": "{{count}} pile cap",
+  "fdn.custom": "Custom size",
+  "fdn.count": "Piles",
+  "fdn.spacing": "Spacing",
+  "fdn.padsHint": "Pad top at each column base; columns already on a footing are skipped.",
+  "fdn.pilesHint": "Centred in the cap, along its longest side; piles already in it are replaced."
 }

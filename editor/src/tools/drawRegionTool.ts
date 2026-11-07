@@ -19,6 +19,7 @@ import {
   type Segment,
 } from '../model/structuralLayout.ts';
 import { COLUMN_TABLES } from '../elements/_framing.ts';
+import { columnsToppingAt } from '../model/framingLevels.ts';
 
 import { BEAM_SPACING_KEY, BEAM_SPAN_KEY } from '../model/structuralLayout.ts';
 export { BEAM_SPACING_KEY, BEAM_SPAN_KEY };
@@ -97,6 +98,20 @@ function existingColumnPoints(state: ToolStateSnapshot): Point[] {
   return out;
 }
 
+/**
+ * Columns a level's beams frame into: its own, plus the lower-level / global
+ * columns whose top is this level (a roof is framed on the columns below).
+ */
+export function framingColumnPoints(state: ToolStateSnapshot): Point[] {
+  const out = existingColumnPoints(state);
+  const levelId = state.document?.levelId;
+  if (!state.project || !levelId) return out;
+  for (const c of columnsToppingAt(state.project, levelId)) {
+    if (!out.some(q => Math.hypot(q.x - c.position.x, q.y - c.position.y) < 0.05)) out.push(c.position);
+  }
+  return out;
+}
+
 function existingBeamSegments(state: ToolStateSnapshot): Segment[] {
   const out: Segment[] = [];
   for (const el of state.document?.elements.values() ?? []) {
@@ -140,7 +155,7 @@ export function beamsBetweenColumnsIn(state: ToolStateSnapshot, a: Point, b: Poi
     lo = { x: Math.min(...xs), y: Math.min(...ys) };
     hi = { x: Math.max(...xs), y: Math.max(...ys) };
   }
-  const cols = existingColumnPoints(state).filter(p => inRect(p, lo, hi, 0.05));
+  const cols = framingColumnPoints(state).filter(p => inRect(p, lo, hi, 0.05));
   const segs = beamsBetweenColumns(cols, gridDirections(state.grids), existingBeamSegments(state));
   return beamsAlong(state, segs, state.drawingTarget?.variantId);
 }

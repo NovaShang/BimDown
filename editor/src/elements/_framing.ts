@@ -119,6 +119,67 @@ export function trimAtColumns(start: Point, end: Point, columns: ColumnFootprint
   return [t0, t1];
 }
 
+/** A beam's plan centre line and half width, for trimming the beams framing into it. */
+export interface BeamSegment {
+  id: string;
+  start: Point;
+  end: Point;
+  /** Half the plan width of the section. */
+  hw: number;
+  /** Mean top z (level-relative): beams at another height do not trim. */
+  z: number;
+  /** Section depth. */
+  depth: number;
+}
+
+/** All beams of the geometry context as segments (memoized per render pass). */
+export function beamSegments(ctx: GeometryContext): BeamSegment[] {
+  return ctx.memo('framing:beamSegments', () => {
+    const out: BeamSegment[] = [];
+    for (const el of ctx.elementsByTable('beam')) {
+      if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
+      const section = resolveSection(el.attrs.shape || 'rect', el.attrs);
+      const bb = section.family.bbox(section.params);
+      const z = el.geometry === 'spatial_line' ? (el.startZ + el.endZ) / 2 : parseFloat(el.attrs.base_offset || '0') || 0;
+      out.push({ id: el.id, start: el.start, end: el.end, hw: bb.w / 2, z, depth: bb.d });
+    }
+    return out;
+  });
+}
+
+/**
+ * Parameters [t0, t1] of a secondary beam trimmed at the faces of the
+ * primary beams it frames into: an end lying on another beam's centre line,
+ * inside that beam's span (not at its ends), stops at its side face, as
+ * Revit joins infill beams to girders. Beams at another height are ignored.
+ */
+export function trimAtBeams(id: string, start: Point, end: Point, z: number, beams: BeamSegment[]): [number, number] {
+  const dx = end.x - start.x, dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-6) return [0, 1];
+  const ux = dx / len, uy = dy / len;
+  let t0 = 0, t1 = 1;
+  for (const b of beams) {
+    if (b.id === id || Math.abs(b.z - z) > Math.max(b.depth, 0.05)) continue;
+    const bx = b.end.x - b.start.x, by = b.end.y - b.start.y;
+    const bl = Math.hypot(bx, by);
+    if (bl < 1e-6) continue;
+    const vx = bx / bl, vy = by / bl;
+    const sin = Math.abs(ux * vy - uy * vx);
+    if (sin < 0.2) continue; // (nearly) parallel: a continuation, not a join
+    for (const [p, atStart] of [[start, true], [end, false]] as const) {
+      const wx = p.x - b.start.x, wy = p.y - b.start.y;
+      const along = wx * vx + wy * vy;
+      const off = Math.abs(wx * vy - wy * vx);
+      // On the centre line (within the half width) and strictly inside the span
+      if (off > b.hw + 0.01 || along <= b.hw + 0.01 || along >= bl - b.hw - 0.01) continue;
+      const cut = (b.hw / sin) / len;
+      if (atStart) t0 = Math.max(t0, cut); else t1 = Math.min(t1, 1 - cut);
+    }
+  }
+  return t1 - t0 < 1e-3 ? [0, 1] : [t0, t1];
+}
+
 /** Id of the column whose footprint holds `p` (centre within tolerance first). */
 export function columnAt(p: Point, columns: ColumnFootprint[], tol = 0.01): ColumnFootprint | null {
   let best: ColumnFootprint | null = null;

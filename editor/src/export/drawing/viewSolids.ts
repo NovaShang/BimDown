@@ -29,7 +29,7 @@ import { wallSolidGeometry, type LineWallFacts } from '../../elements/_lineWallS
 import type { SlabFacts } from '../../elements/_slabShared.tsx';
 import type { RoofFacts } from '../../elements/roof.tsx';
 import type { ColumnFacts } from '../../elements/column.tsx';
-import type { BeamFacts } from '../../elements/beam.tsx';
+import { memberBodyEnds, type BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { StairFacts } from '../../elements/stair.tsx';
 import type { StairRunFacts } from '../../elements/stair_run.tsx';
@@ -440,8 +440,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     }
     case 'beam': case 'brace': {
       const f = facts as BeamFacts;
-      const start = v3(f.start.x, f.start.y, f.baseY + f.startZ);
-      const end = v3(f.end.x, f.end.y, f.baseY + f.endZ);
+      const b = memberBodyEnds(f);
+      const start = v3(b.start.x, b.start.y, f.baseY + b.startZ);
+      const end = v3(b.end.x, b.end.y, f.baseY + b.endZ);
       const profile = hangFromTop(sectionProfile(f.section.family.shape3D(f.section.params), f.section.family.id));
       push(solidsPart(id, t, 'beam', [sweep(start, end, profile)]));
       break;

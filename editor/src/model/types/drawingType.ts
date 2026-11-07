@@ -32,10 +32,13 @@ export function withDefaultDrawingType(
   attrs: Record<string, string>,
   catalog: TypeCatalog | undefined,
 ): Record<string, string> {
-  const candidates = typesForInstanceTable(catalog, instanceTable);
+  // A tool variant that fixes the kind (pad / pile / strip foundation) starts with a type of that kind.
+  const fits = (t: { values: Record<string, string> }) => !attrs.kind || !t.values.kind || t.values.kind === attrs.kind;
+  const candidates = typesForInstanceTable(catalog, instanceTable).filter(fits);
   if (candidates.length === 0) return attrs;
   const remembered = lastUsed.get(instanceTable);
   if (remembered === '') return attrs; // the user chose "no type" for this tool
-  const t = (remembered && findType(catalog, remembered)) || (catalog?.saved ? candidates[0] : undefined);
+  const r = remembered ? findType(catalog, remembered) : undefined;
+  const t = (r && fits(r) ? r : undefined) || (catalog?.saved ? candidates[0] : undefined);
   return t ? drawingAttrsForType(instanceTable, attrs, t.id, catalog) : attrs;
 }
