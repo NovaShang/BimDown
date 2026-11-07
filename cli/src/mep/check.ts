@@ -69,6 +69,13 @@ export interface MepModelIn {
   /** When false, refs to hosts that aren't in the model are reported as
    *  `info` (the editor only sees one level at a time). Default true. */
   complete?: boolean;
+  /** Incomplete models: refs (`host` or `host:port`) made by curves outside
+   *  the model (other levels), so a riser's node or a port used from the
+   *  floor above counts as connected. */
+  externalRefs?: string[];
+  /** Incomplete models: host ids that exist outside the model; a ref to a
+   *  host found nowhere is a broken reference. */
+  externalHosts?: string[];
 }
 
 export type MepProblemCode =
@@ -119,6 +126,9 @@ function fmtId(id: string): string { return id; }
 
 export function checkMep(model: MepModelIn): MepProblem[] {
   const complete = model.complete ?? true;
+  const extHosts = model.externalHosts ? new Set(model.externalHosts) : null;
+  /** A ref to a host missing from the model: broken unless it may live elsewhere. */
+  const missingIsBroken = (hostId: string) => complete || (extHosts !== null && !extHosts.has(hostId));
   const out: MepProblem[] = [];
   const key = (scope: string | undefined, id: string) => `${scope ?? ''}/${id}`;
   const hostByKey = new Map<string, MepHostIn>();
@@ -144,6 +154,14 @@ export function checkMep(model: MepModelIn): MepProblem[] {
   const usedPorts = new Map<string, Set<string>>();
   /** passive node key → curves at it. */
   const nodeCurves = new Map<string, MepCurveIn[]>();
+  /** Host ids / host:port refs used by curves outside the model. */
+  const extUsed = new Set<string>();
+  for (const r of model.externalRefs ?? []) {
+    const p = splitRef(r);
+    if (!p) continue;
+    extUsed.add(p.hostId);
+    if (p.port) extUsed.add(`${p.hostId}:${p.port}`);
+  }
 
   for (const c of model.curves) {
     const refs = [{ side: 'from' as const, ref: c.from }, { side: 'to' as const, ref: c.to }];
@@ -180,7 +198,8 @@ export function checkMep(model: MepModelIn): MepProblem[] {
       }
       const host = findHost(c.scope, r.hostId);
       if (!host) {
-        out.push({ severity: complete ? 'warning' : 'info', code: complete ? 'dangling_ref' : 'external_ref', id: c.id, scope: c.scope, table: c.table, system: c.system,
+        const broken = missingIsBroken(r.hostId);
+        out.push({ severity: broken ? 'warning' : 'info', code: broken ? 'dangling_ref' : 'external_ref', id: c.id, scope: c.scope, table: c.table, system: c.system,
           message: `${c.table} ${fmtId(c.id)}.${side} = "${refs[i].ref}" references a missing element`, at: end });
         continue;
       }
@@ -230,7 +249,7 @@ export function checkMep(model: MepModelIn): MepProblem[] {
       // Inline accessory: every declared port must be on the run.
       const used = usedPorts.get(hkey(h)) ?? new Set<string>();
       for (const p of portsOf(h)) {
-        if (!used.has(p.name)) {
+        if (!used.has(p.name) && !extUsed.has(`${h.id}:${p.name}`)) {
           out.push({ severity: 'warning', code: 'unconnected_port', id: h.id, scope: h.scope, table: h.table, system: h.system || p.system,
             message: `${h.kind} ${h.id}: port "${p.name}" is not connected`, at: p.pos });
         }
@@ -238,6 +257,7 @@ export function checkMep(model: MepModelIn): MepProblem[] {
       continue;
     }
     const curves = nodeCurves.get(hkey(h)) ?? [];
+    if (extUsed.has(h.id)) continue; // continues on another level
     if (curves.length === 0) {
       out.push({ severity: 'warning', code: 'orphan_fitting', id: h.id, scope: h.scope, table: h.table, system: h.system,
         message: `fitting ${h.id} has no connected curves`, at: h.pos });
@@ -265,7 +285,9 @@ export function checkMep(model: MepModelIn): MepProblem[] {
   for (const h of model.hosts) {
     if (h.table === 'mep_node') continue;
     const ports = portsOf(h);
-    const used = usedPorts.get(hkey(h)) ?? new Set<string>();
+    const used = new Set(usedPorts.get(hkey(h)) ?? []);
+    for (const p of ports) if (extUsed.has(`${h.id}:${p.name}`)) used.add(p.name);
+    if (extUsed.has(h.id)) used.add('');
     const isElectric = (p: MepPortIn) => p.domain === 'electrical' && !used.has(p.name);
     const fluid = ports.filter(p => !isElectric(p));
     const electric = ports.filter(isElectric);
@@ -294,7 +316,8 @@ export function checkMep(model: MepModelIn): MepProblem[] {
   // Circuits: missing panel, connected load over 80 % of the breaker.
   for (const c of model.circuits ?? []) {
     if (!findHost(c.scope, c.hostId)) {
-      out.push({ severity: complete ? 'warning' : 'info', code: complete ? 'dangling_ref' : 'external_ref', id: c.id, scope: c.scope, table: 'circuit',
+      const broken = missingIsBroken(c.hostId);
+      out.push({ severity: broken ? 'warning' : 'info', code: broken ? 'dangling_ref' : 'external_ref', id: c.id, scope: c.scope, table: 'circuit',
         message: `circuit ${c.id} panel "${c.hostId}" is missing` });
     }
     if (c.voltage > 0 && c.rating > 0) {

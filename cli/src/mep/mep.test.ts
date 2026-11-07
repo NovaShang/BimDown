@@ -86,6 +86,24 @@ describe('MEP connectivity', () => {
     expect(m.map(p => `${p.code}:${p.scope}`)).toEqual(['open_end:lv-2', 'orphan_fitting:lv-1']);
   });
 
+  it('one level at a time: a riser continuing on another level is connected, a ref found nowhere is broken', () => {
+    const base = {
+      curves: [
+        { id: 'pi-9', table: 'pipe', a: [0, 0, 0.5] as [number, number, number], b: [0, 0, 5.1] as [number, number, number], from: 'mn-21', to: 'mn-22', system: 'CWR' },
+        { id: 'pi-5', table: 'pipe', a: [-2, 0, 0.5] as [number, number, number], b: [0, 0, 0.5] as [number, number, number], from: 'mn-19', to: 'mn-21', system: 'CWR' },
+      ],
+      hosts: [
+        { id: 'mn-21', table: 'mep_node' as const, pos: [0, 0, 0.5] as [number, number, number], kind: '', fitting: '', system: '', circuitId: '', load: 0 },
+        { id: 'mn-22', table: 'mep_node' as const, pos: [0, 0, 5.1] as [number, number, number], kind: '', fitting: '', system: '', circuitId: '', load: 0 },
+      ],
+      ports: [],
+      complete: false,
+    };
+    const codes = (m: Parameters<typeof checkMep>[0]) => checkMep(m).filter(p => p.severity === 'warning').map(p => `${p.code}:${p.id}`);
+    expect(codes(base)).toContain('open_end:pi-9');
+    expect(codes({ ...base, externalRefs: ['mn-22'], externalHosts: ['eq-5'] })).toEqual(['dangling_ref:pi-5']);
+  });
+
   it('flags circuits over 80 % of the breaker and devices on a missing circuit', () => {
     const m = checkMep({
       curves: [],
