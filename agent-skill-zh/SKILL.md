@@ -40,7 +40,7 @@ metadata:
 
 - **单位由项目声明** —— 读 `project_metadata.json::units`(`m` / `ft` / `in` / `mm`,缺省为 `m`)。详见下文 [Units](#units) 章节。CSV / GeoJSON 中的所有坐标和尺寸都直接以该单位存储,**没有任何内部规范化或自动换算**。
 - **CSV 存属性**(material、thickness、尺寸、外键、枚举)；**GeoJSON 存几何**(Point / LineString / Polygon),并通过可选的 properties 携带数值几何提示(`base_offset`、`top_offset`、`arc`、`rotation`)。
-- **计算字段只读**：`length`、`area`、`height`、`start_x/y/z`、`end_x/y/z`、`x`、`y`、`rotation`、`points`、`volume`、`bbox_*`、`level_id` 都由 CLI 自动计算,**任何文件都不要写入**。
+- **计算字段只读**：`length`、`area`（房间：墙中线）、`net_area`（房间：墙面净面积,报房间面积用它）、`height`、`start_x/y/z`、`end_x/y/z`、`x`、`y`、`rotation`、`points`、`volume`、`bbox_*`、`level_id` 都由 CLI 自动计算,**任何文件都不要写入**。
 - **CSV 行与 GeoJSON Feature 通过 `id` 关联**(GeoJSON 中通过 `properties.id`)。
 - **`format_version: 2`**(写在 `project_metadata.json` 里)。旧 SVG 项目(v1)必须先用 `svg-to-geojson` 脚本迁移。
 
@@ -207,7 +207,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 
 - **ID 格式**:`{prefix}-{n}`(纯数字)适用于多数元素;`lv-{any}` / `gr-{any}` 适用于 level/grid。
 - **GeoJSON 坐标系**:项目局部坐标(项目单位),`+X=东`,`+Y=北`,`+Z=上`。**不要写 `crs` 字段**,**不要做 `scale(1,-1)` 翻转** —— GeoJSON 原生 Y 向上。
-- **CSV vs 计算字段**:只写非计算字段。**绝对不要写** `length`、`area`、`start_x/y/z`、`end_x/y/z`、`x`、`y`、`rotation`、`points`、`height`、`volume`、`bbox_*`、`level_id`。
+- **CSV vs 计算字段**:只写非计算字段。**绝对不要写** `length`、`area`、`net_area`、`start_x/y/z`、`end_x/y/z`、`x`、`y`、`rotation`、`points`、`height`、`volume`、`bbox_*`、`level_id`。
 - **GeoJSON properties vs CSV**:
   - `id` —— 两边都有(字符串相等匹配)。
   - `base_offset`、`top_offset`、`arc`、`rotation`、`height_offset`(ceiling)—— **GeoJSON `properties`** 里。

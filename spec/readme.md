@@ -147,7 +147,7 @@ An underlay row places `file` (under `underlays/`) on `level_id`: plan = `(x, y)
 | Scalar attributes, enum values, FKs | **CSV** | `material`, `thickness`, `size_x`, `size_y`, `shape`, `function`, `operation`, `host_id`, `position`, `base_level_id`, `top_level_id` |
 | Geometry coordinates | **GeoJSON `geometry`** | LineString points, Polygon rings, Point coord; 2D for level-anchored, 3D for spatial |
 | Numeric geometry hints | **GeoJSON `properties`** | `base_offset`, `top_offset`, `arc`, `rotation` |
-| Derived spatial data | **Computed (DuckDB hydrate)** | `length`, `area`, `height`, `volume` (structural tables), `start_x/y/z`, `end_x/y/z`, `x`, `y`, `points`, `bbox_*`, `level_id` |
+| Derived spatial data | **Computed (DuckDB hydrate)** | `length`, `area`, `net_area` (spaces), `height`, `volume` (structural tables), `start_x/y/z`, `end_x/y/z`, `x`, `y`, `points`, `bbox_*`, `level_id` |
 
 YAML schemas use the following markers:
 
@@ -187,6 +187,8 @@ In the **SVG encoding** (2D-only), the same two modes apply but Z always lives i
 | `structural_section_profile` | `shape` (CSV enum rect/round/i/t/l/c/cross), `size_x`, `size_y` (CSV) |
 | `mep_system`                 | `system_type` (CSV string) |
 | `mep_connectable`            | `from`, `to` (CSV; port-ref `host_id:port_name` or bare `host_id`, auto-resolved by CLI) |
+
+**Room area.** A space's boundary is derived along wall centre lines (`space.geojson`, written by `bimdown build`), so its `area` is the gross, centre-line area. `net_area` is the area at the wall finish faces: each boundary edge moves inward by half the thickness of the wall it lies on (room separators and edges on no wall stay put) — Revit's default room area. Drawings, room tags, schedules and IFC `NetFloorArea` use `net_area`; `area` is kept for backward compatibility (and as IFC `GrossFloorArea`).
 
 ---
 

@@ -97,16 +97,16 @@ describe('annotation tables', () => {
     expect(renderLevel(testDir, 'lv-1')).toContain('>12000<');
   });
 
-  it('room tags show name, number and the build area', () => {
+  it('room tags show name, number and the net area (at the wall faces)', () => {
     setup();
     writeFileSync(join(lv, 'tag.csv'), 'id,host_id,x,y,content\ntg-1,sp-1,,,auto\ntg-2,d-1,,,auto\n');
     expect(build(testDir).issues).toEqual([]);
     const index = indexLevelElements(lv, join(testDir, 'global'));
-    expect(tagLines(index.get('sp-1')!, 'auto', 'm')).toEqual(['Office', '101', '50.00 m²']);
+    expect(tagLines(index.get('sp-1')!, 'auto', 'm')).toEqual(['Office', '101', '47.04 m²']); // 10 × 5 centre lines, 0.2 walls
     expect(tagLines(index.get('d-1')!, 'size', 'm')).toEqual(['900×2100']);
     const svg = renderLevel(testDir, 'lv-1');
     expect(svg).toContain('data-annotation="tag"');
-    expect(svg).toContain('>50.00 m²<');
+    expect(svg).toContain('>47.04 m²<');
     expect(svg).toContain('>D01<');
     // The tag replaces the room's plain name label
     expect(svg.split('>Office<').length - 1).toBe(1);

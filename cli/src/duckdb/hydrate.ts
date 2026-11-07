@@ -473,6 +473,8 @@ function extractPropertyFields(feature: BimDownFeature, out: Record<string, numb
   if (typeof p.base_offset === 'number') out.base_offset = p.base_offset;
   if (typeof p.top_offset === 'number') out.top_offset = p.top_offset;
   if (typeof p.height_offset === 'number') out.height_offset = p.height_offset;
+  // space.geojson (written by build): net room area at the wall faces
+  if (typeof p.net_area === 'number') out.net_area = p.net_area;
   // rotation may also come from properties (already covered for Points; for non-Points it's still meaningful)
   if (typeof p.rotation === 'number' && out.rotation === undefined) out.rotation = p.rotation;
 }

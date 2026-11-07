@@ -24,4 +24,9 @@ fields:
   - name: area
     type: float
     computed: true
-    description: Space area in square meters (computed from boundary polygon)
+    description: Gross space area at the wall centre lines (the boundary polygon), in project units squared
+
+  - name: net_area
+    type: float
+    computed: true
+    description: Net space area at the wall finish faces — each boundary edge moved inward by half the thickness of its wall (room separators 0); the area drawings, tags and schedules show. Written by build into space.geojson

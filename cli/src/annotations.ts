@@ -117,8 +117,10 @@ export function indexLevelElements(levelPath: string, globalPath: string): Map<s
       out.set(r.id, { kind: 'opening', table, start: sub(c, mul(u, width / 2)), end: add(c, mul(u, width / 2)), thickness: host.thickness, attrs: r });
     }
   }
-  // Rooms: seed + the polygon build wrote to space.geojson
+  // Rooms: seed + the polygon build wrote to space.geojson; tags show its
+  // net area (at the wall faces), like the editor
   const polys = new Map<string, Pt[]>();
+  const netAreas = new Map<string, number>();
   const spacePath = join(levelPath, 'space.geojson');
   if (existsSync(spacePath)) {
     try {
@@ -128,6 +130,7 @@ export function indexLevelElements(levelPath: string, globalPath: string): Map<s
         const last = ring[ring.length - 1];
         if (ring.length && last.x === ring[0].x && last.y === ring[0].y) ring.pop();
         polys.set(String(f.properties.id), ring);
+        if (typeof f.properties.net_area === 'number') netAreas.set(String(f.properties.id), f.properties.net_area);
       }
     } catch { /* no polygons */ }
   }
@@ -135,7 +138,7 @@ export function indexLevelElements(levelPath: string, globalPath: string): Map<s
     const x = parseFloat(r.x ?? ''), y = parseFloat(r.y ?? '');
     if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
     const vertices = polys.get(r.id);
-    out.set(r.id, { kind: 'space', table: 'space', pos: { x, y }, vertices, area: vertices ? Math.abs(shoelace(vertices)) : undefined, attrs: r });
+    out.set(r.id, { kind: 'space', table: 'space', pos: { x, y }, vertices, area: netAreas.get(r.id) ?? (vertices ? Math.abs(shoelace(vertices)) : undefined), attrs: r });
   }
   return out;
 }

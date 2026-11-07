@@ -88,7 +88,7 @@ So a 180 mm slab whose top is at −0.100 on level `lv-1` (elevation 0) is `base
 | `id` | both (CSV row ↔ `properties.id`) |
 | `base_offset`, `top_offset`, `arc`, `rotation`, `height_offset` | GeoJSON `properties` — **except hosted elements** (door / window / opening), which have no GeoJSON, so their `base_offset` is a CSV column |
 | `base_level_id`, `top_level_id`, `host_id`, `position`, `thickness`, `size_x`, `size_y`, `shape`, `material`, `number`, enums | CSV |
-| `length`, `area`, `height`, `x`, `y`, `start_*`, `end_*`, `points`, `volume`, `bbox_*`, `level_id` | **computed — never write them** |
+| `length`, `area`, `net_area`, `height`, `x`, `y`, `start_*`, `end_*`, `points`, `volume`, `bbox_*`, `level_id` | **computed — never write them** (room `area` = centre lines, `net_area` = wall faces, the size to quote) |
 
 Run `bimdown schema <table>` for the exact columns of any table. Use `number` for the element mark / type label you want to keep (e.g. `KL3(2) 300x700`, `FM甲1022`, `CT2`).
 
@@ -160,7 +160,7 @@ Run `bimdown schema <table>` for the exact columns of any table. Use `number` fo
    bimdown query <dir> "SELECT number, count(*) n FROM beam GROUP BY number"
    bimdown info <dir>
    ```
-   SQL tips: `window`, `column` (and other SQL keywords) must be quoted: `SELECT * FROM "window"`. Computed fields (`length`, `area`, `height`, `bbox_*`) are available in queries.
+   SQL tips: `window`, `column` (and other SQL keywords) must be quoted: `SELECT * FROM "window"`. Computed fields (`length`, `area`, `net_area`, `height`, `bbox_*`) are available in queries (`net_area` after `build`).
 6. Iterate until counts, plans and elevations are right.
 
 **About build warnings**: "has no connected line element" means a wall end touches nothing — no other wall end, no other wall's body (a T-junction at its face counts as connected) and no column. That matters only where rooms must close (`space`); retaining, pit and free-standing walls may legitimately end free. Do not split or extend walls just to silence it. `build` also merges wall ends of the same level that are less than 5 cm apart and lists what it moved; anything farther apart is left exactly where you put it. Long warning lists are truncated — `bimdown build <dir> --verbose` prints all.

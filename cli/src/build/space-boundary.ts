@@ -10,6 +10,7 @@ import {
 import { readCsv } from '../utils/csv.js';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import { projectUnits } from '../utils/units.js';
+import { collectBoundaryLines, roomNetArea, unitsPerMetre, type BoundaryLine } from './room-area.js';
 
 const TOLERANCE = 0.01; // 1cm in meters
 const MAX_FACE_EDGES = 10000; // safety limit for face tracing
@@ -156,8 +157,10 @@ export function computeSpaceBoundaries(
 
   if (matchedSpaces.size === 0) return { warnings, geojsonWritten: false, roomIssues };
 
-  // 9. Write space.geojson
-  writeSvg(levelDir.path, matchedSpaces);
+  // 9. Write space.geojson (with each room's net area at the wall faces)
+  const lines = collectBoundaryLines(levelDir.path);
+  if (globalDir) lines.push(...collectBoundaryLines(globalDir));
+  writeSvg(levelDir.path, matchedSpaces, lines, unitsPerMetre(units));
   return { warnings, geojsonWritten: true, roomIssues };
 }
 
@@ -504,7 +507,7 @@ function pointInPolygon(px: number, py: number, polygon: { x: number; y: number 
 
 // ─── GeoJSON output ─────────────────────────────────────
 
-function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>): void {
+function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>, lines: BoundaryLine[], upm: number): void {
   const features: BimDownFeature[] = [];
   for (const [spaceId, face] of matchedSpaces) {
     // Close the ring per RFC 7946
@@ -517,7 +520,7 @@ function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>): void {
     if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
     features.push({
       type: 'Feature',
-      properties: { id: spaceId },
+      properties: { id: spaceId, net_area: Number(roomNetArea(face.polygon, lines, upm).toFixed(4)) },
       geometry: { type: 'Polygon', coordinates: [ring] },
     });
   }
