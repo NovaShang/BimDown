@@ -83,6 +83,32 @@ export function deriveSpaceBoundary(seedPoint: Point, walls: LineElement[]): Poi
   return bestFace ? bestFace.polygon : null;
 }
 
+/** A bounded (CCW, positive-area) face of the wall graph. */
+export interface BoundedFace { polygon: Point[]; area: number }
+
+/**
+ * Every bounded face of the wall graph, built once. Pair with `pickSpaceFace`
+ * to resolve many seeds (or test which side of a wall is outdoors) without
+ * rebuilding the graph per call; the pick rule matches deriveSpaceBoundary.
+ */
+export function deriveBoundedFaces(walls: LineElement[]): BoundedFace[] {
+  const segments = collectSegments(walls);
+  if (segments.length === 0) return [];
+  const { halfEdges } = buildHalfEdgeStructure(splitAtIntersections(segments));
+  return traceFaces(halfEdges)
+    .filter(f => f.signedArea > 0)
+    .map(f => ({ polygon: f.polygon, area: f.signedArea }));
+}
+
+/** Smallest bounded face containing `p`, or null when `p` is outside every face. */
+export function pickSpaceFace(p: Point, faces: BoundedFace[]): BoundedFace | null {
+  let best: BoundedFace | null = null;
+  for (const f of faces) {
+    if ((!best || f.area < best.area) && pointInPolygon(p.x, p.y, f.polygon)) best = f;
+  }
+  return best;
+}
+
 // ─── Segment collection (CanonicalElement → Segment) ───────────────────────
 
 function collectSegments(walls: LineElement[]): Segment[] {
