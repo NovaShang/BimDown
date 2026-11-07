@@ -1,6 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
+import { useEditorState, useEditorDispatch, unsavedMutationKeys } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
@@ -183,11 +183,11 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   useEffect(() => {
     if (!state.document || state.documentVersion === 0 || state.readonly) return;
 
-    // Accumulate pending keys from O(1) mutations
-    if (state.lastMutation && state.lastMutation.version > lastProcessedVersion.current) {
-      for (const key of state.lastMutation.keys) pendingKeys.current.add(key);
-      lastProcessedVersion.current = state.lastMutation.version;
-    }
+    // Accumulate the keys of every mutation not seen yet (several can land
+    // between two runs of this effect; only reading the last one lost edits).
+    const unsaved = unsavedMutationKeys(state, lastProcessedVersion.current);
+    for (const key of unsaved.keys) pendingKeys.current.add(key);
+    lastProcessedVersion.current = unsaved.version;
 
     clearTimeout(persistTimer.current);
     persistTimer.current = setTimeout(() => {

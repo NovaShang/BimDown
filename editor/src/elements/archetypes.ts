@@ -84,6 +84,8 @@ export interface Draw2DContext extends DrawContextBase {
   /** True when the element's host (resolved by host_id) is in the selection.
    *  Only populated for hosted elements (e.g. connector) — others may ignore. */
   hostSelected?: boolean;
+  /** The host is hovered (ports show so they can be picked). */
+  hostHovered?: boolean;
   /** True when the active drawing tool targets an MEP curve table. Connectors
    *  use this to show all ports while the user is laying out pipes. */
   mepToolActive?: boolean;

@@ -206,6 +206,8 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
   const { t } = useTranslation();
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [open, setOpen] = useState(false);
+  // Tooltip always controlled (suppressed while the dropdown is open)
+  const [tipOpen, setTipOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   // The variant menu is portalled with fixed coordinates: on phones the toolbar
@@ -276,7 +278,7 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
   return (
     <div ref={containerRef} className="relative flex">
       {/* Main tool button — suppress tooltip while dropdown is open */}
-      <Tooltip open={open ? false : undefined}>
+      <Tooltip open={!open && tipOpen} onOpenChange={setTipOpen}>
         <TooltipTrigger
           className={cn(
             'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',

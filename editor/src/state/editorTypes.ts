@@ -66,6 +66,9 @@ export interface EditorState {
   drawingState: DrawingState | null;
   documentVersion: number;  // bumped on every mutation, triggers auto-persist
   lastMutation: { version: number; keys: string[] } | null;
+  /** Recent mutations of this document, oldest first (autosave reads every one it
+   *  hasn't saved yet: several mutations can land before it runs). */
+  mutationLog?: { version: number; keys: string[] }[];
 
   /** Elevation / section pane, 3D section box, plan view range (views/viewsReducer.ts). */
   views: ViewsState;

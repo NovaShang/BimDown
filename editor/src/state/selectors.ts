@@ -262,7 +262,14 @@ export function getSelectedElementData(state: EditorState): Map<string, { tableN
     if (state.document) {
       const el = state.document.elements.get(rawId);
       if (el) {
-        result.set(sid, { tableName: el.tableName, discipline: el.discipline, csv: el.attrs });
+        // Spatial lines keep their Z in the geometry (level-relative); show it
+        // in the Start Z / End Z fields when the row doesn't carry it.
+        let csv = el.attrs;
+        if (el.geometry === 'spatial_line' && (!csv.start_z || !csv.end_z)) {
+          const r3 = (v: number) => String(Math.round(v * 1000) / 1000);
+          csv = { ...csv, start_z: csv.start_z || r3(el.startZ), end_z: csv.end_z || r3(el.endZ) };
+        }
+        result.set(sid, { tableName: el.tableName, discipline: el.discipline, csv });
         continue;
       }
     }

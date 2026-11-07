@@ -24,8 +24,29 @@ const SelectionContext = createContext<SelectionState>({
 const DispatchContext = createContext<Dispatch<EditorAction>>(() => {});
 
 /** The editor reducer plus the annotation associativity pass. */
+const MUTATION_LOG_SIZE = 64;
+
 export function rootReducer(state: EditorState, action: EditorAction): EditorState {
-  return syncAnnotations(state, editorReducer(state, action), action);
+  const next = syncAnnotations(state, editorReducer(state, action), action);
+  // Keep every mutation, not only the last: two dispatched in one event (or
+  // before the autosave effect runs) must both reach the file writer.
+  if (action.type === 'INIT_DOCUMENT') return next.mutationLog?.length ? { ...next, mutationLog: [] } : next;
+  if (next.lastMutation && next.lastMutation !== state.lastMutation) {
+    return { ...next, mutationLog: [...(state.mutationLog ?? []).slice(-(MUTATION_LOG_SIZE - 1)), next.lastMutation] };
+  }
+  return next;
+}
+
+/** Keys of every logged mutation newer than `after` (the last version saved), and the newest version. */
+export function unsavedMutationKeys(state: Pick<EditorState, 'mutationLog' | 'lastMutation'>, after: number): { keys: Set<string>; version: number } {
+  const keys = new Set<string>();
+  let version = after;
+  for (const m of state.mutationLog ?? (state.lastMutation ? [state.lastMutation] : [])) {
+    if (m.version <= after) continue;
+    for (const k of m.keys) keys.add(k);
+    version = Math.max(version, m.version);
+  }
+  return { keys, version };
 }
 
 export function EditorProvider({ children, readonly }: { children: ReactNode; readonly?: boolean }) {

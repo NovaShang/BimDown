@@ -72,6 +72,8 @@ export default function LibraryButton({ disciplineColor }: { disciplineColor: st
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const [open, setOpen] = useState(false);
+  // Tooltip always controlled (suppressed while the dropdown is open)
+  const [tipOpen, setTipOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [category, setCategory] = useState<FurnitureCategory | 'all'>('all');
   const buttonRef = useRef<HTMLDivElement>(null);
@@ -125,7 +127,7 @@ export default function LibraryButton({ disciplineColor }: { disciplineColor: st
 
   return (
     <div ref={buttonRef} className="relative flex" data-testid="library-button">
-      <Tooltip open={open ? false : undefined}>
+      <Tooltip open={!open && tipOpen} onOpenChange={setTipOpen}>
         <TooltipTrigger
           className={cn(
             'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',

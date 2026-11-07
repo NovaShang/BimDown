@@ -188,12 +188,13 @@ export const connectorModule: ElementModule<ConnectorFacts> = {
 
   draw2D(facts, drawCtx): ReactNode {
     // Visibility: ports are hidden by default; they appear when their host
-    // is selected, the port itself is selected/hovered, or an MEP line tool
+    // is selected or hovered, the port itself is selected/hovered, or an MEP line tool
     // is active (the user is laying out pipes and needs to see every port).
     const visible =
       drawCtx.selected ||
       drawCtx.hovered ||
       drawCtx.hostSelected ||
+      drawCtx.hostHovered ||
       drawCtx.mepToolActive;
     if (!visible) return null;
 

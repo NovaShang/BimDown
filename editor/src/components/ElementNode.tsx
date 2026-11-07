@@ -24,6 +24,7 @@ interface ElementNodeBodyProps {
   selected: boolean;
   hovered: boolean;
   hostSelected: boolean;
+  hostHovered: boolean;
   mepToolActive: boolean;
   showNumbers: boolean;
   gridBubblesBothEnds: boolean;
@@ -42,6 +43,8 @@ export function ElementNode({ element }: ElementNodeProps) {
   // computed generically — `hostSelected` is true when the element's host_id
   // resolves into the current selection.
   const hostSelected = element.hostId ? selectedRawIds.has(element.hostId) : false;
+  // Ports also show while their host is hovered (pick a port without selecting the host first).
+  const hostHovered = !!element.hostId && hoveredRawId === element.hostId;
   const mepToolActive = isMepLineTable(core.drawingTarget?.tableName);
   // Plan view range: the cut plane decides normal / dashed overhead / hidden.
   const { planCut, rcp, aboveCut } = core.views;
@@ -53,6 +56,7 @@ export function ElementNode({ element }: ElementNodeProps) {
       selected={selected}
       hovered={hovered}
       hostSelected={hostSelected}
+      hostHovered={hostHovered}
       mepToolActive={mepToolActive}
       showNumbers={core.viewOptions?.showElementNumbers ?? false}
       gridBubblesBothEnds={core.viewOptions?.gridBubblesBothEnds ?? false}
@@ -61,7 +65,7 @@ export function ElementNode({ element }: ElementNodeProps) {
   );
 }
 
-const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, mepToolActive, showNumbers, gridBubblesBothEnds, display }: ElementNodeBodyProps) {
+const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, hostHovered, mepToolActive, showNumbers, gridBubblesBothEnds, display }: ElementNodeBodyProps) {
   const ctx = useGeometryContext();
   if (display === 'hidden' && !selected) return null;
   if (!ctx) return null;
@@ -76,6 +80,7 @@ const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected,
     scale: 1,
     levelElevation: ctx.levelElevation,
     hostSelected,
+    hostHovered,
     mepToolActive,
     showNumbers,
     gridBubblesBothEnds,
