@@ -125,6 +125,7 @@ export const OPENING_SHAPE_OPTIONS: DrawingField['options'] = [
 export const EQUIPMENT_TYPE_OPTIONS: DrawingField['options'] = [
   { value: 'ahu', label: 'AHU' },
   { value: 'fcu', label: 'FCU' },
+  { value: 'vav', label: 'VAV Box' },
   { value: 'chiller', label: 'Chiller' },
   { value: 'boiler', label: 'Boiler' },
   { value: 'cooling_tower', label: 'Cooling Tower' },
@@ -148,5 +149,44 @@ export const TERMINAL_TYPE_OPTIONS: DrawingField['options'] = [
   { value: 'power_outlet', label: 'Power Outlet' },
   { value: 'data_outlet', label: 'Data Outlet' },
   { value: 'plumbing_fixture', label: 'Plumbing Fixture' },
+  { value: 'water_closet', label: 'Water Closet' },
+  { value: 'urinal', label: 'Urinal' },
+  { value: 'lavatory', label: 'Lavatory' },
+  { value: 'sink', label: 'Sink' },
+  { value: 'shower', label: 'Shower' },
+  { value: 'floor_drain', label: 'Floor Drain' },
+  { value: 'switch', label: 'Switch' },
+  { value: 'junction_box', label: 'Junction Box' },
+  { value: 'emergency_light', label: 'Emergency Light' },
   { value: 'other', label: 'Other' },
+];
+
+/** Inline MEP accessories (mep_node.kind). */
+export const ACCESSORY_KIND_OPTIONS: DrawingField['options'] = [
+  { value: 'gate_valve', label: 'Gate Valve' },
+  { value: 'ball_valve', label: 'Ball Valve' },
+  { value: 'butterfly_valve', label: 'Butterfly Valve' },
+  { value: 'globe_valve', label: 'Globe Valve' },
+  { value: 'check_valve', label: 'Check Valve' },
+  { value: 'balancing_valve', label: 'Balancing Valve' },
+  { value: 'strainer', label: 'Strainer' },
+  { value: 'flow_meter', label: 'Flow Meter' },
+  { value: 'damper', label: 'Volume Damper' },
+  { value: 'fire_damper', label: 'Fire Damper' },
+  { value: 'valve', label: 'Valve' },
+  { value: 'pump', label: 'Pump' },
+  { value: 'sensor', label: 'Sensor' },
+];
+
+/** Passive fitting style hint (mep_node.fitting); empty = derived from the runs. */
+export const FITTING_OPTIONS: DrawingField['options'] = [
+  { value: 'tee', label: 'Tee' },
+  { value: 'tap', label: 'Tap' },
+  { value: 'cap', label: 'Cap' },
+  { value: 'open', label: 'Open End' },
+];
+
+export const BOOLEAN_OPTIONS: DrawingField['options'] = [
+  { value: 'false', label: 'No' },
+  { value: 'true', label: 'Yes' },
 ];

@@ -5,7 +5,7 @@ import { csvHeadersForTable } from './tableRegistry.ts';
 import { SPEC_COLUMNS } from './specColumns.generated.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector', 'circuit']);
 
 /**
  * Group elements by discipline/tableName key.

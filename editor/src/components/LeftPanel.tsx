@@ -12,6 +12,7 @@ import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
 import ConfirmDialog from './ConfirmDialog.tsx';
 import MepSystemDialog from './MepSystemDialog.tsx';
+import MepPanel from '../mep/MepPanel.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { formatElevation, getProjectUnits } from '../utils/units.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
@@ -382,6 +383,8 @@ export default function LeftPanel({
           </ScrollArea>
         </div>
       )}
+
+      {activeDiscipline === 'mep' && <MepPanel />}
 
       <MepSystemDialog
         open={mepSystemDialog.open}

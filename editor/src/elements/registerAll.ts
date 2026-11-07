@@ -26,3 +26,4 @@ import './mesh.tsx';
 import './mep_lines.tsx';
 import './mep_node.tsx';
 import './connector.tsx';
+import './circuit.tsx';

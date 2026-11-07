@@ -5,7 +5,7 @@ import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 
 /** Tables that are CSV-only (no geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector', 'circuit']);
 
 /** Tables with mixed geometry (different geometry types in the same layer). */
 const MIXED_GEOMETRY_TABLES = new Set(['foundation']);
@@ -194,7 +194,7 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
         attrs,
       };
       elements.push(el);
-    } else if (layer.tableName === 'connector') {
+    } else if (layer.tableName === 'connector' || layer.tableName === 'circuit') {
       // Connector has no independent geometry — position is derived from its
       // host (equipment/terminal/mep_node) at render time. Storage is a
       // PointElement with position (0,0); the host_id + offset attrs carry

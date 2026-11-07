@@ -9,8 +9,15 @@
 import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
+import { resolvePropertyFields } from './_propertyFields.ts';
 import type { CanonicalElement } from '../model/elements.ts';
-import { BASE_OFFSET_FIELD, SHAPE_OPTIONS } from './_options.ts';
+import { BOOLEAN_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
+import { SLOPE_KEY } from '../mep/routeTool.ts';
+
+/** Run height while routing; a change mid-run inserts a rise / drop. */
+const OFFSET_FIELD = { key: 'start_z', label: 'Offset', type: 'number', unit: 'm', step: 0.1 };
+/** Top of a vertical segment (Vertical mode). */
+const RISER_TOP_FIELD = { key: 'end_z', label: 'Riser Top', type: 'number', unit: 'm', step: 0.1 };
 import {
   mepLineGeometry, mepLineDraw2D, mepLineDraw3D, type MepLineFacts,
 } from './_mepLineShared.tsx';
@@ -18,6 +25,8 @@ import {
 interface MepModuleOpts {
   table: string;
   prefix: string;
+  /** Extra CSV columns beyond the shared MEP line set. */
+  extraHeaders?: string[];
   defaults: Record<string, string>;
   drawingFields: any[];
   defaultShape: 'round' | 'rect';
@@ -29,18 +38,22 @@ interface MepModuleOpts {
 }
 
 function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
+  const csvHeaders = [
+    'number', 'base_offset', 'start_z', 'end_z', 'shape',
+    'size_x', 'size_y', 'system_type', 'from', 'to',
+    ...(opts.extraHeaders ?? []),
+  ];
   return {
     table: opts.table,
     discipline: 'mep',
     archetype: 'topo-line',
     prefix: opts.prefix,
-    csvHeaders: [
-      'number', 'base_offset', 'start_z', 'end_z', 'shape',
-      'size_x', 'size_y', 'system_type', 'from', 'to',
-    ],
+    csvHeaders,
     defaults: opts.defaults,
     drawingFields: opts.drawingFields,
-    propertyFields: [],
+    // The toolbar's Offset / Riser Top relabel start_z / end_z for routing;
+    // the property panel keeps the plain Start Z / End Z.
+    propertyFields: resolvePropertyFields(csvHeaders, opts.drawingFields.filter(f => f.key !== 'start_z' && f.key !== 'end_z')),
     layerStyle: opts.layerStyle,
     renderZIndex: opts.renderZIndex,
 
@@ -72,15 +85,16 @@ function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
 
 export const ductModule = makeMepLineModule({
   table: 'duct', prefix: 'du',
-  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.2', size_y: '0.2', system_type: '' },
+  extraHeaders: ['insulation_thickness', 'flexible'],
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'rect', size_x: '0.4', size_y: '0.3', system_type: '' },
   drawingFields: [
     { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
-    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
-    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
-    BASE_OFFSET_FIELD,
+    OFFSET_FIELD,
+    RISER_TOP_FIELD,
+    { key: 'flexible', label: 'Flexible', type: 'select', options: BOOLEAN_OPTIONS },
   ],
   defaultShape: 'rect',
   fill2D: '#00b4d815',
@@ -92,13 +106,14 @@ export const ductModule = makeMepLineModule({
 
 export const pipeModule = makeMepLineModule({
   table: 'pipe', prefix: 'pi',
+  extraHeaders: ['insulation_thickness'],
   defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: '' },
   drawingFields: [
     { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
-    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
-    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
-    BASE_OFFSET_FIELD,
+    OFFSET_FIELD,
+    { key: SLOPE_KEY, label: 'Slope', type: 'number', unit: '%', min: -10, max: 10, step: 0.5 },
+    RISER_TOP_FIELD,
   ],
   defaultShape: 'round',
   fill2D: '#06d6a015',
@@ -114,9 +129,8 @@ export const conduitModule = makeMepLineModule({
   drawingFields: [
     { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.005, step: 0.005 },
-    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
-    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
-    BASE_OFFSET_FIELD,
+    OFFSET_FIELD,
+    RISER_TOP_FIELD,
   ],
   defaultShape: 'round',
   fill2D: '#ffd16615',
@@ -133,9 +147,8 @@ export const cableTrayModule = makeMepLineModule({
     { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-    { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
-    { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
-    BASE_OFFSET_FIELD,
+    OFFSET_FIELD,
+    RISER_TOP_FIELD,
   ],
   defaultShape: 'rect',
   fill2D: '#ffd16615',

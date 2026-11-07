@@ -5,6 +5,7 @@ import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { formatLength } from '../utils/units.ts';
+import { mepDrawingPreview } from '../mep/MepDrawingPreview.tsx';
 
 /** Length label positioned at the midpoint of a line, offset perpendicular to it */
 function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point; scale: number; projectUnit: ProjectUnit }) {
@@ -334,6 +335,8 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   }
 
   if (activeTool === 'draw_point') {
+    const mepPreview = mepDrawingPreview({ activeTool, tableName, points, cursor, drawingAttrs, scale });
+    if (mepPreview) return mepPreview;
     if (cursor) {
       const w = parseFloat(drawingAttrs.size_x || '0.3');
       const h = parseFloat(drawingAttrs.size_y || '0.3');

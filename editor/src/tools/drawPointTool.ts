@@ -8,12 +8,24 @@ import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { STARTER_KEY_ATTR } from '../elements/equipment.tsx';
 import { getStarter, materializeStarter } from '../elements/equipment_starters.ts';
+import { accessoryPointerDown } from '../mep/accessoryTool.ts';
+import { arrayPointerDown, arrayPointerMove } from '../mep/arrayTool.ts';
+
+/** MEP placements with their own gesture: inline accessories, terminal arrays. */
+function mepDelegate(target: { tableName: string; variantId?: string } | null): 'accessory' | 'array' | null {
+  if (target?.tableName === 'mep_node') return 'accessory';
+  if (target?.tableName === 'terminal' && target.variantId === 'array') return 'array';
+  return null;
+}
 
 export const drawPointTool: ToolHandler = {
   cursor: 'crosshair',
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
+    const mep = mepDelegate(ctx.getState().drawingTarget);
+    if (mep === 'accessory') { accessoryPointerDown(ctx, e); return; }
+    if (mep === 'array') { arrayPointerDown(ctx, e); return; }
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
@@ -83,6 +95,7 @@ export const drawPointTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
+    if (mepDelegate(ctx.getState().drawingTarget) === 'array') { arrayPointerMove(ctx, e); return; }
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
 

@@ -176,7 +176,9 @@ function cleanupOrphanMepNodes(
   for (const node of nodeById.values()) {
     // Active fittings are user-placed — never auto-delete.
     if ((node.attrs.kind ?? '').trim()) continue;
-    if ((counts.get(node.id) ?? 0) < 2) doomed.add(node.id);
+    // A cap / deliberate open end keeps its single run.
+    const single = node.attrs.fitting === 'cap' || node.attrs.fitting === 'open';
+    if ((counts.get(node.id) ?? 0) < (single ? 1 : 2)) doomed.add(node.id);
   }
   if (doomed.size === 0) return nextElements;
 

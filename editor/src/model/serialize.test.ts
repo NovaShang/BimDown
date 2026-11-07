@@ -45,7 +45,7 @@ describe('editor output follows the spec columns', () => {
       attrs: { id: 'eq-1', equipment_type: 'ahu', rotation: '90', height: '1.4', base_offset: '1', size_x: '1.6' },
     };
     await persistDocument(createDocument('lv-1', [eq]), ds, new Set(['mep/equipment']), 0);
-    expect(ds.files['lv-1/equipment.csv']).toBe('id,number,system_type,equipment_type,family,type\neq-1,,,ahu,,');
+    expect(ds.files['lv-1/equipment.csv']).toBe('id,number,system_type,equipment_type,family,type,flow,load,circuit_id\neq-1,,,ahu,,,,,');
     const feat = JSON.parse(ds.files['lv-1/equipment.geojson']).features[0];
     expect(feat.properties).toEqual({ id: 'eq-1', rotation: 90, size: [1.6, 0.9, 1.4] });
     expect(feat.geometry.coordinates).toEqual([1, 2, 1]);

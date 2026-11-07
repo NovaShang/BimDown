@@ -9,12 +9,8 @@
  * connector slots when the schema lands.
  */
 import type { ReactNode } from 'react';
-import { ExtrudeGeometry } from 'three';
 import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
-import { getBimMaterial, getSystemColorMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { shapeFromAttrs, createProfile } from '../three/primitives/profiles.ts';
-import { uprightAxisQuaternion } from '../three/utils/memberAxis.ts';
 import { buildLineWallFootprint, type WallDrawSegment } from './_lineWallShared.tsx';
 import {
   computeCornerAdjustments,
@@ -25,6 +21,10 @@ import {
   type CornerAdjustment,
 } from '../geometry/miter.ts';
 import { effectiveMepLine } from '../model/mepFittingRender.ts';
+import { analyzeFittings, curveZ } from '../mep/fittings.ts';
+import { mepCrossingGaps } from '../mep/crossings.ts';
+import { parsePortRef } from '../utils/portRef.ts';
+import { MepLine2D, MepLine3D } from '../mep/MepLineView.tsx';
 
 export interface MepLineFacts {
   id: string;
@@ -50,6 +50,23 @@ export interface MepLineFacts {
   segments: WallDrawSegment[];
   /** Chord length in plan view. */
   horLen: number;
+  /** Plan distances (from `start`) where this run passes under another. */
+  gaps: [number, number][];
+  /** Plan tag: system + size. */
+  label: string;
+  /** Rise per plan length (end − start); negative = falls towards `end`. */
+  slope: number;
+  /** Vertical segments: rise or drop symbol. */
+  riser: 'up' | 'down' | null;
+  insulation: number;
+  flexible: boolean;
+  /** Vertical segments: model width axis matching the run they join. */
+  riserRight?: [number, number, number];
+  /** Stored (untrimmed) ends, for open-end markers. */
+  rawStart: Point;
+  rawEnd: Point;
+  openStart: boolean;
+  openEnd: boolean;
 }
 
 /** Read (startZ, endZ) for an MEP line in the same way the geometry pass does. */
@@ -165,8 +182,8 @@ export function mepLineGeometry(
   defaultShape: 'round' | 'rect',
 ): MepLineFacts | null {
   if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
-  // Use the render-effective curve (passive-node endpoints snapped to the node)
-  // so the footprint and 3D mesh reach the fitting and meet the neighbor.
+  // Use the render-effective curve (ends on the passive node, pulled back by
+  // the fitting arm) so the run stops at the fitting face (mep/fittings.ts).
   const eff = effectiveMepLine(el as LineElement | SpatialLineElement, ctx);
   const ln = eff as LineElement;
   const dx = ln.end.x - ln.start.x;
@@ -176,15 +193,20 @@ export function mepLineGeometry(
   const sizeX = parseFloat(ln.attrs.size_x || '0.2') || 0.2;
   const sizeY = parseFloat(ln.attrs.size_y || '0.2') || 0.2;
   const shape = ln.attrs.shape || defaultShape;
+  const fittings = analyzeFittings(ctx);
 
   let footprint: Point[];
   let segments: WallDrawSegment[] = [];
-  if (horLen < 0.001) {
+  // Vertical when the stored curve has no plan length (a trimmed riser may
+  // still be vertical; a trimmed horizontal run never becomes vertical).
+  const raw = el as LineElement;
+  const rawHor = Math.hypot(raw.end.x - raw.start.x, raw.end.y - raw.start.y);
+  if (horLen < 0.001 || rawHor < 0.001) {
     // Vertical run (start.xy == end.xy): no chord direction, so the regular
     // miter-aware footprint builder bails out. Synthesize a small square /
     // diamond at the point so the riser is visible in plan view. No network
     // membership — risers always draw a single closed polygon with caps.
-    footprint = buildVerticalRiserFootprint(ln.start, sizeX, sizeY, shape);
+    footprint = buildVerticalRiserFootprint(ln.start, sizeX, sizeY, shape, fittings.riserRight.get(el.id));
     if (footprint.length === 0) return null;
   } else {
     const network = getMepNetwork(ctx, table);
@@ -221,6 +243,8 @@ export function mepLineGeometry(
     }
   }
 
+  const vertical = horLen < 0.001 || rawHor < 0.001;
+  const rawZ = curveZ(raw);
   return {
     id: ln.id,
     table,
@@ -236,7 +260,56 @@ export function mepLineGeometry(
     footprint,
     segments,
     horLen,
+    gaps: vertical ? [] : (mepCrossingGaps(ctx).get(ln.id) ?? []),
+    label: mepSizeLabel(table, systemType, shape, sizeX, sizeY),
+    slope: !vertical && horLen > 0 ? (endZ - startZ) / horLen : 0,
+    riser: vertical ? riserDirection(el as LineElement | SpatialLineElement, rawZ, fittings) : null,
+    insulation: parseFloat(ln.attrs.insulation_thickness || '0') || 0,
+    flexible: (ln.attrs.flexible || '').toLowerCase() === 'true',
+    riserRight: fittings.riserRight.get(el.id),
+    rawStart: raw.start,
+    rawEnd: raw.end,
+    openStart: !(ln.attrs.from || '').trim(),
+    openEnd: !(ln.attrs.to || '').trim(),
   };
+}
+
+/** Rise or drop, seen from the run a vertical segment joins on this level. */
+function riserDirection(
+  el: LineElement | SpatialLineElement,
+  z: { startZ: number; endZ: number },
+  fittings: ReturnType<typeof analyzeFittings>,
+): 'up' | 'down' {
+  const joinsRun = (ref: string | undefined): boolean => {
+    const p = parsePortRef(ref);
+    if (!p) return false;
+    const f = fittings.byNode.get(p.hostId);
+    if (!f) return !!p.portName; // a device port on this level
+    return f.legs.some(l => Math.abs(l.dir[2]) < 0.5);
+  };
+  const lowerIsStart = z.startZ <= z.endZ;
+  const lowerRef = lowerIsStart ? el.attrs.from : el.attrs.to;
+  const upperRef = lowerIsStart ? el.attrs.to : el.attrs.from;
+  const lowerJoins = joinsRun(lowerRef), upperJoins = joinsRun(upperRef);
+  if (lowerJoins && !upperJoins) return 'up';
+  if (upperJoins && !lowerJoins) return 'down';
+  return z.endZ >= z.startZ ? 'up' : 'down';
+}
+
+const DN_SIZES = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600];
+
+/** Plan tag text: "SA 600×400", "CHWS DN100", "Ø200". Sizes in mm. */
+export function mepSizeLabel(table: string, system: string, shape: string, sizeX: number, sizeY: number): string {
+  const mm = (v: number) => Math.round(v * 1000);
+  let size: string;
+  if (shape === 'round') {
+    const d = mm(sizeX);
+    const dn = table === 'pipe' ? DN_SIZES.find(n => Math.abs(n - d) <= Math.max(2, n * 0.12)) : undefined;
+    size = dn ? `DN${dn}` : `Ø${d}`;
+  } else {
+    size = `${mm(sizeX)}×${mm(sizeY)}`;
+  }
+  return system.trim() ? `${system.trim()} ${size}` : size;
 }
 
 /** Build a small centered footprint for a vertical riser (start.xy == end.xy).
@@ -247,6 +320,7 @@ function buildVerticalRiserFootprint(
   sizeX: number,
   sizeY: number,
   shape: string,
+  rightHint?: [number, number, number],
 ): Point[] {
   if (shape === 'round') {
     const r = Math.max(sizeX, 0.01) / 2;
@@ -260,11 +334,16 @@ function buildVerticalRiserFootprint(
   }
   const hx = Math.max(sizeX, 0.01) / 2;
   const hy = Math.max(sizeY, 0.01) / 2;
+  // Width (size_x) along the run the riser joins, like its 3D section.
+  const r = rightHint ? { x: rightHint[0], y: rightHint[1] } : { x: 0, y: -1 };
+  const rl = Math.hypot(r.x, r.y) || 1;
+  const ux = r.x / rl, uy = r.y / rl;      // width axis
+  const vx = -uy, vy = ux;                 // depth axis
   return [
-    { x: center.x - hx, y: center.y - hy },
-    { x: center.x + hx, y: center.y - hy },
-    { x: center.x + hx, y: center.y + hy },
-    { x: center.x - hx, y: center.y + hy },
+    { x: center.x - ux * hx - vx * hy, y: center.y - uy * hx - vy * hy },
+    { x: center.x + ux * hx - vx * hy, y: center.y + uy * hx - vy * hy },
+    { x: center.x + ux * hx + vx * hy, y: center.y + uy * hx + vy * hy },
+    { x: center.x - ux * hx + vx * hy, y: center.y - uy * hx + vy * hy },
   ];
 }
 
@@ -327,96 +406,14 @@ export function mepLineDraw2D(
   strokeWidth: number,
   selected = false,
 ): ReactNode {
-  // When system_type is set (and the element isn't currently selected),
-  // override the table's default colors so MEP lines visually group by system
-  // instead of by table. Selection always wins so the highlight stays visible.
-  const sysColor = !selected && facts.systemType.trim()
-    ? resolveSystemColor(facts.systemType, stroke, facts.projectSystemColor)
-    : null;
-  const actualStroke = sysColor ?? stroke;
-  const actualFill = sysColor ? sysColor + '22' : fill;
-
-  // Vertical riser: no network membership, draw the riser footprint as a
-  // single closed polygon with caps.
-  if (facts.segments.length === 0) {
-    const points = facts.footprint.map(p => `${p.x},${p.y}`).join(' ');
-    return (
-      <polygon
-        points={points}
-        fill={actualFill}
-        stroke={actualStroke}
-        strokeWidth={strokeWidth}
-        strokeLinejoin="miter"
-        data-id={facts.id}
-      />
-    );
-  }
-
-  // Horizontal run: paint fill polygons with no stroke, then stroke only the
-  // junction-aware outline edges so chains of same-Z MEP look like a
-  // continuous band (matches wallDraw2D).
-  return (
-    <g data-id={facts.id}>
-      {facts.segments.map((seg, i) => (
-        <polygon
-          key={`f${i}`}
-          points={seg.corners.map(p => `${p.x},${p.y}`).join(' ')}
-          fill={actualFill}
-          stroke="none"
-          data-id={facts.id}
-        />
-      ))}
-      {facts.segments.flatMap((seg, si) =>
-        seg.outline.map(([a, b], ei) => (
-          <line
-            key={`e${si}-${ei}`}
-            x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-            stroke={actualStroke}
-            strokeWidth={strokeWidth}
-            strokeLinecap="butt"
-            data-id={facts.id}
-          />
-        )),
-      )}
-    </g>
-  );
+  return <MepLine2D facts={facts} fill={fill} stroke={stroke} strokeWidth={strokeWidth} selected={selected} />;
 }
 
 export function mepLineDraw3D(facts: MepLineFacts, isHL: boolean): ReactNode {
-  const dx = facts.end.x - facts.start.x;
-  const dy = facts.end.y - facts.start.y;
-  const dz = facts.endZ - facts.startZ;
-  const len3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  if (len3D < 0.001) return null;
+  return <MepLine3D facts={facts} isHL={isHL} />;
+}
 
-  const profile = shapeFromAttrs(facts.shape, facts.sizeX, facts.sizeY);
-  const shape = createProfile(profile);
-  const geo = new ExtrudeGeometry(shape, { depth: len3D, bevelEnabled: false });
-
-  // Orient local +Z from start to end, profile kept upright (no roll); the
-  // line is the centre line of the section.
-  const quat = uprightAxisQuaternion(dx, dy, dz);
-
-  // Color by MEP system (matching 2D) when the line carries a system_type;
-  // otherwise fall back to the table's BIM material.
-  const sysColor = facts.systemType.trim()
-    ? resolveMepSystemColor(facts.systemType, facts.projectSystemColor)
-    : '';
-  const material = sysColor
-    ? getSystemColorMaterial(sysColor)
-    : getBimMaterial(resolveBimMaterial(facts.material, facts.table));
-  return (
-    <mesh
-      geometry={geo}
-      position={[facts.start.x, facts.baseY + facts.startZ, -facts.start.y]}
-      quaternion={quat}
-      material={isHL ? undefined : material}
-      userData={{ elementId: facts.id }}
-    >
-      {isHL && (
-        <meshStandardMaterial attach="material" color="#06b6d4"
-          transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-      )}
-    </mesh>
-  );
+/** Resolved display colour for a run (system colour or the table default). */
+export function mepLineColor(facts: MepLineFacts, fallback: string): string {
+  return facts.systemType.trim() ? resolveSystemColor(facts.systemType, fallback, facts.projectSystemColor) : fallback;
 }
