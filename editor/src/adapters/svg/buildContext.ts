@@ -36,17 +36,31 @@ export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryCo
     return selfId ? arr.filter(e => e.id !== selfId) : arr;
   }
 
+  // Elements by their explicit host reference (host_id attr or hostId), in
+  // map order, built on first use: one pass instead of one per host.
+  let byHostRef: Map<string, { el: CanonicalElement; order: number }[]> | null = null;
   const hostedCache = new Map<string, CanonicalElement[]>();
   function hostedOf(hostId: string): CanonicalElement[] {
     let arr = hostedCache.get(hostId);
     if (arr) return arr;
-    arr = [];
+    if (!byHostRef) {
+      byHostRef = new Map();
+      let order = 0;
+      for (const el of allElements.values()) {
+        const explicit = el.attrs.host_id || el.hostId;
+        if (explicit) {
+          let list = byHostRef.get(explicit);
+          if (!list) byHostRef.set(explicit, list = []);
+          list.push({ el, order });
+        }
+        order++;
+      }
+    }
     const colonIdx = hostId.indexOf(':');
     const unprefixed = colonIdx >= 0 ? hostId.substring(colonIdx + 1) : hostId;
-    for (const el of allElements.values()) {
-      const explicit = el.attrs.host_id || el.hostId;
-      if (explicit === hostId || explicit === unprefixed) arr.push(el);
-    }
+    const matches = [...(byHostRef.get(hostId) ?? [])];
+    if (unprefixed !== hostId) matches.push(...(byHostRef.get(unprefixed) ?? []));
+    arr = matches.sort((a, b) => a.order - b.order).map(m => m.el);
     hostedCache.set(hostId, arr);
     return arr;
   }

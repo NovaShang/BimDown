@@ -6,9 +6,12 @@ import type { EditorAction } from '../../state/editorTypes.ts';
 import type { SnapResult } from '../../utils/snap.ts';
 import { useEditorState, useEditorDispatch } from '../../state/EditorContext.tsx';
 import { isBackgroundDiscipline } from '../../state/selectors.ts';
+import { resolveBatchElementId } from '../staticBatch.ts';
 
 /** Resolve element ID from a raycast intersection (walks up object tree). */
 function resolveElementId(intersection: Intersection): string | null {
+  const batched = resolveBatchElementId(intersection);
+  if (batched !== undefined) return batched;
   let obj: Object3D | null = intersection.object;
   while (obj) {
     if (obj.userData.indexToId && intersection.instanceId !== undefined) {

@@ -15,6 +15,12 @@
  *      twin's vertex). The face with positive signed area is the interior of
  *      a CCW polygon; the exterior boundary has negative signed area.
  *   5. Pick the smallest-area interior face that contains the seed point.
+ *
+ * Steps 1–4 depend only on the walls, so they run once per wall set
+ * (`getSpaceFaceGraph`, cached on the wall geometry) and every seed on the
+ * level only does step 5. Splitting and vertex merging use uniform grids
+ * but visit candidates in the original order, so the result is identical
+ * to the plain O(n²) version (spaceBoundary.legacy.ts, checked by tests).
  */
 import type { LineElement, Point } from '../model/elements.ts';
 import { tessellateArc } from './arc.ts';
@@ -38,6 +44,7 @@ interface Segment {
 interface Vertex {
   x: number;
   y: number;
+  index: number;
   outgoing: HalfEdge[];
 }
 
@@ -52,9 +59,18 @@ interface HalfEdge {
 interface Face {
   polygon: Point[];
   signedArea: number;
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
 }
 
-// ─── Public entry point ────────────────────────────────────────────────────
+/** Interior faces (positive signed area) of the wall graph, in trace order. */
+export interface SpaceFaceGraph {
+  faces: readonly Face[];
+}
+
+// ─── Public entry points ───────────────────────────────────────────────────
 
 /**
  * Returns the smallest enclosing polygon for `seedPoint` derived from the
@@ -64,23 +80,70 @@ interface Face {
  * renderer.
  */
 export function deriveSpaceBoundary(seedPoint: Point, walls: LineElement[]): Point[] | null {
-  const segments = collectSegments(walls);
-  if (segments.length === 0) return null;
+  return findSpaceBoundary(getSpaceFaceGraph(walls), seedPoint);
+}
 
-  const split = splitAtIntersections(segments);
-  const { halfEdges } = buildHalfEdgeStructure(split);
-  const faces = traceFaces(halfEdges);
-
+/** Smallest interior face of `graph` containing `seedPoint` (first one wins on ties). */
+export function findSpaceBoundary(graph: SpaceFaceGraph, seedPoint: Point): Point[] | null {
+  const px = seedPoint.x, py = seedPoint.y;
   let bestFace: Face | null = null;
   let bestArea = Infinity;
-  for (const face of faces) {
-    if (face.signedArea <= 0) continue; // skip outer / CW faces
-    if (face.signedArea < bestArea && pointInPolygon(seedPoint.x, seedPoint.y, face.polygon)) {
+  for (const face of graph.faces) {
+    if (face.signedArea >= bestArea) continue;
+    // A point outside the bbox can't be inside (ray casting counts an even
+    // number of crossings there), so this only skips the polygon test.
+    if (px < face.minX || px > face.maxX || py < face.minY || py > face.maxY) continue;
+    if (pointInPolygon(px, py, face.polygon)) {
       bestFace = face;
       bestArea = face.signedArea;
     }
   }
   return bestFace ? bestFace.polygon : null;
+}
+
+const GRAPH_CACHE_SIZE = 32;
+const graphCache = new Map<string, SpaceFaceGraph>();
+
+/**
+ * Face graph of a wall set, cached on the walls' geometry (endpoints + arc
+ * parameters, in order), so re-renders, other seeds and other passes over an
+ * unchanged level reuse it. Small LRU: one entry per level / wall revision.
+ */
+export function getSpaceFaceGraph(walls: LineElement[]): SpaceFaceGraph {
+  const key = wallsKey(walls);
+  const hit = graphCache.get(key);
+  if (hit) {
+    graphCache.delete(key);
+    graphCache.set(key, hit);
+    return hit;
+  }
+  const graph = buildSpaceFaceGraph(walls);
+  graphCache.set(key, graph);
+  if (graphCache.size > GRAPH_CACHE_SIZE) {
+    graphCache.delete(graphCache.keys().next().value!);
+  }
+  return graph;
+}
+
+/** Steps 1–4: the interior faces of the planar graph formed by `walls`. */
+export function buildSpaceFaceGraph(walls: LineElement[]): SpaceFaceGraph {
+  const segments = collectSegments(walls);
+  if (segments.length === 0) return { faces: [] };
+  const split = splitAtIntersections(segments);
+  const { halfEdges } = buildHalfEdgeStructure(split);
+  const faces = traceFaces(halfEdges).filter(f => f.signedArea > 0); // skip outer / CW faces
+  return { faces };
+}
+
+function wallsKey(walls: LineElement[]): string {
+  const parts: string[] = [];
+  for (const w of walls) {
+    const a = w.arc;
+    parts.push(a
+      ? `${w.start.x},${w.start.y},${w.end.x},${w.end.y},${a.rx},${a.ry},${a.rotation},${a.largeArc ? 1 : 0},${a.sweep ? 1 : 0}`
+      : `${w.start.x},${w.start.y},${w.end.x},${w.end.y}`);
+  }
+  return parts.join(';');
 }
 
 // ─── Segment collection (CanonicalElement → Segment) ───────────────────────
@@ -111,6 +174,130 @@ function collectSegments(walls: LineElement[]): Segment[] {
   return segments;
 }
 
+// ─── Uniform grid over segment bboxes / endpoints ──────────────────────────
+
+/** Bbox slack: candidates are a superset of what the exact tests accept. */
+const GRID_PAD = 2 * TOLERANCE;
+/** Segments covering more cells than this go to a list checked against all. */
+const MAX_CELLS_PER_SEGMENT = 4096;
+
+class SegmentGrid {
+  private minX: number;
+  private minY: number;
+  private cols: number;
+  private rows: number;
+  private cell: number;
+  /** cell → segment indices whose padded bbox overlaps it (ascending). */
+  private segCells = new Map<number, number[]>();
+  /** cell → endpoint indices (2i = start, 2i+1 = end of segment i; ascending). */
+  private epCells = new Map<number, number[]>();
+  private bigSegments: number[] = [];
+  private stamp: Int32Array;
+  private stampValue = 0;
+
+  constructor(segments: Segment[]) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, sumLen = 0;
+    for (const s of segments) {
+      minX = Math.min(minX, s.startX, s.endX); maxX = Math.max(maxX, s.startX, s.endX);
+      minY = Math.min(minY, s.startY, s.endY); maxY = Math.max(maxY, s.startY, s.endY);
+      sumLen += Math.hypot(s.endX - s.startX, s.endY - s.startY);
+    }
+    this.minX = minX - GRID_PAD;
+    this.minY = minY - GRID_PAD;
+    const w = maxX - minX + 2 * GRID_PAD, h = maxY - minY + 2 * GRID_PAD;
+    // About one average segment per cell, at most ~1M cells.
+    let cell = Math.max(sumLen / Math.max(1, segments.length), 4 * TOLERANCE);
+    cell = Math.max(cell, Math.sqrt((w * h) / 1e6));
+    this.cell = cell;
+    this.cols = Math.floor(w / cell) + 1;
+    this.rows = Math.floor(h / cell) + 1;
+    this.stamp = new Int32Array(segments.length);
+
+    for (let i = 0; i < segments.length; i++) {
+      const s = segments[i];
+      const [c0, r0, c1, r1] = this.range(
+        Math.min(s.startX, s.endX) - GRID_PAD, Math.min(s.startY, s.endY) - GRID_PAD,
+        Math.max(s.startX, s.endX) + GRID_PAD, Math.max(s.startY, s.endY) + GRID_PAD,
+      );
+      if ((c1 - c0 + 1) * (r1 - r0 + 1) > MAX_CELLS_PER_SEGMENT) {
+        this.bigSegments.push(i);
+      } else {
+        for (let r = r0; r <= r1; r++) {
+          for (let c = c0; c <= c1; c++) push(this.segCells, r * this.cols + c, i);
+        }
+      }
+      push(this.epCells, this.cellOf(s.startX, s.startY), 2 * i);
+      push(this.epCells, this.cellOf(s.endX, s.endY), 2 * i + 1);
+    }
+  }
+
+  private col(x: number): number {
+    return Math.min(this.cols - 1, Math.max(0, Math.floor((x - this.minX) / this.cell)));
+  }
+
+  private row(y: number): number {
+    return Math.min(this.rows - 1, Math.max(0, Math.floor((y - this.minY) / this.cell)));
+  }
+
+  private cellOf(x: number, y: number): number {
+    return this.row(y) * this.cols + this.col(x);
+  }
+
+  private range(x0: number, y0: number, x1: number, y1: number): [number, number, number, number] {
+    return [this.col(x0), this.row(y0), this.col(x1), this.row(y1)];
+  }
+
+  /** Endpoint indices that may lie within the padded bbox of `s`, ascending. */
+  endpointsNear(s: Segment): number[] {
+    const [c0, r0, c1, r1] = this.range(
+      Math.min(s.startX, s.endX) - GRID_PAD, Math.min(s.startY, s.endY) - GRID_PAD,
+      Math.max(s.startX, s.endX) + GRID_PAD, Math.max(s.startY, s.endY) + GRID_PAD,
+    );
+    const out: number[] = [];
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const list = this.epCells.get(r * this.cols + c);
+        if (list) for (const e of list) out.push(e);
+      }
+    }
+    return out.sort((a, b) => a - b);
+  }
+
+  /** Segment indices whose padded bbox may overlap that of `s`, ascending. */
+  segmentsNear(s: Segment): number[] {
+    const [c0, r0, c1, r1] = this.range(
+      Math.min(s.startX, s.endX) - GRID_PAD, Math.min(s.startY, s.endY) - GRID_PAD,
+      Math.max(s.startX, s.endX) + GRID_PAD, Math.max(s.startY, s.endY) + GRID_PAD,
+    );
+    const stamp = ++this.stampValue;
+    const out: number[] = [];
+    const add = (j: number) => {
+      if (this.stamp[j] === stamp) return;
+      this.stamp[j] = stamp;
+      out.push(j);
+    };
+    if ((c1 - c0 + 1) * (r1 - r0 + 1) > MAX_CELLS_PER_SEGMENT) {
+      // A huge query: cheaper to scan everything.
+      for (let j = 0; j < this.stamp.length; j++) add(j);
+      return out;
+    }
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const list = this.segCells.get(r * this.cols + c);
+        if (list) for (const j of list) add(j);
+      }
+    }
+    for (const j of this.bigSegments) add(j);
+    return out.sort((a, b) => a - b);
+  }
+}
+
+function push(map: Map<number, number[]>, key: number, value: number): void {
+  const list = map.get(key);
+  if (list) list.push(value);
+  else map.set(key, [value]);
+}
+
 // ─── Split at T-junctions + crossings ──────────────────────────────────────
 
 function splitAtIntersections(segments: Segment[]): Segment[] {
@@ -120,12 +307,7 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
   while (changed) {
     changed = false;
 
-    const allEndpoints: { x: number; y: number }[] = [];
-    for (const seg of result) {
-      allEndpoints.push({ x: seg.startX, y: seg.startY });
-      allEndpoints.push({ x: seg.endX, y: seg.endY });
-    }
-
+    const grid = new SegmentGrid(result);
     const nextResult: Segment[] = [];
 
     for (let i = 0; i < result.length; i++) {
@@ -140,24 +322,27 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
 
       const splitPoints: { x: number; y: number; t: number }[] = [];
 
-      // (a) T-junctions
-      for (const ep of allEndpoints) {
-        if (Math.abs(ep.x - seg.startX) < TOLERANCE && Math.abs(ep.y - seg.startY) < TOLERANCE) continue;
-        if (Math.abs(ep.x - seg.endX) < TOLERANCE && Math.abs(ep.y - seg.endY) < TOLERANCE) continue;
+      // (a) T-junctions — every segment endpoint, in segment order
+      for (const e of grid.endpointsNear(seg)) {
+        const src = result[e >> 1];
+        const epX = e & 1 ? src.endX : src.startX;
+        const epY = e & 1 ? src.endY : src.startY;
+        if (Math.abs(epX - seg.startX) < TOLERANCE && Math.abs(epY - seg.startY) < TOLERANCE) continue;
+        if (Math.abs(epX - seg.endX) < TOLERANCE && Math.abs(epY - seg.endY) < TOLERANCE) continue;
 
-        const t = ((ep.x - seg.startX) * dx + (ep.y - seg.startY) * dy) / lenSq;
+        const t = ((epX - seg.startX) * dx + (epY - seg.startY) * dy) / lenSq;
         if (t <= TOLERANCE || t >= 1 - TOLERANCE) continue;
 
         const closestX = seg.startX + t * dx;
         const closestY = seg.startY + t * dy;
-        const dxe = ep.x - closestX, dye = ep.y - closestY;
+        const dxe = epX - closestX, dye = epY - closestY;
         if (dxe * dxe + dye * dye < TOLERANCE * TOLERANCE) {
-          splitPoints.push({ x: ep.x, y: ep.y, t });
+          splitPoints.push({ x: epX, y: epY, t });
         }
       }
 
       // (b) Proper crossings
-      for (let j = 0; j < result.length; j++) {
+      for (const j of grid.segmentsNear(seg)) {
         if (j === i) continue;
         const other = result[j];
         const ox = other.endX - other.startX;
@@ -209,13 +394,32 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
 
 function buildHalfEdgeStructure(segments: Segment[]): { vertices: Vertex[]; halfEdges: HalfEdge[] } {
   const vertices: Vertex[] = [];
+  // Vertices bucketed by TOLERANCE-sized cells: a match (|dx|, |dy| < TOL)
+  // sits in the 3×3 neighbourhood (5×5 searched, for floor() rounding). The
+  // earliest-created match wins, same as a linear scan in creation order.
+  const buckets = new Map<string, Vertex[]>();
+  const cellKey = (cx: number, cy: number) => `${cx},${cy}`;
 
   function findOrCreateVertex(x: number, y: number): Vertex {
-    for (const v of vertices) {
-      if (Math.abs(v.x - x) < TOLERANCE && Math.abs(v.y - y) < TOLERANCE) return v;
+    const cx = Math.floor(x / TOLERANCE), cy = Math.floor(y / TOLERANCE);
+    let found: Vertex | null = null;
+    for (let i = -2; i <= 2; i++) {
+      for (let j = -2; j <= 2; j++) {
+        const list = buckets.get(cellKey(cx + i, cy + j));
+        if (!list) continue;
+        for (const v of list) {
+          if (found && v.index >= found.index) break; // lists are in creation order
+          if (Math.abs(v.x - x) < TOLERANCE && Math.abs(v.y - y) < TOLERANCE) found = v;
+        }
+      }
     }
-    const v: Vertex = { x, y, outgoing: [] };
+    if (found) return found;
+    const v: Vertex = { x, y, index: vertices.length, outgoing: [] };
     vertices.push(v);
+    const key = cellKey(cx, cy);
+    const list = buckets.get(key);
+    if (list) list.push(v);
+    else buckets.set(key, [v]);
     return v;
   }
 
@@ -283,14 +487,20 @@ function traceFaces(halfEdges: HalfEdge[]): Face[] {
     if (count >= MAX_FACE_EDGES) continue;
 
     let signedArea = 0;
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (let i = 0; i < polygon.length; i++) {
       const j = (i + 1) % polygon.length;
       signedArea += polygon[i].x * polygon[j].y;
       signedArea -= polygon[j].x * polygon[i].y;
+      const p = polygon[i];
+      if (p.x < minX) minX = p.x;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.y > maxY) maxY = p.y;
     }
     signedArea /= 2;
 
-    faces.push({ polygon, signedArea });
+    faces.push({ polygon, signedArea, minX, minY, maxX, maxY });
   }
 
   return faces;

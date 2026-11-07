@@ -7,6 +7,7 @@
  * per-junction to support different wall thicknesses.
  */
 import type { ArcParams } from '../model/elements.ts';
+import { AabbGrid } from './aabbGrid.ts';
 import { pointOnArc } from './arc.ts';
 
 export interface WallSegment {
@@ -116,7 +117,8 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
     }
   }
 
-  // Pre-compute wall AABBs (expanded by halfWidth) for fast rejection
+  // Pre-compute wall AABBs (expanded by halfWidth) for fast rejection,
+  // gridded so each endpoint only visits nearby walls (in index order).
   const wallBounds = walls.map(seg => {
     const hw = seg.halfWidth * 1.1;
     return {
@@ -124,6 +126,7 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
       maxX: Math.max(seg.x1, seg.x2) + hw, maxY: Math.max(seg.y1, seg.y2) + hw,
     };
   });
+  const wallGrid = new AabbGrid(wallBounds);
 
   for (let si = 0; si < walls.length; si++) {
     const seg = walls[si];
@@ -135,7 +138,7 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
       const k = ptKey(ep.x, ep.y);
       if ((epCount.get(k) ?? 0) >= 2) continue; // already a regular junction
 
-      for (let oi = 0; oi < walls.length; oi++) {
+      for (const oi of wallGrid.query({ minX: ep.x, minY: ep.y, maxX: ep.x, maxY: ep.y })) {
         if (oi === si) continue;
         // AABB early-out: skip walls whose expanded bounds don't contain the endpoint
         const ob = wallBounds[oi];
@@ -423,6 +426,7 @@ export function computePerSegmentOutlines(
 ): [Pt, Pt][][] {
   const out: [Pt, Pt][][] = polygons.map(() => []);
   const bounds = polygons.map(p => polyAABB(p.corners));
+  const grid = new AabbGrid(bounds);
 
   for (let i = 0; i < polygons.length; i++) {
     const P = polygons[i];
@@ -438,7 +442,7 @@ export function computePerSegmentOutlines(
     for (const [a, b] of sides) {
       let subs: [Pt, Pt][] = [[a, b]];
       const eb = segAABB(a, b);
-      for (let j = 0; j < polygons.length; j++) {
+      for (const j of grid.query(eb)) {
         if (j === i) continue;
         if (polygons[j].id === P.id) continue; // sibling segment of same wall
         if (polygons[j].sideLen !== 2) continue; // skip arc walls as clippers

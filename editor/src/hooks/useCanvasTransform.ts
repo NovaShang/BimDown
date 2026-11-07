@@ -7,7 +7,6 @@ export type TransformUpdater = ViewTransform | ((prev: ViewTransform) => ViewTra
 interface UseCanvasTransformOptions {
   svgRef: React.RefObject<SVGSVGElement | null>;
   containerRef: React.RefObject<HTMLDivElement | null>;
-  uiScaleRef: React.MutableRefObject<number>;
   viewBox: Box | null;
   currentLevel: string;
   /** Current level's content extent (SVG units, grids excluded); null when the level is empty */
@@ -21,7 +20,7 @@ interface UseCanvasTransformOptions {
  * Pan updates bypass React entirely — only scale changes trigger re-renders
  * for overlays that need scale-dependent stroke widths.
  */
-export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, currentLevel, contentBounds, userEdited }: UseCanvasTransformOptions) {
+export function useCanvasTransform({ svgRef, containerRef, viewBox, currentLevel, contentBounds, userEdited }: UseCanvasTransformOptions) {
   const transformRef = useRef<ViewTransform>({ x: 0, y: 0, scale: 1 });
   // Set by any user pan/zoom; auto-fit leaves the view alone after that
   const userMovedRef = useRef(false);
@@ -30,16 +29,16 @@ export function useCanvasTransform({ svgRef, containerRef, uiScaleRef, viewBox, 
   // Listeners for external subscribers (Minimap)
   const listenersRef = useRef(new Set<() => void>());
 
+  // `--canvas-scale` is not set on the container: an inherited custom
+  // property there restyles every SVG node on each zoom step. The hover
+  // highlight (its only user) sets it on the hovered nodes, via subscribe.
   const syncDOM = useCallback(() => {
     const t = transformRef.current;
     if (svgRef.current) {
       svgRef.current.style.transform = `translate(${t.x}px, ${t.y}px) scale(${t.scale})`;
     }
-    if (containerRef.current) {
-      containerRef.current.style.setProperty('--canvas-scale', String(t.scale * uiScaleRef.current));
-    }
     for (const cb of listenersRef.current) cb();
-  }, [svgRef, containerRef, uiScaleRef]);
+  }, [svgRef]);
 
   const setTransform = useCallback((updater: TransformUpdater, animated = false) => {
     const prev = transformRef.current;

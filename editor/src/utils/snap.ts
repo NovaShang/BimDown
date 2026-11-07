@@ -3,6 +3,7 @@ import type { GridData, ProjectUnit } from '../types.ts';
 import { nearestPointOnArc, pointOnArc as arcPointOnArc } from '../geometry/arc.ts';
 import { formatLength } from './units.ts';
 import { getElementModule } from '../elements/registry.ts';
+import { AabbGrid, type Box2 } from '../geometry/aabbGrid.ts';
 
 // ── Snap types ──
 
@@ -65,6 +66,8 @@ const GRID_LEVELS = [
 ];
 const GRID_TARGET_PX = 50;
 const SNAP_THRESHOLD_PX = 10;
+/** Axis-only alignment reaches this many thresholds along the other axis (~500px at default zoom). */
+const ALIGN_PERP_FACTOR = 50;
 
 export function adaptiveGridSpacing(pixelSize: number): number {
   const target = pixelSize * GRID_TARGET_PX;
@@ -126,14 +129,87 @@ interface SnapTarget {
   edgeTo?: Point;
 }
 
+/**
+ * Box that contains every snap target an element can produce (endpoints,
+ * midpoints, outline edges, bbox corners, polygon vertices / edges).
+ */
+function snapTargetBounds(el: CanonicalElement): Box2 | null {
+  if (el.geometry === 'line' || el.geometry === 'spatial_line') {
+    const hw = Math.max(0, el.strokeWidth / 2);
+    let pad = hw;
+    const arc = (el as LineElement).arc;
+    if (arc) {
+      // The arc stays within 2·radius of its start (radius ≥ half the chord).
+      const chord = Math.hypot(el.end.x - el.start.x, el.end.y - el.start.y);
+      pad += 2 * Math.max(Math.abs(arc.rx), Math.abs(arc.ry), chord / 2);
+      return { minX: el.start.x - pad, minY: el.start.y - pad, maxX: el.start.x + pad, maxY: el.start.y + pad };
+    }
+    return {
+      minX: Math.min(el.start.x, el.end.x) - pad, minY: Math.min(el.start.y, el.end.y) - pad,
+      maxX: Math.max(el.start.x, el.end.x) + pad, maxY: Math.max(el.start.y, el.end.y) + pad,
+    };
+  }
+  if (el.geometry === 'point') {
+    const hw = Math.abs(el.width / 2), hh = Math.abs(el.height / 2);
+    return { minX: el.position.x - hw, minY: el.position.y - hh, maxX: el.position.x + hw, maxY: el.position.y + hh };
+  }
+  if (el.geometry === 'polygon' && el.vertices.length > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const v of el.vertices) {
+      minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
+      maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
+    }
+    return { minX, minY, maxX, maxY };
+  }
+  return null;
+}
+
+interface SnapIndex {
+  entries: [string, CanonicalElement][];
+  grid: AabbGrid;
+}
+
+/** Per element map (maps are replaced, never mutated, on edit). */
+const snapIndexCache = new WeakMap<ReadonlyMap<string, CanonicalElement>, SnapIndex>();
+
+function snapIndexFor(elements: ReadonlyMap<string, CanonicalElement>): SnapIndex {
+  let index = snapIndexCache.get(elements);
+  if (!index) {
+    const entries = Array.from(elements);
+    // Elements without targets: no box (the grid returns them every time; harmless).
+    const none: Box2 = { minX: NaN, minY: NaN, maxX: NaN, maxY: NaN };
+    const grid = new AabbGrid(entries.map(([, el]) => snapTargetBounds(el) ?? none));
+    index = { entries, grid };
+    snapIndexCache.set(elements, index);
+  }
+  return index;
+}
+
+/**
+ * Elements in map order, limited to those whose targets can fall within
+ * `reach` of the cursor on both axes (no snap pass looks further), so the
+ * result is the same as scanning every element.
+ */
+function elementsNear(
+  elements: ReadonlyMap<string, CanonicalElement>,
+  cursor: Point,
+  reach: number,
+): Iterable<[string, CanonicalElement]> {
+  if (elements.size < 64 || !Number.isFinite(reach)) return elements;
+  const { entries, grid } = snapIndexFor(elements);
+  const hits = grid.query({ minX: cursor.x - reach, minY: cursor.y - reach, maxX: cursor.x + reach, maxY: cursor.y + reach });
+  return hits.map(i => entries[i]);
+}
+
 function extractSnapTargets(
   elements: ReadonlyMap<string, CanonicalElement>,
   excludeIds: Set<string>,
   cursor: Point,
+  reach: number,
 ): SnapTarget[] {
   const targets: SnapTarget[] = [];
 
-  for (const [id, el] of elements) {
+  for (const [id, el] of elementsNear(elements, cursor, reach)) {
     if (excludeIds.has(id)) continue;
     // Modules opt out of snap-target participation via `isSnapTarget: false`
     // for abstract markers (grids, rooms, annotations). Grids additionally
@@ -325,7 +401,9 @@ export function computeSnap(
   // used by Pass 5 to keep along-line integer snapping ON the line.
   let gridLineDir: { ux: number; uy: number; a: Point } | null = null;
 
-  let targets = elements ? extractSnapTargets(elements, excludeIds, input) : [];
+  // Every object-snap pass below only accepts targets within
+  // threshold · ALIGN_PERP_FACTOR of the cursor on each axis.
+  let targets = elements ? extractSnapTargets(elements, excludeIds, input, threshold * ALIGN_PERP_FACTOR) : [];
   // Mix in extra endpoints (e.g. polygon vertices being drawn but not yet
   // committed to the document) as high-priority snap targets.
   if (extraEndpoints && extraEndpoints.length > 0) {
@@ -418,7 +496,6 @@ export function computeSnap(
   // Proximity limit: only align axes when the perpendicular distance is reasonable.
   // For direct snap (both axes close), use full threshold.
   // For axis-only alignment, require the other axis within ALIGN_PERP_FACTOR * threshold.
-  const ALIGN_PERP_FACTOR = 50; // ~500px perpendicular range at default zoom
   const alignPerpLimit = threshold * ALIGN_PERP_FACTOR;
 
   for (const t of targets) {

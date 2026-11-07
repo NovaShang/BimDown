@@ -6,12 +6,15 @@ import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { getToolHandler } from '../../tools/registry.ts';
 import type { ToolContext } from '../../tools/types.ts';
 import { useEditorState } from '../../state/EditorContext.tsx';
+import { resolveBatchElementId } from '../staticBatch.ts';
 
 /**
  * Resolves an element ID from a raycast intersection.
  * Walks up the object tree looking for userData.elementId or userData.indexToId.
  */
 function resolveElementId(intersection: Intersection): string | null {
+  const batched = resolveBatchElementId(intersection);
+  if (batched !== undefined) return batched;
   let obj: Object3D | null = intersection.object;
   while (obj) {
     if (obj.userData.indexToId && intersection.instanceId !== undefined) {

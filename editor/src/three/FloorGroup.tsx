@@ -1,12 +1,16 @@
-import { useMemo, Suspense } from 'react';
-import { useEditorState } from '../state/EditorContext.tsx';
+import { memo, useMemo, useLayoutEffect, useRef, useState, Suspense } from 'react';
+import { Group } from 'three';
+import { createPortal } from '@react-three/fiber';
+import { useEditorState, useSelectionState } from '../state/EditorContext.tsx';
 import { isDisciplineVisible } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { Level } from '../types.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import MeshInstances from './layers/MeshInstances.tsx';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
-import { ElementNode3D } from '../adapters/r3f/ElementNode3D.tsx';
+import { ElementNode3D, ElementHighlight3D } from '../adapters/r3f/ElementNode3D.tsx';
+import type { GeometryContext } from '../elements/archetypes.ts';
+import { buildStaticBatch, releaseStaticBatch } from './staticBatch.ts';
 
 interface FloorRenderData {
   levelId: string;
@@ -14,18 +18,51 @@ interface FloorRenderData {
   elements: CanonicalElement[];
 }
 
-/** Parse all floors once, filter by discipline + layer visibility.
- *  For the current level, use the live document model so 3D reflects edits immediately. */
+interface FloorCacheEntry {
+  source: unknown;
+  visibleLayers: Set<string>;
+  discipline: string | null;
+  archContext: boolean;
+  elevation: number;
+  data: FloorRenderData | null;
+}
+
+/** Parse all floors, filter by discipline + layer visibility.
+ *  For the current level, use the live document model so 3D reflects edits immediately.
+ *  Each floor's result is kept until its source (floor data or document) or the
+ *  visibility settings change, so switching level or editing one floor doesn't
+ *  rebuild the others. */
 function useAllFloorsElements(): FloorRenderData[] {
   const state = useEditorState();
   const { project, visibleLayers, document: doc, documentVersion, currentLevel } = state;
+  // Mutable per-component cache (a stable Map, not React state).
+  const [cache] = useState(() => new Map<string, FloorCacheEntry>());
 
   return useMemo(() => {
     if (!project) return [];
     const result: FloorRenderData[] = [];
+    const seen = new Set<string>();
 
     const isVisible = (el: CanonicalElement) =>
       isDisciplineVisible(el.discipline, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
+
+    const floorData = (levelId: string, elevation: number, source: unknown, parse: () => CanonicalElement[]) => {
+      seen.add(levelId);
+      const hit = cache.get(levelId);
+      if (hit && hit.source === source && hit.visibleLayers === visibleLayers && hit.elevation === elevation
+        && hit.discipline === state.activeDiscipline && hit.archContext === state.showArchContext) {
+        return hit.data;
+      }
+      const filtered = parse().filter(isVisible);
+      const data = filtered.length > 0
+        ? { levelId, elevation, elements: filtered.map(el => ({ ...el, id: `${levelId === '__global__' ? 'global' : levelId}:${el.id}` })) }
+        : null;
+      cache.set(levelId, {
+        source, visibleLayers, elevation, data,
+        discipline: state.activeDiscipline, archContext: state.showArchContext,
+      });
+      return data;
+    };
 
     // Collect all level IDs (from floors + current level if it has a document)
     const levelIds = new Set(project.floors.keys());
@@ -35,33 +72,27 @@ function useAllFloorsElements(): FloorRenderData[] {
       const elevation = project.levels.find(l => l.id === levelId)?.elevation ?? 0;
 
       // For current level with a live document, use document elements directly
-      let parsed: CanonicalElement[];
+      let data: FloorRenderData | null;
       if (levelId === currentLevel && doc) {
-        parsed = Array.from(doc.elements.values()).filter(el => el.tableName !== 'grid');
+        data = floorData(levelId, elevation, doc.elements,
+          () => Array.from(doc.elements.values()).filter(el => el.tableName !== 'grid'));
       } else {
         const floor = project.floors.get(levelId);
         if (!floor) continue;
-        parsed = parseFloorLayers(floor.layers);
+        data = floorData(levelId, elevation, floor, () => parseFloorLayers(floor.layers));
       }
-
-      const filtered = parsed.filter(isVisible);
-      if (filtered.length > 0) {
-        const prefixed = filtered.map(el => ({ ...el, id: `${levelId}:${el.id}` }));
-        result.push({ levelId, elevation, elements: prefixed });
-      }
+      if (data) result.push(data);
     }
     // Global layers (e.g. mesh) — not tied to a specific floor, always visible
     if (project.globalLayers.length > 0) {
-      const globalParsed = parseFloorLayers(project.globalLayers);
-      const globalFiltered = globalParsed.filter(isVisible);
-      if (globalFiltered.length > 0) {
-        const prefixed = globalFiltered.map(el => ({ ...el, id: `global:${el.id}` }));
-        result.push({ levelId: '__global__', elevation: 0, elements: prefixed });
-      }
+      const data = floorData('__global__', 0, project.globalLayers, () => parseFloorLayers(project.globalLayers));
+      if (data) result.push(data);
     }
+    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
 
     return result;
   // state includes activeDiscipline + showArchContext used by isDisciplineVisible
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, doc, documentVersion, currentLevel]);
 }
 
@@ -93,11 +124,15 @@ export default function FloorGroup() {
   const visibleLevels = useVisibleLevels();
   const mepSystems = useEditorState().project?.mepSystems;
 
+  // Keyed on content, so a new floors array with the same elevations keeps
+  // every floor's geometry context (and its batch) intact.
+  const elevationsKey = allFloors.map(f => `${f.levelId}:${f.elevation}`).join('|');
   const levelElevations = useMemo(() => {
     const map = new Map<string, number>();
     for (const f of allFloors) map.set(f.levelId, f.elevation);
     return map;
-  }, [allFloors]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [elevationsKey]);
 
   return (
     <group>
@@ -120,7 +155,7 @@ export default function FloorGroup() {
   );
 }
 
-function RenderElements({ elements, levelId, levelElevation, levelElevations, mepSystems, ghost }: {
+const RenderElements = memo(function RenderElements({ elements, levelId, levelElevation, levelElevations, mepSystems, ghost }: {
   elements: CanonicalElement[];
   levelId: string;
   levelElevation: number;
@@ -155,11 +190,28 @@ function RenderElements({ elements, levelId, levelElevation, levelElevations, me
     return { meshElements: meshEls, v2Elements: v2Els };
   }, [elements]);
 
+  // Element meshes are rendered into a detached group (never in the scene)
+  // and merged into one mesh per material once committed, and again whenever
+  // they change. The portal commits before this layout effect runs, so the
+  // R3F objects are in place.
+  const source = useMemo(() => new Group(), []);
+  const batchRef = useRef<Group>(null);
+  useLayoutEffect(() => {
+    const root = batchRef.current;
+    if (!root) return;
+    const batch = buildStaticBatch(source);
+    for (const o of batch.objects) root.add(o);
+    return () => releaseStaticBatch(batch);
+  }, [source, v2Elements, v2Ctx]);
+
   return (
     <>
-      {v2Elements.map(el => (
-        <ElementNode3D key={el.id} element={el} ctx={v2Ctx} />
-      ))}
+      {createPortal(
+        v2Elements.map(el => <ElementNode3D key={el.id} element={el} ctx={v2Ctx} />),
+        source,
+      )}
+      <group ref={batchRef} />
+      <FloorHighlights elements={v2Elements} ctx={v2Ctx} />
       {meshElements.length > 0 && (
         <Suspense fallback={null}>
           <MeshInstances elements={meshElements} tableName="__mesh__"
@@ -167,5 +219,23 @@ function RenderElements({ elements, levelId, levelElevation, levelElevations, me
         </Suspense>
       )}
     </>
+  );
+});
+
+/** Selected / hovered elements of one floor, drawn over the batched meshes. */
+function FloorHighlights({ elements, ctx }: { elements: CanonicalElement[]; ctx: GeometryContext }) {
+  const { selectedIds, hoveredId } = useSelectionState();
+  const byId = useMemo(() => new Map(elements.map(el => [el.id, el])), [elements]);
+  const ids: string[] = [];
+  for (const id of selectedIds) if (byId.has(id)) ids.push(id);
+  if (hoveredId && !selectedIds.has(hoveredId) && byId.has(hoveredId)) ids.push(hoveredId);
+  if (ids.length === 0) return null;
+  return (
+    <group>
+      {ids.map(id => (
+        <ElementHighlight3D key={id} element={byId.get(id)!} ctx={ctx}
+          selected={selectedIds.has(id)} hovered={hoveredId === id} />
+      ))}
+    </group>
   );
 }
