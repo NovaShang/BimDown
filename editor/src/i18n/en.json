@@ -709,5 +709,6 @@
   "hint.pick.roof": "Click a wall for the whole outline (or inside a room) · overhang from the exterior face, walls attached · Esc cancel",
   "hint.pick.ceiling": "Click inside a room to place a ceiling at its wall faces · Esc cancel",
   "hint.opening.sketch": "Sketch the opening inside a floor or roof outline · click the first point, right-click or Enter to close · Esc cancel",
-  "hint.opening.shaft": "Sketch the shaft outline · it cuts every floor and roof up to the top level · Enter to close · Esc cancel"
+  "hint.opening.shaft": "Sketch the shaft outline · it cuts every floor and roof up to the top level · Enter to close · Esc cancel",
+  "roof.slopeShort": "Slope"
 }

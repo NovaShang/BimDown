@@ -709,5 +709,6 @@
   "hint.pick.roof": "点墙取整圈外轮廓（或点房间内）· 从外墙面出檐并附着墙顶 · Esc 取消",
   "hint.pick.ceiling": "在房间内点击，按墙面放置天花 · Esc 取消",
   "hint.opening.sketch": "在楼板或屋顶轮廓内画洞口 · 点回起点、右键或回车闭合 · Esc 取消",
-  "hint.opening.shaft": "画竖井轮廓 · 切穿到顶部楼层的所有楼板和屋顶 · 回车闭合 · Esc 取消"
+  "hint.opening.shaft": "画竖井轮廓 · 切穿到顶部楼层的所有楼板和屋顶 · 回车闭合 · Esc 取消",
+  "roof.slopeShort": "坡度"
 }

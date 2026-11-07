@@ -39,9 +39,14 @@ export default function RoofEdgesPanel({ element, editable }: PropertyPanelProps
       edge_slopes: next.some(v => v > 0) ? formatNumberList(next) : '',
       slope: String(Math.round(max * 100) / 100),
     };
+    // The shape name follows the edges (a mansard keeps its name while every edge slopes).
+    const n = next.filter(v => v > 0).length;
+    const cur = element.attrs.roof_type;
     if (roofType) attrs.roof_type = roofType;
-    else if (!next.some(v => v > 0)) attrs.roof_type = 'flat';
-    else if (element.attrs.roof_type === 'flat' && max >= 5) attrs.roof_type = next.every(v => v > 0) ? 'hip' : 'gable';
+    else if (n === 0) attrs.roof_type = 'flat';
+    else if (cur === 'flat' && max < 5) attrs.roof_type = 'flat'; // drainage falls
+    else if (n === next.length) attrs.roof_type = cur === 'mansard' ? 'mansard' : 'hip';
+    else attrs.roof_type = n === 1 ? 'shed' : 'gable';
     dispatch({ type: 'UPDATE_ATTRS', id: element.id, attrs });
   };
   const preset = (kind: typeof PRESETS[number]) => {
@@ -77,7 +82,7 @@ export default function RoofEdgesPanel({ element, editable }: PropertyPanelProps
                     next[i] = e.target.checked ? typical : 0;
                     write(next);
                   }} />
-                <span className="truncate">{t('roof.definesSlope')}</span>
+                <span className="truncate" title={t('roof.definesSlope')}>{t('roof.slopeShort')}</span>
               </label>
               {on && editable ? (
                 <NumberInput className={INPUT} value={String(slopes[i])} step={0.5} min={0.1} max={80}
