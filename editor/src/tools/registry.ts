@@ -12,6 +12,7 @@ import { relocateTool } from './relocateTool.ts';
 import { relocateHostedTool } from './relocateHostedTool.ts';
 import { rotateTool } from './rotateTool.ts';
 import { drawTool } from './drawTool.ts';
+import { trimCornerTool, trimSingleTool, splitTool } from './wallModifyTools.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -28,6 +29,11 @@ const toolRegistry: Record<string, ToolHandler> = {
   relocate: relocateTool,
   relocate_hosted: relocateHostedTool,
   rotate: rotateTool,
+
+  // Wall modify tools (trim / extend / split)
+  trim_corner: trimCornerTool,
+  trim_single: trimSingleTool,
+  split: splitTool,
 
   // Legacy archetype-keyed drawing tools (still callable by name; the new
   // archetype × operation lookup is at tools/archetypes/index.ts).

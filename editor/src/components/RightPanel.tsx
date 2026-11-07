@@ -18,6 +18,7 @@ import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { ScrollArea } from './ui/scroll-area';
 import { cn } from '../lib/utils';
+import LineLengthRow from './LineLengthRow.tsx';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -152,6 +153,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
 
       {/* Property groups */}
       <ScrollArea className="min-h-0 flex-1">
+        {isSingleSelection && <LineLengthRow id={firstId} editable={!readonly} inputClass={FIELD_INPUT} />}
         <div className="py-0.5">
           {grouped.map((group, gi) => {
             const isCollapsed = collapsed.has(group.labelKey);

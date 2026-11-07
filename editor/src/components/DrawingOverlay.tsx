@@ -5,6 +5,8 @@ import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { formatLength } from '../utils/units.ts';
+import { isWallDrawTable } from '../tools/wallDrawTool.ts';
+import WallDrawPreview, { TypedBadge } from './WallDrawPreview.tsx';
 
 /** Length label positioned at the midpoint of a line, offset perpendicular to it */
 function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point; scale: number; projectUnit: ProjectUnit }) {
@@ -99,6 +101,11 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     if (!connectorHintsLayer) return body;
     return <>{connectorHintsLayer}{body}</>;
   };
+
+  if (activeTool === 'draw_line' && isWallDrawTable(tableName)) {
+    const thickness = (tableName ? resolveLineStrokeWidth(tableName, drawingAttrs) : null) ?? (tableName === 'curtain_wall' ? 0.05 : 0.1);
+    return <WallDrawPreview drawingState={drawingState} drawingAttrs={drawingAttrs} thickness={thickness} scale={scale} projectUnit={projectUnit} />;
+  }
 
   if (activeTool === 'draw_line') {
     // Multi-click stair (L / U) — show dots at each clicked point, plus
@@ -327,10 +334,24 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="#ffa726" />
           <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#ffa726" opacity="0.6" />
           <LengthLabel from={points[0]} to={cursor} scale={scale} projectUnit={projectUnit} />
+          {drawingState.typed && (
+            <g transform="scale(1,-1)"><TypedBadge at={cursor} typed={drawingState.typed} scale={scale} labels={['L', '∠']} /></g>
+          )}
         </g>
       );
     }
     return null;
+  }
+
+  if ((activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState.pick?.line) {
+    const { start, end } = drawingState.pick.line;
+    return (
+      <g className="drawing-overlay" transform="scale(1,-1)" pointerEvents="none">
+        <line x1={start.x} y1={start.y} x2={end.x} y2={end.y}
+          stroke="#ffa726" strokeWidth={0.14 / scale} strokeDasharray={`${0.5 / scale},${0.25 / scale}`} />
+        <circle cx={drawingState.pick.point.x} cy={drawingState.pick.point.y} r={0.3 / scale} fill="#ffa726" />
+      </g>
+    );
   }
 
   if (activeTool === 'draw_point') {

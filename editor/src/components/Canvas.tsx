@@ -225,8 +225,12 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   }), [dispatch, screenToSvg, findElementId, transformRef]);
 
   // ────── KEYBOARD SHORTCUTS ──────
+  const onToolKeyDown = useCallback(
+    (e: KeyboardEvent) => getToolHandler(stateRef.current.activeTool).onKeyDown?.(toolCtx, e) ?? false,
+    [toolCtx],
+  );
   useCanvasKeyboard({
-    globalDispatch, stateRef, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline,
+    globalDispatch, stateRef, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, onToolKeyDown,
   });
 
   // ────── WHEEL + GESTURE LISTENERS ──────

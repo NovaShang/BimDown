@@ -11,6 +11,7 @@ import { getElementModule } from '../elements/registry.ts';
 import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
+import { wallDrawTool, isWallDrawTable } from './wallDrawTool.ts';
 
 /** When true, the multi-click stair placement tool handles this event instead
  *  of the regular line-creation flow. Straight stairs and every other table
@@ -61,6 +62,13 @@ export const drawLineTool: ToolHandler = {
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
+
+    // Walls (and other wall-like lines) have their own chain / rect / arc /
+    // pick placement.
+    if (isWallDrawTable(ctx.getState().drawingTarget?.tableName)) {
+      wallDrawTool.onPointerDown?.(ctx, e);
+      return;
+    }
 
     // Stair tool intercept: L / U / multi-click stair shapes use a dedicated
     // tool that lays down stair + stair_landing + stair_run in one placement.
@@ -174,6 +182,10 @@ export const drawLineTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
+    if (isWallDrawTable(ctx.getState().drawingTarget?.tableName)) {
+      wallDrawTool.onPointerMove?.(ctx, e);
+      return;
+    }
     if (shouldDelegateToStairTool(ctx.getState())) {
       drawStairTool.onPointerMove?.(ctx, e);
       return;
@@ -203,6 +215,13 @@ export const drawLineTool: ToolHandler = {
       });
     }
     ctx.setSnap(snap);
+  },
+
+  onKeyDown(ctx: ToolContext, e: KeyboardEvent) {
+    if (isWallDrawTable(ctx.getState().drawingTarget?.tableName)) {
+      return wallDrawTool.onKeyDown?.(ctx, e) ?? false;
+    }
+    return false;
   },
 };
 

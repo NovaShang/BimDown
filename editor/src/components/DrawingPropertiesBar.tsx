@@ -14,6 +14,8 @@ import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
 import { disciplinesForMepLine } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import { cn } from '../lib/utils.ts';
+import { isWallDrawTable } from '../tools/wallDrawTool.ts';
+import WallDrawOptionsBar from './WallDrawOptionsBar.tsx';
 
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
@@ -128,6 +130,9 @@ export default function DrawingPropertiesBar() {
           )}
         </div>
       ))}
+      {isWallDrawTable(target.tableName) && state.activeTool === 'draw_line' && (
+        <WallDrawOptionsBar fieldClass={fieldInputClass} unitLabel={projectUnitLabel} />
+      )}
       {supportsVertical && (
         <>
           <Separator orientation="vertical" className="h-4" />
