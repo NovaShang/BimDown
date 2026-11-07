@@ -147,7 +147,7 @@ program
   .option('-l, --level <id>', 'Level to render (defaults to lv-1)', 'lv-1')
   .option('-o, --output <file>', 'Output file path (defaults to render.png)', 'render.png')
   .option('-w, --width <px>', 'Image width in pixels', '2048')
-  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls), columns at their real section size, foundations=brown dashed outlines (pads width×length, piles as circles, strips at their width, rafts/pile caps), grids=red dash-dot axes with numbered bubbles, slab holes and slab openings (white with a cross), wall openings=orange lines. DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: ducts=cyan, pipes=light blue, cable tray=green, conduit=teal, equipment=red fill, terminals=orange fill. Furniture and library components draw their grey plan symbols (back edge = local +Y). Annotations (dimension/text_note/tag tables) in dark blue: dimension lines with values in mm (ft-in for imperial), text, boxed door/window tags, room tags with name/number/area.')
+  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls), columns at their real section size, foundations=brown dashed outlines (pads width×length, piles as circles, strips at their width, rafts/pile caps), grids=red dash-dot axes with numbered bubbles, slab holes and slab openings (white with a cross), wall openings=orange lines. DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: runs at their real width in system colours (SA blue, RA light blue, CHWS cyan, SAN brown, FP red, …) with elbow / tee / reducer bodies, system + size tags, rise / drop boxes, slope arrows; terminals, equipment and valves as plan symbols. Furniture and library components draw their grey plan symbols (back edge = local +Y). Annotations (dimension/text_note/tag tables) in dark blue: dimension lines with values in mm (ft-in for imperial), text, boxed door/window tags, room tags with name/number/area.')
   .action(async (dir: string, opts: { level: string; output: string; width: string }) => {
     const absDir = resolve(dir);
     const { renderLevel } = await import('./render.js');
@@ -232,6 +232,33 @@ program
     const absDir = resolve(dir);
     const { resolveTopology } = await import('./commands/resolve-topology.js');
     resolveTopology(absDir);
+  });
+
+// ─── mep-check ────────────────────────────────────────────
+program
+  .command('mep-check')
+  .argument('<dir>', 'BimDown project directory')
+  .option('--json', 'Print the report as JSON')
+  .option('--all', 'Also list info-level findings (unused equipment ports, devices without a circuit)')
+  .description('MEP connectivity check: systems (curves, length, devices) and problems — open ends, port refs that do not resolve or whose curve end is not on the port, system / domain mismatches, disconnected devices, orphan fittings, overloaded circuits. Exit code 1 when there are warnings.')
+  .action(async (dir: string, opts: { json?: boolean; all?: boolean }) => {
+    const { mepReport, formatProblem } = await import('./mep/index.js');
+    const report = mepReport(resolve(dir));
+    const shown = opts.all ? report.problems : report.problems.filter(p => p.severity === 'warning');
+    if (opts.json) {
+      console.log(JSON.stringify({ systems: report.systems, problems: shown }, null, 2));
+    } else {
+      console.log('Systems:');
+      if (report.systems.length === 0) console.log('  (no MEP curves)');
+      for (const s of report.systems) {
+        console.log(`  ${s.system.padEnd(8)} ${String(s.curves).padStart(4)} curve(s)  ${s.length.toFixed(1).padStart(7)} long  ${s.devices} device(s)  [${s.tables.join(', ')}]`);
+      }
+      console.log();
+      for (const p of shown) console.log(`${p.severity === 'info' ? 'info  ' : ''}${formatProblem(p)}`);
+      const warnings = report.problems.filter(p => p.severity === 'warning').length;
+      console.log(warnings === 0 ? 'MEP connectivity: no problems.' : `\n${warnings} connectivity problem(s).`);
+    }
+    if (report.problems.some(p => p.severity === 'warning')) process.exitCode = 1;
   });
 
 // ─── merge ───────────────────────────────────────────────

@@ -114,6 +114,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `terminal`   | Point        | `Point` 3D | MEP terminal (diffuser, outlet...) |
 | `mep_node`   | Point        | `Point` 3D | Topology node (fitting/accessory in Revit) |
 | `connector`  | None (CSV)   | — | Connection port on equipment/terminal/mep_node — host-local offset + outward direction, cross-section, flow direction, domain. Curves reference it via `from`/`to` (`host_id:name`). CSV-only. |
+| `circuit`    | None (CSV)   | — | Electrical branch circuit hosted on a panel (`host_id`); devices join through `circuit_id`. CSV-only. |
 
 ### Annotation
 
@@ -190,6 +191,8 @@ In the **SVG encoding** (2D-only), the same two modes apply but Z always lives i
 | `structural_section_profile` | `shape` (CSV enum rect/round/i/t/l/c/cross), `size_x`, `size_y` (CSV) |
 | `mep_system`                 | `system_type` (CSV string) |
 | `mep_connectable`            | `from`, `to` (CSV; port-ref `host_id:port_name` or bare `host_id`, auto-resolved by CLI) |
+| `mep_design`                 | `flow` (L/s), `load` (W), `circuit_id` (equipment, terminal; not lengths) |
+| `mep_insulated`              | `insulation_thickness` (duct, pipe) |
 
 **Room area.** A space's boundary is derived along wall centre lines (`space.geojson`, written by `bimdown build`), so its `area` is the gross, centre-line area. `net_area` is the area at the wall finish faces: each boundary edge moves inward by half the thickness of the wall it lies on (room separators and edges on no wall stay put) — Revit's default room area. Drawings, room tags, schedules and IFC `NetFloorArea` use `net_area`; `area` is kept for backward compatibility (and as IFC `GrossFloorArea`).
 
@@ -233,6 +236,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `terminal` | `tm` | `tm-1` |
 | `mep_node` | `mn` | `mn-1` |
 | `connector` | `cn` | `cn-1` |
+| `circuit` | `ci` | `ci-1` |
 | `mesh` | `ms` | `ms-1` |
 | `wall_type` / `slab_type` / `roof_type` / `ceiling_type` | `wt` / `slt` / `rot` / `clt` | `wt-ext-concrete-eps` |
 | `door_type` / `window_type` / `curtain_wall_type` | `dt` / `wnt` / `cwt` | `dt-single-900` |
@@ -314,10 +318,13 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 - **equipment** and **terminal** also serve as network endpoints — curves can connect directly to them.
 - **connector** rows define the named ports on equipment, terminals, and active accessories: a host-local offset, outward direction, cross-section, flow direction, and domain. A curve's `from`/`to` references a port as `host_id:name` (or bare `host_id` for passive fittings, whose ports are derived from geometry at runtime). See [`mep-port-conventions.md`](mep-port-conventions.md).
 
+**Fittings and accessories**: passive `mep_node`s (empty `kind`) are derived elbows / tees / crosses / reducers / transitions / caps (an optional `fitting` hint records `tap`, `cap`, `open`); tools draw them with real bodies (elbow centre-line radius 1.0 × width for ducts and trays, 1.5 × D for pipes, 4 × D for conduit; runs are pulled back to the fitting face). Inline accessories (`kind` valve / damper / …) carry `in` / `out` connector rows and the run is split around them.
+
 **AI authoring workflow**:
-1. Place equipment and terminals (anchors)
-2. Draw duct/pipe segments connecting them (endpoint coordinates)
-3. Call CLI `build` / `resolve-topology` — this detects coincident endpoints, generates `mep_node` entries at junctions, and back-fills `from`/`to` on each segment. Warns about disconnected endpoints.
+1. Place equipment and terminals (anchors) with their `connector` rows
+2. Draw duct/pipe segments whose ends sit exactly on port points, on other run ends, or on another run's body; add a vertical segment wherever heights differ
+3. Call CLI `resolve-topology` — ends on ports get `host:port`, meeting ends get a passive `mep_node`, an end on a run's body splits that run with a tee (same table and system only), and the remaining problems are listed
+4. `build` (and `mep-check`) report MEP connectivity warnings: open ends, refs that don't resolve, ends off their port, system / domain mismatches, disconnected devices, orphan fittings, overloaded circuits. Ids resolve in the curve's own level first, then `global/`.
 
 **Revit export**: Fittings and accessories are exported as `mep_node`. Curve endpoints are taken from connector positions (not `LocationCurve`), so they naturally coincide with node positions. `from`/`to` are derived from Revit's connector relationships and reference the specific port via `host_id:port_name`. See [`mep-port-conventions.md`](mep-port-conventions.md) for port naming conventions.
 

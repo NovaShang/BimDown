@@ -2,6 +2,7 @@ name: equipment
 bases:
   - point_element
   - mep_system_tag
+  - mep_design
 
 fields:
   - name: equipment_type
@@ -9,6 +10,7 @@ fields:
     values:
       - ahu
       - fcu
+      - vav
       - chiller
       - boiler
       - cooling_tower

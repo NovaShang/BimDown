@@ -4,5 +4,11 @@ bases:
   - section_profile
   - mep_system_tag
   - mep_connectable
+  - mep_insulated
 
-fields: []
+fields:
+  - name: flexible
+    type: boolean
+    description: >
+      true = flexible duct (round, short runs to terminals); drawn as a
+      flex hose. Empty / false = rigid sheet-metal duct.

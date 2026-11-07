@@ -4,5 +4,6 @@ bases:
   - section_profile
   - mep_system_tag
   - mep_connectable
+  - mep_insulated
 
 fields: []

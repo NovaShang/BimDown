@@ -13,6 +13,7 @@ import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 import { renderAnnotations } from './annotations.js';
 import { projectUnits } from './utils/units.js';
 import { renderFurniture } from './furniture/render.js';
+import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -136,6 +137,11 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 
   for (const tableName of RENDER_ORDER) {
     if (CSV_ONLY_TABLES.has(tableName)) continue;
+    // MEP (runs, fittings, devices, accessories) has its own plan graphics.
+    if (MEP_RENDER_TABLES.has(tableName)) {
+      if (tableName === 'duct') elements.push(...renderMep(sources.map(s => s.path), layout.globalDir));
+      continue;
+    }
     const fileBase = GEOJSON_FILE_NAMES[tableName];
     if (!fileBase) continue;
 

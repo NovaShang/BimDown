@@ -1,0 +1,24 @@
+name: mep_design
+abstract: true
+
+# Design data on MEP devices (equipment / terminal). All optional; tools
+# that size ducts, sum branch flows or add up circuit loads read them.
+# flow / load are not lengths: they are never scaled by the project unit.
+
+fields:
+  - name: flow
+    type: float
+    unit: none
+    description: >
+      Design flow rate, L/s. Air terminals: airflow; plumbing fixtures and
+      sprinklers: water flow; equipment: rated flow of its main system.
+
+  - name: load
+    type: float
+    unit: none
+    description: Electrical load, W (light fixtures, receptacles, motors). Summed per circuit.
+
+  - name: circuit_id
+    type: reference
+    reference: circuit
+    description: Electrical circuit (circuit table) this device is fed from. Empty = not on a circuit.

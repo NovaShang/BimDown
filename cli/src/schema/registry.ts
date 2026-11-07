@@ -14,7 +14,7 @@ export const ID_PREFIXES: Record<string, string> = {
   beam: 'bm', brace: 'br', foundation: 'f',
   duct: 'du', pipe: 'pi', cable_tray: 'ct', conduit: 'co',
   equipment: 'eq', terminal: 'tm', mep_node: 'mn',
-  connector: 'cn',
+  connector: 'cn', circuit: 'ci',
   mep_system: 'sys',
   view: 'vw',
   mesh: 'ms',
@@ -51,7 +51,7 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
   'level', 'grid', 'view', 'stair', 'stair_run', 'stair_landing',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
-  'connector',
+  'connector', 'circuit',
   'structure_column', 'beam', 'brace',
   'foundation',
 ]);
@@ -60,9 +60,9 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 // mep_system is a project-wide lookup table with no geometry; connector is a CSV-only port
 // on its host equipment / terminal / mep_node, position is derived from host + offsets;
 // view rows carry their plan line inline like grid; underlay is a tracing reference
-// whose source file lives in underlays/)
+// whose source file lives in underlays/; circuit is a CSV-only electrical circuit)
 const TABLES_WITHOUT_GEOMETRY = new Set([
-  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view', 'underlay',
+  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view', 'underlay', 'circuit',
   ...TYPE_TABLES, 'type_layer',
   ...ANNOTATION_TABLES,
 ]);

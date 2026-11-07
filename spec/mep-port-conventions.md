@@ -84,7 +84,7 @@ Names below are conventions, not enforced. Two principles:
 
 | Kind | Typical ports |
 |---|---|
-| `valve`, `damper` | `in`, `out` |
+| `valve`, `gate_valve`, `ball_valve`, `butterfly_valve`, `globe_valve`, `balancing_valve`, `damper`, `fire_damper` | `in`, `out` (offset ±L/2 along the run in the node frame, `rotation` = run direction) |
 | `pump`, `fan` | `inlet`, `outlet` |
 | `strainer`, `flow_meter`, `sensor`, `check_valve` | `in`, `out` |
 | Multi-port mixing valve | `in1`, `in2`, `out` (or `cold_in`, `hot_in`, `mixed_out`) |
@@ -148,6 +148,13 @@ classifies it from the incident pipes:
 | 3 | — | `tee` |
 | 4 | two pairs of collinear | `cross` |
 | ≥ 5 | — | `manifold` or `custom` (warn) |
+
+A 3-way junction where the branch is small (≤ half the main width) or
+round on a rectangular main is drawn as a **tap** (branch cut into the
+main, no tee body). `mep_node.fitting` overrides the derived kind where
+geometry can't tell: `tap` / `tee`, `cap` (intentional closed end — a node
+with one curve is kept), `open` (deliberate open end: outfall, vent through
+the roof, future connection).
 
 Geometric tolerances:
 

@@ -2,6 +2,7 @@ name: terminal
 bases:
   - point_element
   - mep_system_tag
+  - mep_design
 
 fields:
   - name: terminal_type
@@ -16,6 +17,15 @@ fields:
       - power_outlet
       - data_outlet
       - plumbing_fixture
+      - water_closet
+      - urinal
+      - lavatory
+      - sink
+      - shower
+      - floor_drain
+      - switch
+      - junction_box
+      - emergency_light
       - other
 
   - name: family

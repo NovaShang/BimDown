@@ -46,8 +46,9 @@ export function validateRanges(path: string, table: ResolvedTable, data: CsvData
   const toM = UNIT_TO_M[units] ?? 1;
   const issues: string[] = [];
 
+  // Quantities that are not lengths (flow, load, voltage, …) are not range-checked.
   const floatFields = table.csvFields.filter(
-    (f) => (f.type === 'float' || f.type === 'int') && f.name !== 'id',
+    (f) => (f.type === 'float' || f.type === 'int') && f.name !== 'id' && f.unit !== 'none',
   );
 
   for (let i = 0; i < data.rows.length; i++) {

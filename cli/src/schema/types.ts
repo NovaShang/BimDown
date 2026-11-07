@@ -10,6 +10,8 @@ export interface RawField {
   values?: string[];
   description?: string;
   default?: unknown;
+  /** `none` = not a length (flow, load, voltage): no unit scaling or length range check. */
+  unit?: string;
 }
 
 export interface RawSchema {
@@ -33,6 +35,7 @@ export interface ResolvedField {
   values?: string[];
   description?: string;
   default?: unknown;
+  unit?: string;
 }
 
 export interface ResolvedTable {

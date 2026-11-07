@@ -24,7 +24,13 @@ fields:
       Set explicitly for functional accessories.
     values:
       - valve
+      - gate_valve
+      - ball_valve
+      - butterfly_valve
+      - globe_valve
+      - balancing_valve
       - damper
+      - fire_damper
       - pump
       - strainer
       - check_valve
@@ -33,6 +39,25 @@ fields:
       - access_panel
       - other_accessory
       - custom
+
+  - name: fitting
+    type: enum
+    required: false
+    description: >
+      Passive fittings only (kind empty). Empty = the fitting is derived
+      from the incident curves (see mep-port-conventions.md §4). Set it
+      only where geometry can't tell: `tap` = a branch cut straight into
+      the main (no tee body); `cap` = an intentional closed end (a node
+      with a single curve). Other values record the derived kind.
+    values:
+      - elbow
+      - tee
+      - tap
+      - cross
+      - reducer
+      - transition
+      - coupling
+      - cap
 
   - name: family
     type: text

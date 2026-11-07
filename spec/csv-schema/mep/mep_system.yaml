@@ -18,4 +18,4 @@ fields:
 
   - name: discipline
     type: string
-    description: One of "hvac" / "plumbing" / "electrical" / "other".
+    description: One of "hvac" / "plumbing" / "fire" / "electrical" / "data" / "other".
