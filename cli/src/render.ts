@@ -320,6 +320,9 @@ function renderSpaces(levelPath: string): RenderedElement[] {
 
   const nameMap = new Map<string, string>();
   for (const row of csv.rows) nameMap.set(row.id, row.name ?? row.id ?? '');
+  // A tagged room is labelled by its tag (annotations), not the plain name
+  const tagPath = join(levelPath, 'tag.csv');
+  if (existsSync(tagPath)) for (const t of readCsv(tagPath).rows) if (t.host_id) nameMap.set(t.host_id, '');
 
   const geomPath = join(levelPath, 'space.geojson');
   if (existsSync(geomPath)) {
@@ -340,7 +343,8 @@ function renderSpaces(levelPath: string): RenderedElement[] {
         }
         cx /= ring.length; cy /= ring.length;
         const name = nameMap.get(id) ?? id;
-        const svg = `    <polygon id="${id}" points="${pts}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />\n    <text x="${fmt(cx)}" y="${fmt(cy)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * cy)})">${escapeXml(name)}</text>`;
+        const label = name ? `\n    <text x="${fmt(cx)}" y="${fmt(cy)}" font-size="0.4" fill="${color.stroke}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * cy)})">${escapeXml(name)}</text>` : '';
+        const svg = `    <polygon id="${id}" points="${pts}" fill="${color.fill ?? 'none'}" stroke="${color.stroke}" stroke-width="0.03" />${label}`;
         out.push({ tableName: 'space', svg, bounds: { minX, minY, maxX, maxY } });
       }
       if (out.length > 0) return out;

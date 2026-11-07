@@ -145,7 +145,7 @@ program
   .option('-l, --level <id>', 'Level to render (defaults to lv-1)', 'lv-1')
   .option('-o, --output <file>', 'Output file path (defaults to render.png)', 'render.png')
   .option('-w, --width <px>', 'Image width in pixels', '2048')
-  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls). DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: ducts=cyan, pipes=light blue, cable tray=green, conduit=teal, equipment=red fill, terminals=orange fill.')
+  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls). DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: ducts=cyan, pipes=light blue, cable tray=green, conduit=teal, equipment=red fill, terminals=orange fill. Annotations (dimension/text_note/tag tables) in dark blue: dimension lines with values in mm (ft-in for imperial), text, boxed door/window tags, room tags with name/number/area.')
   .action(async (dir: string, opts: { level: string; output: string; width: string }) => {
     const absDir = resolve(dir);
     const { renderLevel } = await import('./render.js');

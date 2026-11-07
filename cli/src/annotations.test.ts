@@ -108,5 +108,7 @@ describe('annotation tables', () => {
     expect(svg).toContain('data-annotation="tag"');
     expect(svg).toContain('>50.00 m²<');
     expect(svg).toContain('>D01<');
+    // The tag replaces the room's plain name label
+    expect(svg.split('>Office<').length - 1).toBe(1);
   });
 });
