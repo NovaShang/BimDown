@@ -124,9 +124,8 @@ describe('slab openings and shafts', () => {
 
   it('a shaft cuts the slabs of every level it spans', () => {
     const layer = (table: string, csv: string, features: unknown[]): LayerData => ({
-      tableName: table, discipline: 'architecture', csvRows: new Map(),
+      tableName: table, discipline: 'architecture', csvRows: parseRows(csv),
       geojsonContent: JSON.stringify({ type: 'FeatureCollection', features }),
-      ...{ csvRows: parseRows(csv) },
     });
     const slabFeature = (id: string) => ({ type: 'Feature', properties: { id }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]] } });
     const levels = [0, 3, 6, 9].map((e, i) => ({ id: `lv-${i + 1}`, number: '', name: `L${i + 1}`, elevation: e }));
