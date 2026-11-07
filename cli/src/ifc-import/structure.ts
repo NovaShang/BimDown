@@ -103,8 +103,12 @@ function upNormal(d: V3): V3 {
 /** Axis of a linear member: extrusion direction (with its profile) or the principal axis. */
 export function memberAxis(ctx: ImportContext, id: number, mesh: WorldMesh): { origin: V3; dir: V3; profile: Profile | null } | null {
   const ex = extrusion(ctx.model, id);
-  if (ex && ex.depth > 0.05) return { origin: ex.origin, dir: ex.dir.z < -1e-9 ? scale3(ex.dir, -1) : ex.dir, profile: ex.profile };
   const pa = principalAxis(mesh);
+  // The extrusion runs along the member only when it is about as long as the body
+  // (Revit also sweeps plan outlines of ducts and beams upward by their depth)
+  if (ex && ex.depth > 0.05 && (!pa || ex.depth >= 0.5 * pa.length)) {
+    return { origin: ex.origin, dir: ex.dir.z < -1e-9 ? scale3(ex.dir, -1) : ex.dir, profile: ex.profile };
+  }
   return pa ? { origin: pa.start, dir: pa.dir, profile: null } : null;
 }
 
