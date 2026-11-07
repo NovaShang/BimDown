@@ -13,6 +13,7 @@ import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
 import type { IconName } from './Icons.tsx';
 import { cn } from '../lib/utils';
+import ModifyToolsGroup from './ModifyToolsGroup.tsx';
 
 interface FloatingToolbarProps {
   activeDiscipline: string | null;
@@ -560,6 +561,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           )}
         </div>
       )}
+
+      {/* Wall modify tools (trim / extend / split) */}
+      {state.viewMode === '2d' && (activeDiscipline === 'architecture' || activeDiscipline === 'structure') && <ModifyToolsGroup />}
 
       {/* Separator */}
       <Separator orientation="vertical" className="mx-1 self-stretch" />

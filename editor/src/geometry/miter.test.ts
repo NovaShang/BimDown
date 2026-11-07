@@ -19,3 +19,19 @@ describe('T-junction corner adjustments', () => {
     }
   });
 });
+
+describe('three walls at one point, two of them collinear', () => {
+  it('squares the collinear pair so nothing is left uncovered under the stem', () => {
+    const walls: WallSegment[] = [
+      { id: 'w-1', x1: 4, y1: 0, x2: 10, y2: 0, halfWidth: 0.1, fill: '#000' },
+      { id: 'w-2', x1: 10, y1: 0, x2: 10, y2: 8, halfWidth: 0.1, fill: '#000' },
+      { id: 'w-3', x1: 14, y1: 0, x2: 10, y2: 0, halfWidth: 0.1, fill: '#000' },
+    ];
+    const adj = computeCornerAdjustments(walls).adjustments;
+    const ends = (k: string) => [adj.get(k)!.left, adj.get(k)!.right].map(p => [+p.x.toFixed(3), +p.y.toFixed(3)]).sort((u, v) => u[0] - v[0] || u[1] - v[1]);
+    expect(ends('w-1:end')).toEqual([[10, -0.1], [10, 0.1]]);
+    expect(ends('w-3:end')).toEqual([[10, -0.1], [10, 0.1]]);
+    // the stem stops on the near face of the pair
+    expect(ends('w-2:start')).toEqual([[9.9, 0.1], [10.1, 0.1]]);
+  });
+});

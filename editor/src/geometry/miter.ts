@@ -83,6 +83,9 @@ interface TJunction {
   /** The two points where the T-wall sides meet the main wall outline */
   left: Pt;
   right: Pt;
+  /** Where the T-wall sides meet the main wall centreline (plan drawing). */
+  centreLeft: Pt;
+  centreRight: Pt;
 }
 
 function buildJunctions(walls: WallSegment[]): JunctionMap {
@@ -208,7 +211,12 @@ function detectTJunctions(walls: WallSegment[]): TJunction[] {
         left = { x: left.x - backDir.x * inset, y: left.y - backDir.y * inset };
         right = { x: right.x - backDir.x * inset, y: right.y - backDir.y * inset };
 
-        result.push({ tWallId: seg.id, tWhich: which, mainWallId: other.id, left, right });
+        // Plan drawing stops the T-wall on the main centreline instead: its
+        // fill then never paints over the main wall's far-face outline.
+        const centreLeft = rayIntersect(tLeft, backDir, A, mainDir) ?? tLeft;
+        const centreRight = rayIntersect(tRight, backDir, A, mainDir) ?? tRight;
+
+        result.push({ tWallId: seg.id, tWhich: which, mainWallId: other.id, left, right, centreLeft, centreRight });
         break;
       }
     }
@@ -247,6 +255,28 @@ function miterPoint(P: Pt, wi: JunctionWall, wj: JunctionWall): Pt | null {
   return M;
 }
 
+/** For a 3-wall junction with a collinear pair, the stem and where its two
+ *  sides meet the pair's near face; null when no two walls are collinear. */
+function teeAtJunction(P: Pt, walls: JunctionWall[]): { stem: JunctionWall; stemCorners: CornerAdjustment } | null {
+  for (let s = 0; s < 3; s++) {
+    const a = walls[(s + 1) % 3], b = walls[(s + 2) % 3], stem = walls[s];
+    const collinear = Math.abs(a.dx * b.dy - a.dy * b.dx) < 1e-6 && a.dx * b.dx + a.dy * b.dy < 0;
+    if (!collinear) continue;
+    // Pair's face on the stem's side.
+    let nx = -a.dy, ny = a.dx;
+    if (nx * stem.dx + ny * stem.dy < 0) { nx = -nx; ny = -ny; }
+    const hw = Math.max(a.halfWidth, b.halfWidth);
+    const face = { x: P.x + nx * hw, y: P.y + ny * hw };
+    const along = { x: a.dx, y: a.dy };
+    const dir = { x: stem.dx, y: stem.dy };
+    const left = rayIntersect(ccwPt(P, stem), dir, face, along);
+    const right = rayIntersect(cwPt(P, stem), dir, face, along);
+    if (!left || !right) return null;
+    return { stem, stemCorners: { left, right } };
+  }
+  return null;
+}
+
 /**
  * Compute per-wall endpoint corner adjustments for miter joins + T-junctions.
  * Returns adjustments map (key: "wallId:start"/"wallId:end"), junction fills,
@@ -258,15 +288,18 @@ function miterPoint(P: Pt, wi: JunctionWall, wj: JunctionWall): Pt | null {
  */
 export interface MiterResult {
   adjustments: Map<string, CornerAdjustment>;
+  /** Same as `adjustments`, except T-walls end on the main wall's centreline
+   *  (2D plan polygons; 3D keeps `adjustments`). */
+  planAdjustments: Map<string, CornerAdjustment>;
   /** Fill polygons at junctions (to cover gaps between wall fills) */
   junctionFills: { points: Pt[]; fill: string }[];
 }
 
 export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
-  const empty: MiterResult = { adjustments: new Map(), junctionFills: [] };
+  const empty: MiterResult = { adjustments: new Map(), planAdjustments: new Map(), junctionFills: [] };
   if (walls.length < 2) return empty;
   const junctions = buildJunctions(walls);
-  const result: MiterResult = { adjustments: new Map(), junctionFills: [] };
+  const result: MiterResult = { adjustments: new Map(), planAdjustments: new Map(), junctionFills: [] };
 
   for (const junc of junctions.values()) {
     if (junc.walls.length < 2) continue;
@@ -280,12 +313,25 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
       miters.push(miterPoint(P, sorted[i], sorted[(i + 1) % n]));
     }
 
+    // Three walls where two continue each other (a wall split where a third
+    // tees in): treat it as a tee. The pair gets square ends and the stem
+    // stops on the pair's near face; mitring would run the stem through to
+    // the far face (painting over its outline in plan, z-fighting in 3D).
+    const tee = n === 3 ? teeAtJunction(P, sorted) : null;
+
     for (let i = 0; i < n; i++) {
       const w = sorted[i];
       const prevGap = (i - 1 + n) % n;
       const thisGap = i;
+      const key = `${w.seg.id}:${w.which}`;
+      if (tee) {
+        result.adjustments.set(key, w === tee.stem
+          ? tee.stemCorners
+          : { left: ccwPt(P, w), right: cwPt(P, w) });
+        continue;
+      }
 
-      result.adjustments.set(`${w.seg.id}:${w.which}`, {
+      result.adjustments.set(key, {
         left: miters[prevGap] ?? ccwPt(P, w),
         right: miters[thisGap] ?? cwPt(P, w),
       });
@@ -309,9 +355,11 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
 
   // T-junction handling: extend T-wall sides to meet main wall outline
   const tJunctions = detectTJunctions(walls);
+  result.planAdjustments = new Map(result.adjustments);
   for (const tj of tJunctions) {
     const key = `${tj.tWallId}:${tj.tWhich}`;
     result.adjustments.set(key, { left: tj.left, right: tj.right });
+    result.planAdjustments.set(key, { left: tj.centreLeft, right: tj.centreRight });
   }
 
   return result;
@@ -439,7 +487,7 @@ export function computePerSegmentOutlines(
       sides.push([corners[k], corners[k + 1]]);
       sides.push([corners[sideLen + k], corners[sideLen + k + 1]]);
     }
-    for (const [a, b] of sides) {
+    const clipped = ([a, b]: [Pt, Pt]): [Pt, Pt][] => {
       let subs: [Pt, Pt][] = [[a, b]];
       const eb = segAABB(a, b);
       for (const j of grid.query(eb)) {
@@ -454,15 +502,17 @@ export function computePerSegmentOutlines(
         subs = next;
         if (subs.length === 0) break;
       }
-      out[i].push(...subs);
-    }
+      return subs;
+    };
+    for (const side of sides) out[i].push(...clipped(side));
 
     const startCap: [Pt, Pt] = [corners[0], corners[2 * sideLen - 1]];
     const endCap: [Pt, Pt] = [corners[sideLen - 1], corners[sideLen]];
     const showStart = !capStartIsWallEnd || !junctionKeys.has(startKey);
     const showEnd = !capEndIsWallEnd || !junctionKeys.has(endKey);
-    if (showStart) out[i].push(startCap);
-    if (showEnd) out[i].push(endCap);
+    // Caps buried in another wall (a T-wall's end) are clipped like sides.
+    if (showStart) out[i].push(...clipped(startCap));
+    if (showEnd) out[i].push(...clipped(endCap));
   }
   return out;
 }

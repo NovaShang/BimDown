@@ -25,9 +25,7 @@ function houseWithDoor() {
     { id: 'lv-2', number: '2', name: 'Level 2', elevation: 3.6 },
   ]);
   h.pick('wall');
-  for (const [a, b] of [[[0, 0], [10, 0]], [[10, 0], [10, 8]], [[10, 8], [0, 8]], [[0, 8], [0, 0]]]) {
-    h.click(a[0], a[1]); h.click(b[0], b[1]);
-  }
+  for (const [x, y] of [[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]) h.click(x, y);
   h.done();
   h.pick('door'); h.click(3, 0); h.done();
   return h;

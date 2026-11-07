@@ -3,8 +3,11 @@ import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { HistoryState } from '../model/history.ts';
 import type { SnapType } from '../utils/snap.ts';
+import type { WallJoin } from '../geometry/wallJoins.ts';
+import type { ArcParams } from '../geometry/arc.ts';
 
-export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted';
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted'
+  | 'trim_corner' | 'trim_single' | 'split';
 
 export interface ViewTransform {
   x: number;
@@ -65,6 +68,23 @@ export interface DrawingState {
    *  full port reference ("host_id:port_name" or bare host_id) so the
    *  finished line can wire `from` to it. */
   startPortRef?: string;
+  /** Wall chain in progress: raw clicked path points and the wall created for
+   *  each segment (ids[i] spans path[i] → path[i+1]). */
+  chain?: { path: { x: number; y: number }[]; ids: string[]; through: ({ x: number; y: number } | null)[] };
+  /** Arc wall: chord end placed, waiting for the point the arc passes through. */
+  arcEnd?: { x: number; y: number };
+  /** Centrelines of the walls the next click would create (preview only). */
+  ghost?: { start: { x: number; y: number }; end: { x: number; y: number }; arc?: ArcParams }[];
+  /** Number typed while drawing / moving (length, then angle after Tab). */
+  typed?: TypedInput;
+  /** Two-pick modify tools (trim / extend): the first picked element. */
+  pick?: { id: string; point: { x: number; y: number }; line?: { start: { x: number; y: number }; end: { x: number; y: number } } };
+}
+
+export interface TypedInput {
+  length: string;
+  angle: string;
+  field: 'length' | 'angle';
 }
 
 export type EditorAction =
@@ -89,7 +109,10 @@ export type EditorAction =
   | { type: 'SET_MARQUEE'; marquee: { x1: number; y1: number; x2: number; y2: number } | null }
   // Document editing actions
   | { type: 'INIT_DOCUMENT'; document: DocumentState }
-  | { type: 'MOVE_ELEMENTS'; ids: string[]; dx: number; dy: number; preview?: boolean }
+  /** `wallJoins`: joins snapshotted when a drag began (see geometry/wallJoins.ts).
+   *  Omitted on a committed move → read from the current geometry; a preview
+   *  without it does not cascade. Same for RESIZE_ELEMENT. */
+  | { type: 'MOVE_ELEMENTS'; ids: string[]; dx: number; dy: number; preview?: boolean; wallJoins?: WallJoin[] }
   | { type: 'CREATE_ELEMENT'; element: CanonicalElement }
   | { type: 'CREATE_ELEMENTS'; elements: CanonicalElement[]; description?: string; selectPrimary?: boolean }
   | { type: 'APPLY_PATCH'; description: string; patches: Map<string, CanonicalElement | null>; before?: Map<string, CanonicalElement | null> }
@@ -97,7 +120,7 @@ export type EditorAction =
   | { type: 'UPDATE_ATTRS'; id: string; attrs: Record<string, string> }
   /** Same attrs on several elements, one undo step (multi-selection edit). */
   | { type: 'UPDATE_ATTRS_MANY'; ids: string[]; attrs: Record<string, string> }
-  | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean }
+  | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean; wallJoins?: WallJoin[] }
   | { type: 'COMMIT_PREVIEW'; description: string; before: Map<string, CanonicalElement | null>; after: Map<string, CanonicalElement | null> }
   | { type: 'SET_EDIT_MODE'; active: boolean }
   | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }

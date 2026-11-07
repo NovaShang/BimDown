@@ -130,7 +130,8 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
       fill: '',
       arc: el.arc,
     }));
-    const adj = computeCornerAdjustments(miterInput).adjustments;
+    const miter = computeCornerAdjustments(miterInput);
+    const adj = miter.adjustments;
 
     const epCount = new Map<string, number>();
     for (const w of walls) {
@@ -144,7 +145,7 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
     const elIdxRanges: { elId: string; from: number; to: number }[] = [];
     for (const w of walls) {
       const openings = collectWallOpenings(w.el, ctx);
-      const wallPolys = buildWallPolygons(w.el, openings, adj, w.startKey, w.endKey);
+      const wallPolys = buildWallPolygons(w.el, openings, miter.planAdjustments, w.startKey, w.endKey);
       const from = polys.length;
       polys.push(...wallPolys);
       elIdxRanges.push({ elId: w.el.id, from, to: polys.length });
@@ -363,7 +364,11 @@ export function wallDraw2D(
           key={`f${i}`}
           points={seg.corners.map(p => `${p.x},${p.y}`).join(' ')}
           fill={fill}
-          stroke="none"
+          // A hairline of the fill colour hides the anti-aliasing seam where
+          // two mitred / teed wall polygons meet.
+          stroke={fill}
+          strokeWidth={0.01}
+          strokeLinejoin="miter"
           data-id={facts.id}
         />
       ))}
@@ -374,7 +379,9 @@ export function wallDraw2D(
             x1={a.x} y1={a.y} x2={b.x} y2={b.y}
             stroke={stroke}
             strokeWidth={strokeWidth}
-            strokeLinecap="butt"
+            // Square caps close the hairline gap where two walls' outline
+            // pieces meet end to end (collinear walls, mitred corners).
+            strokeLinecap="square"
             data-id={facts.id}
           />
         )),

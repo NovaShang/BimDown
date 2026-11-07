@@ -2,6 +2,7 @@ import type { ToolHandler, ToolContext } from './types.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { toElementId } from '../model/ids.ts';
+import { typedKey, resolveTypedPoint } from './typedInput.ts';
 
 /** Strip the `level:` prefix from selection ids so they match the raw keys
  *  used by `snapPoint`'s exclusion set. */
@@ -45,24 +46,23 @@ export const relocateTool: ToolHandler = {
       });
     } else {
       // Second click — execute move/copy
-      const origin = points[0];
-      const dx = pt.x - origin.x;
-      const dy = pt.y - origin.y;
-      const ids = Array.from(state.selectedIds);
-      const mode = state.drawingTarget?.tableName;
-
-      if (mode === 'copy') {
-        ctx.dispatch({ type: 'DUPLICATE_ELEMENTS', ids, offset: { dx, dy } });
-      } else {
-        ctx.dispatch({ type: 'MOVE_ELEMENTS', ids, dx, dy });
-      }
-
-      // Return to select tool
-      ctx.dispatch({ type: 'SET_TOOL', tool: 'select' });
-      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: null });
-      ctx.dispatch({ type: 'SET_DRAWING_TARGET', target: null });
-      ctx.setSnap(null);
+      execute(ctx, points[0], pt);
     }
+  },
+
+  /** Typed distance (and Tab → angle) after the origin click, Enter to apply. */
+  onKeyDown(ctx: ToolContext, e: KeyboardEvent) {
+    const state = ctx.getState();
+    const ds = state.drawingState;
+    const origin = ds?.points[0];
+    if (!ds || !origin) return false;
+    const r = typedKey(e, ds.typed);
+    if (!r.handled) return false;
+    e.preventDefault();
+    const target = r.commit && r.typed ? resolveTypedPoint(origin, ds.cursor, r.typed, getProjectUnits(state)) : null;
+    if (target) execute(ctx, origin, target);
+    else ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { ...ds, typed: r.typed } });
+    return true;
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
@@ -83,3 +83,23 @@ export const relocateTool: ToolHandler = {
     ctx.setSnap(snap);
   },
 };
+
+function execute(ctx: ToolContext, origin: { x: number; y: number }, pt: { x: number; y: number }) {
+  const state = ctx.getState();
+  const dx = pt.x - origin.x;
+  const dy = pt.y - origin.y;
+  const ids = Array.from(state.selectedIds);
+  const mode = state.drawingTarget?.tableName;
+
+  if (mode === 'copy') {
+    ctx.dispatch({ type: 'DUPLICATE_ELEMENTS', ids, offset: { dx, dy } });
+  } else {
+    ctx.dispatch({ type: 'MOVE_ELEMENTS', ids, dx, dy });
+  }
+
+  // Return to select tool
+  ctx.dispatch({ type: 'SET_TOOL', tool: 'select' });
+  ctx.dispatch({ type: 'SET_DRAWING_STATE', state: null });
+  ctx.dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+  ctx.setSnap(null);
+}

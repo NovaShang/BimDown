@@ -7,6 +7,7 @@ import { isBackgroundDiscipline } from '../state/selectors.ts';
 import { tryStartPortDrag, updatePortDrag, finishPortDrag, isPortDragActive } from './portDragTool.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
 import { expandSelectionForCoMove, collectCascadeBranches } from '../model/mepRun.ts';
+import { findWallJoins, joinAffectedIds, type WallJoin } from '../geometry/wallJoins.ts';
 
 /** Minimum drag distance (px) before a move starts */
 const MOVE_THRESHOLD = 3;
@@ -28,6 +29,8 @@ const gesture = {
   /** Raw ids the move dispatches actually translate. Computed at drag-start
    *  from the selection by walking collinear MEP runs (see mepRun.ts). */
   moveIds: null as string[] | null,
+  /** Wall joins snapshotted at drag start so walls met mid-drag aren't picked up. */
+  wallJoins: null as WallJoin[] | null,
   reset() {
     this.isDragging = false;
     this.isMoving = false;
@@ -39,6 +42,7 @@ const gesture = {
     this.accumulatedDy = 0;
     this.moveAnchor = null;
     this.moveIds = null;
+    this.wallJoins = null;
   },
 };
 
@@ -199,6 +203,13 @@ export const selectTool: ToolHandler = {
             gesture.beforeSnapshot.set(el.id, el);
           }
         }
+        // Walls joined to the moved ones follow them (corners, tees); record
+        // them and their doors for undo.
+        gesture.wallJoins = findWallJoins(elements, expanded);
+        for (const id of joinAffectedIds(elements, expanded, gesture.wallJoins)) {
+          const el = elements.get(id);
+          if (el && !gesture.beforeSnapshot.has(id)) gesture.beforeSnapshot.set(id, el);
+        }
         // Compute move anchor from the first selected element
         gesture.moveAnchor = getElementAnchor(gesture.beforeSnapshot);
       }
@@ -238,6 +249,7 @@ export const selectTool: ToolHandler = {
               dx: incrementDx,
               dy: incrementDy,
               preview: true,
+              wallJoins: gesture.wallJoins ?? undefined,
             });
           } else {
             const svgDx = currentSvg.x - gesture.startSvg.x;
@@ -251,6 +263,7 @@ export const selectTool: ToolHandler = {
               dx: svgDx,
               dy: svgDy,
               preview: true,
+              wallJoins: gesture.wallJoins ?? undefined,
             });
           }
         }

@@ -5,6 +5,7 @@ import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
 import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
+import { MODIFY_TOOL_SHORTCUTS, enterModifyTool } from '../tools/wallModifyTools.ts';
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
   hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
@@ -18,14 +19,17 @@ interface UseCanvasKeyboardOptions {
   applyZoomToFit: () => void;
   applyZoomToPercent: (pct: number) => void;
   activeDiscipline: string | null;
+  /** Active tool's key handler; runs first and may consume the key. */
+  onToolKeyDown?: (e: KeyboardEvent) => boolean;
 }
 
 export function useCanvasKeyboard({
-  globalDispatch, stateRef, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline,
+  globalDispatch, stateRef, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, onToolKeyDown,
 }: UseCanvasKeyboardOptions) {
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if (!stateRef.current.readonly && onToolKeyDown?.(e)) return;
 
       switch (e.key) {
         case 'v': case 'V':
@@ -131,6 +135,13 @@ export function useCanvasKeyboard({
           break;
       }
 
+      // Wall modify tools (J trim/extend to corner, X to reference, K split) — 2D only
+      if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey && stateRef.current.viewMode === '2d'
+          && (activeDiscipline === 'architecture' || activeDiscipline === 'structure')) {
+        const modifyTool = MODIFY_TOOL_SHORTCUTS[e.key.toUpperCase()];
+        if (modifyTool) enterModifyTool(globalDispatch, modifyTool);
+      }
+
       // Drawing tool shortcuts (W, D, N, C, R, F, T, E, P, U)
       if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey) {
         const tableName = DRAW_TOOL_SHORTCUTS[e.key.toUpperCase()];
@@ -160,5 +171,5 @@ export function useCanvasKeyboard({
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
     };
-  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, stateRef]);
+  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, stateRef, onToolKeyDown]);
 }

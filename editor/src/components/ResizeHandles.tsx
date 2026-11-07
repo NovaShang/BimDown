@@ -11,6 +11,7 @@ import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSna
 import { findPipeBodyHit, type MepCurveElement } from '../utils/pipeBodyHit.ts';
 import { generateId, toElementId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
+import { snapshotReshape, type WallJoin } from '../geometry/wallJoins.ts';
 
 function LengthLabel({ from, to, scale, length, projectUnit }: { from: Point; to: Point; scale: number; length?: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
@@ -76,6 +77,8 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   /** Pointer position at the moment the current drag started. Custom handles
    *  read this so "translate" behavior can compute deltas without drift. */
   const dragStartRef = useRef<Point>({ x: 0, y: 0 });
+  /** Wall joins at drag start: neighbours that follow this wall's ends. */
+  const joinsRef = useRef<WallJoin[] | undefined>(undefined);
 
   const screenToSvg = useCallback((clientX: number, clientY: number) => {
     const svg = svgRef.current;
@@ -136,6 +139,10 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
         for (const [id, el] of liveEls) {
           if (el.hostId === rawHostId) hostedBeforeRef.current.set(id, el);
         }
+        // Joined walls (and their doors) follow the dragged end.
+        const cascade = snapshotReshape(liveEls, rawHostId);
+        joinsRef.current = cascade.joins;
+        for (const [id, el] of cascade.before) hostedBeforeRef.current.set(id, el);
       }
       endpointSideRef.current = opts.endpointSide ?? null;
       lastSnapRef.current = null;
@@ -260,7 +267,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
                   const changes = h.onDrag({ x, y }, dragStartRef.current, snapshot);
                   if (Object.keys(changes).length === 0) return;
                   dispatch({
-                    type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes,
+                    type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current,
                   });
                 })}
               />
@@ -299,7 +306,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
                 (changes as { attrs: Record<string, string> }).attrs = { from: '' };
               }
             }
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current });
           }, { endpointSide: 'start' })}
         />
         <circle
@@ -315,7 +322,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
                 (changes as { attrs: Record<string, string> }).attrs = { to: '' };
               }
             }
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current });
           }, { endpointSide: 'end' })}
         />
         {/* Arc midpoint handle, gated by the element type's `supportsArc`
@@ -333,7 +340,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
             cursor="crosshair" opacity={0.9}
             onPointerDown={handleDrag((x, y) => {
               const newArc = arcFromMidpoint(lineEl.start, lineEl.end, { x, y });
-              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc } });
+              dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { arc: newArc }, wallJoins: joinsRef.current });
             })}
           />
         )}

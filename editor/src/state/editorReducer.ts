@@ -18,6 +18,7 @@ import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
 import { pickStartLevel } from './startLevel.ts';
+import { applyMoveJoins, applyReshapeJoins, rehostChildren } from '../geometry/wallJoins.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -537,6 +538,13 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           changed = true;
         }
       }
+      // Wall joins: corner and tee neighbours stay attached to moved walls.
+      // Drag previews must pass the joins snapshotted at drag start.
+      const moveJoins = preview ? action.wallJoins ?? [] : action.wallJoins;
+      for (const id of applyMoveJoins(state.document.elements, next, movedSet, moveJoins, dx, dy)) {
+        if (!movedSet.has(id)) partialMoved.add(id);
+        changed = true;
+      }
       if (!changed) return state;
       if (preview) {
         return { ...state, document: { ...state.document, elements: next } };
@@ -949,24 +957,22 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const next = new Map(state.document.elements);
       next.set(rawId, resized);
 
-      // Re-resolve hosted elements when their host wall is resized
+      // Re-resolve hosted elements when their host wall is resized: each keeps
+      // its distance from the end that stayed put.
       if (resized.geometry === 'line' || resized.geometry === 'spatial_line') {
-        const wall = resized as LineElement;
-        for (const [id, hosted] of next) {
-          if (hosted.hostId === rawId && hosted.geometry === 'line' && hosted.locationParam != null) {
-            const width = parseFloat(hosted.attrs.width ?? '0.9');
-            const { start, end } = resolveHostedGeometry(wall, hosted.locationParam, width);
-            next.set(id, { ...hosted, start, end } as LineElement);
-          }
-        }
+        rehostChildren(next, el as LineElement, resized as LineElement);
       }
+      // Wall joins: corner neighbours follow a dragged end, tees stay on the body.
+      const joinTouched = applyReshapeJoins(
+        state.document.elements, next, el, action.preview ? action.wallJoins ?? [] : action.wallJoins,
+      );
 
       // Topology cascade (reverse of MOVE_ELEMENTS' host case):
       // When a pipe/duct/conduit/cable_tray's endpoint moves, drag the
       // connected mep_node along with it AND every other pipe sharing that
       // node. Equipment/terminal hosts are intentionally NOT dragged this way
       // (they're authored, not derived); only passive mep_node hosts cascade.
-      const partialMoved = new Set<string>();
+      const partialMoved = new Set<string>(joinTouched);
       const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
       if (MEP_TABLES.has(el.tableName)
           && (el.geometry === 'line' || el.geometry === 'spatial_line')

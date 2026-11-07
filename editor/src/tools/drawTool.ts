@@ -32,4 +32,7 @@ export const drawTool: ToolHandler = {
     const inner = delegate(ctx);
     inner?.onPointerUp?.(ctx, e);
   },
+  onKeyDown(ctx, e) {
+    return delegate(ctx)?.onKeyDown?.(ctx, e) ?? false;
+  },
 };

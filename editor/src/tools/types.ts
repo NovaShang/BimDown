@@ -1,4 +1,4 @@
-import type { EditorAction, ViewTransform } from '../state/editorTypes.ts';
+import type { EditorAction, ViewTransform, DrawingState } from '../state/editorTypes.ts';
 import type { DocumentState } from '../model/document.ts';
 import type { ProjectData, GridData } from '../types.ts';
 import type { SnapResult, SnapType } from '../utils/snap.ts';
@@ -40,13 +40,7 @@ export interface ToolStateSnapshot {
   hoveredId: string | null;
   drawingTarget: { tableName: string; discipline: string; variantId?: string } | null;
   drawingAttrs: Record<string, string>;
-  drawingState: {
-    points: { x: number; y: number }[];
-    cursor: { x: number; y: number } | null;
-    /** Port-ref ("host_id:port_name" or bare host_id) the first click snapped
-     *  onto, for MEP line tools to wire into pipe.from. */
-    startPortRef?: string;
-  } | null;
+  drawingState: DrawingState | null;
   document: DocumentState | null;
   project: ProjectData | null;
   grids: readonly GridData[];
@@ -65,4 +59,7 @@ export interface ToolHandler {
   onPointerDown?(ctx: ToolContext, e: React.PointerEvent): void;
   onPointerMove?(ctx: ToolContext, e: React.PointerEvent): void;
   onPointerUp?(ctx: ToolContext, e: React.PointerEvent): void;
+  /** Keys reach the active tool before the global shortcuts; return true to
+   *  consume the key (typed lengths, Enter to finish a chain, ...). */
+  onKeyDown?(ctx: ToolContext, e: KeyboardEvent): boolean;
 }

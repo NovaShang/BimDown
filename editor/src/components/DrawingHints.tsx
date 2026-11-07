@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next';
 import { useCoreEditorState, useEditorState } from '../state/EditorContext.tsx';
 import type { Tool } from '../state/editorTypes.ts';
 import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
+import { isWallDrawTable, wallDrawOptions } from '../tools/wallDrawTool.ts';
 
 const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_line:    'hint.line',
@@ -12,12 +13,15 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
+  trim_corner:  'hint.trimCorner',
+  trim_single:  'hint.trimSingle',
+  split:        'hint.split',
 };
 
 export default function DrawingHints() {
   const { t } = useTranslation();
   const { activeTool, drawingState } = useCoreEditorState();
-  const drawingAttrs = useEditorState().drawingAttrs;
+  const { drawingAttrs, drawingTarget } = useEditorState();
 
   const hintKey = HINT_KEYS[activeTool];
   if (!hintKey) return null;
@@ -28,7 +32,14 @@ export default function DrawingHints() {
     && drawingAttrs[VERTICAL_MODE_KEY] === 'true';
   // For polygon, show a different hint once we have 3+ points
   const isPolygonClosable = activeTool === 'draw_polygon' && drawingState && drawingState.points.length >= 3;
-  const text = isVerticalLine
+  // Wall placement: one hint per draw mode; the first trim pick has its own.
+  const wallMode = activeTool === 'draw_line' && isWallDrawTable(drawingTarget?.tableName)
+    ? wallDrawOptions(drawingAttrs).mode : null;
+  const text = wallMode
+    ? t(`hint.wall_${wallMode}`)
+    : (activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState?.pick
+      ? t(`${hintKey}2`)
+      : isVerticalLine
     ? t('hint.vertical')
     : isPolygonClosable
       ? t('hint.polygonClose')
