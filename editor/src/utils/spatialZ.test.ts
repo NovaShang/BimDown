@@ -40,6 +40,28 @@ describe('spatial Z: files are absolute, the editor model is level-relative', ()
     expect(JSON.parse(ds.files['lv-2/equipment.geojson']).features[0].properties.base_offset).toBeUndefined();
   });
 
+  it('reads stair_run Z from its coordinates and a point rotation from GeoJSON properties', async () => {
+    const files: Record<string, string> = {
+      ...sampleProject(),
+      'lv-2/stair_run.csv': 'id,number,host_id,width,step_count\nsr-1,,st-1,1,10\n',
+      'lv-2/stair_run.geojson': fc([{ type: 'Feature', properties: { id: 'sr-1' },
+        geometry: { type: 'LineString', coordinates: [[0, 0, 3.6], [3, 0, 5.4]] } }]),
+      'lv-2/structure_column.csv': 'id,number,shape,size_x,size_y\nsc-1,,rect,0.3,0.5\n',
+      'lv-2/structure_column.geojson': fc([{ type: 'Feature', properties: { id: 'sc-1', rotation: 30 },
+        geometry: { type: 'Point', coordinates: [1, 1] } }]),
+    };
+    const ds = memoryDataSource(files);
+    const project = await loadProject(ds);
+    const els = parseFloorLayers(project.floors.get('lv-2')!.layers);
+    const run = byId<SpatialLineElement>(els, 'sr-1');
+    expect([run.startZ, run.endZ]).toEqual([0, expect.closeTo(1.8, 6)]);
+    expect(byId<PointElement>(els, 'sc-1').attrs.rotation).toBe('30');
+    const doc = createDocument('lv-2', els);
+    await persistDocument(doc, ds, new Set(['architecture/stair_run']), 3.6);
+    expect(JSON.parse(ds.files['lv-2/stair_run.geojson']).features[0].geometry.coordinates).toEqual([[0, 0, 3.6], [3, 0, 5.4]]);
+    expect(ds.files['lv-2/stair_run.csv'].split('\n')[0]).not.toContain('start_z');
+  });
+
   it('reloads a single layer with the level elevation', async () => {
     const ds = memoryDataSource(sampleProject());
     const layer = await loadLayer(ds, 'lv-2', 'beam');

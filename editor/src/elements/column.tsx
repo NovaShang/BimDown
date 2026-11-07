@@ -149,7 +149,8 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
 
       const material = getBimMaterial(resolveBimMaterial(facts.material, table));
       const isHL = drawCtx.selected || drawCtx.hovered;
-      const rotY = -(facts.rotationDeg * Math.PI) / 180;
+      // three.js rotation.y = θ turns plan +X to (cos θ, sin θ): spec rotation is CCW.
+      const rotY = (facts.rotationDeg * Math.PI) / 180;
       return (
         <mesh
           geometry={geo}

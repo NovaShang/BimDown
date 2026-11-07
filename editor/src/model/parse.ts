@@ -17,7 +17,7 @@ const DUAL_MODE_TABLES = new Set(['opening']);
 
 /** Tables whose elements live in 3D space (LineString coordinates carry Z). */
 const SPATIAL_3D_TABLES = new Set([
-  'stair', 'ramp', 'railing',
+  'stair', 'stair_run', 'ramp', 'railing',
   'beam', 'brace',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',

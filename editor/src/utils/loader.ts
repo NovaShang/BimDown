@@ -84,13 +84,14 @@ function parseCsvLine(line: string): string[] {
 
 /** Spatial tables: geometry carries absolute Z in its coordinates (spec §4.2). */
 const SPATIAL_TABLES = new Set([
-  'stair', 'ramp', 'railing', 'beam', 'brace',
+  'stair', 'stair_run', 'ramp', 'railing', 'beam', 'brace',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
 ]);
 
-/** Z offsets the spec stores in GeoJSON `properties` (the editor reads them as attrs). */
-const GEOJSON_Z_PROPS = ['base_offset', 'top_offset', 'height_offset'] as const;
+/** Row values the spec stores in GeoJSON `properties` (the editor reads them as attrs):
+ *  Z offsets, and point rotation (serializeToGeoJson writes it there too). */
+const GEOJSON_Z_PROPS = ['base_offset', 'top_offset', 'height_offset', 'rotation'] as const;
 
 /**
  * Bring one layer from the on-disk spec form into the editor model.

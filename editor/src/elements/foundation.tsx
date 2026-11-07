@@ -181,7 +181,8 @@ export const foundationModule: ElementModule<FoundationFacts> = {
     ) : null;
 
     if (facts.kind === 'point') {
-      const rotY = -(facts.rotationDeg * Math.PI) / 180;
+      // three.js rotation.y = θ turns plan +X to (cos θ, sin θ): spec rotation is CCW.
+      const rotY = (facts.rotationDeg * Math.PI) / 180;
       return (
         <mesh
           position={[facts.position.x, facts.baseY + facts.thickness / 2, -facts.position.y]}

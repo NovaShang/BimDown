@@ -231,7 +231,8 @@ export const mepNodeModule: ElementModule<MepNodeFacts> = {
     const size = facts.sizeW > 0 ? facts.sizeW : 0.12;
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'mep_node'));
     const isHL = drawCtx.selected || drawCtx.hovered;
-    const rotY = -(facts.rotationDeg * Math.PI) / 180;
+    // three.js rotation.y = θ turns plan +X to (cos θ, sin θ): spec rotation is CCW.
+    const rotY = (facts.rotationDeg * Math.PI) / 180;
     return (
       <mesh
         position={[facts.position.x, facts.baseY, -facts.position.y]}
