@@ -7,8 +7,12 @@ import { nearestPointOnSegment } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
 import { nearestPointOnArc, arcLength } from '../geometry/arc.ts';
+import { metre } from '../annotation/geometry.ts';
+import { fitInsert, insertSill, occupiedSpans } from './insertFit.ts';
+import { showNotice } from '../state/modifyUi.ts';
 
-const HOST_SNAP_THRESHOLD = 1; // metres — max distance from cursor to wall centerline
+/** Reach beyond a wall's face (metres) within which the cursor picks it as the host. */
+const HOST_REACH = 0.3;
 
 interface HostHit {
   wall: LineElement;
@@ -52,7 +56,8 @@ function findNearestHost(
       dist = Math.sqrt(ddx * ddx + ddy * ddy);
     }
 
-    if (dist < HOST_SNAP_THRESHOLD && (!best || dist < best.dist)) {
+    // Only near the wall itself: a click out in the room doesn't put a door on the nearest wall
+    if (dist < wall.strokeWidth / 2 + HOST_REACH * metre() && (!best || dist < best.dist)) {
       best = { wall, t: tMeters, dist };
     }
   }
@@ -87,6 +92,23 @@ interface HostedPlacement {
   t: number;
   baseOffset: number;
   wall: LineElement;
+}
+
+/** A host was found but the insert would overlap one already on it (tools/insertFit.ts). */
+interface BlockedPlacement { blockedBy: string }
+
+/** Slide the placement to a free spot on its wall, or report what blocks it. */
+function fitOnWall(
+  p: HostedPlacement, elements: ReadonlyMap<string, CanonicalElement>,
+  width: number, sill: number, height: number,
+): HostedPlacement | BlockedPlacement {
+  const w = p.wall;
+  const len = w.arc ? arcLength(w.start, w.end, w.arc) : Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
+  const fit = fitInsert(occupiedSpans(w, elements), p.t, width, len, sill, height, 0.005 * metre());
+  if (!fit.ok) return { blockedBy: fit.blockedBy };
+  if (Math.abs(fit.position - p.t) < 1e-9) return p;
+  const { start, end } = resolveHostedGeometry(w, fit.position, width);
+  return { ...p, start, end, t: fit.position };
 }
 
 /**
@@ -138,6 +160,24 @@ function resolveHostedPlacement(
   return { start, end, t: hit.t, baseOffset: 0, wall: hit.wall };
 }
 
+/** Placement for the event, fitted among the wall's existing inserts. */
+function placeAt(ctx: ToolContext, e: React.PointerEvent): { placement: HostedPlacement | BlockedPlacement | null; width: number } | null {
+  const state = ctx.getState();
+  const target = state.drawingTarget;
+  if (!target || !isHostedTable(target.tableName)) return null;
+  const tables = hostTablesFor(target.tableName);
+  const da = state.drawingAttrs;
+  const width = parseFloat(da[widthAttrFor(target.tableName)] || '0.9');
+  const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
+  const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
+  const placement = resolveHostedPlacement(ctx, e, state, tables, target.tableName, width, elementHeight, getLevelElevation(state));
+  const elements = state.document?.elements;
+  if (!placement || !elements) return { placement, width };
+  const sillStr = da.base_offset != null && da.base_offset !== '' ? da.base_offset : String(placement.baseOffset);
+  const { sill, height } = insertSill(target.tableName, { ...baseAttrs, ...da, base_offset: sillStr });
+  return { placement: fitOnWall(placement, elements, width, sill, height), width };
+}
+
 export const drawHostedTool: ToolHandler = {
   cursor: 'crosshair',
 
@@ -149,17 +189,15 @@ export const drawHostedTool: ToolHandler = {
     if (!target) return;
 
     if (!isHostedTable(target.tableName)) return;
-    const tables = hostTablesFor(target.tableName);
-    const wAttr = widthAttrFor(target.tableName);
-
     const da = state.drawingAttrs;
-    const width = parseFloat(da[wAttr] || '0.9');
     const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-    const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
-    const levelElevation = getLevelElevation(state);
-
-    const placement = resolveHostedPlacement(ctx, e, state, tables, target.tableName, width, elementHeight, levelElevation);
+    const placed = placeAt(ctx, e);
+    const placement = placed?.placement;
     if (!placement) return;
+    if ('blockedBy' in placement) {
+      showNotice('notice.insertOverlap', { id: placement.blockedBy });
+      return;
+    }
 
     const elements = state.document?.elements;
     if (!elements) return;
@@ -200,18 +238,9 @@ export const drawHostedTool: ToolHandler = {
     if (!target) return;
 
     if (!isHostedTable(target.tableName)) return;
-    const tables = hostTablesFor(target.tableName);
-    const wAttr = widthAttrFor(target.tableName);
+    const placement = placeAt(ctx, e)?.placement;
 
-    const da = state.drawingAttrs;
-    const width = parseFloat(da[wAttr] || '0.9');
-    const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
-    const elementHeight = parseFloat(da.height || baseAttrs.height || '2.1');
-    const levelElevation = getLevelElevation(state);
-
-    const placement = resolveHostedPlacement(ctx, e, state, tables, target.tableName, width, elementHeight, levelElevation);
-
-    if (placement) {
+    if (placement && !('blockedBy' in placement)) {
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
         state: { points: [placement.start], cursor: placement.end, baseOffset: placement.baseOffset },
