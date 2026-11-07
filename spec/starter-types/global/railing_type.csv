@@ -1,0 +1,5 @@
+id,name,description,material,height,top_rail_shape,top_rail_size,infill,baluster_spacing,baluster_size
+rlt-steel-1000,Steel balusters 1000,Round steel top rail on square balusters,steel,1.0,round,0.05,balusters,0.12,0.025
+rlt-steel-1100,Steel guard 1100,Guard for landings and slab edges,steel,1.1,rect,0.06,balusters,0.11,0.025
+rlt-glass-1000,Glass 1000,Glass panels under a steel top rail,steel,1.0,round,0.05,glass,1.0,0.03
+rlt-timber-900,Timber handrail 900,Timber rail on timber balusters,wood,0.9,rect,0.06,balusters,0.12,0.04

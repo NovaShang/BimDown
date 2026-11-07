@@ -82,9 +82,11 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `door`           | Hosted on wall   | No geometry file | Door with operation type |
 | `window`         | Hosted on wall   | No geometry file | Window with dimensions |
 | `opening`        | Hosted           | Conditional | Wall opening (no geometry file) or slab opening (`Polygon`) |
-| `stair`          | Spatial line     | `LineString` 3D | Stair run with vertical span |
+| `stair`          | Spatial line     | `LineString` 3D | Stair (its own first run) with vertical span; optional multi-storey repetition |
+| `stair_run`      | Spatial line     | `LineString` 3D | Further flight of a stair (`host_id` → stair) |
+| `stair_landing`  | Polygon          | `Polygon` 2D | Landing between runs (`host_id` → stair), top at `base_offset` |
 | `ramp`           | Spatial line     | `LineString` 3D | Accessibility ramp |
-| `railing`        | Spatial line     | `LineString` 3D | Railing along path |
+| `railing`        | Spatial line     | Conditional | Sketched railing (`LineString` 3D, optionally on a slab via `host_id`) or stair railing (`host_id` → stair + `side`, no geometry) |
 | `curtain_wall`   | Line             | `LineString` 2D | Curtain wall with grid parameters |
 | `ceiling`        | Polygon          | `Polygon` 2D | Ceiling surface |
 | `roof`           | Polygon          | `Polygon` 2D | Roof surface |
@@ -238,6 +240,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `door_type` / `window_type` / `curtain_wall_type` | `dt` / `wnt` / `cwt` | `dt-single-900` |
 | `column_type` / `beam_type` | `colt` / `bmt` | `bmt-steel-ipe-300` |
 | `furniture_type` | `fut` | `fut-desk-1600` |
+| `railing_type` | `rlt` | `rlt-steel-1000` |
 | `type_layer` | `tl` | `tl-1` |
 | `dimension` | `dm` | `dm-1` |
 | `text_note` | `tx` | `tx-1` |
@@ -305,6 +308,43 @@ Structural tables also carry an optional `material_grade` (C30, Q355, GL24h…) 
 
 For multi-story shaft openings: export one `opening` per level, each hosted on its respective slab.
 
+### Stairs and Railings
+
+A stair is assembled from components, like Revit's stair by component:
+
+- `stair` — its own 3D LineString is the **first run** (bottom riser → top, along the walking line), `step_count` = its risers, `width`; `stair_type` is a shape hint. A stair without geometry — or whose line spans exactly the bottom-to-top of its `stair_run` rows (an overall axis) — is a container whose runs are all `stair_run` rows.
+- `stair_run` (`host_id` → stair) — further flights, each with its own `width` and `step_count`.
+- `stair_landing` (`host_id` → stair) — platform polygons; `base_offset` is the landing **top** (= top of the run arriving on it), `thickness` hangs below.
+
+Runs are ordered by their start Z. All risers of a stair share one height: riser = total rise / total risers; a run's going = run length / its `step_count` (its last tread is flush with the landing or floor above). Editors keep run Z values and landing heights in step when steps or levels change.
+
+**Multi-storey**: `multistory_top_level_id` repeats the stair (runs, landings, stair railings) on every storey from the base level up to that level. Repetitions keep the step count and plan; the riser adapts to each storey's height. Exporters write one IfcStair per storey.
+
+**Calculator checks** (`bimdown build` warnings): riser 0.15–0.19 m, going ≥ 0.26 m, 2R+G 0.60–0.65 m, width ≥ 0.90 m; plus a landing whose top differs from the run arriving on it.
+
+**Railings** have three forms (one `railing` table):
+
+| Form | `host_id` | Geometry | Path |
+|---|---|---|---|
+| Sketched | empty | `LineString` 3D | the coordinates |
+| On a slab edge | slab / structure_slab | `LineString` (Z ignored) | on the slab top, follows it |
+| On a stair | stair, plus `side` = `left` / `right` | none (CSV only) | derived: along that side's run edges (inset 5 cm), around the outer side of landings, across the well side of U stairs; rises with the nosing line |
+
+`height` is measured from the walking surface (stair nosing line or floor). A `railing_type` supplies height, top rail (`top_rail_shape`, `top_rail_size`), infill (`balusters` at `baluster_spacing` / `baluster_size`, `glass` panels or `none`) and material.
+
+```csv
+# lv-1/stair.csv — an L stair: st-1 is run 1, sr-1 run 2, one landing, railings both sides
+id,width,step_count,stair_type,top_level_id,multistory_top_level_id
+st-1,1.2,9,quarter_turn,lv-2,
+# lv-1/stair_run.csv
+id,host_id,width,step_count
+sr-1,st-1,1.2,9
+# lv-1/railing.csv (no railing.geojson features for these)
+id,host_id,side,type_id,height
+rl-1,st-1,left,rlt-steel-1000,
+rl-2,st-1,right,rlt-steel-1000,
+```
+
 ### MEP Topology
 
 MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, conduit) connects to `mep_node` (fittings, accessories), and nodes connect back to curves. Two curves never connect directly — there is always a node in between.
@@ -343,6 +383,7 @@ Like Revit family types: a named set of defaults that many elements share. All t
 | `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `material` |
 | `beam_type` | `beam`, `brace` | same as `column_type` |
 | `furniture_type` | `furniture` | `family`, `variant`, `size_x`, `size_y`, `height` |
+| `railing_type` | `railing` | `height`, `baluster_spacing`, `material`; type-only `top_rail_shape`, `top_rail_size`, `infill` (balusters/glass/none), `baluster_size` |
 
 **Resolution rule.** A field a type table shares by name with the instance table is a *type parameter*. An instance with `type_id` leaves it **empty to inherit** the type's value, or sets it to **override** for that element. Required instance fields (`wall.thickness`, `door.width`, …) may be empty when the type supplies them. Untyped elements are unchanged. Tools write a value equal to the type's back as empty, so editing a type updates every instance that follows it.
 

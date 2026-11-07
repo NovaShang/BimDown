@@ -1,7 +1,42 @@
 name: railing
 bases:
   - spatial_line_element
+  - materialized
+description: >
+  Railing (guard / handrail). Three forms:
+  - Sketched: a 3D LineString path; the railing stands on the path.
+  - On a slab edge: the same, with host_id = a slab or structure_slab; the
+    railing stands on the slab top (z follows the slab, the path's Z is ignored).
+  - On a stair: host_id = a stair and `side` = left | right (looking up the
+    stair). No GeoJSON feature: the path is derived from the stair's runs and
+    landings (along each run edge, around the outer side of landings, across
+    the well side of U stairs) and follows every stair edit and multi-storey
+    repetition.
+  `type_id` points at a railing_type (height, top rail, infill, balusters,
+  material); instance `height`, `baluster_spacing` and `material` override it.
 
 fields:
   - name: height
     type: float
+    description: Top of rail above the walking surface (stair nosing line / floor), m. Default 1.0.
+
+  - name: type_id
+    type: reference
+    reference: railing_type
+    description: Optional railing_type id. Empty type parameters (height, baluster_spacing, material) inherit the type's value.
+
+  - name: host_id
+    type: reference
+    reference: element
+    description: Optional host. A stair (path derived, no geometry; needs `side`) or a slab / structure_slab (sketched path on its top).
+
+  - name: side
+    type: enum
+    values:
+      - left
+      - right
+    description: Stair-hosted railings only — side of the stair looking up its walking line.
+
+  - name: baluster_spacing
+    type: float
+    description: Baluster centre spacing (m). Type parameter.

@@ -2,22 +2,38 @@ name: stair
 bases:
   - spatial_line_element
   - vertical_span
+  - materialized
 description: >
-  A stair. Today represented as a single spatial line (a straight run) plus an
-  overall stair_type hint. Multi-run shapes (L / U) are composed by combining
-  a stair with one or more `stair_landing` rows hosted on it. Long-term plan
-  (FAMILY_VISION.md) is a Revit-aligned component model where each stair owns
-  an ordered list of runs and landings — `stair_type` will then be derivable
-  from that structure rather than declared.
+  A stair, built from components (Revit "stair by component"). The stair's own
+  3D LineString is its first run (flight), bottom to top along the walking
+  line; further flights are `stair_run` rows and the platforms between them
+  `stair_landing` rows, all hosted on the stair via host_id. A stair row
+  without geometry is a pure container: its runs are all `stair_run` rows;
+  so is a stair whose line has the same bottom and top Z as its stair_run rows
+  together (an overall axis, as some exporters write it).
+
+  Riser rule: every riser of the stair has the same height (total rise / total
+  risers). A run of `step_count` risers has as many treads, going = run length
+  / step_count; the last tread is flush with the landing or floor above. Tools
+  keep run Z values and landing heights consistent with that rule (a landing's
+  top = the top of the run that arrives on it).
+
+  Multi-storey stairs (Revit "Multistory Top Level"): with
+  `multistory_top_level_id` set, the stair and all its runs, landings and
+  hosted railings repeat on every storey from its base level up to that level.
+  Each repetition keeps the step count and plan; its riser height adapts to the
+  storey height (rise scales by storey height / base storey height).
 
   Subset of IFC IfcStairTypeEnum used here for the shape hint.
 
 fields:
   - name: width
     type: float
+    description: Clear width of the stair's own run (m).
 
   - name: step_count
     type: int
+    description: Risers in the stair's own (first) run; each stair_run has its own step_count.
 
   - name: stair_type
     type: enum
@@ -30,3 +46,10 @@ fields:
       - spiral
       - curved
       - double_return
+
+  - name: multistory_top_level_id
+    type: reference
+    reference: level
+    description: >
+      Optional. Repeat the whole stair on every storey up to this level (its
+      top). Empty = a single stair. Must be above the stair's base level.

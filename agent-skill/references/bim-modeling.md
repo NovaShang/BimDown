@@ -75,6 +75,12 @@ Seed point (x,y) inside enclosed room + `name`. `bimdown build` computes boundar
 
 ### stair (`lv-N/stair.csv` + `.geojson`)
 Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `width`, `step_count`.
+- Multi-run (L/U): the stair line is run 1; more flights = `stair_run` rows (`host_id`, `width`, `step_count`, 3D line), platforms = `stair_landing` polygons (`host_id`, `base_offset` = landing top = top of the run arriving on it). Runs stop at the landing edge.
+- All risers equal: riser = total rise / total `step_count`; each run's Z = its share. Going = run length / its `step_count`.
+- Rules (build warns): riser 0.15–0.19, going ≥ 0.26, 2R+G 0.60–0.65, width ≥ 0.9. Example: 3.0 m rise → 18 risers × 0.167, runs 9 × 0.28 = 2.52 m.
+- Same stair on every floor: draw it once on the lowest level with `multistory_top_level_id` = top level (riser adapts per storey).
+- Railings: `railing.csv` rows `host_id` = stair, `side` = left|right, NO geometry (path follows runs and landings). One per side.
+- Guard on a slab edge: railing with a 3D LineString + `host_id` = slab (stands on the slab top). Railing types: `type_id` = `rlt-steel-1000`, `rlt-steel-1100`, `rlt-glass-1000`, `rlt-timber-900` (global/railing_type.csv).
 
 ### curtain_wall, ceiling, roof
 - Curtain wall: line element like wall, with `u_grid_count`/`v_grid_count`

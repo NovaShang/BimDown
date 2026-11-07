@@ -4,8 +4,11 @@ bases:
   - materialized
 description: >
   One straight run (a flight of steps) within a stair. Hosted on the parent
-  `stair` row via host_id; multi-run stairs (L / U / switchback) are composed
-  of two or more stair_run rows separated by stair_landing rows.
+  `stair` row via host_id; multi-run stairs (L / U / switchback) are the
+  stair's own first run plus one or more stair_run rows, joined by
+  stair_landing rows. The 3D LineString runs along the walking line from the
+  bottom riser to the top; Z rises by step_count risers of the stair's common
+  riser height.
 
   For straight single-run stairs the parent `stair` row's own spatial_line is
   the run — stair_run is only needed when the stair has more than one flight.
@@ -22,3 +25,4 @@ fields:
 
   - name: step_count
     type: int
+    description: Risers in this run.
