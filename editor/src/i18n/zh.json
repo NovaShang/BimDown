@@ -359,5 +359,22 @@
   "landing.sampleDesc": "加载内置示例模型",
   "landing.privacy": "此编辑器完全在浏览器本地运行，不会上传任何数据。",
   "landing.urlPrompt": "请输入 .zip 文件的 URL：",
-  "landing.urlError": "加载 ZIP 失败"
+  "landing.urlError": "加载 ZIP 失败",
+
+  "drawing.title.architecture": "{{level}}建筑平面图",
+  "drawing.title.structure": "{{level}}结构平面图",
+  "drawing.title.mep": "{{level}}机电平面图",
+  "drawing.title.all": "{{level}}综合平面图",
+  "drawing.project": "项目",
+  "drawing.drawing": "图名",
+  "drawing.scale": "比例",
+  "drawing.date": "日期",
+  "drawing.sheet": "图号",
+  "drawing.elevation": "标高",
+  "drawing.units": "单位",
+  "drawing.north": "北",
+  "drawing.up": "上",
+  "drawing.down": "下",
+  "drawing.systems": "系统",
+  "drawing.generatedBy": "BimDown 出图"
 }

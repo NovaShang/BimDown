@@ -22,5 +22,12 @@ export { TooltipProvider } from './components/ui/tooltip.tsx';
 // Export functions (lazy-loaded internally)
 export { exportGltf } from './export/exportGltf.ts';
 export { exportIfc } from './export/exportIfc.ts';
-export { exportPdf } from './export/exportPdf.ts';
+export { exportPdf, suggestPlanScale } from './export/exportPdf.ts';
+export type { PdfExportOptions } from './export/exportPdf.ts';
 export { exportDxf } from './export/exportDxf.ts';
+export type { DxfExportOptions } from './export/exportDxf.ts';
+export type { DrawingDiscipline } from './export/drawing/types.ts';
+export type { PaperSize } from './export/drawing/sheet.ts';
+export { DRAWING_SCALES } from './export/drawing/sheet.ts';
+export { registerPlanAnnotator } from './export/drawing/annotations.ts';
+export type { PlanAnnotator, PlanAnnotationContext } from './export/drawing/annotations.ts';
