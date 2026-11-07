@@ -12,6 +12,7 @@
   "exports": {
     ".": "./src/exports.ts",
     "./data-sources": "./src/dataSources/index.ts",
+    "./starter-types": "./src/model/types/starterFiles.mjs",
     "./style.css": "./src/editor.css",
     "./src/i18n/en.json": "./src/i18n/en.json",
     "./src/i18n/zh.json": "./src/i18n/zh.json"

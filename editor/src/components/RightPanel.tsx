@@ -13,12 +13,15 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from './ui/collapsible';
 import { Button } from './ui/button';
 import { Icon } from './Icons.tsx';
-import { ChevronRight } from 'lucide-react';
+import { ChevronRight, Pencil, RotateCcw } from 'lucide-react';
 import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { ScrollArea } from './ui/scroll-area';
 import { cn } from '../lib/utils';
 import LineLengthRow from './LineLengthRow.tsx';
+import { TypeSelect } from './TypeSelect.tsx';
+import EditTypeDialog from './EditTypeDialog.tsx';
+import { findType, isTypedTable, typeParamState, typeValues } from '../model/types/catalog.ts';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -57,6 +60,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
   const state = useEditorState();
   const projectUnit = getProjectUnits(state);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
 
   const [firstId, firstData] = selectedData.entries().next().value!;
   const isSingleSelection = selectedData.size === 1;
@@ -73,6 +77,15 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     if (isSingleSelection) dispatch({ type: 'UPDATE_ATTRS', id: firstId, attrs: { [key]: value } });
     else dispatch({ type: 'UPDATE_ATTRS_MANY', ids: [...selectedData.keys()], attrs: { [key]: value } });
   };
+
+  // Element type (Revit "Type: …"): shown when every selected element is of
+  // one typed table; switching applies to the whole selection.
+  const types = state.project?.types;
+  const sameTable = [...selectedData.values()].every(d => d.tableName === firstData.tableName);
+  const showType = sameTable && isTypedTable(firstData.tableName) && !!getElementModule(firstData.tableName);
+  const selectedTypeIds = new Set([...selectedData.values()].map(d => d.csv.type_id ?? ''));
+  const typeId = selectedTypeIds.size === 1 ? [...selectedTypeIds][0] : '';
+  const elementType = findType(types, typeId);
 
   const fields = (() => {
     const mod = getElementModule(firstData.tableName);
@@ -152,6 +165,35 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
         )}
       </div>
 
+      {showType && (
+        <div className="flex shrink-0 items-center gap-1 border-b border-border/50 px-3 py-1.5" data-testid="prop-type-row">
+          <span className="w-[34px] shrink-0 text-[10px] text-muted-foreground">{t('type.label')}</span>
+          <TypeSelect
+            instanceTable={firstData.tableName}
+            value={typeId}
+            mixed={selectedTypeIds.size > 1}
+            onChange={id => dispatch({ type: 'SET_ELEMENT_TYPE', ids: [...selectedData.keys()], typeId: id })}
+            triggerClassName={cn(FIELD_SELECT, 'text-left')}
+            disabled={readonly}
+          />
+          {!readonly && (
+            <Button variant="ghost" size="icon-xs" className="size-5 shrink-0 text-muted-foreground"
+              title={t('type.edit')} aria-label={t('type.edit')} data-testid="edit-type"
+              onClick={() => setTypeDialogOpen(true)}>
+              <Pencil className="size-3" />
+            </Button>
+          )}
+        </div>
+      )}
+      {showType && (
+        <EditTypeDialog
+          open={typeDialogOpen}
+          instanceTable={firstData.tableName}
+          typeId={typeId}
+          onClose={() => setTypeDialogOpen(false)}
+        />
+      )}
+
       {/* Mesh fallback indicator */}
       {csv.mesh_file && (
         <div className="mx-3 my-1.5 flex shrink-0 items-center gap-1.5 rounded border border-amber-500/30 bg-amber-500/10 px-2 py-1">
@@ -184,6 +226,8 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
                         value={csv[f.key] ?? ''}
                         editable={!readonly && editableSelection && f.type !== 'readonly'}
                         mixed={!isSingleSelection && csv[f.key] === undefined && [...selectedData.values()].some(d => (d.csv[f.key] ?? '') !== '')}
+                        typeState={isSingleSelection ? typeParamState(firstData.tableName, csv, f.key, types) : null}
+                        onResetToType={elementType ? () => handleChange(f.key, typeValues(elementType)[f.key] ?? '') : undefined}
                         onChange={handleChange}
                         projectUnit={projectUnit}
                         t={(key: string, fallback?: string) => t(key, { defaultValue: fallback }) as string}
@@ -218,6 +262,8 @@ function PropertyRow({
   value,
   editable,
   mixed,
+  typeState,
+  onResetToType,
   onChange,
   projectUnit,
   t,
@@ -227,6 +273,9 @@ function PropertyRow({
   editable: boolean;
   /** Multi-selection whose elements disagree on this field. */
   mixed?: boolean;
+  /** 'type' = value comes from the element's type; 'override' = the element overrides it. */
+  typeState?: 'type' | 'override' | null;
+  onResetToType?: () => void;
   onChange: (key: string, value: string) => void;
   projectUnit: ProjectUnit;
   t: (key: string, fallback?: string) => string;
@@ -241,8 +290,21 @@ function PropertyRow({
 
   return (
     <div className="-mx-1 flex items-center gap-2 rounded-md px-1 py-[3px] transition-colors hover:bg-foreground/[0.03]">
-      <span className="w-[72px] shrink-0 truncate text-[10px] text-muted-foreground" title={label}>
-        {label}
+      <span className="flex w-[72px] shrink-0 items-center gap-0.5 truncate text-[10px] text-muted-foreground" title={label}>
+        <span className="truncate">{label}</span>
+        {typeState === 'type' && (
+          <span className="size-1 shrink-0 rounded-full bg-[var(--color-accent)]/60" title={t('type.fromType')} data-testid={`from-type-${f.key}`} />
+        )}
+        {typeState === 'override' && (
+          editable && onResetToType ? (
+            <button type="button" className="inline-flex shrink-0 cursor-pointer border-none bg-transparent p-0 text-amber-600 hover:text-foreground"
+              title={t('type.override')} aria-label={t('type.override')} onClick={onResetToType} data-testid={`reset-type-${f.key}`}>
+              <RotateCcw className="size-2.5" />
+            </button>
+          ) : (
+            <span className="size-1 shrink-0 rounded-full bg-amber-500" title={t('type.override')} />
+          )
+        )}
       </span>
       <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
         {(f.key === 'top_level_id' || f.key === 'level_id') ? (

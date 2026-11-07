@@ -1,5 +1,6 @@
 import type { CanonicalElement } from './elements.ts';
 import type { FloorData, Level } from '../types.ts';
+import type { TypeCatalog } from './types/catalog.ts';
 
 /** Project level list around a level add / remove / rename, plus the
  *  affected level's content when it is added or removed. */
@@ -20,6 +21,8 @@ export interface EditCommand {
   /** Consecutive commands with the same key fold into one undo step
    *  (typing a value into a multi-selection's field). */
   mergeKey?: string;
+  /** Set when the command edited the project's element types (undo restores `before`). */
+  types?: { before: TypeCatalog; after: TypeCatalog };
 }
 
 export interface HistoryState {

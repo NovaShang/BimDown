@@ -1,3 +1,5 @@
+import type { TypeCatalog } from './model/types/catalog.ts';
+
 export interface Level {
   id: string;
   number: string;
@@ -60,6 +62,9 @@ export interface ProjectData {
   /** Project-level MEP system definitions from `global/mep_system.csv`.
    *  Empty array when the file is absent — auto-coloring stays in effect. */
   mepSystems: SystemDef[];
+  /** Element types from global/*_type.csv + type_layer.csv; the starter
+   *  catalog (saved: false) when the project has none. See model/types/catalog.ts. */
+  types?: TypeCatalog;
   metadata: ProjectMetadata;
   /** Editor may write `spatial_z: "absolute"` on save: the project lacks the
    *  marker but has no elevated spatial Z that could be legacy level-relative. */

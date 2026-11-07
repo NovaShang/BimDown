@@ -21,6 +21,9 @@ import type { SurfacePrimitive, ParametricOpening } from '../three/primitives/ty
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
 import { buildStraightWallSolid } from '../three/utils/wallSolid.ts';
+import { resolvedLayers } from '../model/types/catalog.ts';
+import { layerBands, wallFrame, clipToBand, chordAt, type LayerBand } from '../geometry/layerBands.ts';
+import { layerFill } from './_layerHatch.tsx';
 
 const HOSTED_TABLES = new Set(['door', 'window', 'opening']);
 const DEFAULT_HEIGHT = 3.0;
@@ -55,6 +58,8 @@ export interface LineWallFacts {
   height: number;
   baseY: number;
   material: string;
+  /** Type layers as bands across the wall (straight typed walls with 2+ layers). */
+  layers?: LayerBand[];
 }
 
 /**
@@ -336,6 +341,7 @@ export function wallGeometryFor(
   const { height, baseOffset } = resolveHeight(
     el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT,
   );
+  const typeLayers = el.arc ? null : resolvedLayers(el, ctx.projectTypes());
   return {
     id: el.id,
     table,
@@ -347,7 +353,42 @@ export function wallGeometryFor(
     height,
     baseY: ctx.levelElevation + baseOffset,
     material: el.attrs.material || 'concrete',
+    layers: typeLayers && typeLayers.length > 1 ? layerBands(typeLayers, el.strokeWidth) : undefined,
   };
+}
+
+/**
+ * Fine-detail opacity for a wall's layers: they fade in once the wall is
+ * ~14 px thick on screen. `--canvas-scale` × 15 is pixels per metre (see
+ * Canvas uiScale), so zooming needs no re-render.
+ */
+function layerOpacity(thickness: number): string {
+  return `clamp(0, calc((var(--canvas-scale, 1) * ${(15 * thickness).toFixed(4)} - 14) / 8), 1)`;
+}
+
+/** Layer fills and the lines between layers, per draw segment. */
+function wallLayers2D(facts: LineWallFacts): ReactNode {
+  const frame = facts.layers && wallFrame(facts.centerline.start, facts.centerline.end);
+  if (!facts.layers || !frame) return null;
+  const bands = facts.layers;
+  return (
+    <g style={{ opacity: layerOpacity(facts.thickness) }} data-id={facts.id}>
+      {facts.segments.flatMap((seg, si) => bands.map((b, bi) => {
+        const poly = clipToBand(seg.corners, frame, b.lo, b.hi);
+        return poly.length < 3 ? null : (
+          <polygon key={`l${si}-${bi}`} points={poly.map(p => `${p.x},${p.y}`).join(' ')}
+            fill={layerFill(b)} stroke="none" data-id={facts.id} />
+        );
+      }))}
+      {facts.segments.flatMap((seg, si) => bands.slice(1).map((b, bi) => {
+        const c = chordAt(seg.corners, frame, b.hi);
+        return c ? (
+          <line key={`b${si}-${bi}`} x1={c[0].x} y1={c[0].y} x2={c[1].x} y2={c[1].y}
+            stroke="#4b5563" strokeWidth={0.006} data-id={facts.id} />
+        ) : null;
+      }))}
+    </g>
+  );
 }
 
 export function wallDraw2D(
@@ -372,6 +413,7 @@ export function wallDraw2D(
           data-id={facts.id}
         />
       ))}
+      {wallLayers2D(facts)}
       {facts.segments.flatMap((seg, si) =>
         seg.outline.map(([a, b], ei) => (
           <line
@@ -392,13 +434,11 @@ export function wallDraw2D(
 
 export function wallDraw3D(facts: LineWallFacts, isHL: boolean): ReactNode {
   if (facts.footprint.length < 3) return null;
-  // Straight walls with plain rectangular openings: built directly (same
-  // solid as extrude + CSG below, ~100× faster). Everything else: CSG.
-  const direct = facts.centerline.arc ? null : buildStraightWallSolid({
-    start: facts.centerline.start, end: facts.centerline.end, footprint: facts.footprint,
-    thickness: facts.thickness, height: facts.height, baseY: facts.baseY, openings: facts.openings,
-  });
-  const geo = direct ?? extrudeWallWithCsg(facts);
+  if (facts.layers && !isHL) {
+    const layered = wallLayers3D(facts);
+    if (layered) return layered;
+  }
+  const geo = wallSolid(facts, facts.footprint);
   const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
   return (
     <mesh
@@ -416,12 +456,43 @@ export function wallDraw3D(facts: LineWallFacts, isHL: boolean): ReactNode {
   );
 }
 
+/** One mesh per type layer (air gaps left open), each in its layer's material. */
+function wallLayers3D(facts: LineWallFacts): ReactNode {
+  const frame = wallFrame(facts.centerline.start, facts.centerline.end);
+  if (!frame || !facts.layers) return null;
+  const meshes: ReactNode[] = [];
+  facts.layers.forEach((b, i) => {
+    if (b.function === 'air_gap') return;
+    const poly = clipToBand(facts.footprint, frame, b.lo, b.hi);
+    if (poly.length < 3) return;
+    const material = getBimMaterial(resolveBimMaterial(b.material || facts.material, facts.table));
+    meshes.push(
+      <mesh key={i} geometry={wallSolid(facts, poly)} material={material}
+        castShadow receiveShadow userData={{ elementId: facts.id }} />,
+    );
+  });
+  return meshes.length > 0 ? <group userData={{ elementId: facts.id }}>{meshes}</group> : null;
+}
+
+/**
+ * Wall solid (the whole footprint or one layer of it) with the wall's openings
+ * cut. Straight walls with plain rectangular openings are built directly (same
+ * solid as extrude + CSG, ~100× faster); everything else goes through CSG.
+ */
+function wallSolid(facts: LineWallFacts, footprint: Point[]): BufferGeometry {
+  const direct = facts.centerline.arc ? null : buildStraightWallSolid({
+    start: facts.centerline.start, end: facts.centerline.end, footprint,
+    thickness: facts.thickness, height: facts.height, baseY: facts.baseY, openings: facts.openings,
+  });
+  return direct ?? extrudeWallWithCsg(facts, footprint);
+}
+
 /** Extrude + CSG wall solid (arc walls, shaped or overlapping openings). */
-export function extrudeWallWithCsg(facts: LineWallFacts): BufferGeometry {
+export function extrudeWallWithCsg(facts: LineWallFacts, footprint: Point[] = facts.footprint): BufferGeometry {
   const shape = new Shape();
-  shape.moveTo(facts.footprint[0].x, facts.footprint[0].y);
-  for (let i = 1; i < facts.footprint.length; i++) {
-    shape.lineTo(facts.footprint[i].x, facts.footprint[i].y);
+  shape.moveTo(footprint[0].x, footprint[0].y);
+  for (let i = 1; i < footprint.length; i++) {
+    shape.lineTo(footprint[i].x, footprint[i].y);
   }
   shape.closePath();
   let geo: BufferGeometry = new ExtrudeGeometry(shape, { depth: facts.height, bevelEnabled: false });
@@ -442,7 +513,7 @@ export function extrudeWallWithCsg(facts: LineWallFacts): BufferGeometry {
       id: `surface:${facts.id}`,
       elementId: facts.id,
       tableName: facts.table,
-      footprint: facts.footprint,
+      footprint,
       extrudeDirection: { x: 0, y: 1, z: 0 },
       height: facts.height,
       origin: { x: 0, y: facts.baseY, z: 0 },

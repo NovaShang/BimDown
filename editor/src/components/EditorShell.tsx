@@ -3,7 +3,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, stampSpatialZMarker, removeLevelFiles, restoreLevelFiles } from '../utils/persist.ts';
+import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, persistTypes, stampSpatialZMarker, removeLevelFiles, restoreLevelFiles } from '../utils/persist.ts';
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
@@ -45,7 +45,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   const persistDoc = useRef(async (doc: NonNullable<typeof state.document>, changedKeys: Set<string>) => {
     const project = stateRef.current.project;
     const elevation = project?.levels.find(l => l.id === doc.levelId)?.elevation ?? 0;
-    await persistDocument(doc, dsRef.current, changedKeys, elevation);
+    await persistDocument(doc, dsRef.current, changedKeys, elevation, project?.types);
     if (project?.spatialZMarkable && !spatialZStamped.current) {
       spatialZStamped.current = true;
       await stampSpatialZMarker(dsRef.current);
@@ -85,7 +85,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         if (!key.startsWith('__global__/')) continue;
         const tableName = key.slice('__global__/'.length);
         const gl = currentState.project?.globalLayers.find(l => l.tableName === tableName);
-        if (gl) await persistGlobalLayer(gl, dsRef.current);
+        if (gl) await persistGlobalLayer(gl, dsRef.current, currentState.project?.types);
       }
     } catch (err) {
       console.error('Flush persist failed:', err);
@@ -223,6 +223,19 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         .catch(err => console.error('Restore level files failed:', err));
     }
   }, [state.project?.levels, ds]);
+
+  // Persist element types (global/*_type.csv + type_layer.csv) when the
+  // catalog changes — type edits, undo/redo of them, first use of a starter
+  // type. Neither an unsaved starter catalog nor one just read from disk is written.
+  const prevTypesRef = useRef(state.project?.types);
+  useEffect(() => {
+    const types = state.project?.types;
+    if (types === prevTypesRef.current) return;
+    const hadTypes = prevTypesRef.current !== undefined;
+    prevTypesRef.current = types;
+    if (!types || !hadTypes || !types.saved || types.fromDisk || state.readonly) return;
+    persistTypes(types, ds).catch(err => console.error('Persist types failed:', err));
+  }, [state.project?.types, state.readonly, ds]);
 
   // Use document model for rendering when available
   const processedLayers = useMemo(

@@ -1,6 +1,7 @@
 import type { CanonicalElement } from '../../model/elements.ts';
 import type { Level, SystemDef } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
+import type { TypeCatalog } from '../../model/types/catalog.ts';
 
 interface BuildGeometryContextOpts {
   level: Level;
@@ -8,6 +9,8 @@ interface BuildGeometryContextOpts {
   allElements: Map<string, CanonicalElement>;
   /** Project-level MEP system definitions; default [] when project has none. */
   mepSystems?: SystemDef[];
+  /** Project element types (for layered wall rendering). */
+  types?: TypeCatalog;
 }
 
 /**
@@ -16,7 +19,7 @@ interface BuildGeometryContextOpts {
  * element map or level changes.
  */
 export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryContext {
-  const { level, allLevels, allElements, mepSystems = [] } = opts;
+  const { level, allLevels, allElements, mepSystems = [], types } = opts;
 
   const levelElevations = new Map<string, number>();
   for (const l of allLevels) levelElevations.set(l.id, l.elevation);
@@ -80,5 +83,6 @@ export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryCo
       return v;
     },
     projectSystems: () => mepSystems,
+    projectTypes: () => types,
   };
 }

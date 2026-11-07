@@ -2,6 +2,7 @@ import React, { createContext, useContext, useMemo } from 'react';
 import type { CanonicalElement } from '../../model/elements.ts';
 import type { Level, SystemDef } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
+import type { TypeCatalog } from '../../model/types/catalog.ts';
 import { buildGeometryContext } from './buildContext.ts';
 
 const SVGGeometryCtx = createContext<GeometryContext | null>(null);
@@ -11,14 +12,15 @@ interface ProviderProps {
   allLevels: Level[];
   allElements: Map<string, CanonicalElement> | null;
   mepSystems?: SystemDef[];
+  types?: TypeCatalog;
   children: React.ReactNode;
 }
 
-export function SVGGeometryProvider({ level, allLevels, allElements, mepSystems, children }: ProviderProps) {
+export function SVGGeometryProvider({ level, allLevels, allElements, mepSystems, types, children }: ProviderProps) {
   const ctx = useMemo(() => {
     if (!level || !allElements) return null;
-    return buildGeometryContext({ level, allLevels, allElements, mepSystems });
-  }, [level, allLevels, allElements, mepSystems]);
+    return buildGeometryContext({ level, allLevels, allElements, mepSystems, types });
+  }, [level, allLevels, allElements, mepSystems, types]);
 
   return <SVGGeometryCtx.Provider value={ctx}>{children}</SVGGeometryCtx.Provider>;
 }

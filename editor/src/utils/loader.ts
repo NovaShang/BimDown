@@ -1,6 +1,8 @@
 import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata, ProjectUnit, SystemDef } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import type { DataSource } from './dataSource.ts';
+import { TYPE_FILE_PATHS, isTypedTable, parseTypeFiles, resolveTypeAttrs, type TypeCatalog } from '../model/types/catalog.ts';
+import { starterCatalog } from '../model/types/starter.ts';
 
 const VALID_UNITS: ReadonlySet<ProjectUnit> = new Set(['m', 'ft', 'in', 'mm']);
 
@@ -180,12 +182,38 @@ function fetchListed(ds: DataSource, manifest: Set<string> | null, path: string)
   return manifest && !manifest.has(path) ? Promise.resolve(null) : ds.fetchText(path);
 }
 
+/** Fill typed rows' empty type parameters (in place) — the editor keeps effective values in memory. */
+function resolveRowTypes(csvMap: Map<string, CsvRow>, tableName: string, types: TypeCatalog | undefined): void {
+  if (!types || types.types.length === 0 || !isTypedTable(tableName)) return;
+  for (const [id, row] of csvMap) {
+    const resolved = resolveTypeAttrs(tableName, row, types);
+    if (resolved !== row) csvMap.set(id, resolved);
+  }
+}
+
+/**
+ * Load the project's element types. A project without any type file gets the
+ * built-in starter catalog, marked unsaved: it is written to global/ only once
+ * the user assigns or edits a type, so untyped projects stay untouched.
+ */
+export async function loadTypeCatalog(
+  ds: DataSource,
+  fetchIfPresent: (p: string) => Promise<string | null> = p => ds.fetchText(p),
+): Promise<TypeCatalog> {
+  const texts = await Promise.all(TYPE_FILE_PATHS.map(p => fetchIfPresent(p)));
+  if (texts.every(t => t === null)) return starterCatalog();
+  const files: Record<string, string | null> = {};
+  TYPE_FILE_PATHS.forEach((p, i) => { files[p] = texts[i]; });
+  return { types: parseTypeFiles(files), saved: true, fromDisk: true };
+}
+
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const metadataPromise = loadProjectMetadata(ds);
   const manifest = await listManifest(ds);
   const fetchIfPresent = (p: string) => fetchListed(ds, manifest, p);
 
   const metadata = await metadataPromise;
+  const types = await loadTypeCatalog(ds, fetchIfPresent);
   let elevatedSpatialZ = false;
 
   let levels: Level[] = [];
@@ -235,6 +263,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
         if (row.id) csvMap.set(row.id, row);
       }
     }
+    resolveRowTypes(csvMap, tableName, types);
 
     if (!floors.has(level.id)) {
       floors.set(level.id, {
@@ -284,6 +313,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
         if (row.id) csvMap.set(row.id, row);
       }
     }
+    resolveRowTypes(csvMap, tableName, types);
 
     globalLayers.push({
       tableName,
@@ -304,7 +334,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   // Safe to stamp `spatial_z: absolute` on save unless the project is unmarked
   // and holds elevated spatial Z that might be legacy level-relative.
   const spatialZMarkable = metadata.spatial_z !== 'absolute' && !elevatedSpatialZ;
-  return { levels, floors, globalLayers, mepSystems, metadata, spatialZMarkable };
+  return { levels, floors, globalLayers, mepSystems, types, metadata, spatialZMarkable };
 }
 
 /** MEP tables that carry a `system_type` tag. */
@@ -404,6 +434,8 @@ export async function loadGrids(ds: DataSource): Promise<GridData[]> {
  */
 export async function loadLayer(
   ds: DataSource, levelId: string, tableName: string, elevation?: number,
+  /** Project types: typed rows come back with effective values (see resolveTypeAttrs). */
+  types?: TypeCatalog,
 ): Promise<LayerData | null> {
   const [geojsonContent, csvContent] = await Promise.all([
     ds.fetchText(`${levelId}/${tableName}.geojson`),
@@ -418,6 +450,7 @@ export async function loadLayer(
       if (row.id) csvMap.set(row.id, row);
     }
   }
+  resolveRowTypes(csvMap, tableName, types);
 
   let elev = elevation;
   if (elev === undefined) {

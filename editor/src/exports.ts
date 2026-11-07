@@ -15,6 +15,11 @@ export { parseLayer } from './model/parse.ts';
 export { resolveHostedGeometry } from './geometry/hosted.ts';
 export type { LineElement } from './model/elements.ts';
 export type { ProjectMetadata, SystemDef } from './types.ts';
+// Element types: starter catalog for new projects, and resolved layers per
+// element (e.g. for IFC material layer sets / energy models).
+export { STARTER_TYPE_FILES, starterCatalog } from './model/types/starter.ts';
+export { resolvedLayers, typeOfElement, typeValues, parseTypeFiles } from './model/types/catalog.ts';
+export type { TypeCatalog, ElementType, TypeLayer, ResolvedLayer } from './model/types/catalog.ts';
 export { default as EditorShell } from './components/EditorShell.tsx';
 export type { EditorState, EditorAction } from './state/editorTypes.ts';
 export { TooltipProvider } from './components/ui/tooltip.tsx';

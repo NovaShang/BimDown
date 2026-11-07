@@ -5,6 +5,7 @@ import type { HistoryState } from '../model/history.ts';
 import type { SnapType } from '../utils/snap.ts';
 import type { WallJoin } from '../geometry/wallJoins.ts';
 import type { ArcParams } from '../geometry/arc.ts';
+import type { TypeCatalog } from '../model/types/catalog.ts';
 
 export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted'
   | 'trim_corner' | 'trim_single' | 'split';
@@ -133,6 +134,12 @@ export type EditorAction =
   | { type: 'REDO' }
   | { type: 'UPDATE_GRIDS'; grids: GridData[] }
   | { type: 'UPDATE_MEP_SYSTEMS'; mepSystems: SystemDef[] }
+  /** Edit the element types (Edit Type dialog): undoable; every following element updates. */
+  | { type: 'UPDATE_TYPES'; types: TypeCatalog; description?: string }
+  /** Replace the types without history (type files changed on disk, starter catalog written). */
+  | { type: 'SET_TYPES'; types: TypeCatalog }
+  /** Switch elements to a type ('' = no type): one undoable command for the whole selection. */
+  | { type: 'SET_ELEMENT_TYPE'; ids: string[]; typeId: string }
   | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData }
   | { type: 'ADD_LEVEL'; level: Level }
   | { type: 'REMOVE_LEVEL'; levelId: string }

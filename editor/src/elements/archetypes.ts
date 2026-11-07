@@ -3,6 +3,7 @@ import type { CanonicalElement } from '../model/elements.ts';
 import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../model/tableRegistry.ts';
 import type { PropertyField } from './_propertyFields.ts';
 import type { Level, SystemDef } from '../types.ts';
+import type { TypeCatalog } from '../model/types/catalog.ts';
 
 // ─── Archetype ───────────────────────────────────────────────────────────────
 
@@ -60,6 +61,9 @@ export interface GeometryContext {
    * editor state.
    */
   projectSystems(): SystemDef[];
+
+  /** Project element types (wall layers etc.); undefined when the project has none. */
+  projectTypes(): TypeCatalog | undefined;
 }
 
 // ─── Draw contexts ───────────────────────────────────────────────────────────

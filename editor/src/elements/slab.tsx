@@ -24,7 +24,7 @@ function makeSlabModule(opts: {
     csvHeaders: ['number', 'base_offset', 'material', 'function', 'thickness'],
     defaults: opts.defaults,
     drawingFields: [
-      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+      { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.005 },
       { key: 'function', label: 'Function', type: 'select', options: opts.functionOptions },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
       BASE_OFFSET_FIELD,

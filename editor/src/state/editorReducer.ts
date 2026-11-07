@@ -19,6 +19,9 @@ import { getElementModule } from '../elements/registry.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
 import { pickStartLevel } from './startLevel.ts';
 import { applyMoveJoins, applyReshapeJoins, rehostChildren } from '../geometry/wallJoins.ts';
+import { reresolveElements, reresolveProject, retypeElements } from './typeEdits.ts';
+import { EMPTY_CATALOG, reresolveTypeAttrs } from '../model/types/catalog.ts';
+import { withDefaultDrawingType } from '../model/types/drawingType.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -210,6 +213,7 @@ const MUTATION_ACTIONS: Set<string> = new Set([
   'CREATE_ELEMENT', 'CREATE_ELEMENTS', 'DELETE_ELEMENTS', 'MOVE_ELEMENTS', 'RESIZE_ELEMENT',
   'UPDATE_ATTRS', 'UPDATE_ATTRS_MANY', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS', 'APPLY_PATCH',
   'UNDO', 'REDO', 'ADD_LEVEL', 'REMOVE_LEVEL', 'RENAME_LEVEL',
+  'UPDATE_TYPES', 'SET_ELEMENT_TYPE',
 ]);
 
 /** Tools allowed in readonly mode — everything else is blocked. */
@@ -289,6 +293,58 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'UPDATE_MEP_SYSTEMS': {
       if (!state.project) return state;
       return { ...state, project: { ...state.project, mepSystems: action.mepSystems } };
+    }
+
+    case 'UPDATE_TYPES':
+    case 'SET_TYPES': {
+      if (!state.project) return state;
+      const before = state.project.types ?? EMPTY_CATALOG;
+      const after = action.types;
+      const project = reresolveProject(state.project, after);
+      if (!state.document) return { ...state, project };
+      const { next, changed } = reresolveElements(state.document.elements, before, after);
+      const b = new Map<string, CanonicalElement | null>();
+      const a = new Map<string, CanonicalElement | null>();
+      for (const [id, c] of changed) { b.set(id, c.before); a.set(id, c.after); }
+      const document = { ...state.document, elements: next };
+      // The next element to place follows the edited type too.
+      const drawingAttrs = state.drawingTarget
+        ? reresolveTypeAttrs(state.drawingTarget.tableName, state.drawingAttrs, before, after)
+        : state.drawingAttrs;
+      if (action.type === 'SET_TYPES') {
+        return { ...state, project, document, drawingAttrs, documentVersion: state.documentVersion + 1 };
+      }
+      return {
+        ...state,
+        project,
+        document,
+        drawingAttrs,
+        history: pushCommand(state.history, { ...createCommand(action.description ?? 'Edit types', b, a), types: { before, after } }),
+        documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(b, a) },
+      };
+    }
+
+    case 'SET_ELEMENT_TYPE': {
+      if (!state.document || !state.project) return state;
+      const types = state.project.types;
+      const { next, changed } = retypeElements(state.document.elements, action.ids.map(toElementId), action.typeId, types);
+      if (changed.size === 0) return state;
+      const b = new Map<string, CanonicalElement | null>();
+      const a = new Map<string, CanonicalElement | null>();
+      for (const [id, c] of changed) { b.set(id, c.before); a.set(id, c.after); }
+      // First use of a starter type writes the catalog to the project.
+      const project = action.typeId && types && !types.saved
+        ? { ...state.project, types: { ...types, saved: true, fromDisk: false } }
+        : state.project;
+      return {
+        ...state,
+        project,
+        document: { ...state.document, elements: next },
+        history: pushCommand(state.history, createCommand('Change type', b, a)),
+        documentVersion: state.documentVersion + 1,
+        lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(b, a) },
+      };
     }
 
     case 'UPDATE_LAYER': {
@@ -1097,6 +1153,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!result) return state;
       return {
         ...state,
+        // A type edit: restore the catalog; other levels re-resolve against it
+        // (the document's elements come back from the command's snapshots).
+        // (saved: the files on disk hold the edited types and must be rewritten)
+        project: cmd.types && state.project ? reresolveProject(state.project, { ...cmd.types.before, saved: true, fromDisk: false }) : state.project,
         document: { ...state.document, elements: result.elements },
         history: result.history,
         documentVersion: state.documentVersion + 1,
@@ -1113,6 +1173,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!result) return state;
       return {
         ...state,
+        project: cmd.types && state.project ? reresolveProject(state.project, { ...cmd.types.after, saved: true, fromDisk: false }) : state.project,
         document: { ...state.document, elements: result.elements },
         history: result.history,
         documentVersion: state.documentVersion + 1,
@@ -1140,6 +1201,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           });
           if (defaults) Object.assign(attrs, defaults);
         }
+        attrs = withDefaultDrawingType(action.target.tableName, attrs, state.project?.types);
       }
       return { ...state, drawingTarget: action.target, drawingAttrs: attrs };
     }

@@ -187,9 +187,9 @@ export const roofModule: ElementModule<RoofFacts> = {
   csvHeaders: ['number', 'base_offset', 'material', 'roof_type', 'slope', 'thickness'],
   defaults: { base_offset: '0', material: 'concrete', roof_type: 'flat', slope: '0', thickness: `${DEFAULT_THICKNESS}` },
   drawingFields: [
-    { key: 'roof_type', label: 'Type', type: 'select', options: ROOF_TYPE_OPTIONS },
+    { key: 'roof_type', label: 'Roof Type', type: 'select', options: ROOF_TYPE_OPTIONS },
     { key: 'slope', label: 'Slope', type: 'number', unit: '°', min: 0, max: 60, step: 5 },
-    { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.005 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
     BASE_OFFSET_FIELD,
   ],
