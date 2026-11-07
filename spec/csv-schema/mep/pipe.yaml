@@ -6,4 +6,21 @@ bases:
   - mep_connectable
   - mep_insulated
 
-fields: []
+fields:
+  - name: material
+    type: enum
+    values:
+      - steel
+      - galvanized_steel
+      - stainless_steel
+      - copper
+      - cast_iron
+      - ductile_iron
+      - pvc
+      - ppr
+      - hdpe
+      - pex
+    description: >
+      Pipe material. Empty = unspecified (sized as metal). `size_x` is the
+      nominal size: DN for metal pipes (0.065 = DN65), the outside diameter
+      de for plastic ones (pvc / ppr / hdpe / pex, 0.11 = de110).

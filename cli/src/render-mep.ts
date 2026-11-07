@@ -378,7 +378,7 @@ const TERMINAL_COLORS: Record<string, string> = {
   junction_box: '#a16207', data_outlet: '#15803d', fire_alarm_device: '#dc2626', sprinkler_head: '#dc2626',
 };
 const EQUIPMENT_ABBR: Record<string, string> = {
-  ahu: 'AHU', fcu: 'FCU', vav: 'VAV', chiller: 'CH', boiler: 'B', cooling_tower: 'CT', fan: 'F', pump: 'P',
+  ahu: 'AHU', fcu: 'FCU', vav: 'VAV', chiller: 'CH', boiler: 'B', cooling_tower: 'CT', fan: 'F', pump: 'P', coil: 'C',
   transformer: 'TX', panelboard: 'PNL', generator: 'GEN', water_heater: 'WH', tank: 'T', other: 'EQ',
 };
 
