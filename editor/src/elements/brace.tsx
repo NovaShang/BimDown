@@ -9,7 +9,10 @@ import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '.
 import { createProfile } from '../three/primitives/profiles.ts';
 import { framingMemberMesh } from '../three/utils/memberAxis.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { columnFootprints, trimAtColumns } from './_framing.ts';
+import { framingDraw2D, framingStrip } from './beam.tsx';
+import { tagText } from './_planTag.tsx';
 import { resolveSection } from '../families/sections/index.ts';
 import type { SectionFamily, SectionParams } from '../families/sections/index.ts';
 
@@ -23,6 +26,7 @@ export interface BraceFacts {
   baseY: number;
   material: string;
   footprint2D: Point[];
+  number: string;
 }
 
 export const braceModule: ElementModule<BraceFacts> = {
@@ -32,9 +36,11 @@ export const braceModule: ElementModule<BraceFacts> = {
   prefix: 'br',
   csvHeaders: [
     'number', 'base_offset', 'start_z', 'end_z',
-    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material',
+    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'material_grade',
   ],
   defaults: { base_offset: '0', start_z: '0', end_z: '3', shape: 'rect', size_x: '0.2', size_y: '0.2', material: 'steel' },
+  // A brace spans the storey: floor of this level → floor of the next.
+  levelHeightDefaults: (h) => ({ end_z: String(Math.round(h * 1000) / 1000) }),
   drawingFields: [
     { key: 'shape', label: 'Shape', type: 'select', options: STRUCTURAL_SHAPE_OPTIONS },
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
@@ -45,11 +51,12 @@ export const braceModule: ElementModule<BraceFacts> = {
     { key: 'start_z', label: 'Start Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'end_z', label: 'End Z', type: 'number', unit: 'm', step: 0.1 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    MATERIAL_GRADE_FIELD,
     BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
   layerStyle: { displayName: 'Braces', color: '#8d6e63', icon: '╲', order: 17 },
-  renderZIndex: 71,
+  renderZIndex: 34,
   supportsArc: false, // structural braces are straight members, not curves
 
   geometry(el: CanonicalElement, ctx: GeometryContext): BraceFacts | null {
@@ -81,14 +88,8 @@ export const braceModule: ElementModule<BraceFacts> = {
         { x: ln.start.x - r, y: ln.start.y + r },
       ];
     } else {
-      const nx = -dy / len, ny = dx / len;
-      const hw = planWidth / 2;
-      footprint2D = [
-        { x: ln.start.x + nx * hw, y: ln.start.y + ny * hw },
-        { x: ln.end.x   + nx * hw, y: ln.end.y   + ny * hw },
-        { x: ln.end.x   - nx * hw, y: ln.end.y   - ny * hw },
-        { x: ln.start.x - nx * hw, y: ln.start.y - ny * hw },
-      ];
+      const [t0, t1] = trimAtColumns(ln.start, ln.end, columnFootprints(ctx));
+      footprint2D = framingStrip(ln.start, ln.end, planWidth, t0, t1);
     }
     return {
       id: ln.id,
@@ -98,14 +99,12 @@ export const braceModule: ElementModule<BraceFacts> = {
       baseY: ctx.levelElevation,
       material: ln.attrs.material || 'steel',
       footprint2D,
+      number: tagText(ln.attrs),
     };
   },
 
   draw2D(facts, drawCtx): ReactNode {
-    const points = facts.footprint2D.map(p => `${p.x},${p.y}`).join(' ');
-    const fill = facts.material.toLowerCase().includes('concrete') ? '#d4d4d4' : '#e8e8e8';
-    const stroke = drawCtx.selected ? '#3a7bff' : '#8d6e63';
-    return <polygon points={points} fill={fill} stroke={stroke} strokeWidth={0.02} data-id={facts.id} />;
+    return framingDraw2D(facts, drawCtx.selected, drawCtx.hovered, drawCtx.showNumbers);
   },
 
   draw3D(facts, drawCtx): ReactNode {

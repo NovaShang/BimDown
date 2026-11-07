@@ -1,3 +1,4 @@
+import type React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { Floor3DMode } from '../state/editorTypes.ts';
@@ -13,7 +14,7 @@ interface ViewToolbarProps {
 
 export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
   const { t } = useTranslation();
-  const { viewMode, floor3DMode, showMinimap } = useEditorState();
+  const { viewMode, floor3DMode, showMinimap, viewOptions } = useEditorState();
   const dispatch = useEditorDispatch();
 
   return (
@@ -52,6 +53,41 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
         </>
       )}
 
+      {/* 2D: element tags + grid bubbles at both ends */}
+      {viewMode === '2d' && (
+        <>
+          <Separator orientation="vertical" className="mx-0.5 self-stretch" />
+          <ViewOptionToggle
+            on={viewOptions.showElementNumbers}
+            onClick={() => dispatch({ type: 'TOGGLE_VIEW_OPTION', key: 'showElementNumbers' })}
+            label={t('view.toggleNumbers')}
+          >
+            <path d="M3 4.5h10M3 8h6M3 11.5h8" />
+            <path d="M12 9.5l1.5 1.5L12 12.5" strokeWidth="1.2" />
+          </ViewOptionToggle>
+          <ViewOptionToggle
+            on={viewOptions.gridBubblesBothEnds}
+            onClick={() => dispatch({ type: 'TOGGLE_VIEW_OPTION', key: 'gridBubblesBothEnds' })}
+            label={t('view.toggleGridBubbles')}
+          >
+            <circle cx="3.5" cy="8" r="2" />
+            <circle cx="12.5" cy="8" r="2" />
+            <path d="M5.5 8h5" strokeDasharray="1.5 1" />
+          </ViewOptionToggle>
+        </>
+      )}
+
+      {/* 3D: grids */}
+      {viewMode === '3d' && (
+        <ViewOptionToggle
+          on={viewOptions.showGrids3D}
+          onClick={() => dispatch({ type: 'TOGGLE_VIEW_OPTION', key: 'showGrids3D' })}
+          label={t('view.toggleGrids3D')}
+        >
+          <path d="M5 2v12M11 2v12M2 5h12M2 11h12" strokeDasharray="2 1" />
+        </ViewOptionToggle>
+      )}
+
       {/* Minimap toggle */}
       {viewMode === '2d' && (
         <>
@@ -77,6 +113,29 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
       )}
 
     </div>
+  );
+}
+
+/** Small on/off icon button for a display option. */
+function ViewOptionToggle({ on, onClick, label, children }: { on: boolean; onClick: () => void; label: string; children: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger
+        className={cn(
+          'flex size-8 cursor-pointer items-center justify-center rounded-lg border-none transition-all',
+          on
+            ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+            : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+        )}
+        onClick={onClick}
+        aria-pressed={on}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          {children}
+        </svg>
+      </TooltipTrigger>
+      <TooltipContent side="top">{label}</TooltipContent>
+    </Tooltip>
   );
 }
 

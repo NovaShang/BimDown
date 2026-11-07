@@ -3,8 +3,9 @@ import type { DocumentState } from '../model/document.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { HistoryState } from '../model/history.ts';
 import type { SnapType } from '../utils/snap.ts';
+import type { ViewOptions, ViewOptionKey } from './viewOptions.ts';
 
-export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted';
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region';
 
 export interface ViewTransform {
   x: number;
@@ -39,6 +40,8 @@ export interface EditorState {
   activeFilter: string | null;
   activeDiscipline: string | null;
   showArchContext: boolean;
+  /** Display toggles: element tags, structure in the arch view, grid options. */
+  viewOptions: ViewOptions;
   spaceHeld: boolean;
 
   selectedIds: Set<string>;
@@ -83,6 +86,7 @@ export type EditorAction =
   | { type: 'SET_FILTER'; filter: string | null }
   | { type: 'SET_DISCIPLINE'; discipline: string | null }
   | { type: 'TOGGLE_ARCH_CONTEXT' }
+  | { type: 'TOGGLE_VIEW_OPTION'; key: ViewOptionKey }
   | { type: 'SELECT'; ids: string[]; additive?: boolean }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SET_HOVER'; id: string | null }

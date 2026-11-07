@@ -5,6 +5,7 @@ import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { formatLength } from '../utils/units.ts';
+import { pointSizeAttrsForTable } from '../model/tableRegistry.ts';
 
 /** Length label positioned at the midpoint of a line, offset perpendicular to it */
 function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point; scale: number; projectUnit: ProjectUnit }) {
@@ -48,6 +49,8 @@ interface DrawingOverlayProps {
   elements?: ReadonlyMap<string, CanonicalElement> | null;
   /** Project unit so length previews honor ft / in / mm. */
   projectUnit: ProjectUnit;
+  /** draw_region: members the box would create (columns / beams). */
+  regionPreview?: { points: Point[]; lines: [Point, Point][] } | null;
 }
 
 /** Subtle preview ring for an available connector port. Rendered when the
@@ -80,7 +83,7 @@ function ConnectorHints({
   );
 }
 
-export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName, elements, projectUnit }: DrawingOverlayProps) {
+export default function DrawingOverlay({ drawingState, activeTool, scale, drawingAttrs, tableName, elements, projectUnit, regionPreview }: DrawingOverlayProps) {
   const { points, cursor } = drawingState;
   const showConnectorHints = activeTool === 'draw_line' && isMepLineTable(tableName);
 
@@ -333,10 +336,37 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     return null;
   }
 
+  if (activeTool === 'draw_region') {
+    if (points.length === 1 && cursor) {
+      const a = points[0];
+      const x = Math.min(a.x, cursor.x), y = Math.min(a.y, cursor.y);
+      const w = Math.abs(cursor.x - a.x), h = Math.abs(cursor.y - a.y);
+      const r = 0.25 / scale;
+      return (
+        <g className="drawing-overlay" transform="scale(1,-1)">
+          <rect x={x} y={y} width={w} height={h}
+            fill="#4fc3f7" fillOpacity="0.08"
+            stroke="#4fc3f7" strokeWidth={0.08 / scale} strokeDasharray={`${0.5 / scale},${0.25 / scale}`} />
+          {regionPreview?.lines.map(([s, e], i) => (
+            <line key={`l${i}`} x1={s.x} y1={s.y} x2={e.x} y2={e.y}
+              stroke="#e07a2f" strokeWidth={0.12 / scale} opacity="0.8" />
+          ))}
+          {regionPreview?.points.map((p, i) => (
+            <rect key={`p${i}`} x={p.x - r} y={p.y - r} width={2 * r} height={2 * r}
+              fill="#e07a2f" opacity="0.8" />
+          ))}
+        </g>
+      );
+    }
+    return null;
+  }
+
   if (activeTool === 'draw_point') {
     if (cursor) {
-      const w = parseFloat(drawingAttrs.size_x || '0.3');
-      const h = parseFloat(drawingAttrs.size_y || '0.3');
+      // Plan size attrs: size_x/size_y, foundation width/length.
+      const [sxKey, syKey] = tableName ? pointSizeAttrsForTable(tableName) : ['size_x', 'size_y'];
+      const w = parseFloat(drawingAttrs[sxKey] || '0.3') || 0.3;
+      const h = parseFloat(drawingAttrs[syKey] || '') || w;
       const hw = w / 2;
       const hh = h / 2;
       return (

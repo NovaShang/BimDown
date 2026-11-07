@@ -2,8 +2,9 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
-import { slabGeometryFor, slabDraw2D, slabDraw3D, type SlabFacts } from './_slabShared.tsx';
+import { BASE_OFFSET_FIELD, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
+import { slabGeometryFor, slabDraw2D, slabDraw3D, spanSymbol2D, type SlabFacts } from './_slabShared.tsx';
+import { PlanTag, tagText } from './_planTag.tsx';
 
 function makeSlabModule(opts: {
   table: string;
@@ -15,18 +16,27 @@ function makeSlabModule(opts: {
   layerStyle: any;
   renderZIndex: number;
   functionOptions: typeof SLAB_FUNCTION_OPTIONS;
+  /** structure_slab: strength grade, span direction symbol, plan tag. */
+  structural?: boolean;
 }): ElementModule<SlabFacts> {
+  const structural = !!opts.structural;
   return {
     table: opts.table,
     discipline: opts.discipline,
     archetype: 'surface',
     prefix: opts.prefix,
-    csvHeaders: ['number', 'base_offset', 'material', 'function', 'thickness'],
+    csvHeaders: ['number', 'base_offset', 'material', 'function', 'thickness',
+      ...(structural ? ['material_grade', 'span_direction'] : [])],
     defaults: opts.defaults,
     drawingFields: [
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
       { key: 'function', label: 'Function', type: 'select', options: opts.functionOptions },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+      ...(structural ? [
+        MATERIAL_GRADE_FIELD,
+        // One-way span direction, degrees CCW from +X; blank = two-way.
+        { key: 'span_direction', label: 'Span Direction', type: 'number' as const, unit: '°', step: 15 },
+      ] : []),
       BASE_OFFSET_FIELD,
     ],
     propertyFields: [],
@@ -35,12 +45,21 @@ function makeSlabModule(opts: {
 
     geometry(el: CanonicalElement, ctx): SlabFacts | null {
       if (el.geometry !== 'polygon') return null;
-      return slabGeometryFor(el as PolygonElement, ctx, opts.table, opts.defaults.material, 0, true);
+      const facts = slabGeometryFor(el as PolygonElement, ctx, opts.table, opts.defaults.material, 0, true);
+      if (facts && structural) facts.number = tagText(el.attrs);
+      return facts;
     },
 
     draw2D(facts, drawCtx): ReactNode {
       const stroke = drawCtx.selected ? '#3a7bff' : opts.stroke;
-      return slabDraw2D(facts, opts.fill, stroke);
+      const body = slabDraw2D(facts, opts.fill, stroke);
+      if (!structural) return body;
+      const span = spanSymbol2D(facts, stroke);
+      const tag = drawCtx.showNumbers && facts.number ? (
+        <PlanTag x={facts.labelAt.x} y={facts.labelAt.y - (span ? 0.45 : 0)} text={facts.number} color={stroke} />
+      ) : null;
+      if (!span && !tag) return body;
+      return <g data-id={facts.id}>{body}{span}{tag}</g>;
     },
 
     draw3D(facts, drawCtx): ReactNode {
@@ -79,6 +98,7 @@ export const structureSlabModule = makeSlabModule({
   layerStyle: { displayName: 'Str. Slabs', color: '#8d6e63', icon: '▨', order: 8 },
   renderZIndex: 21,
   functionOptions: STRUCTURE_SLAB_FUNCTION_OPTIONS,
+  structural: true,
 });
 
 registerElement(slabModule);

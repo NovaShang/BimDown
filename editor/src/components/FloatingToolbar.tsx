@@ -109,6 +109,7 @@ function toolForPlacement(placement: PlacementType): Tool {
     case 'free_point': return 'draw_point';
     case 'free_polygon': return 'draw_polygon';
     case 'grid': return 'draw_grid';
+    case 'region': return 'draw_region';
   }
 }
 
@@ -461,8 +462,8 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         ))}
       </div>
 
-      {/* Grid tool — only in reference discipline */}
-      {activeDiscipline === 'reference' && <>
+      {/* Grid tool — reference and structure (structural layout starts from the grid) */}
+      {(activeDiscipline === 'reference' || activeDiscipline === 'structure') && <>
       <Separator orientation="vertical" className="mx-1 self-stretch" />
       <div className="flex items-center gap-0.5">
         <Tooltip>
@@ -557,6 +558,17 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
                 />
               )
             )
+          )}
+          {/* Structure also cuts openings (structural walls); the opening
+              table belongs to architecture, so it keeps that discipline. */}
+          {activeDiscipline === 'structure' && (
+            <SingleToolButton
+              table="opening"
+              discipline="architecture"
+              disciplineColor={disciplineColor}
+              isActive={activeTable === 'opening'}
+              onClick={handleDrawToolClick}
+            />
           )}
         </div>
       )}

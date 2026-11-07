@@ -12,6 +12,7 @@ import { relocateTool } from './relocateTool.ts';
 import { relocateHostedTool } from './relocateHostedTool.ts';
 import { rotateTool } from './rotateTool.ts';
 import { drawTool } from './drawTool.ts';
+import { drawRegionTool } from './drawRegionTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -36,6 +37,8 @@ const toolRegistry: Record<string, ToolHandler> = {
   draw_polygon: drawPolygonTool,
   draw_grid: drawGridTool,
   draw_hosted: drawHostedTool,
+  // Grid-driven batch layout (columns at grids, beams between columns, beam system)
+  draw_region: drawRegionTool,
 };
 
 export function getToolHandler(tool: Tool): ToolHandler {

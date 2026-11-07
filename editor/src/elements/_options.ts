@@ -15,6 +15,19 @@ export const BASE_OFFSET_FIELD: DrawingField = {
 
 /** Window-specific base offset, labelled as "Sill Height" for clarity.
  *  Sill defaults to 0.9m at the module level. */
+/** Strength grade (C30, Q355, GL24h…) — free text, structural tables. */
+export const MATERIAL_GRADE_FIELD: DrawingField = {
+  key: 'material_grade', label: 'Grade', type: 'text',
+};
+
+export const FOUNDATION_KIND_OPTIONS: DrawingField['options'] = [
+  { value: 'pad', label: 'Pad' },
+  { value: 'strip', label: 'Strip' },
+  { value: 'raft', label: 'Raft' },
+  { value: 'pile_cap', label: 'Pile Cap' },
+  { value: 'pile', label: 'Pile' },
+];
+
 export const SILL_HEIGHT_FIELD: DrawingField = {
   key: 'base_offset', label: 'Sill Height', type: 'number', unit: 'm', min: 0, step: 0.1,
 };

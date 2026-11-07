@@ -35,7 +35,7 @@ export default function DrawingPropertiesBar() {
   const systemOptions = (state.project?.mepSystems ?? [])
     .filter(s => !acceptedDisciplines || acceptedDisciplines.includes(s.discipline))
     .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
-  const fields = getDrawingFields(target.tableName, levels).map(f =>
+  const fields = getDrawingFields(target.tableName, levels, target.variantId).map(f =>
     f.key === 'system_type' && systemOptions.length > 0
       ? { ...f, options: systemOptions }
       : f,

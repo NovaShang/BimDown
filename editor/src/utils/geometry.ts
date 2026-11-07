@@ -48,6 +48,11 @@ export function bboxIntersects(
  * Walls use 'thickness', ducts/pipes use 'size_x'. Returns null if no mapping found.
  */
 export function resolveLineStrokeWidth(tableName: string, attrs: Record<string, string>): number | null {
+  if (tableName === 'foundation') {
+    // Strip footing: plan width is `width` (`thickness` is its depth).
+    const v = parseFloat(attrs.width);
+    return v > 0 ? v : null;
+  }
   if (tableName === 'wall' || tableName === 'structure_wall') {
     const v = parseFloat(attrs.thickness);
     return v > 0 ? v : null;

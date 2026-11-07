@@ -10,6 +10,7 @@ export interface GridFacts {
   id: string;
   ex1: number; ey1: number; ex2: number; ey2: number;
   startLabel: Point;
+  endLabel: Point;
   label: string;
 }
 
@@ -39,11 +40,12 @@ export const gridModule: ElementModule<GridFacts> = {
       ex1: ln.start.x, ey1: ln.start.y,
       ex2: ln.end.x, ey2: ln.end.y,
       startLabel: ln.start,
+      endLabel: ln.end,
       label: ln.attrs.number || ln.id,
     };
   },
 
-  draw2D(facts): ReactNode {
+  draw2D(facts, drawCtx): ReactNode {
     const color = '#ef476f';
     return (
       <g data-id={facts.id}>
@@ -56,17 +58,20 @@ export const gridModule: ElementModule<GridFacts> = {
         {/* Transparent fat hit line for selection. */}
         <line x1={facts.ex1} y1={facts.ey1} x2={facts.ex2} y2={facts.ey2}
           stroke="transparent" strokeWidth={0.6} data-id={facts.id} />
-        {/* Bubble label at the start endpoint — Revit-style filled circle so
-            the grid id pops against the floor plan instead of blending in. */}
-        <g transform={`translate(${facts.startLabel.x},${facts.startLabel.y}) scale(1,-1)`}>
-          <circle cx={0} cy={0} r={GRID_BUBBLE_RADIUS} fill="#ffffff" stroke={color}
-            strokeWidth={0.05} opacity={0.95} />
-          <text x={0} y={0} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.45} fontFamily="Inter, sans-serif" fontWeight="700"
-            fill={color}>
-            {facts.label}
-          </text>
-        </g>
+        {/* Bubble label at the start endpoint (both ends when the view option
+            is on) — Revit-style filled circle so the grid id pops against
+            the floor plan instead of blending in. */}
+        {(drawCtx.gridBubblesBothEnds ? [facts.startLabel, facts.endLabel] : [facts.startLabel]).map((p, i) => (
+          <g key={i} transform={`translate(${p.x},${p.y}) scale(1,-1)`}>
+            <circle cx={0} cy={0} r={GRID_BUBBLE_RADIUS} fill="#ffffff" stroke={color}
+              strokeWidth={0.05} opacity={0.95} />
+            <text x={0} y={0} textAnchor="middle" dominantBaseline="central"
+              fontSize={0.45} fontFamily="Inter, sans-serif" fontWeight="700"
+              fill={color}>
+              {facts.label}
+            </text>
+          </g>
+        ))}
       </g>
     );
   },

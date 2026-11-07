@@ -17,14 +17,34 @@ export function isDisciplineVisible(discipline: string, state: EditorState): boo
   return false;
 }
 
+/** Structural tables the architecture view shows as well (Revit's
+ *  architectural plans show structural columns, walls and floors). */
+export const STRUCTURE_IN_ARCH_TABLES = new Set(['structure_column', 'structure_wall', 'structure_slab']);
+
+/** Whether a layer (discipline + table) is drawn in the current view: its
+ *  discipline is visible, or it is structure shown in the architecture view. */
+/** Architecture tables the structure view treats as its own (openings cut
+ *  structural walls and slabs; the structure toolbar places them too). */
+export const ARCH_SHARED_WITH_STRUCTURE = new Set(['opening']);
+
+export function isLayerVisibleInView(discipline: string, tableName: string, state: EditorState): boolean {
+  if (isDisciplineVisible(discipline, state)) return true;
+  if (discipline === 'architecture' && state.activeDiscipline === 'structure' && ARCH_SHARED_WITH_STRUCTURE.has(tableName)) return true;
+  return discipline === 'structure'
+    && state.activeDiscipline === 'architecture'
+    && (state.viewOptions?.showStructureInArch ?? true)
+    && STRUCTURE_IN_ARCH_TABLES.has(tableName);
+}
+
 /** A layer is "background" (dimmed + non-interactive) when its discipline is
  *  visible only as context — architecture under another active discipline, or
  *  reference (grids, levels) under any non-reference discipline. SVGLayers uses
  *  the same predicate to gate pointer events; selection paths that bypass DOM
  *  hit-testing (marquee) must re-apply it so users can't accidentally box-select
  *  grid lines under the architecture / structure / mep disciplines. */
-export function isBackgroundDiscipline(discipline: string, activeDiscipline: string | null): boolean {
+export function isBackgroundDiscipline(discipline: string, activeDiscipline: string | null, tableName?: string): boolean {
   if (!activeDiscipline || activeDiscipline === 'all') return false;
+  if (activeDiscipline === 'structure' && tableName && ARCH_SHARED_WITH_STRUCTURE.has(tableName)) return false;
   if (discipline === 'architecture' && activeDiscipline !== 'architecture') return true;
   if (discipline === 'reference' && activeDiscipline !== 'reference') return true;
   return false;
@@ -52,7 +72,7 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   const result = orderedLayers
-    .filter(l => isDisciplineVisible(l.discipline, state) && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => isLayerVisibleInView(l.discipline, l.tableName, state) && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
@@ -298,7 +318,7 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
-    if (!isDisciplineVisible(discipline, state)) continue;
+    if (!isLayerVisibleInView(discipline, tableName, state)) continue;
     result.push({
       key,
       tableName,
@@ -331,7 +351,7 @@ function appendGlobalLayers(state: EditorState, result: ProcessedLayer[]): void 
   for (const gl of globalLayers) {
     const key = `${gl.discipline}/${gl.tableName}`;
     if (!state.visibleLayers.has(key)) continue;
-    if (!isDisciplineVisible(gl.discipline, state)) continue;
+    if (!isLayerVisibleInView(gl.discipline, gl.tableName, state)) continue;
     const elements = parseLayer(gl).map(el => ({ ...el, id: `global:${el.id}` }));
     if (elements.length === 0) continue;
     const existing = byKey.get(key);

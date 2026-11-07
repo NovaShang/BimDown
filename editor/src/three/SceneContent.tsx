@@ -11,6 +11,7 @@ import { useInteraction3D } from './hooks/useInteraction3D.ts';
 import DrawingOverlay3D from './overlays/DrawingOverlay3D.tsx';
 import SnapOverlay3D from './overlays/SnapOverlay3D.tsx';
 import ResizeHandles3D from './overlays/ResizeHandles3D.tsx';
+import Grids3D from './overlays/Grids3D.tsx';
 import type { OrbitControls as OrbitControlsImpl } from 'three-stdlib';
 import { TOUCH, MOUSE, DirectionalLight, Vector3, Plane, PerspectiveCamera, type Group } from 'three';
 import { visibleBox, fitCameraToBox } from './cameraFit.ts';
@@ -282,6 +283,9 @@ export default function SceneContent() {
       </group>
 
       <ClippingController />
+
+      {/* Grid axes at the current level (view option) */}
+      <Grids3D />
 
       {/* 3D editing interaction + overlays */}
       <InteractionLayer controlsRef={controlsRef} />

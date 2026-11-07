@@ -46,7 +46,7 @@ export function EditorProvider({ children, readonly }: { children: ReactNode; re
     state.modelName, state.project, state.grids, state.loading,
     state.currentLevel, state.viewMode, state.floor3DMode,
     state.readonly, state.visibleLayers, state.showGrid, state.showMinimap,
-    state.activeTool, state.previousTool, state.activeFilter, state.activeDiscipline, state.showArchContext, state.spaceHeld,
+    state.activeTool, state.previousTool, state.activeFilter, state.activeDiscipline, state.showArchContext, state.viewOptions, state.spaceHeld,
     state.selectedIds, state.marquee,
     state.document, state.history, state.editMode,
     state.drawingTarget, state.drawingAttrs, state.drawingState,

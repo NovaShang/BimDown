@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
-import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS } from './_options.ts';
 import {
   wallGeometryFor, wallDraw2D, wallDraw3D, wallFillFor,
   type LineWallFacts,
@@ -14,11 +14,12 @@ export const structureWallModule: ElementModule<LineWallFacts> = {
   archetype: 'line',
   prefix: 'sw',
   hasVerticalSpan: true,
-  csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness'],
+  csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness', 'material_grade'],
   defaults: { base_offset: '0', thickness: '0.2', top_level_id: '', top_offset: '0', material: 'concrete' },
   drawingFields: [
     { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
     { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+    MATERIAL_GRADE_FIELD,
     BASE_OFFSET_FIELD,
   ],
   propertyFields: [],

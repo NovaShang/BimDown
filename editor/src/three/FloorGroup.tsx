@@ -1,6 +1,6 @@
 import { useMemo, Suspense } from 'react';
 import { useEditorState } from '../state/EditorContext.tsx';
-import { isDisciplineVisible } from '../state/selectors.ts';
+import { isLayerVisibleInView } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { Level } from '../types.ts';
 import { parseFloorLayers } from '../model/parse.ts';
@@ -25,7 +25,7 @@ function useAllFloorsElements(): FloorRenderData[] {
     const result: FloorRenderData[] = [];
 
     const isVisible = (el: CanonicalElement) =>
-      isDisciplineVisible(el.discipline, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
+      isLayerVisibleInView(el.discipline, el.tableName, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
 
     // Collect all level IDs (from floors + current level if it has a document)
     const levelIds = new Set(project.floors.keys());
@@ -61,8 +61,8 @@ function useAllFloorsElements(): FloorRenderData[] {
     }
 
     return result;
-  // state includes activeDiscipline + showArchContext used by isDisciplineVisible
-  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, doc, documentVersion, currentLevel]);
+  // state includes activeDiscipline + showArchContext + viewOptions used by isLayerVisibleInView
+  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, state.viewOptions, doc, documentVersion, currentLevel]);
 }
 
 /** Compute which levels are visible based on floor3DMode. */

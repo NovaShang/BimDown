@@ -2,6 +2,7 @@ import type { ToolHandler, ToolContext } from './types.ts';
 import type { PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
+import { pointSizeAttrsForTable } from '../model/tableRegistry.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
@@ -53,8 +54,10 @@ export const drawPointTool: ToolHandler = {
     // Strip the UI-only starter sentinel.
     delete mergedAttrs[STARTER_KEY_ATTR];
 
-    const w = parseFloat(mergedAttrs.size_x || '0.3');
-    const h = parseFloat(mergedAttrs.size_y || '0.3');
+    // Plan size attrs: size_x/size_y, or width/length for foundation pads.
+    const [sxKey, syKey] = pointSizeAttrsForTable(target.tableName);
+    const w = parseFloat(mergedAttrs[sxKey] || '0.3') || 0.3;
+    const h = parseFloat(mergedAttrs[syKey] || '') || w;
 
     const existingIds = new Set(state.document?.elements.keys() ?? []);
     const id = generateId(target.tableName, existingIds);
@@ -63,7 +66,9 @@ export const drawPointTool: ToolHandler = {
     // those CSV columns (e.g. space, where x/y *are* the persisted position).
     // For tables that don't (column, equipment, …), the keys aren't in
     // mergedAttrs so this is a no-op.
-    const attrs: Record<string, string> = { ...mergedAttrs, id, size_x: String(w), size_y: String(h) };
+    const attrs: Record<string, string> = { ...mergedAttrs, id, [sxKey]: String(w) };
+    // A blank Y size stays blank where it means something (round pile).
+    if (mergedAttrs[syKey] !== '' || sxKey === 'size_x') attrs[syKey] = String(h);
     if ('x' in attrs) attrs.x = String(pt.x);
     if ('y' in attrs) attrs.y = String(pt.y);
 

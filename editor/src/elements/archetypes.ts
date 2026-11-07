@@ -82,6 +82,10 @@ export interface Draw2DContext extends DrawContextBase {
   /** True when the active drawing tool targets an MEP curve table. Connectors
    *  use this to show all ports while the user is laying out pipes. */
   mepToolActive?: boolean;
+  /** View option: draw element marks (`number`) as plan tags. */
+  showNumbers?: boolean;
+  /** View option: grid bubbles at both ends instead of the start only. */
+  gridBubblesBothEnds?: boolean;
 }
 
 /** Context passed to draw3D — Three.js / R3F. */
@@ -181,6 +185,21 @@ export interface ElementModule<TFacts = unknown> {
   dualMode?: boolean;
   /** Element spans across levels via top_level_id. */
   hasVerticalSpan?: boolean;
+
+  /**
+   * CSV attrs holding a point element's plan size (X, Y). Default
+   * `['size_x', 'size_y']`; foundation pads use `['width', 'length']`.
+   */
+  pointSizeAttrs?: [string, string];
+  /** CSV attr holding a line element's plan width. Default `thickness`
+   *  (walls); strip footings use `width`. */
+  lineWidthAttr?: string;
+  /**
+   * Placement defaults that depend on the level height (next level elevation
+   * − current, or 3 m on the top level), merged over `defaults` when the tool
+   * activates. E.g. a brace spans the storey: `{ end_z: String(h) }`.
+   */
+  levelHeightDefaults?(levelHeight: number): Record<string, string>;
 
   // ─── Host relationship (for archetype='hosted') ───────────────────────────
   hostType?: string;
@@ -307,4 +326,13 @@ export interface ToolbarVariant {
   placementType: PlacementType;
   /** Default attrs merged on top of `module.defaults` when this variant is used. */
   defaults?: Record<string, string>;
+  /** Drawing-bar field keys shown for this variant (default: all of the
+   *  module's drawingFields). */
+  fields?: string[];
+  /** Drawing-bar label overrides for this variant (key → label), e.g. a
+   *  pile's `width` reads "Diameter". */
+  fieldLabels?: Record<string, string>;
+  /** Extra drawing-bar fields only this variant has (UI-only `__` keys such
+   *  as a beam system's spacing; never persisted). */
+  extraFields?: DrawingField[];
 }

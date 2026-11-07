@@ -49,6 +49,9 @@ export interface PointElement extends BaseElement {
 export interface PolygonElement extends BaseElement {
   geometry: 'polygon';
   vertices: Point[];
+  /** Inner rings (GeoJSON Polygon rings 1..n): holes kept as authored, e.g. a
+   *  shaft cut straight into a slab outline. */
+  holes?: Point[][];
 }
 
 export type CanonicalElement = LineElement | SpatialLineElement | PointElement | PolygonElement;

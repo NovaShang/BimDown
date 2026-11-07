@@ -76,6 +76,8 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   // Material
   material:        { key: 'material',        label: 'Material',        type: 'select', options: MATERIAL_OPTIONS, group: 'material' },
   function:        { key: 'function',        label: 'Function',        type: 'select', options: SLAB_FUNCTION_OPTIONS, group: 'material' },
+  material_grade:  { key: 'material_grade',  label: 'Grade',           type: 'text',   group: 'material' },
+  span_direction:  { key: 'span_direction',  label: 'Span Direction',  type: 'number', unit: '°', step: 15, group: 'geometry' },
 
   // Relationships
   top_level_id:    { key: 'top_level_id',    label: 'Top Level',       type: 'select', group: 'relationships' },
@@ -156,6 +158,9 @@ export function resolvePropertyFields(
     if (global) {
       const resolved: PropertyField = { ...global };
       if (drawing) {
+        // A table may author a field that is computed elsewhere (foundation
+        // `length` = pad size, not a line length): its drawing field wins.
+        if (resolved.type === 'readonly') resolved.type = drawing.type;
         resolved.label = drawing.label;
         if (drawing.options) resolved.options = drawing.options;
         if (drawing.min !== undefined) resolved.min = drawing.min;

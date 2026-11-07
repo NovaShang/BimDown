@@ -9,6 +9,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_polygon: 'hint.polygon',
   draw_hosted:  'hint.hosted',
   draw_grid:    'hint.line',
+  draw_region:  'hint.region.at_grids',
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
@@ -16,7 +17,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
 
 export default function DrawingHints() {
   const { t } = useTranslation();
-  const { activeTool, drawingState } = useCoreEditorState();
+  const { activeTool, drawingState, drawingTarget } = useCoreEditorState();
   const drawingAttrs = useEditorState().drawingAttrs;
 
   const hintKey = HINT_KEYS[activeTool];
@@ -28,7 +29,15 @@ export default function DrawingHints() {
     && drawingAttrs[VERTICAL_MODE_KEY] === 'true';
   // For polygon, show a different hint once we have 3+ points
   const isPolygonClosable = activeTool === 'draw_polygon' && drawingState && drawingState.points.length >= 3;
-  const text = isVerticalLine
+  const REGION_HINTS: Record<string, string> = {
+    at_grids: 'hint.region.at_grids',
+    between_columns: 'hint.region.between_columns',
+    beam_system: 'hint.region.beam_system',
+  };
+  const regionHint = activeTool === 'draw_region' ? REGION_HINTS[drawingTarget?.variantId ?? ''] : undefined;
+  const text = regionHint
+    ? t(regionHint)
+    : isVerticalLine
     ? t('hint.vertical')
     : isPolygonClosable
       ? t('hint.polygonClose')

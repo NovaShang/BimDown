@@ -7,7 +7,7 @@ import { placementTypeForTable } from '../model/elements.ts';
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
   hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
-  free_point: 'draw_point', free_polygon: 'draw_polygon', grid: 'draw_grid',
+  free_point: 'draw_point', free_polygon: 'draw_polygon', grid: 'draw_grid', region: 'draw_region',
 };
 
 interface UseCanvasKeyboardOptions {
