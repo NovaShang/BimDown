@@ -30,6 +30,9 @@ import type { StairFacts } from '../../elements/stair.tsx';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
 import type { FurnitureFacts } from '../../elements/furniture.tsx';
+import { accessorySymbol, equipmentAbbr, equipmentSymbol, terminalSymbol } from '../../mep/planSymbols.tsx';
+import { fittingPlan } from '../../mep/FittingView.tsx';
+import { mul as affMul, rotateDeg, svgToItems, translate as affTranslate } from './svgItems.ts';
 import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
 import type { BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
@@ -635,46 +638,97 @@ function drawMepLine(env: DrawEnv, f: MepLineFacts) {
   const fillColor = tint(color, 0.82);
   const singleLine = (f.table === 'pipe' || f.table === 'conduit') && f.sizeX / pm < 1.6;
   if (f.segments.length === 0) {
-    // Vertical riser: its section at the plan
+    // Vertical riser: its section at the plan; rise = X, drop = one diagonal
+    const down = f.riser === 'down';
     if (f.shape === 'round' || f.table === 'pipe' || f.table === 'conduit') {
       const r = Math.max(f.sizeX / 2, 0.8 * pm);
       e.push({ kind: 'circle', layer: e.layer(layer), center: f.start, radius: r, fill: fillColor });
       e.line(layer, add(f.start, { x: -r, y: -r }, Math.SQRT1_2), add(f.start, { x: r, y: r }, Math.SQRT1_2), { weight: 0.13 });
+      if (!down) e.line(layer, add(f.start, { x: -r, y: r }, Math.SQRT1_2), add(f.start, { x: r, y: -r }, Math.SQRT1_2), { weight: 0.13 });
     } else if (f.footprint.length >= 3) {
       e.fill(layer, f.footprint, fillColor);
       e.poly(layer, f.footprint, true);
       e.line(layer, f.footprint[0], f.footprint[2], { weight: 0.13 });
+      if (!down && f.footprint.length >= 4) e.line(layer, f.footprint[1], f.footprint[3], { weight: 0.13 });
     }
     return;
   }
   if (singleLine) {
     e.line(layer, f.start, f.end);
-    return;
+  } else {
+    for (const seg of f.segments) e.fill(layer, seg.corners, fillColor);
+    for (const pts of chainEdges(f.segments.flatMap(s => s.outline), 1e-6 * env.src.upm)) e.poly(layer, pts, false);
+    e.line(layer, f.start, f.end, { weight: 0.09, dash: 'center' });
   }
-  for (const seg of f.segments) e.fill(layer, seg.corners, fillColor);
-  for (const pts of chainEdges(f.segments.flatMap(s => s.outline), 1e-6 * env.src.upm)) e.poly(layer, pts, false);
-  e.line(layer, f.start, f.end, { weight: 0.09, dash: 'center' });
+  if (f.horLen <= 0) return;
+  const u = { x: (f.end.x - f.start.x) / f.horLen, y: (f.end.y - f.start.y) / f.horLen };
+  const nrm = perp(u);
+  const along = (s: number, off: number): Point => add(add(f.start, u, s), nrm, off);
+  if (f.insulation > 0) {
+    // Insulation: dashed outline at the insulated size
+    const off = f.sizeX / 2 + f.insulation;
+    for (const side of [1, -1]) e.line(layer, along(0, side * off), along(f.horLen, side * off), { dash: 'dashed', weight: 0.09 });
+  }
+  if (f.flexible) {
+    const hw = f.sizeX / 2, step = Math.max(0.08, Math.min(0.2, f.sizeX / 2));
+    const pts: Point[] = [];
+    for (let s0 = 0, k = 0; s0 <= f.horLen + 1e-9; s0 += step, k++) pts.push(along(Math.min(s0, f.horLen), (k % 2 ? 1 : -1) * hw * 0.85));
+    e.poly(layer, pts, false, { weight: 0.09 });
+  }
+  const slope = f.table === 'pipe' && Math.abs(f.slope) >= 0.001;
+  if (f.label) {
+    // System + size tag beside the run (paper-sized), slope for sloped pipes
+    const h = 1.8 * pm;
+    const text = f.label + (slope ? `  i=${(Math.abs(f.slope) * 100).toFixed(1)}%` : '');
+    if (f.horLen >= Math.max(1.0, approxTextWidth(text, h) + 2 * pm)) {
+      e.phase = Phase.Tags;
+      e.text(LAYERS.mepIden, along(f.horLen / 2, f.sizeX / 2 + f.insulation + h), text, h, { rotation: uprightAngle(u), color });
+      e.phase = mepPhase(env);
+    }
+  }
+  if (slope && f.horLen > 0.6) {
+    // Arrow pointing downhill, beside the pipe
+    const dn = f.slope < 0 ? 1 : -1;
+    const L = Math.min(0.6, f.horLen * 0.3), hh = 1.2 * pm;
+    const c = along(f.horLen / 2, -(f.sizeX / 2 + f.insulation + 1.5 * pm));
+    const a = add(c, u, -dn * L / 2), b = add(c, u, dn * L / 2);
+    e.line(LAYERS.mepIden, a, b, { color });
+    const back = add(b, u, -dn * hh);
+    e.poly(LAYERS.mepIden, [b, add(back, nrm, hh / 2), add(back, nrm, -hh / 2)], true, { fill: color, color });
+  }
 }
 
 function tagOf(el: CanonicalElement): string {
   return (el.attrs.number || el.attrs.name || el.attrs.equipment_type || '').trim();
 }
 
+/** Plan layer of a device by its kind (plumbing, lighting, power, HVAC, electrical equipment). */
+function deviceLayer(table: string, type: string): DrawingLayer {
+  if (table === 'equipment') return /panelboard|transformer|generator/.test(type) ? LAYERS.eEquip : LAYERS.mEquip;
+  if (/water_closet|urinal|lavatory|sink|shower|floor_drain|plumbing_fixture/.test(type)) return LAYERS.pFixture;
+  if (/light/.test(type)) return LAYERS.eLighting;
+  if (/outlet|switch|junction_box|fire_alarm/.test(type)) return LAYERS.ePower;
+  return LAYERS.mTerminal;
+}
+
 function drawEquipment(env: DrawEnv, el: CanonicalElement, f: EquipmentFacts) {
   const { e, pm } = env;
   const terminal = f.table === 'terminal';
   const color = systemColor(env, el.attrs.system_type || '', '#1a1a1a');
-  const pts = rectAt(f.position, f.width, f.depth, f.rotationDeg);
   e.phase = mepPhase(env);
-  const def = terminal ? LAYERS.mTerminal : LAYERS.mEquip;
-  e.fill(def, pts, '#ffffff');
-  e.poly(def, pts, true, terminal ? { color } : {});
-  if (terminal) {
-    e.line(def, pts[0], pts[2], { color, weight: 0.13 });
-    e.line(def, pts[1], pts[3], { color, weight: 0.13 });
-    return;
+  const def = deviceLayer(f.table, f.type);
+  // The editor's plan symbol (diffuser, WC, outlet, pump, panel …) in the device frame
+  const sym = terminal ? terminalSymbol(f.type, f.width, f.depth, color, '#ffffff') : equipmentSymbol(f.type, f.width, f.depth, color, '#ffffff');
+  const m = affMul(affTranslate(f.position.x, f.position.y), rotateDeg(f.rotationDeg));
+  let drawn = 0;
+  svgToItems(sym, m, { layer: e.layer(def), layerColor: def.color, push: it => { drawn++; e.push(it); } });
+  if (drawn === 0) {
+    const pts = rectAt(f.position, f.width, f.depth, f.rotationDeg);
+    e.fill(def, pts, '#ffffff');
+    e.poly(def, pts, true, terminal ? { color } : {});
   }
-  const tag = tagOf(el);
+  if (terminal) return;
+  const tag = tagOf(el) || equipmentAbbr(f.type);
   if (tag) {
     e.phase = Phase.Tags;
     const h = Math.min(1.8 * pm, f.depth * 0.4);
@@ -683,11 +737,30 @@ function drawEquipment(env: DrawEnv, el: CanonicalElement, f: EquipmentFacts) {
 }
 
 function drawMepNode(env: DrawEnv, f: MepNodeFacts) {
-  if (!f.declaredKind) return; // passive fittings: the runs already meet
-  const { e, pm } = env;
+  const { e } = env;
   e.phase = mepPhase(env);
   const color = systemColor(env, f.systemType, '#333333');
-  const r = Math.max(Math.max(f.sizeW, f.sizeH) / 2, 0.9 * pm);
+  if (f.fitting) {
+    // Passive fitting: the elbow / tee / reducer body between the trimmed runs
+    const table = f.fitting.legs[0]?.table ?? 'duct';
+    const layer = mepLayer(table, f.systemType, color);
+    const plan = fittingPlan(f.fitting);
+    for (const poly of plan.fills) if (poly.length >= 3) e.fill(layer, poly, tint(color, 0.82));
+    for (const pts of chainEdges(plan.edges, 1e-6 * env.src.upm)) e.poly(layer, pts, false);
+    return;
+  }
+  if (f.accessory) {
+    // Valve / damper symbol along the run
+    const look = f.accessory;
+    const ang = (Math.atan2(look.dir.y, look.dir.x) * 180) / Math.PI;
+    const H = Math.max(look.width * (look.kind.includes('damper') ? 1 : 1.6), 0.09);
+    const m = affMul(affTranslate(look.at.x, look.at.y), rotateDeg(ang));
+    const L = LAYERS.mFitting;
+    svgToItems(accessorySymbol(look.kind, look.length, H, color, '#ffffff'), m, { layer: e.layer(L), layerColor: L.color, push: it => e.push(it) });
+    return;
+  }
+  if (!f.declaredKind) return;
+  const r = Math.max(Math.max(f.sizeW, f.sizeH) / 2, 0.9 * env.pm);
   e.push({ kind: 'circle', layer: e.layer(LAYERS.mFitting), center: f.position, radius: r, fill: '#ffffff', color });
 }
 

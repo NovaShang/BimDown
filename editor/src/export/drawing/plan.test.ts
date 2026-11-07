@@ -116,6 +116,30 @@ describe('plan drawing', () => {
     expect(planToDxf(d)).toContain('\nA-FURN\n');
   });
 
+  it('draws MEP fittings, accessories, device symbols, risers and run tags on M- / P- / E- layers', async () => {
+    const files = room();
+    const F = (id: string, coordinates: number[] | number[][]) =>
+      ({ type: 'Feature', properties: { id }, geometry: { type: Array.isArray(coordinates[0]) ? 'LineString' : 'Point', coordinates } });
+    files['lv-1/pipe.csv'] = 'id,number,shape,size_x,system_type,from,to,insulation_thickness\n'
+      + 'pi-1,,round,0.1,CHWS,,mn-1,0.03\npi-2,,round,0.1,CHWS,mn-1,mn-2,\npi-3,,round,0.1,CHWS,mn-1,,\npi-4,,round,0.1,CHWS,,,\n';
+    files['lv-1/pipe.geojson'] = fc([F('pi-1', [[10, 0, 2.8], [14, 0, 2.8]]), F('pi-2', [[14, 0, 2.8], [18, 0, 2.8]]),
+      F('pi-3', [[14, 0, 2.8], [14, 3, 2.8]]), F('pi-4', [[20, 2, 0.5], [20, 2, 2.8]])]);
+    files['lv-1/mep_node.csv'] = 'id,system_type,kind\nmn-1,CHWS,\nmn-2,CHWS,gate_valve\n';
+    files['lv-1/mep_node.geojson'] = fc([F('mn-1', [14, 0, 2.8]), F('mn-2', [18, 0, 2.8])]);
+    files['lv-1/terminal.csv'] = 'id,number,terminal_type,system_type\ntm-1,,water_closet,\ntm-2,,switch,\n';
+    files['lv-1/terminal.geojson'] = fc([F('tm-1', [11, 5, 0]), F('tm-2', [12, 5, 1.2])]);
+    const { project } = await open(files);
+    const d = buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!;
+    const layers = new Set(d.items.map(i => i.layer));
+    expect(layers).toContain('P-FIXT');        // WC symbol
+    expect(layers).toContain('E-POWR-DEVC');   // switch
+    expect(on(d.items, 'M-FITT').length).toBeGreaterThan(1); // valve bow-tie
+    expect(on(d.items, 'M-ANNO-TAGS').some(i => i.kind === 'text' && /CHWS/.test(i.text))).toBe(true);
+    const pipe = on(d.items, 'P-PIPE-CHWS');
+    expect(pipe.some(i => i.kind === 'path' && i.dash === 'dashed')).toBe(true); // insulation outline
+    expect(planToDxf(d)).toContain('\nP-FIXT\n');
+  });
+
   it('chains wall outline edges into polylines', () => {
     const p = (x: number, y: number) => ({ x, y });
     expect(chainEdges([[p(0, 0), p(1, 0)], [p(1, 0), p(1, 1)], [p(5, 5), p(6, 5)]], 1e-9)).toEqual([
