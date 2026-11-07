@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
-import { loadProject, loadGrids, loadLayer, loadMepSystems, loadTypeCatalog, loadSections } from '../utils/loader.ts';
+import { loadProject, loadGrids, loadLayer, loadMepSystems, loadTypeCatalog, loadSections, drawingFileReload } from '../utils/loader.ts';
 import { TYPE_FILE_PATHS } from '../model/types/catalog.ts';
 import { VIEW_CSV_PATH } from '../views/sectionsIO.ts';
 import { parseLayer } from '../model/parse.ts';
@@ -69,6 +69,8 @@ export function useLiveProject(model: string): void {
         return;
       }
       if (path === UNDERLAY_CSV) { notifyUnderlayCsvChanged(); return; }
+      const drawingReload = await drawingFileReload(ds, path);
+      if (drawingReload) { if (active) dispatch(drawingReload); return; }
       if (levelId === 'global' && fileName === 'mep_system.csv') {
         const mepSystems = await loadMepSystems(ds);
         if (active) dispatch({ type: 'UPDATE_MEP_SYSTEMS', mepSystems });

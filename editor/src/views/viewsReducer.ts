@@ -4,6 +4,7 @@ import type { ViewsAction } from './viewTypes.ts';
 const VIEW_ACTIONS = new Set<string>([
   'OPEN_VIEW', 'TOGGLE_VIEW_PANE_MAX', 'SET_SECTION_BOX', 'SET_PLAN_CUT',
   'SET_ABOVE_CUT_STYLE', 'TOGGLE_RCP', 'UPDATE_SECTIONS',
+  'SET_PLAN_SCALE', 'UPDATE_SHEETS', 'UPDATE_VIEW_ANNOTATIONS', 'UPDATE_METADATA',
 ]);
 
 export function isViewsAction(action: { type: string }): action is ViewsAction {
@@ -43,6 +44,34 @@ export function viewsReducer(state: EditorState, action: ViewsAction): EditorSta
       if (action.persist && state.readonly) return state;
       const sectionsSaveSeq = views.sectionsSaveSeq + (action.persist ? 1 : 0);
       return { ...state, project: { ...state.project, sections: action.sections }, views: { ...views, open, sectionsSaveSeq } };
+    }
+    case 'SET_PLAN_SCALE':
+      return action.scale > 0 ? { ...state, views: { ...views, planScale: action.scale } } : state;
+    case 'UPDATE_SHEETS': {
+      if (!state.project || (action.persist && state.readonly)) return state;
+      return {
+        ...state, project: { ...state.project, sheets: action.sheets },
+        views: { ...views, sheetsSaveSeq: views.sheetsSaveSeq + (action.persist ? 1 : 0) },
+      };
+    }
+    case 'UPDATE_VIEW_ANNOTATIONS': {
+      if (!state.project || (action.persist && state.readonly)) return state;
+      return {
+        ...state, project: { ...state.project, viewAnnotations: action.layers },
+        views: { ...views, viewAnnotationsSaveSeq: views.viewAnnotationsSaveSeq + (action.persist ? 1 : 0) },
+      };
+    }
+    case 'UPDATE_METADATA': {
+      if (!state.project || (action.persist && state.readonly)) return state;
+      const metadata = { ...state.project.metadata };
+      for (const [k, v] of Object.entries(action.fields)) {
+        const key = k as keyof typeof action.fields;
+        if (v && v.trim()) metadata[key] = v.trim(); else delete metadata[key];
+      }
+      return {
+        ...state, project: { ...state.project, metadata },
+        views: { ...views, metadataSaveSeq: views.metadataSaveSeq + (action.persist ? 1 : 0) },
+      };
     }
   }
 }

@@ -4,7 +4,9 @@ import type { DataSource } from './dataSource.ts';
 import { TYPE_FILE_PATHS, isTypedTable, parseTypeFiles, resolveTypeAttrs, type TypeCatalog } from '../model/types/catalog.ts';
 import { starterCatalog } from '../model/types/starter.ts';
 import { sectionsFromRows, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
-import type { SectionDef } from '../views/viewTypes.ts';
+import { sheetSetFromRows, SHEET_CSV_PATH, VIEWPORT_CSV_PATH } from '../sheets/sheetsIO.ts';
+import type { SheetSet } from '../sheets/sheetTypes.ts';
+import type { SectionDef, ViewsAction } from '../views/viewTypes.ts';
 
 const VALID_UNITS: ReadonlySet<ProjectUnit> = new Set(['m', 'ft', 'in', 'mm']);
 
@@ -27,6 +29,9 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
     return {
       format_version: json.format_version ?? '3.0',
       project_name: json.project_name,
+      ...(typeof json.project_number === 'string' ? { project_number: json.project_number } : {}),
+      ...(typeof json.client === 'string' ? { client: json.client } : {}),
+      ...(typeof json.address === 'string' ? { address: json.address } : {}),
       units: normalizeUnits(json.units),
       source: json.source,
       spatial_z: json.spatial_z,
@@ -307,8 +312,13 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   );
 
   const globalLayers: LayerData[] = [];
+  const viewAnnotations: LayerData[] = [];
   for (const { disc, tableName, geojsonContent, csvContent } of globalResults) {
     if (!geojsonContent && !csvContent) continue;
+    if (VIEW_ANNOTATION_TABLES.has(tableName)) {
+      viewAnnotations.push(viewAnnotationLayer(tableName, csvContent));
+      continue;
+    }
 
     const csvMap = new Map<string, CsvRow>();
     if (csvContent) {
@@ -333,13 +343,54 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const declared = parseMepSystems(await fetchIfPresent('global/mep_system.csv'));
   const viewText = await fetchIfPresent(VIEW_CSV_PATH);
   const sections = viewText ? sectionsFromRows(parseCsv(viewText)) : [];
+  const sheets = await loadSheetsWith(fetchIfPresent);
   const derived = deriveMepSystems(declared, floors, globalLayers);
   const mepSystems = [...declared, ...derived];
 
   // Safe to stamp `spatial_z: absolute` on save unless the project is unmarked
   // and holds elevated spatial Z that might be legacy level-relative.
   const spatialZMarkable = metadata.spatial_z !== 'absolute' && !elevatedSpatialZ;
-  return { levels, floors, globalLayers, mepSystems, types, metadata, spatialZMarkable, sections };
+  return { levels, floors, globalLayers, mepSystems, types, metadata, spatialZMarkable, sections, viewAnnotations, sheets };
+}
+
+/** Annotation tables whose global/ rows live on sections / elevations. */
+export const VIEW_ANNOTATION_TABLES = new Set(['dimension', 'text_note']);
+
+function viewAnnotationLayer(tableName: string, csvContent: string | null): LayerData {
+  const csvRows = new Map<string, CsvRow>();
+  for (const row of csvContent ? parseCsv(csvContent) : []) if (row.id) csvRows.set(row.id, row);
+  return { tableName, discipline: 'annotation', geojsonContent: '', csvRows };
+}
+
+async function loadSheetsWith(fetchIfPresent: (p: string) => Promise<string | null>): Promise<SheetSet> {
+  const [sheetText, vpText] = await Promise.all([fetchIfPresent(SHEET_CSV_PATH), fetchIfPresent(VIEWPORT_CSV_PATH)]);
+  return sheetSetFromRows(sheetText ? parseCsv(sheetText) : [], vpText ? parseCsv(vpText) : []);
+}
+
+/** Reload the sheets (`global/sheet.csv` + `global/sheet_viewport.csv`). */
+export async function loadSheets(ds: DataSource): Promise<SheetSet> {
+  return loadSheetsWith(p => ds.fetchText(p));
+}
+
+/**
+ * Reload for a changed sheet or section / elevation annotation file (an agent
+ * or another tab wrote it): the action to dispatch, or null for other paths.
+ */
+export async function drawingFileReload(ds: DataSource, path: string): Promise<ViewsAction | null> {
+  if (path === SHEET_CSV_PATH || path === VIEWPORT_CSV_PATH) return { type: 'UPDATE_SHEETS', sheets: await loadSheets(ds) };
+  const m = /^global\/(\w+)\.csv$/.exec(path);
+  if (m && VIEW_ANNOTATION_TABLES.has(m[1])) return { type: 'UPDATE_VIEW_ANNOTATIONS', layers: await loadViewAnnotations(ds) };
+  return null;
+}
+
+/** Reload the section / elevation annotations of global/. */
+export async function loadViewAnnotations(ds: DataSource): Promise<LayerData[]> {
+  const out: LayerData[] = [];
+  for (const table of VIEW_ANNOTATION_TABLES) {
+    const text = await ds.fetchText(`global/${table}.csv`);
+    if (text) out.push(viewAnnotationLayer(table, text));
+  }
+  return out;
 }
 
 /** MEP tables that carry a `system_type` tag. */

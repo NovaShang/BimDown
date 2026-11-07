@@ -3,7 +3,8 @@ import type { ElementModule, SelectionHandle } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import { ANNOTATION_DISCIPLINE, TEXT_NOTE_HEADERS } from '../annotation/model.ts';
-import { metre, textWidth } from '../annotation/geometry.ts';
+import { textWidth } from '../annotation/geometry.ts';
+import { textNoteSize } from '../annotation/model.ts';
 import { DIM_INK } from './dimension.tsx';
 
 export interface TextNoteFacts {
@@ -28,13 +29,14 @@ export const textNoteModule: ElementModule<TextNoteFacts> = {
   hiddenFromToolbar: true,
   isSnapTarget: false,
   csvHeaders: TEXT_NOTE_HEADERS,
-  defaults: { text: '', size: '0.25', rotation: '0' },
+  // Text height is a paper size (mm): the note reads the same at every scale
+  defaults: { text: '', paper_size: '2.5', rotation: '0' },
   drawingFields: [
-    { key: 'size', label: 'Text Size', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'paper_size', label: 'Text Size', type: 'number', unit: 'mm', min: 1, step: 0.5 },
   ],
   propertyFields: [
     { key: 'text', label: 'Text', type: 'text', group: 'identity' },
-    { key: 'size', label: 'Text Size', type: 'number', unit: 'm', min: 0.05, step: 0.05, group: 'geometry' },
+    { key: 'paper_size', label: 'Text Size', type: 'number', unit: 'mm', min: 1, step: 0.5, group: 'geometry' },
     { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15, group: 'geometry' },
   ],
   layerStyle: { displayName: 'Text Notes', color: DIM_INK, icon: 'T', order: 91 },
@@ -44,7 +46,7 @@ export const textNoteModule: ElementModule<TextNoteFacts> = {
     if (el.geometry !== 'point') return null;
     const lines = textNoteLines(el.attrs.text);
     if (lines.every(l => !l.trim())) return null;
-    const size = parseFloat(el.attrs.size ?? '') || 0.25 * metre();
+    const size = textNoteSize(el.attrs);
     return {
       id: el.id, position: el.position, lines, size,
       rotation: parseFloat(el.attrs.rotation ?? '') || 0,

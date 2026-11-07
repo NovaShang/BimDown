@@ -32,6 +32,10 @@ export type ProjectUnit = 'm' | 'ft' | 'in' | 'mm';
 export interface ProjectMetadata {
   format_version: string;
   project_name?: string;
+  /** Title block fields (sheets). */
+  project_number?: string;
+  client?: string;
+  address?: string;
   /** Coordinate / dimension unit. When missing, treat as `'m'` (existing projects). */
   units?: ProjectUnit;
   source?: string;
@@ -68,6 +72,12 @@ export interface ProjectData {
   metadata: ProjectMetadata;
   /** Saved section views from `global/view.csv` (absent/empty = none). */
   sections?: import('./views/viewTypes.ts').SectionDef[];
+  /** Dimensions / text notes drawn on sections and elevations (`global/dimension.csv`,
+   *  `global/text_note.csv`, rows with `view_id`); kept out of `globalLayers`
+   *  so no plan or 3D view shows them. */
+  viewAnnotations?: LayerData[];
+  /** Drawing sheets (`global/sheet.csv` + `global/sheet_viewport.csv`). */
+  sheets?: import('./sheets/sheetTypes.ts').SheetSet;
   /** Editor may write `spatial_z: "absolute"` on save: the project lacks the
    *  marker but has no elevated spatial Z that could be legacy level-relative. */
   spatialZMarkable?: boolean;

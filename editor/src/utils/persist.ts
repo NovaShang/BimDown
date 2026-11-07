@@ -6,6 +6,8 @@ import { allTableNames } from '../model/tableRegistry.ts';
 import { serializeTypeFiles, type TypeCatalog } from '../model/types/catalog.ts';
 import { sectionsToCsv, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
 import type { SectionDef } from '../views/viewTypes.ts';
+import { sheetsToCsv, viewportsToCsv, SHEET_CSV_PATH, VIEWPORT_CSV_PATH } from '../sheets/sheetsIO.ts';
+import type { SheetSet } from '../sheets/sheetTypes.ts';
 
 const EMPTY_FEATURE_COLLECTION = '{\n  "type": "FeatureCollection",\n  "features": []\n}\n';
 
@@ -157,6 +159,31 @@ function csvEscape(value: string): string {
     return `"${value.replace(/"/g, '""')}"`;
   }
   return value;
+}
+
+/** Write sheets (global/sheet.csv) and their viewports (global/sheet_viewport.csv). */
+export async function persistSheets(set: SheetSet, ds: DataSource): Promise<void> {
+  await Promise.all([
+    ds.saveFile(SHEET_CSV_PATH, sheetsToCsv(set.sheets)),
+    ds.saveFile(VIEWPORT_CSV_PATH, viewportsToCsv(set.viewports)),
+  ]);
+}
+
+/** Title-block fields of project_metadata.json (empty value = field removed); other keys kept. */
+export async function persistMetadataFields(fields: Partial<Record<'project_name' | 'project_number' | 'client' | 'address', string>>, ds: DataSource): Promise<void> {
+  const text = await ds.fetchText('project_metadata.json');
+  let meta: Record<string, unknown> = { format_version: '3.0', units: 'm' };
+  if (text) {
+    try {
+      const parsed = JSON.parse(text);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) meta = parsed;
+    } catch { /* rewrite a broken file with defaults */ }
+  }
+  for (const [k, v] of Object.entries(fields)) {
+    if (v && v.trim()) meta[k] = v.trim();
+    else delete meta[k];
+  }
+  await ds.saveFile('project_metadata.json', JSON.stringify(meta, null, 2) + '\n');
 }
 
 /**
