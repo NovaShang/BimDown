@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import '../../elements/registerAll.ts';
 import { loadProject, loadGrids } from '../../utils/loader.ts';
 import { memoryDataSource, fc } from '../../test/memoryDataSource.ts';
-import { buildViewDrawing, collectViewSource, renderView, resolveViewId, VIEW_LAYERS } from './section.ts';
+import { buildViewDrawing, classifyCutLoops, collectViewSource, renderView, resolveViewId, VIEW_LAYERS } from './section.ts';
 import { itemsBounds } from './plan.ts';
 import { collectViewParts } from './viewSolids.ts';
 import { planToDxf } from '../exportDxf.ts';
@@ -129,6 +129,52 @@ describe('section and elevation drawings', () => {
     const furn = paths(on(d.items, 'A-SECT-FURN'));
     expect(furn.length).toBeGreaterThan(2);
     expect(Math.max(...furn.flatMap(p => p.pts.map(q => q.y)))).toBeCloseTo(2.2, 3);
+  });
+
+  it('fills a storey’s wall cut that touches the cut of the wall above (B7)', async () => {
+    // From the architect audit: layered south wall on levels 2 and 3, the
+    // upper one attached to a gable roof; nothing below it on level 1. The
+    // two cuts meet at z = 6 without sharing vertices, so they stay two loops.
+    const wall = (lv: string, top: string) => ({
+      [`${lv}/wall.csv`]: `id,number,top_level_id,top_attach_id,type_id\nw-1,,${top},${lv === 'lv-3' ? 'ro-1' : ''},wt-1\n`,
+      [`${lv}/wall.geojson`]: fc([{ type: 'Feature', properties: { id: 'w-1' }, geometry: { type: 'LineString', coordinates: [[20, 0], [0, 0]] } }]),
+    });
+    const ring = [[20.66, 11.66], [-0.66, 11.66], [-0.66, -0.66], [20.66, -0.66]];
+    const files: Record<string, string> = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute', project_name: 'B7' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,Level 1,0\nlv-2,2,Level 2,3\nlv-3,3,Level 3,6\nlv-4,4,Roof,9\n',
+      'global/view.csv': 'id,name,view_type,start_x,start_y,end_x,end_y,depth\nvw-1,A,section,9,-2.5,9,13.5,\n',
+      'global/wall_type.csv': 'id,name,material,thickness\nwt-1,EXT-01 Brick cavity 320,brick,0.32\n',
+      'global/roof_type.csv': 'id,name,material,thickness\nrot-1,Pitched,wood,0.25\n',
+      'global/type_layer.csv': 'id,type_id,seq,function,material,thickness\n'
+        + 'tl-1,wt-1,1,finish,brick,0.1\ntl-2,wt-1,2,air_gap,,0.04\ntl-3,wt-1,3,insulation,insulation,0.07\ntl-4,wt-1,4,core,brick,0.1\ntl-5,wt-1,5,finish,gypsum,0.01\n',
+      ...wall('lv-2', 'lv-3'), ...wall('lv-3', 'lv-4'),
+      'lv-3/roof.csv': 'id,number,roof_type,slope,edge_slopes,type_id\nro-1,,gable,30,30;0;30;0,rot-1\n',
+      'lv-3/roof.geojson': fc([{ type: 'Feature', properties: { id: 'ro-1', base_offset: 2.711 }, geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] } }]),
+    };
+    const { project, grids } = await open(files);
+    const d = buildViewDrawing({ project, grids }, { kind: 'section', id: 'vw-1' }, 100)!;
+    const poche = paths(on(d.items, 'A-SECT-PATT'));
+    const at = (z0: number, z1: number) => poche.filter(p => {
+      const b = itemsBounds([p])!;
+      return b.minX > -0.2 && b.maxX < 0.2 && Math.abs(b.minY - z0) < 0.01 && Math.abs(b.maxY - z1) < 0.01;
+    });
+    // Level 2's cut (z 3…6) is solid poché, not punched out as a hole
+    expect(at(3, 6).length).toBeGreaterThan(0);
+    expect(at(3, 6).every(p => p.fill === '#4d4d4d')).toBe(true);
+    expect(poche.some(p => p.fill === '#ffffff')).toBe(false);
+  });
+
+  it('tells holes from touching or overlapping cut loops', () => {
+    const rect = (x0: number, y0: number, x1: number, y1: number, ccw = true) => {
+      const r = [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+      return ccw ? r : r.reverse();
+    };
+    // A ring: the inner loop winds against the outer one
+    expect(classifyCutLoops([rect(0, 0, 4, 4), rect(1, 1, 3, 3, false)]).holes).toHaveLength(1);
+    // Stacked cuts sharing an edge (B7) and overlapping same-wound pieces stay solid
+    expect(classifyCutLoops([rect(-0.16, 3, 0.16, 6), rect(-0.16, 6, 0.02, 9), rect(0.02, 6, 0.16, 9)]).holes).toHaveLength(0);
+    expect(classifyCutLoops([rect(0, 0, 4, 4), rect(1, 1, 3, 3)]).holes).toHaveLength(0);
   });
 
   it('cuts sloped roofs by their edge slopes and shows walls attached to them', async () => {

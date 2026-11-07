@@ -403,6 +403,42 @@ function pointInRing(p: Point, r: Point[]): boolean {
   return inside;
 }
 
+/**
+ * Split cut loops into solids and holes. A hole lies inside an odd number of
+ * larger loops and winds against the smallest of them (slices are oriented by
+ * face normal); overlapping pieces wind the same way and both stay solid. The
+ * probe is strictly inside the loop: a point on its border reads as inside a
+ * neighbour that touches it (a storey's wall cut sitting on the one below).
+ */
+export function classifyCutLoops(loops: Point[][]): { outer: Point[][]; holes: Point[][] } {
+  const outer: Point[][] = [], holes: Point[][] = [];
+  const areas = loops.map(ringArea);
+  loops.forEach((loop, i) => {
+    const probe = interiorPoint(loop);
+    let depth = 0, host = -1;
+    loops.forEach((other, j) => {
+      if (j === i || Math.abs(areas[j]) <= Math.abs(areas[i]) || !pointInRing(probe, other)) return;
+      depth++;
+      if (host < 0 || Math.abs(areas[j]) < Math.abs(areas[host])) host = j;
+    });
+    const hole = depth % 2 === 1 && Math.sign(areas[i]) !== Math.sign(areas[host]);
+    (hole ? holes : outer).push(loop);
+  });
+  return { outer, holes };
+}
+
+/** A point strictly inside a simple ring: centroid of its largest triangle. */
+function interiorPoint(ring: Point[]): Point {
+  const tri = ShapeUtils.triangulateShape(ring.map(p => new Vector2(p.x, p.y)), []);
+  let best: Point = { x: (ring[0].x + ring[1].x) / 2, y: (ring[0].y + ring[1].y) / 2 }, bestA = 0;
+  for (const [i, j, l] of tri) {
+    const a = ring[i], b = ring[j], c = ring[l];
+    const area = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y));
+    if (area > bestA) { bestA = area; best = { x: (a.x + b.x + c.x) / 3, y: (a.y + b.y + c.y) / 3 }; }
+  }
+  return best;
+}
+
 function ringArea(r: Point[]): number {
   let s = 0;
   for (let i = 0, j = r.length - 1; i < r.length; j = i++) s += (r[j].x + r[i].x) * (r[j].y - r[i].y);
@@ -490,14 +526,7 @@ export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: V
         if (frame.crop) loop = clipRingX(loop, frame.crop[0], frame.crop[1]);
         if (loop.length >= 3 && Math.abs(ringArea(loop)) > 1e-10) loops.push(loop);
       }
-      // A loop inside an odd number of others is a hole
-      const outer: Point[][] = [], holes: Point[][] = [];
-      for (const loop of loops) {
-        const probe = { x: (loop[0].x + loop[1].x) / 2, y: (loop[0].y + loop[1].y) / 2 };
-        let depth = 0;
-        for (const other of loops) if (other !== loop && pointInRing(probe, other)) depth++;
-        (depth % 2 ? holes : outer).push(loop);
-      }
+      const { outer, holes } = classifyCutLoops(loops);
       if (outer.length || holes.length) cutLoops.push({ cls, outer, holes });
       for (const ring of outer) {
         const tri = ShapeUtils.triangulateShape(ring.map(p => new Vector2(p.x, p.y)), []);
