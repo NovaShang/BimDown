@@ -434,6 +434,7 @@ export async function loadGrids(ds: DataSource): Promise<GridData[]> {
       y1: parseFloat(r.start_y) || 0,
       x2: parseFloat(r.end_x) || 0,
       y2: parseFloat(r.end_y) || 0,
+      ...(r.pinned === 'true' ? { pinned: true } : {}),
     }));
   }
   return [];

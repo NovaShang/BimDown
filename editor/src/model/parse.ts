@@ -7,7 +7,7 @@ import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { ANNOTATION_TABLES, annotationElementFromRow } from '../annotation/model.ts';
 
 /** Tables that are CSV-only (no geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector', ...ANNOTATION_TABLES]);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector', 'model_group', ...ANNOTATION_TABLES]);
 
 /** Tables with mixed geometry (different geometry types in the same layer). */
 const MIXED_GEOMETRY_TABLES = new Set(['foundation']);
@@ -189,7 +189,7 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
 
     if (ANNOTATION_TABLES.has(layer.tableName)) {
       elements.push(annotationElementFromRow(layer.tableName, layer.discipline, id, attrs));
-    } else if (layer.tableName === 'space' || layer.tableName === 'mesh') {
+    } else if (layer.tableName === 'space' || layer.tableName === 'mesh' || layer.tableName === 'model_group') {
       const el: PointElement = {
         geometry: 'point', id,
         tableName: layer.tableName, discipline: layer.discipline,

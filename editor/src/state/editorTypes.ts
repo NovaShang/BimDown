@@ -8,8 +8,9 @@ import type { ArcParams } from '../geometry/arc.ts';
 import type { TypeCatalog } from '../model/types/catalog.ts';
 import type { ViewOptions, ViewOptionKey } from './viewOptions.ts';
 import type { ViewsState, ViewsAction } from '../views/viewTypes.ts';
+import type { FloorWrites, LevelPatches } from './levelEdits.ts';
 
-export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region'
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'mirror' | 'array' | 'align' | 'offset' | 'paste' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region'
   | 'trim_corner' | 'trim_single' | 'split'
   | 'draw_dimension' | 'draw_text' | 'draw_tag'
   | 'draw_section'
@@ -69,6 +70,26 @@ export interface EditorState {
 
   /** Elevation / section pane, 3D section box, plan view range (views/viewsReducer.ts). */
   views: ViewsState;
+
+  /** Layers of other levels changed by multi-level edits, waiting to be saved. */
+  floorWrites?: FloorWrites;
+  /** Model group being edited (its members select one by one; Finish propagates). */
+  groupEdit?: GroupEdit | null;
+  /** Named selections saved for this session. */
+  selectionSets?: SelectionSet[];
+}
+
+export interface GroupEdit {
+  groupId: string;
+  levelId: string;
+  /** The instance (row + members + their ports) when editing started. */
+  snapshot: Map<string, CanonicalElement>;
+}
+
+export interface SelectionSet {
+  name: string;
+  levelId: string;
+  ids: string[];
 }
 
 export interface DrawingState {
@@ -90,6 +111,25 @@ export interface DrawingState {
   typed?: TypedInput;
   /** Two-pick modify tools (trim / extend): the first picked element. */
   pick?: { id: string; point: { x: number; y: number }; line?: { start: { x: number; y: number }; end: { x: number; y: number } } };
+  /** Rotate / mirror / array / align / offset / paste (tools/modifyTools.ts). */
+  modify?: ModifyState;
+}
+
+export interface ModifyState {
+  /** Rotate centre. */
+  center?: { x: number; y: number };
+  /** The next click places the centre. */
+  pickCenter?: boolean;
+  /** Rotate: start ray point; array / drawn mirror axis: first point. */
+  ref?: { x: number; y: number };
+  /** Mirror axis or align reference, drawn dashed. */
+  axis?: { start: { x: number; y: number }; end: { x: number; y: number } };
+  /** Candidate line under the cursor (align / offset / mirror pick). */
+  hoverLine?: { start: { x: number; y: number }; end: { x: number; y: number } };
+  /** Rotate: angle the next click applies. */
+  angle?: number;
+  /** Ghosts of the result. */
+  preview?: CanonicalElement[];
 }
 
 export interface TypedInput {
@@ -115,7 +155,8 @@ export type EditorAction =
   | { type: 'SET_DISCIPLINE'; discipline: string | null }
   | { type: 'TOGGLE_ARCH_CONTEXT' }
   | { type: 'TOGGLE_VIEW_OPTION'; key: ViewOptionKey }
-  | { type: 'SELECT'; ids: string[]; additive?: boolean }
+  /** `exact`: select just these ids (a model group member on its own, Tab cycling). */
+  | { type: 'SELECT'; ids: string[]; additive?: boolean; exact?: boolean }
   | { type: 'CLEAR_SELECTION' }
   | { type: 'SET_HOVER'; id: string | null }
   | { type: 'SET_MARQUEE'; marquee: { x1: number; y1: number; x2: number; y2: number } | null }
@@ -154,7 +195,21 @@ export type EditorAction =
   | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData }
   | { type: 'ADD_LEVEL'; level: Level }
   | { type: 'REMOVE_LEVEL'; levelId: string }
-  | { type: 'RENAME_LEVEL'; levelId: string; name: string; elevation: number }
+  /** `moveAbove`: every higher level shifts by the same elevation change. */
+  | { type: 'RENAME_LEVEL'; levelId: string; name: string; elevation: number; number?: string; moveAbove?: boolean }
+  /** Copy everything on a level to a new level (one undo step). */
+  | { type: 'DUPLICATE_LEVEL'; levelId: string; level: Level }
+  /** Copy selected elements (raw or selection ids on the open level) to other levels, same plan place. */
+  | { type: 'COPY_TO_LEVELS'; ids: string[]; levelIds: string[] }
+  /** Per-level element patches (and optionally the new level list) as one undo step. */
+  | { type: 'APPLY_LEVEL_EDITS'; description: string; patches: LevelPatches; levels?: Level[]; select?: string[] }
+  | { type: 'START_GROUP_EDIT'; groupId: string }
+  /** Finish editing a model group: the edited instance's members replace every other instance's. */
+  | { type: 'FINISH_GROUP_EDIT' }
+  /** Leave group editing, restoring the instance as it was. */
+  | { type: 'CANCEL_GROUP_EDIT' }
+  | { type: 'SAVE_SELECTION_SET'; name: string }
+  | { type: 'DELETE_SELECTION_SET'; name: string }
   | ViewsAction;
 
 

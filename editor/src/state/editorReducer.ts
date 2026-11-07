@@ -3,7 +3,7 @@ import type { SnapType } from '../utils/snap.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from '../model/elements.ts';
 import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '../model/history.ts';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
-import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
+import { toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
 import { arcLength } from '../geometry/arc.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
@@ -18,7 +18,7 @@ import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
 import { pickStartLevel } from './startLevel.ts';
-import { applyMoveJoins, applyReshapeJoins, rehostChildren } from '../geometry/wallJoins.ts';
+import { applyMoveJoins, applyReshapeJoins, findWallJoins, rehostChildren } from '../geometry/wallJoins.ts';
 import { reresolveElements, reresolveProject, retypeElements } from './typeEdits.ts';
 import { EMPTY_CATALOG, reresolveTypeAttrs } from '../model/types/catalog.ts';
 import { withDefaultDrawingType } from '../model/types/drawingType.ts';
@@ -26,6 +26,14 @@ import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
 import { followColumnMoves } from '../model/framingCascade.ts';
 import { initialViewsState } from '../views/viewTypes.ts';
 import { isViewsAction, viewsReducer } from '../views/viewsReducer.ts';
+import { expandCopySet, cloneElements } from '../model/copySet.ts';
+import { transformElements, translation } from '../model/transform.ts';
+import { cleanupGroups, GROUP_TABLE, instanceElements, isGroupable, propagateGroupEdit } from '../model/groups.ts';
+import {
+  applyLevelPatches, beforeOf, copyToLevelsPatches, duplicateLevelPatches, levelElements, multiLevelCommand,
+  redoMulti, takenIds, undoMulti, type LevelPatches,
+} from './levelEdits.ts';
+import { isPinned } from '../model/pins.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -98,6 +106,9 @@ export const initialState: EditorState = {
   lastMutation: null,
 
   views: initialViewsState,
+
+  groupEdit: null,
+  selectionSets: [],
 };
 
 /** Collect discipline/tableName keys from element maps for lastMutation tracking */
@@ -221,6 +232,7 @@ const MUTATION_ACTIONS: Set<string> = new Set([
   'UPDATE_ATTRS', 'UPDATE_ATTRS_MANY', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS', 'APPLY_PATCH',
   'UNDO', 'REDO', 'ADD_LEVEL', 'REMOVE_LEVEL', 'RENAME_LEVEL',
   'UPDATE_TYPES', 'SET_ELEMENT_TYPE',
+  'DUPLICATE_LEVEL', 'COPY_TO_LEVELS', 'APPLY_LEVEL_EDITS', 'START_GROUP_EDIT', 'FINISH_GROUP_EDIT', 'CANCEL_GROUP_EDIT',
 ]);
 
 /** Tools allowed in readonly mode — everything else is blocked. */
@@ -506,15 +518,19 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'SELECT': {
+      // A model group member selects its whole instance (unless picked exactly,
+      // or while its group is being edited).
+      const ids = action.exact ? action.ids : expandGroupSelection(state, action.ids);
       if (action.additive) {
         const next = new Set(state.selectedIds);
-        for (const id of action.ids) {
-          if (next.has(id)) next.delete(id);
+        const removing = ids.length > 0 && next.has(ids[0]);
+        for (const id of ids) {
+          if (removing) next.delete(id);
           else next.add(id);
         }
         return { ...state, selectedIds: next, editMode: false };
       }
-      return { ...state, selectedIds: new Set(action.ids), editMode: false };
+      return { ...state, selectedIds: new Set(ids), editMode: false };
     }
 
     case 'CLEAR_SELECTION':
@@ -534,15 +550,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       return {
         ...state, document: action.document, documentVersion: 0, lastMutation: null,
         history: {
-          undoStack: state.history.undoStack.filter(c => c.level),
-          redoStack: state.history.redoStack.filter(c => c.level),
+          undoStack: state.history.undoStack.filter(c => c.level || c.multi),
+          redoStack: state.history.redoStack.filter(c => c.level || c.multi),
         },
+        groupEdit: state.groupEdit && state.groupEdit.levelId === action.document.levelId ? state.groupEdit : null,
       };
 
     case 'MOVE_ELEMENTS': {
       if (!state.document) return state;
       const { ids, dx, dy, preview } = action;
-      const rawIds = ids.map(toElementId);
+      // Pinned elements stay put.
+      const rawIds = ids.map(toElementId).filter(id => !isPinned(state.document!.elements.get(id)));
+      if (rawIds.length === 0) return state;
       const next = new Map(state.document.elements);
       // Collect hosted elements that should cascade with moved hosts
       const movedSet = new Set(rawIds);
@@ -622,7 +641,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       // Wall joins: corner and tee neighbours stay attached to moved walls.
       // Drag previews must pass the joins snapshotted at drag start.
-      const moveJoins = preview ? action.wallJoins ?? [] : action.wallJoins;
+      const moveJoins = (preview ? action.wallJoins ?? [] : action.wallJoins ?? findWallJoins(state.document.elements, movedSet))
+        .filter(j => j.kind === 'abut' || !isPinned(state.document!.elements.get(j.otherId)));
       for (const id of applyMoveJoins(state.document.elements, next, movedSet, moveJoins, dx, dy)) {
         if (!movedSet.has(id)) partialMoved.add(id);
         changed = true;
@@ -663,10 +683,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'CREATE_ELEMENT': {
       if (!state.document) return state;
-      const before = new Map<string, CanonicalElement | null>([[action.element.id, null]]);
-      const after = new Map<string, CanonicalElement | null>([[action.element.id, action.element]]);
+      const element = joinEditedGroup(state, action.element);
+      const before = new Map<string, CanonicalElement | null>([[element.id, null]]);
+      const after = new Map<string, CanonicalElement | null>([[element.id, element]]);
       let next = new Map(state.document.elements);
-      next.set(action.element.id, action.element);
+      next.set(element.id, element);
       // Auto-show layer if not yet visible
       const layerKey = `${action.element.discipline}/${action.element.tableName}`;
       const visibleLayers = state.visibleLayers.has(layerKey)
@@ -725,6 +746,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       next = applyEndpointBonding(next, candidatePipeIds, before, after);
       next = cleanupOrphanMepNodes(next, before, after);
+      cleanupGroups(next, state.document.elements, before, after);
       for (const el of after.values()) {
         if (!el) continue;
         visibleLayers.add(`${el.discipline}/${el.tableName}`);
@@ -746,7 +768,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const after = new Map<string, CanonicalElement | null>();
       const visibleLayers = new Set(state.visibleLayers);
       const candidatePipeIds: string[] = [];
-      for (const el of action.elements) {
+      for (const raw of action.elements) {
+        const el = joinEditedGroup(state, raw);
         before.set(el.id, null);
         after.set(el.id, el);
         next.set(el.id, el);
@@ -804,6 +827,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // GC passive mep_nodes that lost their last MEP-curve reference when
       // pipes / ducts were deleted above.
       const gced = cleanupOrphanMepNodes(next, before, after);
+      cleanupGroups(gced, state.document.elements, before, after);
       // Remove deleted IDs from selection (match both prefixed and raw)
       const nextSelected = new Set(state.selectedIds);
       for (const sid of state.selectedIds) {
@@ -824,40 +848,34 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'DUPLICATE_ELEMENTS': {
       if (!state.document) return state;
       const { ids, offset } = action;
-      const rawIds = ids.map(toElementId);
+      const elements = state.document.elements;
+      // Hosted children (doors / windows / openings on a wall, stair runs,
+      // equipment ports), tags, dimensions between copies and group members
+      // travel with a duplicated host, re-hosted on the copy.
+      const selected = new Set(ids.map(toElementId).filter(id => elements.has(id)));
+      if (selected.size === 0) return state;
+      const set = expandCopySet(elements, selected);
+      const taken = new Set(elements.keys());
+      const { clones, idMap } = cloneElements(elements, set, { taken, keepOutsideRefs: true });
+      const moved = transformElements(clones, clones.keys(), translation(offset.dx, offset.dy));
+      const next = new Map(elements);
       const before = new Map<string, CanonicalElement | null>();
       const after = new Map<string, CanonicalElement | null>();
-      const next = new Map(state.document.elements);
-      const existingIds = new Set(next.keys());
       const newSelectionIds: string[] = [];
-      // Hosted children (doors / windows / openings on a wall, stair runs,
-      // equipment ports) travel with a duplicated host, re-hosted on the copy.
-      const selected = new Set(rawIds.filter(id => next.has(id)));
-      const children: string[] = [];
-      for (const el of state.document.elements.values()) {
-        if (el.hostId && selected.has(el.hostId) && !selected.has(el.id)) children.push(el.id);
-      }
-      const newIdOf = new Map<string, string>();
-      for (const rawId of [...selected, ...children]) {
-        const newId = generateId(next.get(rawId)!.tableName, existingIds);
-        existingIds.add(newId);
-        newIdOf.set(rawId, newId);
-      }
-      for (const [rawId, newId] of newIdOf) {
-        const el = next.get(rawId)!;
-        let cloned: CanonicalElement = { ...moveElement(el, offset.dx, offset.dy), id: newId, attrs: { ...el.attrs, id: newId } };
-        const newHost = el.hostId ? newIdOf.get(el.hostId) : undefined;
-        if (newHost) {
-          cloned = { ...cloned, hostId: newHost, attrs: { ...cloned.attrs, host_id: newHost } };
-        } else if (el.hostId) {
+      for (const [rawId, newId] of idMap) {
+        const el = elements.get(rawId)!;
+        let cloned = moved.get(newId) ?? clones.get(newId)!;
+        if (el.hostId && !set.has(el.hostId)) {
           // Copied without its host: stay on the same host, slid along it.
-          cloned = slideOnHost(cloned, el, state.document.elements.get(el.hostId), offset);
+          cloned = slideOnHost(clones.get(newId)!, el, elements.get(el.hostId), offset);
         }
         next.set(newId, cloned);
         before.set(newId, null);
         after.set(newId, cloned);
         // Selection IDs keep the level prefix (children are not selected)
-        if (selected.has(rawId)) newSelectionIds.push(state.currentLevel ? toSelectionId(state.currentLevel, newId) : newId);
+        if (selected.has(rawId) || (el.attrs.group_id && selected.has(el.attrs.group_id))) {
+          newSelectionIds.push(state.currentLevel ? toSelectionId(state.currentLevel, newId) : newId);
+        }
       }
       if (newSelectionIds.length === 0) return state;
       return {
@@ -1017,7 +1035,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.document) return state;
       const rawId = toElementId(action.id);
       const el = state.document.elements.get(rawId);
-      if (!el) return state;
+      if (!el || isPinned(el)) return state;
       let resized = applyResize(el, action.changes);
 
       // Keep a hosted element (door/window/opening) on its host wall when its
@@ -1182,6 +1200,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (state.history.undoStack.length === 0) return state;
       const cmd = state.history.undoStack[state.history.undoStack.length - 1];
       if (cmd.level) return undoLevelCommand(state, cmd);
+      if (cmd.multi) return undoMulti(state, cmd, openLevel);
       if (!state.document) return state;
       const result = applyUndo(state.history, state.document.elements);
       if (!result) return state;
@@ -1202,6 +1221,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (state.history.redoStack.length === 0) return state;
       const cmd = state.history.redoStack[state.history.redoStack.length - 1];
       if (cmd.level) return redoLevelCommand(state, cmd);
+      if (cmd.multi) return redoMulti(state, cmd, openLevel);
       if (!state.document) return state;
       const result = applyRedo(state.history, state.document.elements);
       if (!result) return state;
@@ -1305,18 +1325,163 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
 
     case 'RENAME_LEVEL': {
       if (!state.project) return state;
-      const levels = state.project.levels.map(l =>
-        l.id === action.levelId ? { ...l, name: action.name, elevation: action.elevation } : l
-      );
+      const old = state.project.levels.find(l => l.id === action.levelId);
+      if (!old) return state;
+      const delta = action.elevation - old.elevation;
+      const levels = state.project.levels.map(l => {
+        if (l.id === action.levelId) return { ...l, name: action.name, elevation: action.elevation, number: action.number ?? l.number };
+        // Storey heights above stay: every higher level moves by the same amount
+        if (action.moveAbove && delta !== 0 && l.elevation > old.elevation) return { ...l, elevation: Math.round((l.elevation + delta) * 1e6) / 1e6 };
+        return l;
+      });
       levels.sort((a, b) => a.elevation - b.elevation);
-      return pushLevelCommand(state, 'Rename level',
-        { levels: state.project.levels, levelId: action.levelId },
-        { levels, levelId: action.levelId });
+      return pushMultiLevel(state, delta !== 0 ? 'Change level elevation' : 'Rename level', new Map(), levels);
     }
+
+    case 'DUPLICATE_LEVEL': {
+      if (!state.project || !state.project.levels.some(l => l.id === action.levelId)) return state;
+      const levels = [...state.project.levels, action.level].sort((a, b) => a.elevation - b.elevation);
+      return pushMultiLevel(state, 'Duplicate level', duplicateLevelPatches(state, action.levelId, action.level), levels);
+    }
+
+    case 'COPY_TO_LEVELS': {
+      if (!state.document || !state.project) return state;
+      const targets = action.levelIds.filter(id => id !== state.document!.levelId && state.project!.levels.some(l => l.id === id));
+      if (targets.length === 0) return state;
+      const patches = copyToLevelsPatches(state, state.document.elements, action.ids.map(toElementId), state.document.levelId, targets);
+      return pushMultiLevel(state, 'Copy to levels', patches);
+    }
+
+    case 'APPLY_LEVEL_EDITS': {
+      if (!state.project) return state;
+      const next = pushMultiLevel(state, action.description, action.patches, action.levels);
+      return action.select ? { ...next, selectedIds: new Set(action.select) } : next;
+    }
+
+    case 'START_GROUP_EDIT': {
+      if (!state.document) return state;
+      const groupId = toElementId(action.groupId);
+      const row = state.document.elements.get(groupId);
+      if (!row || row.tableName !== GROUP_TABLE) return state;
+      const snapshot = new Map<string, CanonicalElement>([[groupId, row]]);
+      for (const id of instanceElements(state.document.elements, groupId)) snapshot.set(id, state.document.elements.get(id)!);
+      return { ...state, groupEdit: { groupId, levelId: state.document.levelId, snapshot }, selectedIds: new Set(), editMode: false };
+    }
+
+    case 'CANCEL_GROUP_EDIT': {
+      const ge = state.groupEdit;
+      if (!ge || !state.document || state.document.levelId !== ge.levelId) return { ...state, groupEdit: null };
+      // Restore the instance: snapshot members back, members added since removed
+      const patches = new Map<string, CanonicalElement | null>();
+      for (const id of instanceElements(state.document.elements, ge.groupId)) if (!ge.snapshot.has(id)) patches.set(id, null);
+      for (const [id, el] of ge.snapshot) if (state.document.elements.get(id) !== el) patches.set(id, el);
+      const cleared: EditorState = { ...state, groupEdit: null, selectedIds: new Set<string>() };
+      return patches.size ? editorReducer(cleared, { type: 'APPLY_PATCH', description: 'Cancel group edit', patches }) : cleared;
+    }
+
+    case 'FINISH_GROUP_EDIT': {
+      const ge = state.groupEdit;
+      if (!ge || !state.document || !state.project || state.document.levelId !== ge.levelId) return { ...state, groupEdit: null };
+      const row = state.document.elements.get(ge.groupId);
+      const done: EditorState = { ...state, groupEdit: null, selectedIds: new Set<string>() };
+      if (!row) return done;
+      const name = row.attrs.name ?? '';
+      const edited = levelElements(state, ge.levelId);
+      const patches: LevelPatches = new Map();
+      for (const level of state.project.levels) {
+        const els = level.id === ge.levelId ? edited : levelElements(state, level.id);
+        const patch = new Map<string, CanonicalElement | null>();
+        const taken = takenIds(state, level.id);
+        for (const el of els.values()) {
+          if (el.tableName !== GROUP_TABLE || (level.id === ge.levelId && el.id === ge.groupId) || (el.attrs.name ?? '') !== name) continue;
+          for (const [id, v] of propagateGroupEdit(edited, ge.groupId, ge.snapshot, { levelId: level.id, elements: els, rowId: el.id, taken })) {
+            patch.set(id, v);
+            if (v) taken.add(id);
+          }
+        }
+        if (patch.size) patches.set(level.id, patch);
+      }
+      if (patches.size === 0) return done;
+      return pushMultiLevel(done, `Edit group ${name}`, patches);
+    }
+
+    case 'SAVE_SELECTION_SET': {
+      const name = action.name.trim();
+      if (!name || state.selectedIds.size === 0) return state;
+      const sets = (state.selectionSets ?? []).filter(s => s.name !== name);
+      return { ...state, selectionSets: [...sets, { name, levelId: state.currentLevel, ids: [...state.selectedIds] }] };
+    }
+
+    case 'DELETE_SELECTION_SET':
+      return { ...state, selectionSets: (state.selectionSets ?? []).filter(s => s.name !== action.name) };
 
     default:
       return state;
   }
+}
+
+// ─── Multi-level edits (levelEdits.ts) ───────────────────────────────────────
+
+function openLevel(state: EditorState, levelId: string): EditorState {
+  return editorReducer(state, { type: 'SET_LEVEL', levelId });
+}
+
+/** Apply per-level patches (+ level list) and push them as one undo step. */
+function pushMultiLevel(state: EditorState, description: string, patches: LevelPatches, levels?: import('../types.ts').Level[]): EditorState {
+  if (!state.project) return state;
+  const before = beforeOf(state, patches);
+  const levelChange = levels ? { before: state.project.levels, after: [...levels].sort((a, b) => a.elevation - b.elevation) } : undefined;
+  if (!levelChange && [...patches.values()].every(p => p.size === 0)) return state;
+  // New levels must exist before their elements land
+  let next = levels ? applyLevelPatches(state, new Map(), levels) : state;
+  next = applyLevelPatches(next, patches);
+  // An element patch on the open level also shows its layers
+  const doc = next.document;
+  const docPatch = doc ? patches.get(doc.levelId) : undefined;
+  if (docPatch) {
+    const visibleLayers = new Set(next.visibleLayers);
+    for (const el of docPatch.values()) if (el) visibleLayers.add(`${el.discipline}/${el.tableName}`);
+    next = { ...next, visibleLayers };
+  }
+  return { ...next, history: pushCommand(state.history, multiLevelCommand(description, before, patches, levelChange)) };
+}
+
+/** While a group is edited, elements drawn on its level join it. */
+function joinEditedGroup(state: EditorState, el: CanonicalElement): CanonicalElement {
+  const ge = state.groupEdit;
+  if (!ge || state.document?.levelId !== ge.levelId || el.attrs.group_id || !isGroupable(el)) return el;
+  return { ...el, attrs: { ...el.attrs, group_id: ge.groupId } };
+}
+
+/** Selection ids widened to whole model group instances (row + members). */
+function expandGroupSelection(state: EditorState, ids: string[]): string[] {
+  const doc = state.document;
+  if (!doc) return ids;
+  const level = doc.levelId;
+  const out: string[] = [];
+  const seen = new Set<string>();
+  const push = (sid: string) => { if (!seen.has(sid)) { seen.add(sid); out.push(sid); } };
+  let groups: Map<string, string[]> | null = null;
+  for (const sid of ids) {
+    push(sid);
+    const el = doc.elements.get(toElementId(sid));
+    if (!el) continue;
+    const gid = el.tableName === GROUP_TABLE ? el.id : el.attrs.group_id;
+    if (!gid || state.groupEdit?.groupId === gid) continue;
+    if (!groups) {
+      groups = new Map();
+      for (const e of doc.elements.values()) {
+        const g = e.tableName === GROUP_TABLE ? e.id : e.attrs.group_id;
+        if (!g) continue;
+        const list = groups.get(g) ?? [];
+        list.push(e.id);
+        groups.set(g, list);
+      }
+    }
+    const prefixed = sid.includes(':');
+    for (const m of groups.get(gid) ?? []) push(prefixed ? toSelectionId(level, m) : m);
+  }
+  return out;
 }
 
 // ─── Level commands (undoable add / remove / rename) ─────────────────────────

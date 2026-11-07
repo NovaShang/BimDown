@@ -14,7 +14,7 @@ export function gridsToElements(grids: GridData[]): LineElement[] {
     start: { x: g.x1, y: g.y1 },
     end: { x: g.x2, y: g.y2 },
     strokeWidth: 0.06,
-    attrs: { number: g.number },
+    attrs: (g.pinned ? { number: g.number, pinned: 'true' } : { number: g.number }) as Record<string, string>,
   }));
 }
 
@@ -31,5 +31,6 @@ export function elementsToGrids(elements: CanonicalElement[]): GridData[] {
       y1: el.start.y,
       x2: el.end.x,
       y2: el.end.y,
+      ...(el.attrs.pinned === 'true' ? { pinned: true } : {}),
     }));
 }

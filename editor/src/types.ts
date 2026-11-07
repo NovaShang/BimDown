@@ -80,6 +80,8 @@ export interface GridData {
   y1: number;
   x2: number;
   y2: number;
+  /** Pinned (grid.csv `pinned`): editors don't move it. */
+  pinned?: boolean;
 }
 
 export type SvgElementType = 'line' | 'rect' | 'polygon' | 'circle' | 'path';
