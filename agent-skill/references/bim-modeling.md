@@ -69,7 +69,7 @@ GeoJSON `Point` coordinates are the **center** of the column. Section attributes
 **Tip**: You can also write the column as a 4-vertex `Polygon` — `bimdown build` extracts the rotation and section dimensions and normalizes it to a `Point` + CSV section fields.
 
 ### space (`lv-N/space.csv` — CSV only)
-Seed point (x,y) inside enclosed room + `name`. `bimdown build` computes boundary.
+Seed point (x,y) inside enclosed room + `name`. `bimdown build` computes boundary. One seed per enclosed area: a second one is a redundant room (area 0, warning) — split the area with a wall or room_separator.
 
 **Pitfall**: seed point on/outside wall, room not fully enclosed.
 
@@ -87,6 +87,7 @@ Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `
 - Uneven grid: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, `;`-separated (`1.5;3.3;4.8`); they override the counts.
 - Panels: `panels` = `col:row=kind;…` (0-based from start / bottom, `*` = all), kinds `glass` (default), `solid` (spandrel, `solid_material`), `door`, `double_door`, `empty`. E.g. `*:1=solid;2:0=door`.
 - A curtain wall door: make the bottom-row cell the door width (`v_grids`) and door height (first `u_grids`), set it `door`; don't host a `door` row on it. Mullions: `mullion_width`/`mullion_depth`/`mullion_profile` (rect/round).
+- Curtain wall in a wall (shopfront in a façade): draw it on the wall's centre line; it cuts the wall over its length and height (embedded, no `opening` row).
 - Ceiling: polygon, `height_offset` above level
 - Roof: polygon, `roof_type` (flat/gable/hip/shed/mansard), `slope` in degrees. Place it in the TOPMOST level's dir (roof level, e.g. `lv-R`) so it caps the wall tops — a roof in an occupied floor's dir anchors to that floor's elevation and is buried mid-building.
 - Roof outline = eave line incl. overhang (wall exterior face + 0.3–0.6 m); `base_offset` = underside at the eave (wall top − overhang·tan slope). Any footprint (L / T / U) is exact.
@@ -171,7 +172,10 @@ Point elements. `equipment_type`: ahu, fcu, chiller, boiler, cooling_tower, fan,
 |-------|-----|
 | Unconnected wall endpoint (warning) | The end touches no wall, wall face or column. Close it where rooms must close; free ends of retaining, pit or free-standing walls are fine |
 | Door/window out of bounds | Recalculate position or reduce width |
-| Overlapping openings | Adjust positions on same wall |
+| Overlapping openings | Adjust positions on same wall (a window above a door is fine) |
+| Walls overlap | Two walls on one line: delete or shorten one |
+| Redundant room | Two seeds in one area: delete one or add a room_separator |
+| must be greater than 0 (validate) | Thickness / width / size must be positive (or empty to inherit the type) |
 | Space seed not enclosed | Move seed point inside or close wall gaps |
 | Unknown column in CSV | Remove computed field from CSV |
 | GeoJSON id not in CSV | Add CSV row or remove GeoJSON Feature |
