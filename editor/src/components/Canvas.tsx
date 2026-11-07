@@ -98,9 +98,11 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     applyZoomBy, applyZoomToFit, applyZoomToPercent, applyZoomToBBox,
     subscribeTransform,
   } = useCanvasTransform({
-    svgRef, containerRef, uiScaleRef, viewBox, currentLevel: state.currentLevel,
+    svgRef, containerRef, viewBox, currentLevel: state.currentLevel,
     contentBounds, userEdited: state.lastMutation !== null,
   });
+
+  const getCanvasScale = useCallback(() => transformRef.current.scale * uiScaleRef.current, [transformRef]);
 
   useImperativeHandle(ref, () => ({
     zoomToFit: applyZoomToFit,
@@ -443,7 +445,6 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
-      style={{ '--canvas-scale': t.scale * uiScale } as React.CSSProperties}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
@@ -556,24 +557,38 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         />
       )}
 
-      <HoverHighlight svgRef={svgRef} />
+      <HoverHighlight svgRef={svgRef} getCanvasScale={getCanvasScale} subscribeTransform={subscribeTransform} />
       <HoverTooltip />
     </div>
     </SVGGeometryProvider>
   );
 });
 
-/** Applies CSS hover-highlight class via DOM manipulation — only re-renders on hoveredId change. */
-function HoverHighlight({ svgRef }: { svgRef: React.RefObject<SVGSVGElement | null> }) {
+/** Applies CSS hover-highlight class via DOM manipulation — only re-renders on hoveredId change.
+ *  The glow width reads `--canvas-scale`, kept on the highlighted nodes only. */
+function HoverHighlight({ svgRef, getCanvasScale, subscribeTransform }: {
+  svgRef: React.RefObject<SVGSVGElement | null>;
+  getCanvasScale: () => number;
+  subscribeTransform: (cb: () => void) => () => void;
+}) {
   const { hoveredId } = useSelectionState();
   useEffect(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    svg.querySelectorAll('.hover-highlight').forEach(el => el.classList.remove('hover-highlight'));
-    if (hoveredId) {
-      svg.querySelectorAll(`[data-id="${hoveredId}"]`).forEach(el => el.classList.add('hover-highlight'));
-    }
-  }, [hoveredId, svgRef]);
+    svg.querySelectorAll<SVGElement>('.hover-highlight').forEach(el => {
+      el.classList.remove('hover-highlight');
+      el.style.removeProperty('--canvas-scale');
+    });
+    if (!hoveredId) return;
+    const els = Array.from(svg.querySelectorAll<SVGElement>(`[data-id="${hoveredId}"]`));
+    const applyScale = () => {
+      const scale = String(getCanvasScale());
+      for (const el of els) el.style.setProperty('--canvas-scale', scale);
+    };
+    for (const el of els) el.classList.add('hover-highlight');
+    applyScale();
+    return subscribeTransform(applyScale);
+  }, [hoveredId, svgRef, getCanvasScale, subscribeTransform]);
   return null;
 }
 
