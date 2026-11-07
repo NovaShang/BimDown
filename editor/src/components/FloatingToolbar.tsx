@@ -282,7 +282,7 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
       <Tooltip open={!open && tipOpen} onOpenChange={setTipOpen}>
         <TooltipTrigger
           className={cn(
-            'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+            'flex h-auto min-w-11 px-0.5 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
             isActive
               ? 'text-[var(--tool-color)]'
               : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -441,14 +441,14 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
   }
 
   return (
-    <div data-tour="toolbar" data-canvas-overlay="bottom" className="absolute bottom-3 left-[calc(296px+(100%-308px)/2)] z-30 flex max-w-[calc(100%-308px)] -translate-x-1/2 items-center gap-0.5 max-[1360px]:overflow-x-auto max-[1360px]:[scrollbar-width:thin] max-md:inset-x-3 max-md:mx-auto max-md:w-fit max-md:max-w-[calc(100%-1.5rem)] max-md:translate-x-0 max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&>*]:shrink-0 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
+    <div data-tour="toolbar" data-canvas-overlay="bottom" className="absolute bottom-3 left-[calc(296px+(100%-308px)/2)] z-30 flex max-w-[calc(100%-308px)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto [scrollbar-width:thin] max-md:inset-x-3 max-md:mx-auto max-md:w-fit max-md:max-w-[calc(100%-1.5rem)] max-md:translate-x-0 max-md:overflow-x-auto max-md:overscroll-x-contain max-md:[scrollbar-width:none] max-md:[&>*]:shrink-0 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-2 duration-200">
       {/* General tools */}
       <div className="flex items-center gap-0.5">
         {tools.map(tool => (
           <Tooltip key={tool.tool}>
             <TooltipTrigger
               className={cn(
-                'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+                'flex h-auto min-w-11 px-0.5 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
                 state.activeTool === tool.tool
                   ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
                   : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -480,7 +480,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         <Tooltip>
           <TooltipTrigger
             className={cn(
-              'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+              'flex h-auto min-w-11 px-0.5 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
               state.activeTool === 'draw_grid'
                 ? 'bg-[color-mix(in_srgb,#ef476f_20%,transparent)] text-[#ef476f]'
                 : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
@@ -599,7 +599,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         <Tooltip>
           <TooltipTrigger
             className={cn(
-              'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+              'flex h-auto min-w-11 px-0.5 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
               'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
               !canUndo && 'pointer-events-none opacity-50'
             )}
@@ -616,7 +616,7 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
         <Tooltip>
           <TooltipTrigger
             className={cn(
-              'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+              'flex h-auto min-w-11 px-0.5 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
               'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground',
               !canRedo && 'pointer-events-none opacity-50'
             )}
@@ -659,7 +659,7 @@ function SingleToolButton({ table, variant, discipline, disciplineColor, isActiv
     <Tooltip>
       <TooltipTrigger
         className={cn(
-          'flex h-auto w-11 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
+          'flex h-auto min-w-11 px-0.5 cursor-pointer flex-col items-center justify-center gap-0.5 rounded-lg border-none py-1.5 transition-all',
           isActive
             ? 'text-[var(--tool-color)]'
             : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
