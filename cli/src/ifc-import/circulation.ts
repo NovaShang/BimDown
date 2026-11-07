@@ -8,7 +8,7 @@
 import type { ImportContext, OutEl, AttrValue } from './context.js';
 import { type WorldMesh, mergeMeshes, planObb } from './geometry.js';
 import { axisCurve } from './representation.js';
-import { enumValue, num } from './model.js';
+import { enumValue, num, str } from './model.js';
 import { type V2, type V3, add2, dot2, r3, scale2, sub2 } from './math.js';
 import { pieces, polygonGeometry } from './surfaces.js';
 
@@ -129,12 +129,14 @@ export function convertFlight(ctx: ImportContext, id: number, table: 'stair' | '
 /** railing_type row for the IfcRailingType of a railing (once per type), else undefined. */
 function railingType(ctx: ImportContext, id: number, height: number): string | undefined {
   if (!ctx.tables.has('railing_type')) return undefined;
+  // An IfcRailingType, else the ObjectType string Revit IFC2x3 exports write ("Railing:1100mm Guard Rail")
   const t = ctx.model.typeOf.get(id);
-  if (!t) return undefined;
-  const key = `railing_type:${t}`;
+  const objectType = str(ctx.model.line(id)?.ObjectType)?.trim();
+  if (!t && !objectType) return undefined;
+  const key = t ? `railing_type:${t}` : `railing_type:${objectType}`;
   const known = ctx.typeIds.get(key);
   if (known) return known;
-  const name = (ctx.label(t) ?? `Railing ${Math.round(height * 1000)}`).slice(0, 120);
+  const name = ((t ? ctx.label(t) : objectType!.replace(/^[^:]*:(?=.)/, '')) ?? `Railing ${Math.round(height * 1000)}`).slice(0, 120);
   const el = ctx.add('railing_type', 0, 0, { name, height: r3(height) }, null);
   el.global = true;
   ctx.typeIds.set(key, el.id);
