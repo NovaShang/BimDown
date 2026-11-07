@@ -5,10 +5,9 @@ import type { EditorAction } from '../state/editorTypes.ts';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { useEditorState } from '../state/EditorContext.tsx';
-import { isLayerSelectableInView } from '../state/selectors.ts';
 import { copySelection, cutSelection, pasteAligned, pasteAtCursor, readClipboard, type PasteAligned } from '../state/clipboardCommands.ts';
 import {
-  allPinned, createGroup, selectAllInstances, selectBySystem, selectedGroup, selectionHasSystem, setPinned, ungroup,
+  allPinned, createGroup, requestDelete, selectAllInstances, selectAllInView, selectBySystem, selectedGroup, selectionHasSystem, setPinned, ungroup,
 } from '../state/selectionOps.ts';
 import { openDialog, showNotice } from '../state/modifyUi.ts';
 interface ContextMenuState {
@@ -154,15 +153,7 @@ export default function CanvasContextMenu({
     dispatch({ type: 'SELECT', ids });
   };
 
-  const selectAll = () => {
-    const ids: string[] = [];
-    for (const [id, el] of document.elements) {
-      if (isLayerSelectableInView(el.discipline, el.tableName, full)) {
-        ids.push(id);
-      }
-    }
-    dispatch({ type: 'SELECT', ids });
-  };
+  const selectAll = () => dispatch({ type: 'SELECT', ids: selectAllInView(full), exact: true });
 
   const showAllLayers = () => {
     const allKeys = new Set<string>();
@@ -208,7 +199,7 @@ export default function CanvasContextMenu({
             <Item label={`${t('ctx.cut')}${label}`} shortcut={'\u2318X'} onClick={act(() => cutSelection(full, dispatch))} />
             {pasteItems}
             <Sep />
-            <Item label={`${t('ctx.delete')}${label}`} shortcut="Del" danger onClick={act(() => dispatch({ type: 'DELETE_ELEMENTS', ids: [...selectedIds] }))} />
+            <Item label={`${t('ctx.delete')}${label}`} shortcut="Del" danger onClick={act(() => requestDelete(full, dispatch))} />
             <Item label={`${t('ctx.duplicate')}${label}`} onClick={act(() => dispatch({ type: 'DUPLICATE_ELEMENTS', ids: [...selectedIds], offset: { dx: 0.5, dy: 0.5 } }))} />
             {(full.project?.levels.length ?? 0) > 1 && <Item label={t('levels.copyTo')} onClick={act(() => openDialog({ kind: 'levels', mode: 'copy' }))} />}
             <Item label={t(allPinned(full) ? 'ctx.unpin' : 'ctx.pin')} shortcut={allPinned(full) ? 'UP' : 'PN'} onClick={act(() => setPinned(full, dispatch, !allPinned(full)))} />

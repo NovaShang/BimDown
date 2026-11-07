@@ -2,12 +2,12 @@ import { useTranslation } from 'react-i18next';
 import { useEditorDispatch, useCoreEditorState } from '../state/EditorContext.tsx';
 import { Move, Copy, Trash2, FlipHorizontal, FlipVertical, RotateCw, ArrowLeftRight, FlipHorizontal2, Grid3x3, Layers, Pin, PinOff, Group, Ungroup, PencilRuler, Filter } from 'lucide-react';
 import { enterModifyToolFor } from '../tools/modifyTools.ts';
-import { allPinned, createGroup, selectedGroup, setPinned, ungroup } from '../state/selectionOps.ts';
+import { allPinned, createGroup, flipSelectedWalls, requestDelete, selectedGroup, setPinned, ungroup } from '../state/selectionOps.ts';
 import { openDialog } from '../state/modifyUi.ts';
 import type { EditorState } from '../state/editorTypes.ts';
 import { toElementId } from '../model/ids.ts';
 import { isHostedTable, type Point } from '../model/elements.ts';
-import { canFlipWalls, flipWalls } from '../state/typeEdits.ts';
+import { canFlipWalls } from '../state/typeEdits.ts';
 import { Icon } from './Icons.tsx';
 import { beamsBetweenColumns, gridDirections, type Segment } from '../model/structuralLayout.ts';
 import { beamElements } from '../tools/drawRegionTool.ts';
@@ -99,7 +99,7 @@ export default function SelectionActions() {
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => {
           e.stopPropagation();
-          dispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(selectedIds) });
+          requestDelete(full, dispatch);
         }}
       >
         <Trash2 size={14} />
@@ -153,8 +153,7 @@ export default function SelectionActions() {
             onPointerDown={(e) => e.stopPropagation()}
             onClick={(e) => {
               e.stopPropagation();
-              const patches = flipWalls(doc.elements, [...selectedIds].map(toElementId));
-              if (patches.size > 0) dispatch({ type: 'APPLY_PATCH', description: 'Flip wall', patches });
+              flipSelectedWalls(full, dispatch);
             }}
           >
             <ArrowLeftRight size={14} />

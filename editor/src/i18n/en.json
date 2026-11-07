@@ -1063,5 +1063,17 @@
   "field.Side": "Side",
   "option.Both Sides": "Both Sides",
   "option.Balusters": "Balusters",
-  "type.category.railing_type": "Railing type"
+  "type.category.railing_type": "Railing type",
+  "delete.confirmTitle": "Delete elements",
+  "delete.confirmMany": "Delete {{count}} element(s)?",
+  "delete.confirmHidden": "{{count}} of them are not visible in this view (hidden layer, another discipline or another level).",
+  "prop.elementsSelectedLevels": "{{count}} elements selected ({{elsewhere}} on other levels)",
+  "gridTool.labels": "Labels",
+  "gridTool.scheme.auto": "By direction",
+  "gridTool.scheme.numbers": "1, 2, 3…",
+  "gridTool.scheme.letters": "A, B, C…",
+  "gridTool.numbersOn": "Numbers on",
+  "gridTool.numbersOn.vertical": "Vertical axes",
+  "gridTool.numbersOn.horizontal": "Horizontal axes",
+  "gridTool.next": "Next"
 }

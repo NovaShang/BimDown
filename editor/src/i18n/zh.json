@@ -1063,5 +1063,17 @@
   "field.Side": "侧",
   "option.Both Sides": "两侧",
   "option.Balusters": "立杆",
-  "type.category.railing_type": "栏杆类型"
+  "type.category.railing_type": "栏杆类型",
+  "delete.confirmTitle": "删除构件",
+  "delete.confirmMany": "删除 {{count}} 个构件？",
+  "delete.confirmHidden": "其中 {{count}} 个在当前视图中不可见（图层已隐藏、属于其他专业或其他楼层）。",
+  "prop.elementsSelectedLevels": "已选择 {{count}} 个构件（其中 {{elsewhere}} 个在其他楼层）",
+  "gridTool.labels": "轴号",
+  "gridTool.scheme.auto": "按方向",
+  "gridTool.scheme.numbers": "1, 2, 3…",
+  "gridTool.scheme.letters": "A, B, C…",
+  "gridTool.numbersOn": "数字用于",
+  "gridTool.numbersOn.vertical": "竖向轴线",
+  "gridTool.numbersOn.horizontal": "横向轴线",
+  "gridTool.next": "下一个"
 }

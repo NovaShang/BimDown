@@ -1,9 +1,10 @@
 /**
  * Editor-wide pieces of the modify workflow: clipboard events (Ctrl+C / X /
  * V), the two-letter shortcuts and "?" cheat sheet, the group-edit bar, the
- * modify options bar, dialogs and the notice line.
+ * modify options bar, dialogs, the large / hidden delete confirmation and
+ * the notice line.
  */
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Check, X } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
@@ -12,7 +13,8 @@ import { clearNotice, showNotice, toggleShortcuts, useModifyUi } from '../state/
 import { clipboardFromSelection, copySelection, pasteAtCursor } from '../state/clipboardCommands.ts';
 import { parseClipboard, rememberClipboard, rememberedClipboard, serializeClipboard } from '../model/clipboard.ts';
 import { createSequence } from '../tools/shortcuts.ts';
-import { addToEditedGroup, removeFromEditedGroup, selectedElements } from '../state/selectionOps.ts';
+import { addToEditedGroup, pendingDeleteStore, removeFromEditedGroup, selectedElements } from '../state/selectionOps.ts';
+import ConfirmDialog from './ConfirmDialog.tsx';
 import ModifyOptionsBar from './ModifyOptionsBar.tsx';
 import ModifyDialogs from './ModifyDialogs.tsx';
 
@@ -171,6 +173,19 @@ function Notice() {
   );
 }
 
+/** Asks before a Delete that removes many elements or ones the view doesn't show. */
+function DeleteConfirm() {
+  const { t } = useTranslation();
+  const p = useSyncExternalStore(pendingDeleteStore.subscribe, pendingDeleteStore.get);
+  if (!p) return null;
+  const message = t('delete.confirmMany', { count: p.count })
+    + (p.hidden > 0 ? ' ' + t('delete.confirmHidden', { count: p.hidden }) : '');
+  return (
+    <ConfirmDialog title={t('delete.confirmTitle')} message={message} confirmLabel={t('ctx.delete')} danger
+      onConfirm={pendingDeleteStore.confirm} onClose={pendingDeleteStore.cancel} />
+  );
+}
+
 export default function ModifyHost() {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
@@ -183,6 +198,7 @@ export default function ModifyHost() {
       {!state.readonly && <ModifyOptionsBar />}
       {!state.readonly && <GroupEditBar />}
       <ModifyDialogs />
+      <DeleteConfirm />
       <Notice />
     </>
   );

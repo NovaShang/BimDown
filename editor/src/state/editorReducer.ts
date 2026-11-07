@@ -32,7 +32,7 @@ import { expandCopySet, cloneElements } from '../model/copySet.ts';
 import { transformElements, translation } from '../model/transform.ts';
 import { cleanupGroups, GROUP_TABLE, instanceElements, isGroupable, propagateGroupEdit } from '../model/groups.ts';
 import {
-  applyLevelPatches, beforeOf, copyToLevelsPatches, duplicateLevelPatches, levelElements, multiLevelCommand, projectNumbers,
+  applyLevelPatches, beforeOf, copyToLevelsPatches, levelCopyIds, duplicateLevelPatches, levelElements, multiLevelCommand, projectNumbers,
   redoMulti, takenIds, undoMulti, type LevelPatches,
 } from './levelEdits.ts';
 import { getModifyOptions } from '../tools/modifyOptions.ts';
@@ -1440,7 +1440,8 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
       const targets = action.levelIds.filter(id => id !== state.document!.levelId && state.project!.levels.some(l => l.id === id));
       if (targets.length === 0) return state;
       const numbers = getModifyOptions().renumberCopies ? projectNumbers(state) : undefined;
-      const patches = copyToLevelsPatches(state, state.document.elements, action.ids.map(toElementId), state.document.levelId, targets, undefined, numbers);
+      const ids = levelCopyIds(state, action.ids.map(toElementId));
+      const patches = copyToLevelsPatches(state, state.document.elements, ids, state.document.levelId, targets, undefined, numbers);
       return pushMultiLevel(state, 'Copy to levels', patches);
     }
 

@@ -230,11 +230,17 @@ export function getLayerGroups(state: EditorState): LayerGroup[] {
       m.set(`${state.currentLevel}:${el.id}`, el.attrs);
     }
     const tablesInResult = new Set<string>();
+    const liveLevel = state.document.levelId === state.currentLevel;
     for (const [, layers] of result) {
       for (let i = 0; i < layers.length; i++) {
         tablesInResult.add(layers[i].tableName);
         const live = liveByTable.get(layers[i].tableName);
         if (live) layers[i] = { ...layers[i], csvRows: live };
+        else if (liveLevel && layers[i].tableName !== 'grid') {
+          // Every element of this level's table was deleted: count 0, not the loaded rows
+          const rest = new Map([...layers[i].csvRows].filter(([sid]) => !sid.startsWith(`${state.currentLevel}:`)));
+          layers[i] = { ...layers[i], csvRows: rest };
+        }
       }
     }
     // Surface element types that exist ONLY in the live document — i.e. the
