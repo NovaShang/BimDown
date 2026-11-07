@@ -146,6 +146,18 @@ function wallsKey(walls: LineElement[]): string {
   return parts.join(';');
 }
 
+/**
+ * Outer boundaries of the wall graph: one per connected wall network (the
+ * traced faces of negative area), turned counter-clockwise so the network's
+ * inside is on the left. Used by "floor / roof by picking walls".
+ */
+export function deriveOuterBoundaries(walls: LineElement[]): Point[][] {
+  const segments = collectSegments(walls);
+  if (segments.length === 0) return [];
+  const { halfEdges } = buildHalfEdgeStructure(splitAtIntersections(segments));
+  return traceFaces(halfEdges).filter(f => f.signedArea < 0).map(f => f.polygon.slice().reverse());
+}
+
 /** A bounded (CCW, positive-area) face of the wall graph. */
 export interface BoundedFace { polygon: Point[]; area: number }
 

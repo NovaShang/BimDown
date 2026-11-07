@@ -85,6 +85,7 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   // Relationships
   top_level_id:    { key: 'top_level_id',    label: 'Top Level',       type: 'select', group: 'relationships' },
   host_id:         { key: 'host_id',         label: 'Host',            type: 'readonly', group: 'relationships' },
+  top_attach_id:   { key: 'top_attach_id',   label: 'Attach Top',      type: 'readonly', group: 'relationships' },
   from:            { key: 'from',            label: 'From',            type: 'readonly', group: 'relationships' },
   to:              { key: 'to',              label: 'To',              type: 'readonly', group: 'relationships' },
   family:          { key: 'family',          label: 'Family',          type: 'text',     group: 'relationships' },
@@ -117,6 +118,8 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   // Roof
   roof_type:       { key: 'roof_type',       label: 'Roof Type',       type: 'select', options: ROOF_TYPE_OPTIONS, group: 'roof' },
   slope:           { key: 'slope',           label: 'Slope',           type: 'number', unit: '°', min: 0, max: 60, step: 5, group: 'roof' },
+  edge_slopes:     { key: 'edge_slopes',     label: 'Edge Slopes',     type: 'text',   group: 'roof' },
+  profile:         { key: 'profile',         label: 'Profile',         type: 'text',   group: 'roof' },
 
   // Stair
   step_count:      { key: 'step_count',      label: 'Steps',           type: 'number', min: 1, step: 1, group: 'geometry' },

@@ -54,6 +54,10 @@ function paramMeta(typeTable: string, key: string): ParamMeta {
     case 'u_spacing': return { label: 'field.U Spacing', kind: 'length', step: 0.1, min: 0.1 };
     case 'v_spacing': return { label: 'field.V Spacing', kind: 'length', step: 0.1, min: 0.1 };
     case 'panel_material': return { label: 'field.Panel Material', kind: 'text' };
+    case 'mullion_width': return { label: 'cw.mullionWidth', kind: 'length', step: 0.005, min: 0.005 };
+    case 'mullion_depth': return { label: 'cw.mullionDepth', kind: 'length', step: 0.005, min: 0.005 };
+    case 'mullion_profile': return { label: 'cw.mullionProfile', kind: 'select', options: SHAPE_OPTIONS };
+    case 'solid_material': return { label: 'cw.solidMaterial', kind: 'select', options: MATERIAL_OPTIONS };
     case 'size_x': return { label: 'field.Width', kind: 'length', step: 0.01, min: 0.01 };
     case 'size_y': return { label: 'field.Depth', kind: 'length', step: 0.01, min: 0.01 };
     case 'flange': return { label: 'field.Flange Thk', kind: 'length', step: 0.001, min: 0 };

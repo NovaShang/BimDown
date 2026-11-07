@@ -34,10 +34,14 @@ import { accessorySymbol, equipmentAbbr, equipmentSymbol, terminalSymbol } from 
 import { fittingPlan } from '../../mep/FittingView.tsx';
 import { mul as affMul, rotateDeg, svgToItems, translate as affTranslate } from './svgItems.ts';
 import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
+import { doorSwings, planStripRuns } from '../../elements/curtainWallLayout.ts';
 import type { BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { EquipmentFacts } from '../../elements/equipment.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
+import { roofArrows, type RoofFacts } from '../../elements/roof.tsx';
+import type { SlabFacts } from '../../elements/_slabShared.tsx';
+import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { LAYERS, mepLayer, type DrawingLayer } from './layers.ts';
 import { tint } from './color.ts';
 import { registeredPlanAnnotators, type PlanAnnotator } from './annotations.ts';
@@ -112,6 +116,7 @@ export function collectPlan(input: PlanInput): PlanSource | null {
   const ctx = buildGeometryContext({
     level, allLevels: project.levels, allElements: byId, mepSystems: project.mepSystems, types: project.types,
     unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+    crossLevel: buildCrossLevelIndex(project),
   });
   const factsCache = new Map<string, unknown>();
   const entries: Entry[] = [];
@@ -381,14 +386,32 @@ function drawWindow(env: DrawEnv, el: LineElement, f: WindowFacts) {
 function drawCurtainWall(env: DrawEnv, f: CurtainWallFacts) {
   const { e } = env;
   e.phase = Phase.Cut;
-  e.poly(LAYERS.curtainWall, f.footprint2D, true);
   const u = unit(sub(f.end, f.start));
   const n = perp(u);
-  const half = Math.max(len(sub(f.footprint2D[0], f.footprint2D[3])) / 2, 0.6 * env.pm);
-  e.line(LAYERS.curtainWall, f.start, f.end, { weight: 0.13 });
-  for (let i = 0; i <= f.uGridCount; i++) {
-    const c = add(f.start, u, (f.length * i) / Math.max(1, f.uGridCount));
-    e.line(LAYERS.curtainWall, add(c, n, -half * 1.6), add(c, n, half * 1.6));
+  const hw = len(sub(f.footprint2D[0], f.footprint2D[3])) / 2;
+  const half = Math.max(hw, 0.6 * env.pm);
+  const at = (t: number, s = 0) => add(add(f.start, u, t), n, s);
+  // Glazing strip and centreline, open at bottom-row door cells.
+  const runs = planStripRuns(f.grid);
+  const whole = runs.length === 1 && runs[0][0] === 0 && runs[0][1] === f.length;
+  if (whole) e.poly(LAYERS.curtainWall, f.footprint2D, true);
+  else for (const [t0, t1] of runs) e.poly(LAYERS.curtainWall, [at(t0, hw), at(t1, hw), at(t1, -hw), at(t0, -hw)], true);
+  for (const [t0, t1] of runs) e.line(LAYERS.curtainWall, at(t0), at(t1), { weight: 0.13 });
+  for (const x of f.grid.xs) e.line(LAYERS.curtainWall, at(x, -half * 1.6), at(x, half * 1.6));
+  for (const p of f.corners) {
+    const c = Math.cos(p.angle), s = Math.sin(p.angle), h = p.size / 2;
+    e.poly(LAYERS.curtainWall, [[-h, -h], [h, -h], [h, h], [-h, h]].map(([a, b]) => ({ x: p.at.x + a * c - b * s, y: p.at.y + a * s + b * c })), true);
+  }
+  // Door panels: leaf open to the wall's left + swing arc, as drawDoor.
+  e.phase = Phase.Openings;
+  for (const sw of doorSwings(f)) {
+    const closed = sw.arc[sw.arc.length - 1];
+    const r = len(sub(sw.tip, sw.hinge));
+    const a = unit(sub(closed, sw.hinge)), leafN = unit(sub(sw.tip, sw.hinge));
+    e.line(LAYERS.door, sw.hinge, sw.tip);
+    const angA = Math.atan2(a.y, a.x), angN = Math.atan2(leafN.y, leafN.x);
+    const ccw = a.x * leafN.y - a.y * leafN.x > 0;
+    e.push({ kind: 'arc', layer: e.layer(LAYERS.doorSwing), center: sw.hinge, radius: r, start: ccw ? angA : angN, end: ccw ? angN : angA });
   }
 }
 
@@ -465,6 +488,43 @@ function drawStair(env: DrawEnv, f: StairFacts) {
   const label = drawingLabel(src.lang, goingUp ? 'drawing.up' : 'drawing.down');
   const labelAt = add(at(Math.min(0.35, t0 + (3.5 * pm) / f.horLen), 0), n, Math.min(hw * 0.5, 2 * pm));
   e.text(LAYERS.areaIden, labelAt, label, 1.8 * pm, { bold: true, rotation: uprightAngle(u) });
+}
+
+/** Shafts from other levels crossing this floor: outline and a cross (this level's shafts draw as openings). */
+function drawShafts(env: DrawEnv, holes: Point[][]) {
+  const { e, src } = env;
+  const own = src.entries.filter(x => x.el.tableName === 'opening' && x.el.geometry === 'polygon')
+    .map(x => (x.el as PolygonElement).vertices);
+  const same = (a: Point[], b: Point[]) => a.length === b.length && a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-6);
+  e.phase = Phase.Openings;
+  for (const h of holes) {
+    if (h.length < 3 || own.some(o => same(o, h))) continue;
+    e.poly(LAYERS.floorOpen, h, true);
+    e.line(LAYERS.floorOpen, h[0], h[Math.floor(h.length / 2)], { weight: 0.13 });
+    if (h.length === 4) e.line(LAYERS.floorOpen, h[1], h[3], { weight: 0.13 });
+  }
+}
+
+/** Roof plan: outline, ridges / hips (solid), valleys (dashed), a slope arrow per roof plane. */
+function drawRoof(env: DrawEnv, el: CanonicalElement, f: RoofFacts) {
+  const { e, pm } = env;
+  e.phase = Phase.Below;
+  e.poly(LAYERS.roof, f.vertices, true);
+  for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(LAYERS.floorOpen, h, true);
+  for (const l of f.solution.lines) {
+    e.line(LAYERS.roofLine, l.a, l.b, l.kind === 'valley' ? { dash: 'dashed' } : l.kind === 'ridge' ? { weight: 0.18 } : {});
+  }
+  drawShafts(env, f.shaftHoles);
+  e.phase = Phase.Tags;
+  for (const ar of roofArrows(f.solution)) {
+    const u = unit(sub(ar.to, ar.from));
+    const n = perp(u);
+    const head = Math.min(1.6 * pm, Math.hypot(ar.to.x - ar.from.x, ar.to.y - ar.from.y) * 0.35);
+    const back = add(ar.to, u, -head);
+    e.line(LAYERS.roofIden, ar.from, back);
+    e.push({ kind: 'path', layer: e.layer(LAYERS.roofIden), pts: [ar.to, add(back, n, head * 0.35), add(back, n, -head * 0.35)], closed: true, fill: LAYERS.roofIden.color });
+    e.text(LAYERS.roofIden, add(ar.from, n, 1.8 * pm), ar.label, 1.8 * pm, { rotation: uprightAngle(u) });
+  }
 }
 
 /** Direction angle of `u`, flipped by 180° when text along it would read upside down. */
@@ -831,13 +891,11 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       e.poly(el.tableName === 'slab' ? LAYERS.slab : LAYERS.sSlab, (facts as { vertices: Point[] }).vertices, true);
       // Inner rings (holes) of the slab outline; hosted openings draw themselves.
       for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(LAYERS.floorOpen, h, true);
+      drawShafts(env, (facts as SlabFacts).shaftHoles ?? []);
       return;
     }
-    case 'roof': {
-      e.phase = Phase.Below;
-      e.poly(LAYERS.roof, (facts as { vertices: Point[] }).vertices, true);
-      return;
-    }
+    case 'roof':
+      return drawRoof(env, el, facts as RoofFacts);
     case 'stair':
     case 'stair_run':
       return drawStair(env, facts as StairFacts);

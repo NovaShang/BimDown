@@ -4,6 +4,8 @@ import type { Level, SystemDef } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
 import type { TypeCatalog } from '../../model/types/catalog.ts';
 import { buildGeometryContext } from './buildContext.ts';
+import { useCoreEditorState } from '../../state/EditorContext.tsx';
+import { crossLevelIndex } from '../../model/crossLevel.ts';
 
 const SVGGeometryCtx = createContext<GeometryContext | null>(null);
 
@@ -17,10 +19,19 @@ interface ProviderProps {
 }
 
 export function SVGGeometryProvider({ level, allLevels, allElements, mepSystems, types, children }: ProviderProps) {
+  // Other levels' roofs / slabs / shafts (wall top attachment, shafts).
+  const core = useCoreEditorState();
+  const project = core?.project;
+  const docElements = core?.document?.elements;
+  const currentLevel = core?.currentLevel;
+  const crossLevel = useMemo(
+    () => crossLevelIndex(project, docElements && currentLevel ? { levelId: currentLevel, elements: docElements } : null),
+    [project, docElements, currentLevel],
+  );
   const ctx = useMemo(() => {
     if (!level || !allElements) return null;
-    return buildGeometryContext({ level, allLevels, allElements, mepSystems, types });
-  }, [level, allLevels, allElements, mepSystems, types]);
+    return buildGeometryContext({ level, allLevels, allElements, mepSystems, types, crossLevel });
+  }, [level, allLevels, allElements, mepSystems, types, crossLevel]);
 
   return <SVGGeometryCtx.Provider value={ctx}>{children}</SVGGeometryCtx.Provider>;
 }

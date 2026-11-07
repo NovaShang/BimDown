@@ -339,8 +339,8 @@ describe('IFC export of the building', () => {
   it('builds sloped roofs, stepped stairs, real sections and foundations', async () => {
     const { data, ents, keys } = await exportFiles(room);
     const got = await readBack(data, keys);
-    // Hip roof: 5 m span, 30° → ridge 2.5·tan30 above the 0.2 m thick eave.
-    expectBox(got, 'roof:ro-1', [0, 0, 3], [8, 5, 3.2 + 2.5 * Math.tan(Math.PI / 6)], 4);
+    // Hip roof: 5 m span, 30° → underside ridge 2.5·tan30 above the eave, a 0.2 m slab (0.2 / cos30 vertical) on it.
+    expectBox(got, 'roof:ro-1', [0, 0, 3], [8, 5, 3 + 2.5 * Math.tan(Math.PI / 6) + 0.2 / Math.cos(Math.PI / 6)], 4);
     expect(byKey(ents, keys, 'roof:ro-1').args[8]).toBe('.HIP_ROOF.');
     // Stair: one stepped flight from 0 to 3 m inside an IfcStair.
     const flight = [...got].find(([, p]) => p.type === 'IfcStairFlight')![1];

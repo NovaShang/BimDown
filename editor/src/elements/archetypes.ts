@@ -5,6 +5,7 @@ import type { PropertyField } from './_propertyFields.ts';
 import type { Level, SystemDef } from '../types.ts';
 import type { TypeCatalog } from '../model/types/catalog.ts';
 import type { ToolHandler } from '../tools/types.ts';
+import type { CrossLevelIndex } from '../model/crossLevel.ts';
 
 // ─── Archetype ───────────────────────────────────────────────────────────────
 
@@ -67,6 +68,11 @@ export interface GeometryContext {
 
   /** Project element types (wall layers etc.); undefined when the project has none. */
   projectTypes(): TypeCatalog | undefined;
+
+  /** Elements on other levels that geometry here depends on (roofs walls
+   *  attach to, shafts through slabs). Undefined when the caller has no
+   *  project (single-level tests): same-level lookups only then. */
+  crossLevel?: CrossLevelIndex;
 }
 
 // ─── Draw contexts ───────────────────────────────────────────────────────────
@@ -166,6 +172,8 @@ export interface PlacementContext {
   elements: ReadonlyMap<string, CanonicalElement>;
   levels: readonly Level[];
   levelId: string;
+  /** Toolbar variant being placed (see ToolbarVariant). */
+  variantId?: string;
 }
 
 /** Props of `ElementModule.placementPreview` (model coords, Y up). */
@@ -339,6 +347,21 @@ export interface ElementModule<TFacts = unknown> {
   /** Extra attrs to apply when `changes` are edited (UPDATE_ATTRS and the
    *  drawing bar), e.g. sizes that follow a new family's defaults. */
   attrChangeRules?(prev: Record<string, string>, changes: Record<string, string>): Record<string, string>;
+
+  /**
+   * Optional element-specific editor shown in the properties panel below the
+   * generic fields when exactly one element is selected (roof edge slopes,
+   * curtain wall grid, stair calculator, ...). Receives the live document
+   * element; edits go through the editor dispatch like any other panel row.
+   */
+  propertyPanel?: ComponentType<PropertyPanelProps>;
+}
+
+/** Props of `ElementModule.propertyPanel`. */
+export interface PropertyPanelProps {
+  element: CanonicalElement;
+  /** False when the element is read-only (another level, viewer mode). */
+  editable: boolean;
 }
 
 /** Type-erased module for the registry. */

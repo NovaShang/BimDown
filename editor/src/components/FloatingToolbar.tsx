@@ -113,6 +113,7 @@ function toolForPlacement(placement: PlacementType): Tool {
     case 'free_polygon': return 'draw_polygon';
     case 'grid': return 'draw_grid';
     case 'region': return 'draw_region';
+    case 'pick': return 'draw_pick';
   }
 }
 
@@ -410,13 +411,15 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
       }
     }
     const emitted = new Set<string[]>();
+    // A table with placement variants (e.g. roof: sketch / by walls) needs a group slot.
+    const hasVariants = (t: string) => (getElementModule(t)?.toolbarVariants?.length ?? 0) > 1;
     for (const table of disciplineTables) {
       const group = groupForTable.get(table);
       if (group && !emitted.has(group)) {
         emitted.add(group);
-        archItems.push(group.length === 1 ? { type: 'single', table: group[0] } : { type: 'group', tools: group });
+        archItems.push(group.length === 1 && !hasVariants(group[0]) ? { type: 'single', table: group[0] } : { type: 'group', tools: group });
       } else if (!group) {
-        archItems.push({ type: 'single', table });
+        archItems.push(hasVariants(table) ? { type: 'group', tools: [table] } : { type: 'single', table });
       }
     }
   }
@@ -572,12 +575,14 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           {/* Structure also cuts openings (structural walls); the opening
               table belongs to architecture, so it keeps that discipline. */}
           {activeDiscipline === 'structure' && (
-            <SingleToolButton
-              table="opening"
+            <ToolGroupButton
+              entries={expandToolbarEntries(['opening'])}
               discipline="architecture"
               disciplineColor={disciplineColor}
-              isActive={activeTable === 'opening'}
-              onClick={handleDrawToolClick}
+              activeTable={activeTable}
+              activeVariantId={activeVariantId}
+              activeDiscipline={state.drawingTarget?.discipline ?? null}
+              onToolClick={handleDrawToolClick}
             />
           )}
         </div>

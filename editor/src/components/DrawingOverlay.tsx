@@ -359,6 +359,18 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     );
   }
 
+  if (activeTool === 'draw_pick') {
+    // Boundary the click would create (floor / roof / ceiling from walls or a room).
+    if (points.length < 3) return null;
+    return (
+      <g className="drawing-overlay" transform="scale(1,-1)" pointerEvents="none">
+        <polygon points={points.map(p => `${p.x},${p.y}`).join(' ')}
+          fill="#4fc3f7" fillOpacity="0.1"
+          stroke="#4fc3f7" strokeWidth={0.1 / scale} strokeDasharray={`${0.5 / scale},${0.25 / scale}`} />
+      </g>
+    );
+  }
+
   if (activeTool === 'draw_region') {
     if (points.length === 1 && cursor) {
       const a = points[0];

@@ -24,7 +24,7 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type GeometryType = 'line' | 'spatial_line' | 'point' | 'polygon' | 'mixed';
-export type PlacementType = 'free_line' | 'spatial_line' | 'hosted' | 'free_point' | 'free_polygon' | 'grid' | 'region';
+export type PlacementType = 'free_line' | 'spatial_line' | 'hosted' | 'free_point' | 'free_polygon' | 'grid' | 'region' | 'pick';
 
 export interface DrawingField {
   key: string;

@@ -1,6 +1,7 @@
 import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
-import type { PolygonElement } from '../model/elements.ts';
+import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
+import { pointInPolygon, signedArea } from '../geometry/roofSolver.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
@@ -88,6 +89,44 @@ export function finishPolygon(
   return true;
 }
 
+const OPENING_HOSTS = new Set(['slab', 'structure_slab', 'roof']);
+
+/**
+ * Attrs of a sketched polygon opening: hosted on the smallest floor / roof of
+ * the level containing its centre, or a shaft (top_level_id) needing no host.
+ * Wall-opening fields are dropped. Null when a non-shaft has no host.
+ */
+export function polygonOpeningAttrs(
+  attrs: Record<string, string>,
+  vertices: { x: number; y: number }[],
+  elements: ReadonlyMap<string, CanonicalElement> | undefined,
+  shaft: boolean,
+): Record<string, string> | null {
+  const out = { ...attrs };
+  for (const k of ['position', 'width', 'height', 'shape']) out[k] = '';
+  let cx = 0, cy = 0;
+  for (const v of vertices) { cx += v.x; cy += v.y; }
+  cx /= vertices.length; cy /= vertices.length;
+  let host: PolygonElement | null = null, hostArea = Infinity;
+  for (const el of elements?.values() ?? []) {
+    if (!OPENING_HOSTS.has(el.tableName) || el.geometry !== 'polygon') continue;
+    if (!pointInPolygon({ x: cx, y: cy }, el.vertices)) continue;
+    const a = Math.abs(signedArea(el.vertices));
+    if (a < hostArea) { host = el; hostArea = a; }
+  }
+  if (shaft) {
+    out.host_id = host?.id ?? '';
+    if (!out.top_level_id) return null;
+    return out;
+  }
+  if (!host) return null;
+  out.host_id = host.id;
+  out.top_level_id = '';
+  out.top_offset = '';
+  out.base_offset = '';
+  return out;
+}
+
 function createPolygon(
   state: Pick<ToolStateSnapshot, 'drawingTarget' | 'drawingAttrs' | 'document' | 'project' | 'currentLevel'>,
   dispatch: (action: EditorAction) => void,
@@ -100,7 +139,12 @@ function createPolygon(
   const id = generateId(target.tableName, existingIds);
   const baseAttrs = defaultAttrs(target.tableName, resolveNextLevelId(state));
   const vDefaults = variantDefaults(target.tableName, target.variantId);
-  const mergedAttrs = { ...baseAttrs, ...vDefaults, ...state.drawingAttrs, id };
+  let mergedAttrs: Record<string, string> = { ...baseAttrs, ...vDefaults, ...state.drawingAttrs, id };
+  if (target.tableName === 'opening') {
+    const attrs = polygonOpeningAttrs(mergedAttrs, vertices, state.document?.elements, target.variantId === 'shaft');
+    if (!attrs) return; // a sketched opening needs a floor or roof under it
+    mergedAttrs = attrs;
+  }
 
   const element: PolygonElement = {
     id,

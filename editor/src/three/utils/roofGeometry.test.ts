@@ -26,21 +26,29 @@ const rect = (w: number, d: number) => [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, 
 const roof = (roofType: string, vertices = rect(4, 3), slopeDeg = 45) =>
   createRoofGeometry({ kind: 'extrude', vertices, baseY: 10, height: 0.2, roofType, slopeDeg })!;
 
+const vt = (deg: number) => 0.2 / Math.cos((deg * Math.PI) / 180);
+
 describe('createRoofGeometry', () => {
-  it('builds a hip roof with a real ridge (not a flat slab)', () => {
+  it('builds a hip roof as a sloped slab with a real ridge', () => {
     const g = roof('hip');
-    expect(maxY(g)).toBeCloseTo(10.2 + 1.5, 5);          // half span × tan 45°
-    // slab 4×3×0.2 + hip solid h·W·(3L − W)/6
-    expect(volume(g)).toBeCloseTo(2.4 + (1.5 * 3 * (12 - 3)) / 6, 4);
+    expect(maxY(g)).toBeCloseTo(10 + 1.5 + vt(45), 5);          // half span × tan 45° + slab
+    // A sloped slab of constant vertical thickness: footprint × thickness.
+    expect(volume(g)).toBeCloseTo(12 * vt(45), 4);
   });
 
   it('builds gable, shed and mansard roofs as closed, outward-wound solids', () => {
-    expect(volume(roof('gable'))).toBeCloseTo(2.4 + 4 * (3 * 1.5) / 2, 4);
-    expect(maxY(roof('shed'))).toBeCloseTo(10.2 + 3, 5);
-    expect(volume(roof('shed'))).toBeCloseTo(2.4 + 4 * (3 * 3) / 2, 4);
+    expect(volume(roof('gable'))).toBeCloseTo(12 * vt(45), 4);
+    expect(maxY(roof('shed'))).toBeCloseTo(10 + 3 + vt(45), 5);
+    expect(volume(roof('shed'))).toBeCloseTo(12 * vt(45), 4);
     const m = roof('mansard', rect(10, 8), 30);
-    expect(maxY(m)).toBeCloseTo(10.2 + 4 * 0.3 * Math.tan((50 * Math.PI) / 180), 4);
-    expect(volume(m)).toBeGreaterThan(0);
+    expect(maxY(m)).toBeCloseTo(10 + 4 * 0.3 * Math.tan((50 * Math.PI) / 180) + vt(50), 4);
+    expect(volume(m)).toBeCloseTo(80 * vt(50), 3);
+  });
+
+  it('flat roof is a plain slab', () => {
+    const g = roof('flat');
+    expect(maxY(g)).toBeCloseTo(10.2, 6);
+    expect(volume(g)).toBeCloseTo(12 * 0.2, 4);
   });
 
   it('accepts a clockwise footprint', () => {

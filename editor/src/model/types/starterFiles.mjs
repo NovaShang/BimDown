@@ -21,8 +21,8 @@ colt-concrete-600,Concrete 600 x 600,,concrete,rect,0.6,0.6,,,
 colt-concrete-round-400,Concrete round 400,,concrete,round,0.4,,,,
 colt-steel-hea-300,Steel HEA 300,European wide-flange section,steel,i_shape,0.3,0.29,0.014,0.0085,
 `,
-  'global/curtain_wall_type.csv': `id,name,description,material,u_spacing,v_spacing,panel_material,u_value,shgc,vt
-cwt-glazed-1500,Glazed 1500 grid,Aluminium stick system with double-glazed panels,aluminum,1.5,1.5,glass,1.6,0.35,0.6
+  'global/curtain_wall_type.csv': `id,name,description,material,u_spacing,v_spacing,panel_material,mullion_width,mullion_depth,mullion_profile,solid_material,u_value,shgc,vt
+cwt-glazed-1500,Glazed 1500 grid,Aluminium stick system with double-glazed panels,aluminum,1.5,1.5,glass,0.05,0.15,rect,aluminum,1.6,0.35,0.6
 `,
   'global/door_type.csv': `id,name,description,material,width,height,operation,frame_width,u_value,shgc,vt
 dt-single-900,Single 900 x 2100,Flush timber door,wood,0.9,2.1,single_swing,0.05,2.0,,

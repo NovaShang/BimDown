@@ -69,7 +69,7 @@ export const TYPE_TABLE_DEFS: TypeTableDef[] = [
   { table: 'ceiling_type', prefix: 'clt', instances: ['ceiling'], layered: true, columns: ['material', 'thickness'] },
   { table: 'door_type', prefix: 'dt', instances: ['door'], layered: false, columns: ['material', 'width', 'height', 'operation', ...FENESTRATION] },
   { table: 'window_type', prefix: 'wnt', instances: ['window'], layered: false, columns: ['material', 'width', 'height', 'operation', ...FENESTRATION] },
-  { table: 'curtain_wall_type', prefix: 'cwt', instances: ['curtain_wall'], layered: false, columns: ['material', 'u_spacing', 'v_spacing', 'panel_material', 'u_value', 'shgc', 'vt'] },
+  { table: 'curtain_wall_type', prefix: 'cwt', instances: ['curtain_wall'], layered: false, columns: ['material', 'u_spacing', 'v_spacing', 'panel_material', 'mullion_width', 'mullion_depth', 'mullion_profile', 'solid_material', 'u_value', 'shgc', 'vt'] },
   { table: 'column_type', prefix: 'colt', instances: ['column', 'structure_column'], layered: false, columns: ['material', ...SECTION] },
   { table: 'beam_type', prefix: 'bmt', instances: ['beam', 'brace'], layered: false, columns: ['material', ...SECTION] },
   { table: 'furniture_type', prefix: 'fut', instances: ['furniture'], layered: false, columns: ['family', 'variant', 'size_x', 'size_y', 'height'] },

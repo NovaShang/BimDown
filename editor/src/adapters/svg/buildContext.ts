@@ -3,6 +3,7 @@ import type { Level, SystemDef } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
 import type { TypeCatalog } from '../../model/types/catalog.ts';
 import { metre } from '../../annotation/geometry.ts';
+import type { CrossLevelIndex } from '../../model/crossLevel.ts';
 
 interface BuildGeometryContextOpts {
   level: Level;
@@ -14,6 +15,8 @@ interface BuildGeometryContextOpts {
   types?: TypeCatalog;
   /** Project units per metre (1000 for mm); default: the open project's (editor), else 1. */
   unitsPerMetre?: number;
+  /** Roofs / slabs / shafts of every level (wall top attachment, shafts). */
+  crossLevel?: CrossLevelIndex;
 }
 
 /**
@@ -22,7 +25,7 @@ interface BuildGeometryContextOpts {
  * element map or level changes.
  */
 export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryContext {
-  const { level, allLevels, allElements, mepSystems = [], types } = opts;
+  const { level, allLevels, allElements, mepSystems = [], types, crossLevel } = opts;
 
   const levelElevations = new Map<string, number>();
   for (const l of allLevels) levelElevations.set(l.id, l.elevation);
@@ -88,5 +91,6 @@ export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryCo
     },
     projectSystems: () => mepSystems,
     projectTypes: () => types,
+    crossLevel,
   };
 }

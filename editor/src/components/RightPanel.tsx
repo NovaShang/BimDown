@@ -23,6 +23,7 @@ import { TypeSelect } from './TypeSelect.tsx';
 import EditTypeDialog from './EditTypeDialog.tsx';
 import { findType, isTypedTable, typeParamState, typeValues } from '../model/types/catalog.ts';
 import QuantitiesSection from './QuantitiesSection.tsx';
+import ModulePropertyPanel from './ModulePropertyPanel.tsx';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -207,6 +208,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
       {/* Property groups */}
       <ScrollArea className="min-h-0 flex-1">
         {isSingleSelection && <LineLengthRow id={firstId} editable={!readonly} inputClass={FIELD_INPUT} />}
+        {isSingleSelection && <ModulePropertyPanel id={firstId} table={firstData.tableName} editable={!readonly && editableSelection} />}
         <div className="py-0.5">
           {grouped.map((group, gi) => {
             const isCollapsed = collapsed.has(group.labelKey);

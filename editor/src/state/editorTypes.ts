@@ -10,7 +10,7 @@ import type { ViewOptions, ViewOptionKey } from './viewOptions.ts';
 import type { ViewsState, ViewsAction } from '../views/viewTypes.ts';
 import type { FloorWrites, LevelPatches } from './levelEdits.ts';
 
-export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'mirror' | 'array' | 'align' | 'offset' | 'paste' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region'
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'mirror' | 'array' | 'align' | 'offset' | 'paste' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region' | 'draw_pick'
   | 'trim_corner' | 'trim_single' | 'split'
   | 'draw_dimension' | 'draw_text' | 'draw_tag'
   | 'draw_section'

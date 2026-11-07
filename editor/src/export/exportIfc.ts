@@ -18,7 +18,10 @@ import { getElementModule } from '../elements/registry.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
-import { createRoofGeometry } from '../three/utils/roofGeometry.ts';
+import { roofGeometryFromSolution } from '../three/utils/roofGeometry.ts';
+import { wallSolid } from '../elements/_lineWallShared.tsx';
+import { buildCrossLevelIndex, isShaft, shaftRange, type CrossLevelIndex } from '../model/crossLevel.ts';
+import { pointInPolygon as inPolygon, centroid as polyCentroid, signedArea as polySignedArea } from '../geometry/roofSolver.ts';
 import { bimMaterialAppearance, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { MEP_LINE_TABLES } from '../model/mepTopology.ts';
 import { parsePortRef } from '../utils/portRef.ts';
@@ -36,6 +39,7 @@ import type { StairRunFacts } from '../elements/stair_run.tsx';
 import type { RailingFacts } from '../elements/railing.tsx';
 import type { RampFacts } from '../elements/ramp.tsx';
 import type { CurtainWallFacts } from '../elements/curtain_wall.tsx';
+import { curtainWallPieces } from '../elements/curtainWallLayout.ts';
 import type { EquipmentFacts } from '../elements/equipment.tsx';
 import type { SpaceFacts } from '../elements/space.tsx';
 import type { FurnitureFacts } from '../elements/furniture.tsx';
@@ -144,8 +148,10 @@ const SEGMENT_4: Record<string, [string, string, string]> = {
   conduit: ['IfcCableCarrierSegment', 'CONDUITSEGMENT', 'IfcCableCarrierFitting'],
 };
 const ROOF_SHAPE: Record<string, string> = {
-  flat: 'FLAT_ROOF', gable: 'GABLE_ROOF', hip: 'HIP_ROOF', shed: 'SHED_ROOF', mansard: 'MANSARD_ROOF',
+  flat: 'FLAT_ROOF', gable: 'GABLE_ROOF', hip: 'HIP_ROOF', shed: 'SHED_ROOF', mansard: 'MANSARD_ROOF', extrusion: 'FREEFORM',
 };
+/** Hosts a shaft opening can void. */
+const SHAFT_HOSTS = new Set(['slab', 'structure_slab', 'roof']);
 const STAIR_SHAPE: Record<string, string> = {
   straight: 'STRAIGHT_RUN_STAIR', quarter_turn: 'QUARTER_TURN_STAIR', half_turn: 'HALF_TURN_STAIR',
   winder: 'QUARTER_WINDING_STAIR', spiral: 'SPIRAL_STAIR', curved: 'CURVED_RUN_STAIR', double_return: 'DOUBLE_RETURN_STAIR',
@@ -264,6 +270,9 @@ class Exporter {
   private aggregates: { whole: H; parts: H[] }[] = [];
   private scopes: Scope[] = [];
   private counter = 0;
+  /** Shaft openings, voided into every host they cross once all hosts exist. */
+  private shafts: { scope: Scope; el: PolygonElement }[] = [];
+  private crossLevel!: CrossLevelIndex;
 
   private w: IfcWriter;
   private project: ProjectData;
@@ -298,6 +307,7 @@ class Exporter {
         for (const el of byTable.get(table) ?? []) this.exportElement(scope, el);
       }
     }
+    this.exportShafts();
     this.exportGrid(this.grids);
     for (const scope of this.scopes) this.exportSpaces(scope);
     this.exportMep();
@@ -382,6 +392,9 @@ class Exporter {
     const { project } = this;
     const allLevels = project.levels;
     const mepSystems = project.mepSystems;
+    // Roofs walls attach to and shafts, across levels.
+    this.crossLevel = buildCrossLevelIndex(project);
+    const crossLevel = this.crossLevel;
     const makeScope = (id: string, storey: Storey, elements: CanonicalElement[], baseElevation: (el: CanonicalElement) => number): Scope => {
       const allElements = new Map<string, CanonicalElement>();
       for (const el of elements) allElements.set(el.id, el);
@@ -390,7 +403,7 @@ class Exporter {
         let c = ctxCache.get(elev);
         if (!c) {
           const level: Level = { ...storey.level, elevation: elev };
-          c = buildGeometryContext({ level, allLevels, allElements, mepSystems, types: project.types, unitsPerMetre: this.upm });
+          c = buildGeometryContext({ level, allLevels, allElements, mepSystems, types: project.types, unitsPerMetre: this.upm, crossLevel });
           ctxCache.set(elev, c);
         }
         return c;
@@ -554,6 +567,14 @@ class Exporter {
   private exportWall(scope: Scope, el: CanonicalElement, f: LineWallFacts): void {
     const { w } = this;
     const geom = wallGeom(f);
+    let volume = Math.abs(polygonArea(f.footprint)) * f.height;
+    if (f.topAttach) {
+      // Top attached to a roof / slab: the 3D view's body (sloped top), openings left to the voids.
+      const body = wallSolid(f, f.footprint, false);
+      const brep = brepFromBuffer(body);
+      body.dispose();
+      if (brep) { geom.solids = [brep]; volume = brepVolume(brep); }
+    }
     const external = el.geometry === 'line' ? isExternalWall(el as LineElement, scope.faces) : false;
     const loadBearing = el.tableName === 'structure_wall';
     const rec = this.product({
@@ -572,8 +593,8 @@ class Exporter {
       { kind: 'length', name: 'Width', value: f.thickness },
       { kind: 'length', name: 'Height', value: f.height },
       { kind: 'area', name: 'GrossFootprintArea', value: footprint },
-      { kind: 'area', name: 'GrossSideArea', value: len * f.height },
-      { kind: 'volume', name: 'GrossVolume', value: footprint * f.height },
+      { kind: 'area', name: 'GrossSideArea', value: f.topAttach ? volume / Math.max(f.thickness, 1e-6) : len * f.height },
+      { kind: 'volume', name: 'GrossVolume', value: volume },
     ]);
     this.bimdownPset(rec);
     // Voids for hosted doors / windows / openings, filled later by the hosted element.
@@ -600,20 +621,39 @@ class Exporter {
       tail: this.pt4('IfcCurtainWall', 'NOTDEFINED'),
     });
     rec.external = el.geometry === 'line' ? isExternalWall(el as LineElement, scope.faces) : true;
-    const frameStyle = this.styleFor(f.frameMaterial, 'curtain_wall');
-    const panelStyle = this.styleFor(f.panelMaterial, 'curtain_wall');
     const parts: H[] = [];
+    // Members and plates: empty cells have none, solid panels carry their own material.
     for (const p of curtainWallParts(f)) {
       const isPanel = p.kind === 'panel';
+      const material = p.piece.material;
       const part = this.product({
         scope, el, key: `${rec.key}#${p.kind}:${p.index}`, type: isPanel ? 'IfcPlate' : 'IfcMember',
-        geom: { solids: [p.solid] }, styles: isPanel ? panelStyle : frameStyle,
+        geom: { solids: [p.solid] }, styles: this.styleFor(material, 'curtain_wall'),
         name: `${el.attrs.number || el.id} ${p.kind} ${p.index}`, objectType: isPanel ? 'CURTAIN_PANEL' : 'MULLION',
         tail: isPanel ? this.pt4('IfcPlate', 'CURTAIN_PANEL') : this.pt4('IfcMember', 'MULLION'),
         contained: false, register: false,
       });
-      this.singleMaterial(part.handle, isPanel ? f.panelMaterial : f.frameMaterial);
+      this.singleMaterial(part.handle, material);
       parts.push(part.handle);
+    }
+    // Door panels: an IfcDoor (frame + leaves as the 3D view) aggregated in the curtain wall.
+    for (const p of curtainWallPieces(f)) {
+      if (p.role !== 'door') continue;
+      const operation = p.kind === 'double_door' ? 'double_swing' : 'single_swing';
+      const frame = planFrame(v3(p.c.x, p.c.y, p.z0), p.angle);
+      const solids = openingPartSolids(frame, doorParts({ length: p.along, height: p.h, strokeWidth: p.across, operation }), p.h);
+      const frameStyle = this.styleFor(f.frameMaterial, 'curtain_wall');
+      const leafStyle = this.styleFor(f.panelMaterial, 'curtain_wall');
+      const tail: any[] = [w.plen(p.h), w.plen(p.along)];
+      if (w.ifc4) tail.push(w.enumv('IfcDoorTypeEnum', 'DOOR'), w.enumv('IfcDoorTypeOperationEnum', doorOperation(operation, 'left')), null);
+      const door = this.product({
+        scope, el, key: `${rec.key}#door:${p.index}`, type: 'IfcDoor',
+        geom: { frame, solids: solids.map(s => s.solid) }, styles: solids.map(s => (s.role === 'frame' ? frameStyle : leafStyle)),
+        name: `${el.attrs.number || el.id} door ${p.index}`, objectType: operation, tail,
+        contained: false, register: false,
+      });
+      this.singleMaterial(door.handle, f.frameMaterial);
+      parts.push(door.handle);
     }
     if (parts.length > 0) this.aggregates.push({ whole: rec.handle, parts });
     this.pset(rec, 'Pset_CurtainWallCommon', {
@@ -636,8 +676,10 @@ class Exporter {
   private exportSlab(scope: Scope, el: CanonicalElement, f: SlabFacts): void {
     const { w } = this;
     const verts = f.vertices.map(p => ({ x: p.x, y: p.y }));
-    const geom: ProductGeom = { solids: [extrudePlan(verts, f.baseY, f.thickness)] };
-    const area = Math.abs(polygonArea(verts));
+    // Inner rings belong to the profile; hosted openings and shafts are voids.
+    const rings = ((el as PolygonElement).holes ?? []).filter(h => h.length >= 3);
+    const geom: ProductGeom = { solids: [extrudePlan(verts, f.baseY, f.thickness, rings.length > 0 ? rings : undefined)] };
+    const area = Math.abs(polygonArea(verts)) - rings.reduce((s, h) => s + Math.abs(polygonArea(h)), 0);
     if (el.tableName === 'ceiling') {
       const rec = this.product({
         scope, el, type: 'IfcCovering', geom, styles: this.styleFor(f.material, 'ceiling'),
@@ -676,9 +718,10 @@ class Exporter {
     const { w } = this;
     const verts = f.vertices.map(p => ({ x: p.x, y: p.y }));
     let solid: Solid | null = null;
-    if (f.roofType !== 'flat' && f.slopeDeg > 0) {
-      // The 3D view's mesh (outward-wound, one facet per roof plane) as a faceted brep.
-      const geo = createRoofGeometry({ kind: 'extrude', vertices: verts, baseY: f.baseY, height: f.thickness, roofType: f.roofType, slopeDeg: f.slopeDeg });
+    if (f.slopeDeg > 0) {
+      // The 3D view's sloped slab (one facet per roof plane) as a faceted brep;
+      // openings and shafts are voids, as for slabs.
+      const geo = roofGeometryFromSolution(f.solution, verts, f.baseY, f.thickness, (el as PolygonElement).holes ?? []);
       solid = geo ? brepFromBuffer(geo) : null;
       geo?.dispose();
     }
@@ -694,8 +737,14 @@ class Exporter {
     else this.singleMaterial(rec.handle, f.material);
     this.pset(rec, 'Pset_RoofCommon', { Reference: w.ident(el.attrs.number), IsExternal: w.bool(true) });
     const area = Math.abs(polygonArea(verts));
+    // Sloped area: each roof plane's plan area / cos(its slope).
+    let sloped = 0;
+    for (const pc of f.solution.pieces) {
+      const pl = f.solution.planes[pc.plane];
+      sloped += Math.abs(polySignedArea(pc.poly)) * Math.sqrt(1 + pl.a * pl.a + pl.b * pl.b);
+    }
     this.qto(rec, 'Qto_RoofBaseQuantities', [
-      { kind: 'area', name: 'GrossArea', value: area / Math.cos((f.roofType === 'flat' ? 0 : f.slopeDeg) * Math.PI / 180) },
+      { kind: 'area', name: 'GrossArea', value: sloped > 0 ? sloped : area },
       { kind: 'area', name: 'ProjectedArea', value: area },
     ]);
     this.bimdownPset(rec);
@@ -797,6 +846,7 @@ class Exporter {
     const v = this.voids.get(`${scope.id}/${el.id}`);
     if (v) return; // void written with its host wall
     if (facts.kind !== 'polygon') return;
+    if (isShaft(el)) { this.shafts.push({ scope, el: el as PolygonElement }); return; }
     const hostId = el.attrs.host_id || el.hostId || '';
     const host = this.findRec(scope, hostId);
     if (!host || !HORIZONTAL_HOSTS.has(host.table)) return;
@@ -851,6 +901,38 @@ class Exporter {
       RevitCategory: w.label(r.family.revit), Width: w.len(r.size.w), Depth: w.len(r.size.d), Height: w.len(r.size.h),
     });
     this.bimdownPset(rec);
+  }
+
+  /** Shafts: one IfcOpeningElement voiding each slab / roof whose body the shaft crosses, on any level. */
+  private exportShafts(): void {
+    const { w } = this;
+    for (const { scope, el } of this.shafts) {
+      const entry = { el, levelId: scope.storey.level.id, elevation: scope.storey.level.elevation };
+      const range = shaftRange(entry, this.crossLevel.elevations);
+      if (!range) continue;
+      const verts = el.vertices.map(p => ({ x: p.x, y: p.y }));
+      const c = polyCentroid(verts);
+      const key = this.recKey(scope, el);
+      let first = true;
+      for (const recs of this.recs.values()) {
+        for (const host of recs.values()) {
+          if (!SHAFT_HOSTS.has(host.table) || host.el.geometry !== 'polygon' || !host.zRange) continue;
+          const [z0, z1] = host.zRange;
+          if (range[0] >= z1 - 1e-6 || range[1] <= z0 + 1e-6) continue;
+          const outline = (host.el as PolygonElement).vertices;
+          if (!inPolygon(c, outline) && !verts.some(p => inPolygon(p, outline))) continue;
+          const solid = extrudePlan(verts, z0 - 0.1 * this.upm, z1 - z0 + 0.2 * this.upm);
+          const frame = frameAt(v3(0, 0, host.frame.o.z));
+          const placement = w.placement(host.placement, host.frame, frame);
+          const handle = w.add('IfcOpeningElement', w.guid(`${key}#${host.key}`), w.ownerHistory,
+            w.label(el.attrs.number || el.id), null, w.label('Shaft'), placement, w.productShapeStyled([solid], frame),
+            w.ident(el.id), ...this.pt4('IfcOpeningElement', 'OPENING'));
+          w.add('IfcRelVoidsElement', w.guid(this.relKey('voids')), w.ownerHistory, null, null, host.handle, handle);
+          if (first) this.bimdownPset({ ...host, key, el, handle });
+          first = false;
+        }
+      }
+    }
   }
 
   // ─── Structure ─────────────────────────────────────────────────────────────
@@ -1650,6 +1732,19 @@ class Exporter {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const dist = (a: V3, b: V3) => length(sub(a, b));
+
+/** Volume of a closed faceted brep (divergence theorem). */
+function brepVolume(s: Solid): number {
+  if (s.kind !== 'brep') return 0;
+  let v = 0;
+  for (const f of s.faces) {
+    for (let i = 1; i + 1 < f.length; i++) {
+      const a = f[0], b = f[i], c = f[i + 1];
+      v += a.x * (b.y * c.z - b.z * c.y) - a.y * (b.x * c.z - b.z * c.x) + a.z * (b.x * c.y - b.y * c.x);
+    }
+  }
+  return Math.abs(v / 6);
+}
 
 function zRangeOf(solids: Solid[]): [number, number] | undefined {
   let lo = Infinity, hi = -Infinity;
