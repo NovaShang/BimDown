@@ -31,6 +31,7 @@ import type { StairRunFacts } from '../../elements/stair_run.tsx';
 import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
 import type { RailingFacts } from '../../elements/railing.tsx';
 import { runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
+import { stairsRepeatingOn } from '../../geometry/stairRepeats.ts';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
 import type { FurnitureFacts } from '../../elements/furniture.tsx';
@@ -130,6 +131,18 @@ export function collectPlan(input: PlanInput): PlanSource | null {
     try { facts = mod ? mod.geometry(el, ctx) : null; } catch { facts = null; }
     factsCache.set(el.id, facts);
     if (facts) entries.push({ el, facts });
+  }
+  // Multi-storey stairs of lower levels repeating on this storey (their own level's geometry)
+  for (const rep of stairsRepeatingOn(project, level.id)) {
+    const rctx = buildGeometryContext({
+      level: rep.level, allLevels: project.levels, allElements: new Map(rep.elements.map(e => [e.id, e])),
+      mepSystems: project.mepSystems, types: project.types, unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+    });
+    for (const el of rep.elements) {
+      let facts: unknown = null;
+      try { facts = getElementModule(el.tableName)?.geometry(el, rctx) ?? null; } catch { facts = null; }
+      if (facts) entries.push({ el: { ...el, id: `rep:${rep.level.id}:${el.id}` }, facts });
+    }
   }
   const unit = getProjectUnits({ project });
   return {

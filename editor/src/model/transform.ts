@@ -123,6 +123,15 @@ function transformPoints(T: Xform, pts: Point[], mirror: boolean): Point[] {
 
 /** One element, geometry and orientation attributes (hosted re-seating is done by `transformElements`). */
 export function transformElement(el: CanonicalElement, T: Xform): CanonicalElement {
+  const next = transformGeometry(el, T);
+  // A mirrored stair is the other hand: its left railing becomes the right one
+  if (isMirror(T) && el.tableName === 'railing' && (el.attrs.side === 'left' || el.attrs.side === 'right')) {
+    return { ...next, attrs: { ...next.attrs, side: el.attrs.side === 'left' ? 'right' : 'left' } };
+  }
+  return next;
+}
+
+function transformGeometry(el: CanonicalElement, T: Xform): CanonicalElement {
   const mirror = isMirror(T);
   switch (el.geometry) {
     case 'line':
@@ -196,7 +205,8 @@ function isLineHost(el: CanonicalElement | undefined): el is LineElement {
 
 /** Hosted on a line by a `position` along it (door / window / opening). */
 function seatsOnHost(el: CanonicalElement, host: CanonicalElement | undefined): boolean {
-  return !!el.hostId && el.geometry === 'line' && isLineHost(host) && el.tableName !== 'stair_run';
+  // Stair runs and railings follow their stair as geometry, not by a position along it
+  return !!el.hostId && el.geometry === 'line' && isLineHost(host) && el.tableName !== 'stair_run' && el.tableName !== 'railing';
 }
 
 const flipHinge = (v: string | undefined) => (v === 'end' ? 'start' : 'end');

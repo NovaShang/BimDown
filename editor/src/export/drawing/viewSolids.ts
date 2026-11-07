@@ -23,6 +23,8 @@ import { parseFloorLayers } from '../../model/parse.ts';
 import { buildGeometryContext } from '../../adapters/svg/buildContext.ts';
 import { roofGeometryFromSolution } from '../../three/utils/roofGeometry.ts';
 import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
+import { repZ, type StairRepetition } from '../../geometry/stair.ts';
+import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
 import { wallSolidGeometry, type LineWallFacts } from '../../elements/_lineWallShared.tsx';
 import type { SlabFacts } from '../../elements/_slabShared.tsx';
 import type { RoofFacts } from '../../elements/roof.tsx';
@@ -364,6 +366,12 @@ function foundationSolid(f: FoundationFacts): Solid {
   return extrudePlan(f.vertices, f.baseY, f.thickness, f.holes);
 }
 
+const BASE_REP: StairRepetition = { index: 0, levelId: '', dz: 0, scale: 1 };
+/** A run moved into one multi-storey repetition (as the IFC export does). */
+function repRun<T extends { startZ: number; endZ: number }>(f: T, rep: StairRepetition): T {
+  return rep.index === 0 ? f : { ...f, startZ: repZ(rep, f.startZ), endZ: repZ(rep, f.endZ) };
+}
+
 /* eslint-disable @typescript-eslint/no-explicit-any -- facts are typed per table below */
 function elementParts(id: string, el: CanonicalElement, facts: any, ctx: GeometryContext, hasRuns: (id: string) => boolean, out: ViewPart[]) {
   const t = el.tableName;
@@ -411,19 +419,25 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     }
     case 'stair': case 'stair_run': {
       if (t === 'stair' && hasRuns(el.id)) break;
+      // Every storey of a multi-storey stair
       const f = facts as StairFacts | StairRunFacts;
-      push(solidsPart(id, t, 'stair', stairFlightGeom(f)?.solids ?? []));
+      push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).flatMap(rep => stairFlightGeom(repRun(f, rep))?.solids ?? [])));
       break;
     }
     case 'stair_landing': {
-      const f = facts as { vertices: V2[]; baseY: number; thickness: number };
+      const f = facts as StairLandingFacts;
       if (!f.vertices || f.vertices.length < 3) break;
-      push(solidsPart(id, t, 'stair', [extrudePlan(f.vertices, f.baseY - f.thickness, f.thickness)]));
+      push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).map(rep => {
+        const top = rep.index === 0 ? f.baseY : f.levelY + repZ(rep, f.landing.top);
+        return extrudePlan(f.vertices, top - f.thickness, f.thickness);
+      })));
       break;
     }
-    case 'railing':
-      push(solidsPart(id, t, 'railing', railingGeom(facts as RailingFacts)?.solids ?? []));
+    case 'railing': {
+      const f = facts as RailingFacts;
+      push(solidsPart(id, t, 'railing', f.paths.flatMap(segs => railingGeom(segs, f.baseY, f.style)?.solids ?? [])));
       break;
+    }
     case 'ramp': {
       const f = facts as RampFacts;
       push(solidsPart(id, t, 'stair', rampGeom({ ...f, baseY: ctx.levelElevation }, 0.15)?.solids ?? []));

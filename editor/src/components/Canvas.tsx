@@ -1,4 +1,5 @@
 import { useRef, useCallback, useEffect, useState, useMemo, useImperativeHandle, forwardRef } from 'react';
+import StairRepetitions2D from './StairRepetitions2D.tsx';
 import { useCoreEditorState, useSelectionState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { ProcessedLayer, EditorAction } from '../state/editorTypes.ts';
 import { LAYER_STYLES } from '../types.ts';
@@ -548,6 +549,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
 
         {/* Heavy SVG content — React.memo, never re-renders during pan/zoom */}
         <SVGLayers layers={layers} activeFilter={activeFilter} activeDiscipline={activeDiscipline} />
+        {/* Multi-storey stairs of lower levels repeating on this one */}
+        <StairRepetitions2D />
 
         {/* Lightweight overlays — only re-render when scale or selection changes */}
         <SelectionOverlay document={state.document} project={state.project} selectedIds={selectedIds} scale={scale} />
