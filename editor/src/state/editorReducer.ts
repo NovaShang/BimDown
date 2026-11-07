@@ -464,6 +464,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         ...state,
         activeTool: tool,
         previousTool: state.activeTool,
+        // A tool's hover candidate (tag, trim) must not outlive the tool.
+        hoveredId: tool === state.activeTool ? state.hoveredId : null,
       };
     }
 
