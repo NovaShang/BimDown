@@ -2,7 +2,7 @@ import { memo, useMemo, useLayoutEffect, useRef, useState, Suspense } from 'reac
 import { Group } from 'three';
 import { createPortal } from '@react-three/fiber';
 import { useEditorState, useSelectionState } from '../state/EditorContext.tsx';
-import { isLayerVisibleInView } from '../state/selectors.ts';
+import { isElementVisibleInView } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { Level } from '../types.ts';
 import { parseFloorLayers } from '../model/parse.ts';
@@ -52,7 +52,7 @@ function useAllFloorsElements(allFloors: boolean): FloorRenderData[] {
     const currentKeys = new Set(project.floors.get(currentLevel)?.layers.map(l => `${l.discipline}/${l.tableName}`));
     const layerOn = (key: string) => visibleLayers.has(key) || (allFloors && !currentKeys.has(key));
     const isVisible = (el: CanonicalElement) =>
-      isLayerVisibleInView(el.discipline, el.tableName, state) && layerOn(`${el.discipline}/${el.tableName}`);
+      isElementVisibleInView(el, state) && layerOn(`${el.discipline}/${el.tableName}`);
     const layerScope = allFloors ? currentLevel : '';
 
     const floorData = (levelId: string, elevation: number, source: unknown, parse: () => CanonicalElement[]) => {

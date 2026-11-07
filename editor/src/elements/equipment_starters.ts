@@ -358,6 +358,17 @@ export function starterBaseOffset(starter: EquipmentStarter, toolbar: string | u
   return starter.default_base_offset ?? (Number.isFinite(v) ? String(v) : '0');
 }
 
+/** Plumbing fixtures the architecture library offers (Revit "Plumbing Fixtures"):
+ *  placed as MEP terminals with their ports, so MEP can connect them later. */
+export const SANITARY_STARTER_KEYS = ['water_closet', 'urinal', 'lavatory', 'sink', 'shower', 'floor_drain'];
+
+/** Terminal types drawn in the architecture view too (sanitary fixtures belong to architectural plans). */
+export const SANITARY_TERMINAL_TYPES = new Set(['water_closet', 'urinal', 'lavatory', 'sink', 'shower', 'floor_drain', 'plumbing_fixture']);
+
+export function isSanitaryFixture(el: { tableName: string; attrs: Record<string, string> }): boolean {
+  return el.tableName === 'terminal' && SANITARY_TERMINAL_TYPES.has(el.attrs.terminal_type ?? '');
+}
+
 /** Quick lookup by starter key. */
 export function getStarter(key: string | undefined | null): EquipmentStarter | null {
   if (!key) return null;
