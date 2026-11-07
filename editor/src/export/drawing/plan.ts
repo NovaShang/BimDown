@@ -53,6 +53,7 @@ import { registeredPlanAnnotators, type PlanAnnotator } from './annotations.ts';
 // Registers the dimension / text note / tag annotator.
 import { taggedRoomIds } from '../annotationExport.ts';
 import { roomAreas } from '../../geometry/roomArea.ts';
+import i18n from 'i18next';
 import { drawingLabel, type DrawingLang } from './labels.ts';
 import type { Box, DrawItem, DrawingDiscipline, LegendEntry, PlanDrawing } from './types.ts';
 
@@ -602,8 +603,11 @@ function drawSpace(env: DrawEnv, el: CanonicalElement, f: SpaceFacts) {
   if (f.number) lines.push({ text: f.number, h: 2.0 * pm });
   if (f.kind === 'polygon' && f.vertices && (f.name || f.number)) {
     const walls = src.entries.filter(x => BOUNDING.has(x.el.tableName) && x.el.geometry === 'line').map(x => x.el as LineElement);
-    // Net area at the wall faces (geometry/roomArea.ts, as tags and schedules)
-    lines.push({ text: formatArea(roomAreas(f.vertices, walls, src.upm).area, src.unit), h: 1.8 * pm });
+    // Net area at the wall faces (geometry/roomArea.ts, as tags and schedules); a redundant room has none
+    lines.push({
+      text: f.redundantOf ? i18n.t('space.redundant', { defaultValue: 'Redundant room' }) : formatArea(roomAreas(f.vertices, walls, src.upm).area, src.unit),
+      h: 1.8 * pm,
+    });
   }
   if (lines.length === 0) return;
   e.phase = Phase.Tags;

@@ -169,33 +169,25 @@ export const spaceModule: ElementModule<SpaceFacts> = {
       return <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
     }
     const { x, y } = facts.anchor;
-    const areaY = y - NAME_LABEL_OFFSET - (facts.name ? 0.32 : 0);
+    // Revit room tag style: the name big, the number small under it, then the area
+    const big = facts.name || facts.number;
+    const small = facts.name ? facts.number : '';
+    const areaY = y - NAME_LABEL_OFFSET - (small ? 0.3 : 0);
+    const label = (text: string, ty: number, size: number, weight: number, fill: string) => (
+      <text x={x} y={ty} textAnchor="middle" dominantBaseline="central"
+        fontSize={size} fontFamily="Inter, sans-serif" fontWeight={weight} fill={fill}
+        transform={`translate(${x},${ty}) scale(1,-1) translate(${-x},${-ty})`}>
+        {text}
+      </text>
+    );
     return (
       <g data-id={facts.id}>
         {outline}
         {marker}
         {redundant}
-        {facts.number && (
-          <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.4} fontFamily="Inter, sans-serif" fontWeight={700} fill="#3a86ff"
-            transform={`translate(${x},${y}) scale(1,-1) translate(${-x},${-y})`}>
-            {facts.number}
-          </text>
-        )}
-        {facts.name && (
-          <text x={x} y={y - NAME_LABEL_OFFSET} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={500} fill="#5a9fff"
-            transform={`translate(${x},${y - NAME_LABEL_OFFSET}) scale(1,-1) translate(${-x},${-(y - NAME_LABEL_OFFSET)})`}>
-            {facts.name}
-          </text>
-        )}
-        {facts.area !== undefined && facts.area > 0 && (
-          <text x={x} y={areaY} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.18} fontFamily="Inter, sans-serif" fill="#7aa7ff"
-            transform={`translate(${x},${areaY}) scale(1,-1) translate(${-x},${-areaY})`}>
-            {formatArea(facts.area)}
-          </text>
-        )}
+        {label(big, y, 0.36, 700, '#3a86ff')}
+        {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
+        {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
       </g>
     );
   },

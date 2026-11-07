@@ -4,7 +4,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import { ANNOTATION_DISCIPLINE, TAG_HEADERS, isTagPinned, type TagElement } from '../annotation/model.ts';
 import {
-  tagLines, tagDefaultPosition, tagBox, elementAnchor, draft, sub, len,
+  tagLines, tagDefaultPosition, tagBox, tagLineScale, elementAnchor, draft, sub, len,
 } from '../annotation/geometry.ts';
 import { roomNetAreaFromCtx } from '../annotation/rooms.ts';
 import { DIM_INK } from './dimension.tsx';
@@ -106,7 +106,7 @@ export const tagModule: ElementModule<TagFacts> = {
             stroke={f.room ? (ctx.selected ? ink : 'none') : ink} strokeWidth={0.015 * m} data-id={f.id} />
           {f.lines.map((line, i) => (
             <text key={i} x={0} y={(i - (f.lines.length - 1) / 2) * lh} textAnchor="middle" dominantBaseline="central"
-              fontSize={f.room && i === 0 ? f.size * 1.1 : f.size} fontWeight={i === 0 ? 600 : 400}
+              fontSize={f.size * tagLineScale(f.room, i)} fontWeight={i === 0 ? 600 : 400}
               fontFamily="Inter, sans-serif" fill={f.room ? (ctx.selected ? ink : '#1f4e9c') : ink} data-id={f.id}>
               {line}
             </text>
