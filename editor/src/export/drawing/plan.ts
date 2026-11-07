@@ -34,6 +34,9 @@ import type { BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { EquipmentFacts } from '../../elements/equipment.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
+import { roofArrows, type RoofFacts } from '../../elements/roof.tsx';
+import type { SlabFacts } from '../../elements/_slabShared.tsx';
+import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { LAYERS, mepLayer, type DrawingLayer } from './layers.ts';
 import { tint } from './color.ts';
 import { registeredPlanAnnotators, type PlanAnnotator } from './annotations.ts';
@@ -105,7 +108,10 @@ export function collectPlan(input: PlanInput): PlanSource | null {
 
   const byId = new Map<string, CanonicalElement>();
   for (const el of elements) byId.set(el.id, el);
-  const ctx = buildGeometryContext({ level, allLevels: project.levels, allElements: byId, mepSystems: project.mepSystems, types: project.types });
+  const ctx = buildGeometryContext({
+    level, allLevels: project.levels, allElements: byId, mepSystems: project.mepSystems, types: project.types,
+    crossLevel: buildCrossLevelIndex(project),
+  });
   const factsCache = new Map<string, unknown>();
   const entries: Entry[] = [];
   for (const el of elements) {
@@ -460,6 +466,43 @@ function drawStair(env: DrawEnv, f: StairFacts) {
   e.text(LAYERS.areaIden, labelAt, label, 1.8 * pm, { bold: true, rotation: uprightAngle(u) });
 }
 
+/** Shafts from other levels crossing this floor: outline and a cross (this level's shafts draw as openings). */
+function drawShafts(env: DrawEnv, holes: Point[][]) {
+  const { e, src } = env;
+  const own = src.entries.filter(x => x.el.tableName === 'opening' && x.el.geometry === 'polygon')
+    .map(x => (x.el as PolygonElement).vertices);
+  const same = (a: Point[], b: Point[]) => a.length === b.length && a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-6);
+  e.phase = Phase.Openings;
+  for (const h of holes) {
+    if (h.length < 3 || own.some(o => same(o, h))) continue;
+    e.poly(LAYERS.floorOpen, h, true);
+    e.line(LAYERS.floorOpen, h[0], h[Math.floor(h.length / 2)], { weight: 0.13 });
+    if (h.length === 4) e.line(LAYERS.floorOpen, h[1], h[3], { weight: 0.13 });
+  }
+}
+
+/** Roof plan: outline, ridges / hips (solid), valleys (dashed), a slope arrow per roof plane. */
+function drawRoof(env: DrawEnv, el: CanonicalElement, f: RoofFacts) {
+  const { e, pm } = env;
+  e.phase = Phase.Below;
+  e.poly(LAYERS.roof, f.vertices, true);
+  for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(LAYERS.floorOpen, h, true);
+  for (const l of f.solution.lines) {
+    e.line(LAYERS.roofLine, l.a, l.b, l.kind === 'valley' ? { dash: 'dashed' } : l.kind === 'ridge' ? { weight: 0.18 } : {});
+  }
+  drawShafts(env, f.shaftHoles);
+  e.phase = Phase.Tags;
+  for (const ar of roofArrows(f.solution)) {
+    const u = unit(sub(ar.to, ar.from));
+    const n = perp(u);
+    const head = Math.min(1.6 * pm, Math.hypot(ar.to.x - ar.from.x, ar.to.y - ar.from.y) * 0.35);
+    const back = add(ar.to, u, -head);
+    e.line(LAYERS.roofIden, ar.from, back);
+    e.push({ kind: 'path', layer: e.layer(LAYERS.roofIden), pts: [ar.to, add(back, n, head * 0.35), add(back, n, -head * 0.35)], closed: true, fill: LAYERS.roofIden.color });
+    e.text(LAYERS.roofIden, add(ar.from, n, 1.8 * pm), ar.label, 1.8 * pm, { rotation: uprightAngle(u) });
+  }
+}
+
 /** Direction angle of `u`, flipped by 180° when text along it would read upside down. */
 function uprightAngle(u: Point): number {
   let a = Math.atan2(u.y, u.x);
@@ -702,13 +745,11 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       e.poly(el.tableName === 'slab' ? LAYERS.slab : LAYERS.sSlab, (facts as { vertices: Point[] }).vertices, true);
       // Inner rings (holes) of the slab outline; hosted openings draw themselves.
       for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(LAYERS.floorOpen, h, true);
+      drawShafts(env, (facts as SlabFacts).shaftHoles ?? []);
       return;
     }
-    case 'roof': {
-      e.phase = Phase.Below;
-      e.poly(LAYERS.roof, (facts as { vertices: Point[] }).vertices, true);
-      return;
-    }
+    case 'roof':
+      return drawRoof(env, el, facts as RoofFacts);
     case 'stair':
     case 'stair_run':
       return drawStair(env, facts as StairFacts);

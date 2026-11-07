@@ -11,6 +11,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_hosted:  'hint.hosted',
   draw_grid:    'hint.line',
   draw_region:  'hint.region.at_grids',
+  draw_pick:    'hint.pick.slab',
   draw_section: 'hint.section',
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
@@ -21,6 +22,15 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_dimension: 'hint.dimension',
   draw_text:    'hint.text',
   draw_tag:     'hint.tag',
+};
+
+const VARIANT_HINTS: Record<string, string> = {
+  'slab:by_walls': 'hint.pick.slab',
+  'structure_slab:by_walls': 'hint.pick.slab',
+  'roof:by_walls': 'hint.pick.roof',
+  'ceiling:by_room': 'hint.pick.ceiling',
+  'opening:sketch': 'hint.opening.sketch',
+  'opening:shaft': 'hint.opening.shaft',
 };
 
 export default function DrawingHints() {
@@ -47,7 +57,11 @@ export default function DrawingHints() {
   const wallMode = activeTool === 'draw_line' && isWallDrawTable(drawingTarget?.tableName)
     ? wallDrawOptions(drawingAttrs).mode : null;
   const isWallRun = activeTool === 'draw_dimension' && drawingAttrs.dim_mode === 'wall_run';
-  const text = isWallRun
+  // Placement variants with their own hint (pick by walls / room, opening sketch / shaft).
+  const variantHint = drawingTarget?.variantId ? VARIANT_HINTS[`${drawingTarget.tableName}:${drawingTarget.variantId}`] : undefined;
+  const text = variantHint
+    ? t(variantHint)
+    : isWallRun
     ? t('hint.dimensionWallRun')
     : regionHint
       ? t(regionHint)

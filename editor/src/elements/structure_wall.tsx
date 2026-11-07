@@ -7,6 +7,7 @@ import {
   wallGeometryFor, wallDraw2D, wallDraw3D, wallFillFor,
   type LineWallFacts,
 } from './_lineWallShared.tsx';
+import WallAttachPanel from '../components/WallAttachPanel.tsx';
 
 export const structureWallModule: ElementModule<LineWallFacts> = {
   table: 'structure_wall',
@@ -14,7 +15,7 @@ export const structureWallModule: ElementModule<LineWallFacts> = {
   archetype: 'line',
   prefix: 'sw',
   hasVerticalSpan: true,
-  csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'material', 'thickness', 'material_grade'],
+  csvHeaders: ['number', 'base_offset', 'top_level_id', 'top_offset', 'top_attach_id', 'material', 'thickness', 'material_grade'],
   defaults: { base_offset: '0', thickness: '0.2', top_level_id: '', top_offset: '0', material: 'concrete' },
   drawingFields: [
     { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.01, step: 0.005 },
@@ -25,6 +26,7 @@ export const structureWallModule: ElementModule<LineWallFacts> = {
   propertyFields: [],
   layerStyle: { displayName: 'Str. Walls', color: '#4a3728', icon: '▬', order: 2 },
   renderZIndex: 41,
+  propertyPanel: WallAttachPanel,
 
   geometry(el: CanonicalElement, ctx): LineWallFacts | null {
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;

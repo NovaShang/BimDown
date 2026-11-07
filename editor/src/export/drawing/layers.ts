@@ -30,6 +30,8 @@ export const LAYERS = {
   gridIden:    L('S-GRID-IDEN', '#222222', 7, 0.25, 'solid',  'Grid bubbles and labels'),
   slab:        L('A-FLOR-OTLN', '#7a7a7a', 8, 0.13, 'solid',  'Floor and slab edges'),
   roof:        L('A-ROOF-OTLN', '#555555', 8, 0.18, 'solid',  'Roof outline'),
+  roofLine:    L('A-ROOF-LINE', '#555555', 8, 0.13, 'solid',  'Roof ridges, hips and valleys'),
+  roofIden:    L('A-ROOF-IDEN', '#333333', 7, 0.13, 'solid',  'Roof slope arrows'),
   floorOpen:   L('A-FLOR-OPEN', '#444444', 7, 0.18, 'solid',  'Slab and roof openings'),
   stair:       L('A-FLOR-STRS', '#333333', 7, 0.18, 'solid',  'Stairs, landings and ramps'),
   stairAbove:  L('A-FLOR-STRS-ABOV', '#333333', 7, 0.13, 'hidden', 'Stair treads above the cut plane'),

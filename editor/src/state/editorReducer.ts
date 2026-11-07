@@ -1232,6 +1232,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
           Object.assign(attrs, autoFillFor(action.target.tableName, state.document.elements));
           const defaults = getElementModule(action.target.tableName)?.placementDefaults?.({
             elements: state.document.elements, levels: state.project?.levels ?? [], levelId: state.currentLevel,
+            variantId: action.target.variantId,
           });
           if (defaults) Object.assign(attrs, defaults);
         }

@@ -127,6 +127,20 @@ export const ROOF_TYPE_OPTIONS: DrawingField['options'] = [
   { value: 'hip', label: 'Hip' },
   { value: 'shed', label: 'Shed' },
   { value: 'mansard', label: 'Mansard' },
+  { value: 'extrusion', label: 'Extrusion' },
+];
+
+/** Wall face a boundary picked from walls follows (floor / roof by walls). */
+export const BOUNDARY_FACE_OPTIONS: DrawingField['options'] = [
+  { value: 'interior', label: 'Interior face' },
+  { value: 'core', label: 'Core face' },
+  { value: 'centerline', label: 'Centre line' },
+  { value: 'exterior', label: 'Exterior face' },
+];
+
+export const YES_NO_OPTIONS: DrawingField['options'] = [
+  { value: 'yes', label: 'Yes' },
+  { value: 'no', label: 'No' },
 ];
 
 export const OPENING_SHAPE_OPTIONS: DrawingField['options'] = [

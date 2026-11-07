@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
-import { BASE_OFFSET_FIELD, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, BOUNDARY_FACE_OPTIONS, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
 import { slabGeometryFor, slabDraw2D, slabDraw3D, spanSymbol2D, type SlabFacts } from './_slabShared.tsx';
 import { PlanTag, tagText } from './_planTag.tsx';
 
@@ -42,6 +42,15 @@ function makeSlabModule(opts: {
     propertyFields: [],
     layerStyle: opts.layerStyle,
     renderZIndex: opts.renderZIndex,
+    // Sketch the outline, or pick walls (whole outline) / a room, at a wall face.
+    toolbarVariants: [
+      { id: 'sketch', label: `layer.${opts.table}_sketch`, icon: '▨', iconName: opts.table, placementType: 'free_polygon' },
+      {
+        id: 'by_walls', label: `layer.${opts.table}_by_walls`, icon: '⊡', iconName: opts.table, placementType: 'pick',
+        defaults: { __face: 'core' },
+        extraFields: [{ key: '__face', label: 'Boundary', type: 'select', options: BOUNDARY_FACE_OPTIONS }],
+      },
+    ],
 
     geometry(el: CanonicalElement, ctx): SlabFacts | null {
       if (el.geometry !== 'polygon') return null;

@@ -9,6 +9,8 @@ import type { PolygonElement, Point } from '../model/elements.ts';
 import { applyOpenings } from '../three/resolve/csg.ts';
 import type { SurfacePrimitive, PolygonOpening } from '../three/primitives/types.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { isShaft } from '../model/crossLevel.ts';
+import { shaftHolesFor } from './_shafts.ts';
 
 const DEFAULT_THICKNESS = 0.2;
 
@@ -20,8 +22,10 @@ export interface SlabFacts {
   /** Bottom face elevation of the mesh (world Y). */
   baseY: number;
   material: string;
-  /** Polygon-opening holes (from opening elements hosting this slab). */
+  /** Polygon-opening holes (from opening elements hosting this slab, and shafts). */
   holes: Point[][];
+  /** The shafts among `holes` (drawn with a cross in plan). */
+  shaftHoles: Point[][];
   /** One-way span direction (degrees CCW from +X), null when not set. */
   spanDirection: number | null;
   /** Where plan symbols go: the outline's area centroid. */
@@ -85,7 +89,7 @@ export function collectSlabHoles(
   if (children.length === 0) return [];
   const result: Point[][] = [];
   for (const child of children) {
-    if (child.tableName !== 'opening') continue;
+    if (child.tableName !== 'opening' || isShaft(child)) continue; // shafts: shaftHolesFor
     if (child.geometry !== 'polygon') continue;
     const v = (child as PolygonElement).vertices;
     if (v.length >= 3) result.push(v);
@@ -109,15 +113,18 @@ export function slabGeometryFor(
   if (el.vertices.length < 3) return null;
   const baseOffset = parseFloat(el.attrs.base_offset || '0') || 0;
   const thickness = parseFloat(el.attrs.thickness || `${DEFAULT_THICKNESS}`) || DEFAULT_THICKNESS;
+  const baseY = ctx.levelElevation + baseOffset + extraOffset - (topAnchored ? thickness : 0);
+  const shaftHoles = shaftHolesFor(ctx, baseY, baseY + thickness, el.vertices);
   return {
     id: el.id,
     table,
     vertices: el.vertices,
     thickness,
-    baseY: ctx.levelElevation + baseOffset + extraOffset - (topAnchored ? thickness : 0),
+    baseY,
     material: el.attrs.material || defaultMaterial,
-    // Inner rings of the outline + polygon openings hosted on the slab.
-    holes: [...(el.holes ?? []), ...collectSlabHoles(el.id, ctx)],
+    // Inner rings of the outline + polygon openings hosted on the slab + shafts through it.
+    holes: [...(el.holes ?? []), ...collectSlabHoles(el.id, ctx), ...shaftHoles],
+    shaftHoles,
     spanDirection: parseSpan(el.attrs.span_direction),
     labelAt: polygonCentroid(el.vertices),
   };
@@ -145,6 +152,20 @@ export function slabDraw2D(facts: SlabFacts, fill: string, stroke: string): Reac
           data-id={facts.id}
         />
       ))}
+      {facts.shaftHoles.map((hole, i) => <ShaftCross key={`x${i}`} poly={hole} stroke={stroke} />)}
+    </g>
+  );
+}
+
+/** Plan symbol of a shaft: a cross over the opening. */
+export function ShaftCross({ poly, stroke }: { poly: Point[]; stroke: string }) {
+  if (poly.length < 3) return null;
+  const a = poly[0], c = poly[Math.floor(poly.length / 2)];
+  const b = poly.length === 4 ? poly[1] : null, d = poly.length === 4 ? poly[3] : null;
+  return (
+    <g pointerEvents="none">
+      <line x1={a.x} y1={a.y} x2={c.x} y2={c.y} stroke={stroke} strokeWidth={0.015} />
+      {b && d && <line x1={b.x} y1={b.y} x2={d.x} y2={d.y} stroke={stroke} strokeWidth={0.015} />}
     </g>
   );
 }

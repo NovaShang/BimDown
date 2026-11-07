@@ -1,161 +1,49 @@
 /**
- * Roof — surface archetype, supports flat/gable/hip/shed/mansard via slope.
- * Delegates 3D geometry to three/utils/roofGeometry.ts (handles pitched shapes).
- * 2D shows footprint + ridge/hip/break lines + slope arrows for non-flat types.
+ * Roof — surface archetype. A footprint roof: each footprint edge may define
+ * a slope (`edge_slopes`, else implied by roof_type + slope), the roof planes
+ * come from geometry/roofSolver.ts (exact ridges, hips and valleys for any
+ * footprint), plus mansard decks and extrusion roofs.
+ * 2D: outline, ridge / hip / valley lines, a slope arrow per roof plane.
+ * 3D: a sloped slab (underside on the planes) with openings cut.
  */
 import type { ReactNode } from 'react';
-import { type BufferGeometry } from 'three';
 import type { ElementModule, GeometryContext, PlacementContext } from './archetypes.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement, Point } from '../model/elements.ts';
-import { createRoofGeometry } from '../three/utils/roofGeometry.ts';
+import { roofGeometryFromSolution } from '../three/utils/roofGeometry.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { applyOpenings } from '../three/resolve/csg.ts';
-import type { SurfacePrimitive, PolygonOpening } from '../three/primitives/types.ts';
-import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, ROOF_TYPE_OPTIONS, YES_NO_OPTIONS } from './_options.ts';
+import { roofSolution } from '../geometry/attach.ts';
+import {
+  centroid, signedArea, verticalThickness, roofInputFor, type RoofSolution, type RoofLine,
+} from '../geometry/roofSolver.ts';
+import { isShaft } from '../model/crossLevel.ts';
+import { shaftHolesFor } from './_shafts.ts';
+import { ShaftCross } from './_slabShared.tsx';
+import RoofEdgesPanel from '../components/RoofEdgesPanel.tsx';
 
 const DEFAULT_THICKNESS = 0.2;
 
-// ─── 2D ridge / hip / break-line geometry ────────────────────────────────────
-
-interface OBB {
-  ridgeAlongX: boolean;
-  midSpan: number;
-  ridgeMin: number;
-  ridgeMax: number;
-  spanMin: number;
-  spanMax: number;
-  span: number;
-  ridgeLen: number;
-}
-
-function obbOf(vertices: Point[]): OBB {
-  let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-  for (const v of vertices) {
-    if (v.x < minX) minX = v.x; if (v.x > maxX) maxX = v.x;
-    if (v.y < minY) minY = v.y; if (v.y > maxY) maxY = v.y;
-  }
-  const dx = maxX - minX, dy = maxY - minY;
-  const ridgeAlongX = dx >= dy;
-  return {
-    ridgeAlongX,
-    midSpan: ridgeAlongX ? (minY + maxY) / 2 : (minX + maxX) / 2,
-    ridgeMin: ridgeAlongX ? minX : minY,
-    ridgeMax: ridgeAlongX ? maxX : maxY,
-    spanMin: ridgeAlongX ? minY : minX,
-    spanMax: ridgeAlongX ? maxY : maxX,
-    span: ridgeAlongX ? dy : dx,
-    ridgeLen: ridgeAlongX ? dx : dy,
-  };
-}
-
-/** Build a point from (ridge, span) coords in the OBB's axis-aligned frame. */
-function pt(obb: OBB, r: number, s: number): Point {
-  return obb.ridgeAlongX ? { x: r, y: s } : { x: s, y: r };
-}
-
-interface Arrow { from: Point; to: Point; headTip: Point; headBase1: Point; headBase2: Point }
-
-function arrow(from: Point, to: Point, headSize: number): Arrow {
-  const dx = to.x - from.x, dy = to.y - from.y;
-  const len = Math.hypot(dx, dy);
-  if (len < 1e-6) {
-    return { from, to, headTip: to, headBase1: to, headBase2: to };
-  }
-  const ux = dx / len, uy = dy / len;
-  const px = -uy, py = ux;
-  const back = { x: to.x - ux * headSize, y: to.y - uy * headSize };
-  return {
-    from, to,
-    headTip: to,
-    headBase1: { x: back.x + px * headSize * 0.5, y: back.y + py * headSize * 0.5 },
-    headBase2: { x: back.x - px * headSize * 0.5, y: back.y - py * headSize * 0.5 },
-  };
-}
-
-interface RoofProAnnotations {
-  ridges: [Point, Point][];     // solid main ridge / break lines
-  hips: [Point, Point][];        // hip lines (corner→ridge)
-  breaks: [Point, Point][];      // mansard break lines (dashed)
-  arrows: Arrow[];
-  labelPos: Point | null;
-}
-
-function annotateRoof(facts: RoofFacts): RoofProAnnotations {
-  const empty: RoofProAnnotations = { ridges: [], hips: [], breaks: [], arrows: [], labelPos: null };
-  if (facts.roofType === 'flat' || facts.slopeDeg <= 0) return empty;
-  const obb = obbOf(facts.vertices);
-  if (obb.span < 0.5 || obb.ridgeLen < 0.5) return empty;
-
-  const arrowLen = Math.min(obb.span, obb.ridgeLen) * 0.18;
-  const arrowHead = Math.min(0.4, arrowLen * 0.4);
-  const ridgeMid = (obb.ridgeMin + obb.ridgeMax) / 2;
-  const ans: RoofProAnnotations = {
-    ridges: [], hips: [], breaks: [], arrows: [],
-    labelPos: pt(obb, ridgeMid, obb.midSpan),
-  };
-
-  switch (facts.roofType) {
-    case 'shed': {
-      // Single arrow pointing from spanMin (high) to spanMax (low).
-      const r = ridgeMid;
-      const from = pt(obb, r, obb.spanMin + obb.span * 0.4);
-      const to = pt(obb, r, obb.spanMin + obb.span * 0.4 + arrowLen);
-      ans.arrows.push(arrow(from, to, arrowHead));
-      break;
-    }
-    case 'gable': {
-      ans.ridges.push([pt(obb, obb.ridgeMin, obb.midSpan), pt(obb, obb.ridgeMax, obb.midSpan)]);
-      // Two arrows: from ridge mid outward to either side.
-      ans.arrows.push(arrow(pt(obb, ridgeMid, obb.midSpan), pt(obb, ridgeMid, obb.midSpan - arrowLen), arrowHead));
-      ans.arrows.push(arrow(pt(obb, ridgeMid, obb.midSpan), pt(obb, ridgeMid, obb.midSpan + arrowLen), arrowHead));
-      break;
-    }
-    case 'hip': {
-      const inset = Math.min(obb.span / 2, obb.ridgeLen / 2 - 0.001);
-      const r0 = obb.ridgeMin + inset;
-      const r1 = obb.ridgeMax - inset;
-      ans.ridges.push([pt(obb, r0, obb.midSpan), pt(obb, r1, obb.midSpan)]);
-      // Four hip lines: each OBB corner → nearest ridge endpoint.
-      ans.hips.push([pt(obb, obb.ridgeMin, obb.spanMin), pt(obb, r0, obb.midSpan)]);
-      ans.hips.push([pt(obb, obb.ridgeMin, obb.spanMax), pt(obb, r0, obb.midSpan)]);
-      ans.hips.push([pt(obb, obb.ridgeMax, obb.spanMin), pt(obb, r1, obb.midSpan)]);
-      ans.hips.push([pt(obb, obb.ridgeMax, obb.spanMax), pt(obb, r1, obb.midSpan)]);
-      // Arrows on the two main slopes (span direction) at ridge mid.
-      ans.arrows.push(arrow(pt(obb, ridgeMid, obb.midSpan), pt(obb, ridgeMid, obb.midSpan - arrowLen), arrowHead));
-      ans.arrows.push(arrow(pt(obb, ridgeMid, obb.midSpan), pt(obb, ridgeMid, obb.midSpan + arrowLen), arrowHead));
-      break;
-    }
-    case 'mansard': {
-      // Inner rectangle (upper flat plateau) inset by band·span on each side.
-      const band = 0.3;
-      const innerSpanMin = obb.spanMin + obb.span * band;
-      const innerSpanMax = obb.spanMax - obb.span * band;
-      const innerRidgeMin = obb.ridgeMin + obb.span * band;
-      const innerRidgeMax = obb.ridgeMax - obb.span * band;
-      ans.breaks.push([pt(obb, obb.ridgeMin, innerSpanMin), pt(obb, obb.ridgeMax, innerSpanMin)]);
-      ans.breaks.push([pt(obb, obb.ridgeMin, innerSpanMax), pt(obb, obb.ridgeMax, innerSpanMax)]);
-      ans.breaks.push([pt(obb, innerRidgeMin, obb.spanMin), pt(obb, innerRidgeMin, obb.spanMax)]);
-      ans.breaks.push([pt(obb, innerRidgeMax, obb.spanMin), pt(obb, innerRidgeMax, obb.spanMax)]);
-      ans.arrows.push(arrow(pt(obb, ridgeMid, obb.midSpan), pt(obb, ridgeMid, obb.midSpan - arrowLen), arrowHead));
-      ans.arrows.push(arrow(pt(obb, ridgeMid, obb.midSpan), pt(obb, ridgeMid, obb.midSpan + arrowLen), arrowHead));
-      break;
-    }
-  }
-  return ans;
-}
+export interface RoofArrow { from: Point; to: Point; label: string }
 
 export interface RoofFacts {
   id: string;
   vertices: Point[];
   thickness: number;
+  /** Underside elevation at the eaves (level + base_offset). */
   baseY: number;
   roofType: string;
   slopeDeg: number;
   material: string;
-  /** Polygon-opening holes hosted on this roof (skylights, smoke vents, etc.). */
+  /** Polygon openings hosted on this roof (skylights, dormers), shafts and inner rings. */
   holes: Point[][];
+  shaftHoles: Point[][];
+  /** Effective slope per footprint edge (0 = not slope-defining). */
+  edgeSlopes: number[];
+  solution: RoofSolution;
+  /** Vertical slab thickness (thickness / cos slope). */
+  vThick: number;
 }
 
 const WALL_TABLES = new Set(['wall', 'structure_wall', 'curtain_wall']);
@@ -179,12 +67,71 @@ export function defaultRoofBaseOffset({ elements, levels, levelId }: PlacementCo
   return Number(top.toFixed(3));
 }
 
+/** Slope label: degrees, or percent for drainage falls under 5°. */
+export function slopeLabel(deg: number): string {
+  if (deg < 5) return `${(Math.tan((deg * Math.PI) / 180) * 100).toFixed(1).replace(/\.0$/, '')}%`;
+  return `${Math.round(deg * 10) / 10}°`;
+}
+
+/** One down-slope arrow per sloped roof plane, in the middle of its largest piece. */
+export function roofArrows(sol: RoofSolution): RoofArrow[] {
+  const best = new Map<number, { area: number; poly: Point[] }>();
+  for (const pc of sol.pieces) {
+    const pl = sol.planes[pc.plane];
+    if (Math.hypot(pl.a, pl.b) < 1e-6) continue;
+    const area = Math.abs(signedArea(pc.poly));
+    const cur = best.get(pc.plane);
+    if (!cur || area > cur.area) best.set(pc.plane, { area, poly: pc.poly });
+  }
+  const out: RoofArrow[] = [];
+  for (const [plane, { area, poly }] of best) {
+    if (area < 0.05) continue;
+    const pl = sol.planes[plane];
+    const g = Math.hypot(pl.a, pl.b);
+    const ux = -pl.a / g, uy = -pl.b / g; // downhill
+    const c = centroid(poly);
+    const len = Math.max(0.3, Math.min(1.2, Math.sqrt(area) * 0.35));
+    out.push({
+      from: { x: c.x - ux * len / 2, y: c.y - uy * len / 2 },
+      to: { x: c.x + ux * len / 2, y: c.y + uy * len / 2 },
+      label: slopeLabel((Math.atan(g) * 180) / Math.PI),
+    });
+  }
+  return out;
+}
+
+/** Roof holes: hosted polygon openings, shafts through its body, inner rings. */
+function roofHoles(p: PolygonElement, ctx: GeometryContext, baseY: number, top: number): { holes: Point[][]; shafts: Point[][] } {
+  const holes: Point[][] = [...(p.holes ?? [])];
+  for (const child of ctx.hostedOf(p.id)) {
+    if (child.tableName !== 'opening' || child.geometry !== 'polygon' || isShaft(child)) continue;
+    const v = (child as PolygonElement).vertices;
+    if (v.length >= 3) holes.push(v);
+  }
+  const shafts = shaftHolesFor(ctx, baseY, top, p.vertices);
+  return { holes: [...holes, ...shafts], shafts };
+}
+
+const arrowHead = (a: Point, b: Point, size: number): string => {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len, uy = dy / len;
+  const bx = b.x - ux * size, by = b.y - uy * size;
+  return `${b.x},${b.y} ${bx - uy * size * 0.45},${by + ux * size * 0.45} ${bx + uy * size * 0.45},${by - ux * size * 0.45}`;
+};
+
+function lineStyle(l: RoofLine): { width: number; dash?: string } {
+  if (l.kind === 'ridge') return { width: 0.03 };
+  if (l.kind === 'hip') return { width: 0.022 };
+  return { width: 0.022, dash: '0.15 0.07' };
+}
+
 export const roofModule: ElementModule<RoofFacts> = {
   table: 'roof',
   discipline: 'architecture',
   archetype: 'surface',
   prefix: 'ro',
-  csvHeaders: ['number', 'base_offset', 'material', 'roof_type', 'slope', 'thickness'],
+  csvHeaders: ['number', 'base_offset', 'material', 'roof_type', 'slope', 'edge_slopes', 'profile', 'thickness'],
   defaults: { base_offset: '0', material: 'concrete', roof_type: 'flat', slope: '0', thickness: `${DEFAULT_THICKNESS}` },
   drawingFields: [
     { key: 'roof_type', label: 'Roof Type', type: 'select', options: ROOF_TYPE_OPTIONS },
@@ -197,6 +144,20 @@ export const roofModule: ElementModule<RoofFacts> = {
   placementDefaults: ctx => ({ base_offset: String(defaultRoofBaseOffset(ctx)) }),
   layerStyle: { displayName: 'Roofs', color: '#8d6e63', icon: '△', order: 7.5 },
   renderZIndex: 19,
+  propertyPanel: RoofEdgesPanel,
+  // Sketch the footprint, or pick walls: their outline + overhang, walls attached.
+  toolbarVariants: [
+    { id: 'sketch', label: 'layer.roof_sketch', icon: '△', iconName: 'roof', placementType: 'free_polygon' },
+    {
+      id: 'by_walls', label: 'layer.roof_by_walls', icon: '⌂', iconName: 'roof', placementType: 'pick',
+      defaults: { roof_type: 'hip', slope: '30', __overhang: '0.5', __attach: 'yes' },
+      fields: ['roof_type', 'slope', 'thickness', 'material'],
+      extraFields: [
+        { key: '__overhang', label: 'Overhang', type: 'number', unit: 'm', min: 0, step: 0.1 },
+        { key: '__attach', label: 'Attach walls', type: 'select', options: YES_NO_OPTIONS },
+      ],
+    },
+  ],
 
   geometry(el: CanonicalElement, ctx: GeometryContext): RoofFacts | null {
     if (el.geometry !== 'polygon') return null;
@@ -204,26 +165,24 @@ export const roofModule: ElementModule<RoofFacts> = {
     if (p.vertices.length < 3) return null;
     const baseOffset = parseFloat(p.attrs.base_offset || '0') || 0;
     const thickness = parseFloat(p.attrs.thickness || `${DEFAULT_THICKNESS}`) || DEFAULT_THICKNESS;
-    const slopeDeg = parseFloat(p.attrs.slope || '0') || 0;
-
-    // Polygon-opening holes from opening elements hosted on this roof.
-    const holes: Point[][] = [];
-    for (const child of ctx.hostedOf(p.id)) {
-      if (child.tableName !== 'opening') continue;
-      if (child.geometry !== 'polygon') continue;
-      const v = (child as PolygonElement).vertices;
-      if (v.length >= 3) holes.push(v);
-    }
-
+    const solution = roofSolution(p);
+    const vThick = verticalThickness(thickness, solution.maxSlopeDeg);
+    const baseY = ctx.levelElevation + baseOffset;
+    const { holes, shafts } = roofHoles(p, ctx, baseY, baseY + solution.maxRise + vThick);
+    const input = roofInputFor(p.vertices, p.attrs);
     return {
       id: p.id,
       vertices: p.vertices,
       thickness,
-      baseY: ctx.levelElevation + baseOffset,
+      baseY,
       roofType: p.attrs.roof_type || 'flat',
-      slopeDeg,
+      slopeDeg: solution.maxSlopeDeg,
       material: p.attrs.material || 'concrete',
       holes,
+      shaftHoles: shafts,
+      edgeSlopes: input.edgeSlopes.length === p.vertices.length ? input.edgeSlopes : p.vertices.map(() => 0),
+      solution,
+      vThick,
     };
   },
 
@@ -231,9 +190,20 @@ export const roofModule: ElementModule<RoofFacts> = {
     const stroke = drawCtx.selected ? '#3a7bff' : '#8d6e63';
     const lineColor = drawCtx.selected ? '#3a7bff' : '#5d4037';
     const points = facts.vertices.map(v => `${v.x},${v.y}`).join(' ');
-    const ann = annotateRoof(facts);
-    const labelPos = ann.labelPos;
-    const fontSize = 0.25;
+    const arrows = roofArrows(facts.solution);
+    const fontSize = 0.22;
+    const label = (at: Point, text: string, key: string, color = lineColor, weight = 500) => (
+      <text key={key}
+        x={at.x} y={at.y}
+        textAnchor="middle" dominantBaseline="central"
+        fontSize={fontSize} fontFamily="Inter, sans-serif" fontWeight={weight}
+        fill={color} pointerEvents="none"
+        transform={`translate(${at.x},${at.y}) scale(1,-1) translate(${-at.x},${-at.y})`}
+      >
+        {text}
+      </text>
+    );
+    const orient = signedArea(facts.vertices) >= 0 ? 1 : -1;
     return (
       <g data-id={facts.id}>
         <polygon
@@ -243,38 +213,35 @@ export const roofModule: ElementModule<RoofFacts> = {
           strokeWidth={0.025}
           data-id={facts.id}
         />
-        {ann.ridges.map(([a, b], i) => (
-          <line key={`r${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-            stroke={lineColor} strokeWidth={0.025} strokeLinecap="round" />
-        ))}
-        {ann.hips.map(([a, b], i) => (
-          <line key={`h${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-            stroke={lineColor} strokeWidth={0.02} strokeLinecap="round" />
-        ))}
-        {ann.breaks.map(([a, b], i) => (
-          <line key={`b${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y}
-            stroke={lineColor} strokeWidth={0.02} strokeDasharray="0.12 0.06" />
-        ))}
-        {ann.arrows.map((ar, i) => (
-          <g key={`a${i}`}>
-            <line x1={ar.from.x} y1={ar.from.y} x2={ar.to.x} y2={ar.to.y}
-              stroke={lineColor} strokeWidth={0.02} />
-            <polygon
-              points={`${ar.headTip.x},${ar.headTip.y} ${ar.headBase1.x},${ar.headBase1.y} ${ar.headBase2.x},${ar.headBase2.y}`}
-              fill={lineColor} stroke="none" />
-          </g>
-        ))}
-        {labelPos && facts.slopeDeg > 0 && (
-          <text
-            x={labelPos.x} y={labelPos.y}
-            textAnchor="middle" dominantBaseline="central"
-            fontSize={fontSize} fontFamily="Inter, sans-serif" fontWeight={500}
-            fill={lineColor}
-            transform={`translate(${labelPos.x},${labelPos.y}) scale(1,-1) translate(${-labelPos.x},${-labelPos.y})`}
-          >
-            {`${facts.slopeDeg}°`}
-          </text>
-        )}
+        {facts.solution.lines.map((l, i) => {
+          const st = lineStyle(l);
+          return (
+            <line key={`l${i}`} x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y}
+              stroke={lineColor} strokeWidth={st.width} strokeDasharray={st.dash} strokeLinecap="round" />
+          );
+        })}
+        {arrows.map((ar, i) => {
+          const head = Math.min(0.22, Math.hypot(ar.to.x - ar.from.x, ar.to.y - ar.from.y) * 0.35);
+          const dx = ar.to.x - ar.from.x, dy = ar.to.y - ar.from.y;
+          const len = Math.hypot(dx, dy) || 1;
+          // Label beside the arrow tail, offset across it.
+          const at = { x: ar.from.x - (dy / len) * 0.22, y: ar.from.y + (dx / len) * 0.22 };
+          return (
+            <g key={`a${i}`} pointerEvents="none">
+              <line x1={ar.from.x} y1={ar.from.y} x2={ar.to.x} y2={ar.to.y} stroke={lineColor} strokeWidth={0.018} />
+              <polygon points={arrowHead(ar.from, ar.to, head)} fill={lineColor} stroke="none" />
+              {label(at, ar.label, `t${i}`)}
+            </g>
+          );
+        })}
+        {drawCtx.selected && facts.vertices.map((a, i) => {
+          // Edge numbers (as in the properties panel) outside each edge; sloped edges accented.
+          const b = facts.vertices[(i + 1) % facts.vertices.length];
+          const len = Math.hypot(b.x - a.x, b.y - a.y) || 1;
+          const nx = ((b.y - a.y) / len) * orient, ny = (-(b.x - a.x) / len) * orient;
+          const at = { x: (a.x + b.x) / 2 + nx * 0.3, y: (a.y + b.y) / 2 + ny * 0.3 };
+          return label(at, String(i + 1), `e${i}`, facts.edgeSlopes[i] > 0 ? '#3a7bff' : '#9e9e9e', 700);
+        })}
         {facts.holes.map((hole, i) => (
           <polygon
             key={`hole${i}`}
@@ -286,47 +253,14 @@ export const roofModule: ElementModule<RoofFacts> = {
             data-id={facts.id}
           />
         ))}
+        {facts.shaftHoles.map((hole, i) => <ShaftCross key={`x${i}`} poly={hole} stroke={stroke} />)}
       </g>
     );
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    let geo: BufferGeometry | null = createRoofGeometry({
-      kind: 'extrude',
-      vertices: facts.vertices,
-      baseY: facts.baseY,
-      height: facts.thickness,
-      roofType: facts.roofType,
-      slopeDeg: facts.slopeDeg,
-    });
+    const geo = roofGeometryFromSolution(facts.solution, facts.vertices, facts.baseY, facts.thickness, facts.holes);
     if (!geo) return null;
-
-    // CSG-cut roof openings (skylights etc.) using the same applyOpenings helper
-    // slab uses. createRoofGeometry already includes pitch in the geometry; the
-    // hole prism is extruded vertically and intersected with that.
-    if (facts.holes.length > 0) {
-      const polyOpenings: PolygonOpening[] = facts.holes.map((vs, i) => ({
-        kind: 'polygon',
-        id: `${facts.id}:hole:${i}`,
-        vertices: vs,
-      }));
-      const fakePrim: SurfacePrimitive = {
-        kind: 'surface',
-        id: `surface:${facts.id}`,
-        elementId: facts.id,
-        tableName: 'roof',
-        footprint: facts.vertices,
-        extrudeDirection: { x: 0, y: 1, z: 0 },
-        height: facts.thickness,
-        origin: { x: 0, y: facts.baseY, z: 0 },
-        material: resolveBimMaterial(facts.material, 'roof'),
-        openings: polyOpenings,
-      };
-      const cut = applyOpenings(geo, fakePrim);
-      if (cut !== geo) geo.dispose();
-      geo = cut;
-    }
-
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'roof'));
     const isHL = drawCtx.selected || drawCtx.hovered;
     return (
@@ -357,5 +291,10 @@ export const roofModule: ElementModule<RoofFacts> = {
     return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
   },
 };
+
+/** Underside elevation of a roof at a plan point (absolute), for callers with facts. */
+export function roofUndersideAt(facts: RoofFacts, p: Point): number {
+  return facts.baseY + facts.solution.rise(p);
+}
 
 registerElement(roofModule);

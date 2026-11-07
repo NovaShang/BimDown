@@ -1,4 +1,5 @@
 import { useCallback, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CanonicalElement, Point, LineElement, SpatialLineElement, PointElement } from '../model/elements.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
@@ -12,6 +13,8 @@ import { findPipeBodyHit, type MepCurveElement } from '../utils/pipeBodyHit.ts';
 import { generateId, toElementId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapshotReshape, type WallJoin } from '../geometry/wallJoins.ts';
+import { insertVertexChanges, removeVertexChanges } from '../geometry/polygonEdit.ts';
+import type { PolygonElement } from '../model/elements.ts';
 
 function LengthLabel({ from, to, scale, length, projectUnit }: { from: Point; to: Point; scale: number; length?: number; projectUnit: ProjectUnit }) {
   const dx = to.x - from.x;
@@ -65,6 +68,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   const sw = 0.09 / scale;
 
   const dispatch = useEditorDispatch();
+  const { t } = useTranslation();
   const state = useEditorState();
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -208,8 +212,8 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
           }
         }
 
-        // Default commit path: single-element resize.
-        if (snapshot) {
+        // Default commit path: single-element resize (nothing to record for a click).
+        if (snapshot && stateRef.current.document?.elements.get(element.id) !== snapshot) {
           const liveNow = stateRef.current.document?.elements;
           const after = liveNow?.get(element.id) ?? null;
           const before = new Map<string, CanonicalElement | null>([[element.id, snapshot]]);
@@ -405,25 +409,69 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
   }
 
   if (element.geometry === 'polygon') {
+    const poly = element as PolygonElement;
+    const n = poly.vertices.length;
     return (
       <g className="resize-handles" transform="scale(1,-1)">
-        {element.vertices.map((v, i) => (
+        {/* Edge midpoints: drag to insert a vertex there. */}
+        {poly.vertices.map((a, i) => {
+          const b = poly.vertices[(i + 1) % n];
+          if (Math.hypot(b.x - a.x, b.y - a.y) < r * 6) return null;
+          return (
+            <circle
+              key={`m${i}`}
+              cx={(a.x + b.x) / 2} cy={(a.y + b.y) / 2}
+              r={r * 0.7}
+              fill="white" stroke="#06b6d4" strokeWidth={sw}
+              cursor="copy"
+              data-testid={`poly-insert-${i}`}
+              onPointerDown={handleDrag((x, y) => {
+                const snap = beforeRef.current;
+                if (!snap || snap.geometry !== 'polygon') return;
+                dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: insertVertexChanges(snap, i, { x, y }) });
+              })}
+            >
+              <title>{t('handle.insertVertex')}</title>
+            </circle>
+          );
+        })}
+        {poly.vertices.map((v, i) => (
           <circle
             key={i}
             cx={v.x} cy={v.y}
             r={r}
             fill="#06b6d4" stroke="white" strokeWidth={sw}
             cursor="move"
-            onPointerDown={handleDrag((x, y) => {
-              const newVertices = [...element.vertices];
-              newVertices[i] = { x, y };
-              dispatch({
-                type: 'RESIZE_ELEMENT',
-                id: element.id,
-                changes: { vertices: newVertices },
-              });
-            })}
-          />
+            data-testid={`poly-vertex-${i}`}
+            onDoubleClick={e => {
+              e.stopPropagation();
+              const live = stateRef.current.document?.elements.get(element.id);
+              if (!live || live.geometry !== 'polygon') return;
+              const changes = removeVertexChanges(live, i);
+              if (!changes) return;
+              dispatch({ type: 'APPLY_PATCH', description: 'Delete vertex', patches: new Map([[element.id, { ...live, ...changes }]]) });
+            }}
+            onPointerDown={e => {
+              // Alt-click deletes the vertex; a plain drag moves it.
+              if (e.altKey) {
+                e.stopPropagation();
+                const live = stateRef.current.document?.elements.get(element.id);
+                if (!live || live.geometry !== 'polygon') return;
+                const changes = removeVertexChanges(live, i);
+                if (changes) dispatch({ type: 'APPLY_PATCH', description: 'Delete vertex', patches: new Map([[element.id, { ...live, ...changes }]]) });
+                return;
+              }
+              handleDrag((x, y) => {
+                const snap = beforeRef.current;
+                if (!snap || snap.geometry !== 'polygon') return;
+                const newVertices = [...snap.vertices];
+                newVertices[i] = { x, y };
+                dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes: { vertices: newVertices } });
+              })(e);
+            }}
+          >
+            <title>{t('handle.vertex')}</title>
+          </circle>
         ))}
       </g>
     );

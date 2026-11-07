@@ -20,7 +20,8 @@ import { applyOpenings } from '../three/resolve/csg.ts';
 import type { SurfacePrimitive, ParametricOpening } from '../three/primitives/types.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
-import { buildStraightWallSolid } from '../three/utils/wallSolid.ts';
+import { buildStraightWallSolid, buildPiecesSolid } from '../three/utils/wallSolid.ts';
+import { resolveTopAttach, wallTopPieces, maxTop, type AttachPiece } from '../geometry/attach.ts';
 import { resolvedLayers } from '../model/types/catalog.ts';
 import { layerBands, wallFrame, clipToBand, chordAt, type LayerBand } from '../geometry/layerBands.ts';
 import { layerFill } from './_layerHatch.tsx';
@@ -60,6 +61,9 @@ export interface LineWallFacts {
   material: string;
   /** Type layers as bands across the wall (straight typed walls with 2+ layers). */
   layers?: LayerBand[];
+  /** Top attached to a roof / slab (`top_attach_id`): its underside, and the
+   *  wall's own top (absolute) where the footprint is not under it. */
+  topAttach?: { surface: AttachPiece[]; ownTop: number };
 }
 
 /**
@@ -342,6 +346,16 @@ export function wallGeometryFor(
     el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT,
   );
   const typeLayers = el.arc ? null : resolvedLayers(el, ctx.projectTypes());
+  const baseY = ctx.levelElevation + baseOffset;
+  // Attach Top: the top follows the roof / slab underside where the wall is under it.
+  const surface = resolveTopAttach(el, ctx);
+  let topAttach: LineWallFacts['topAttach'];
+  let wallHeight = height;
+  if (surface && surface.length > 0) {
+    topAttach = { surface, ownTop: baseY + height };
+    const top = maxTop(wallTopPieces(footprint, surface, baseY + height));
+    if (Number.isFinite(top) && top > baseY) wallHeight = top - baseY;
+  }
   return {
     id: el.id,
     table,
@@ -350,10 +364,11 @@ export function wallGeometryFor(
     segments,
     openings,
     thickness: el.strokeWidth,
-    height,
-    baseY: ctx.levelElevation + baseOffset,
+    height: wallHeight,
+    baseY,
     material: el.attrs.material || 'concrete',
     layers: typeLayers && typeLayers.length > 1 ? layerBands(typeLayers, el.strokeWidth) : undefined,
+    topAttach,
   };
 }
 
@@ -479,12 +494,22 @@ function wallLayers3D(facts: LineWallFacts): ReactNode {
  * cut. Straight walls with plain rectangular openings are built directly (same
  * solid as extrude + CSG, ~100× faster); everything else goes through CSG.
  */
-function wallSolid(facts: LineWallFacts, footprint: Point[]): BufferGeometry {
+export function wallSolid(facts: LineWallFacts, footprint: Point[], withOpenings = true): BufferGeometry {
+  const openings = withOpenings ? facts.openings : [];
+  const topPieces = facts.topAttach
+    ? wallTopPieces(footprint, facts.topAttach.surface, facts.topAttach.ownTop)
+    : undefined;
   const direct = facts.centerline.arc ? null : buildStraightWallSolid({
     start: facts.centerline.start, end: facts.centerline.end, footprint,
-    thickness: facts.thickness, height: facts.height, baseY: facts.baseY, openings: facts.openings,
+    thickness: facts.thickness, height: facts.height, baseY: facts.baseY, openings, topPieces,
   });
-  return direct ?? extrudeWallWithCsg(facts, footprint);
+  if (direct) return direct;
+  if (topPieces) {
+    // Arc wall or shaped openings under a sloped top: piece prisms, then CSG.
+    const body = buildPiecesSolid(topPieces, facts.baseY);
+    if (body) return openings.length > 0 ? cutOpenings(body, { ...facts, openings }, footprint) : body;
+  }
+  return extrudeWallWithCsg({ ...facts, openings }, footprint);
 }
 
 /** Extrude + CSG wall solid (arc walls, shaped or overlapping openings). */
@@ -495,9 +520,15 @@ export function extrudeWallWithCsg(facts: LineWallFacts, footprint: Point[] = fa
     shape.lineTo(footprint[i].x, footprint[i].y);
   }
   shape.closePath();
-  let geo: BufferGeometry = new ExtrudeGeometry(shape, { depth: facts.height, bevelEnabled: false });
+  const geo: BufferGeometry = new ExtrudeGeometry(shape, { depth: facts.height, bevelEnabled: false });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, facts.baseY, 0);
+  return cutOpenings(geo, facts, footprint);
+}
+
+/** CSG-subtract the wall's door / window / opening cuts from a wall body. */
+function cutOpenings(body: BufferGeometry, facts: LineWallFacts, footprint: Point[]): BufferGeometry {
+  let geo = body;
   if (facts.openings.length > 0) {
     const parametric: ParametricOpening[] = facts.openings.map(op => ({
       kind: 'parametric',

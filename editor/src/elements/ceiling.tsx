@@ -27,6 +27,16 @@ export const ceilingModule: ElementModule<SlabFacts> = {
   propertyFields: [],
   layerStyle: { displayName: 'Ceilings', color: '#b0bec5', icon: '▤', order: 7.8 },
   renderZIndex: 18,
+  // Sketch, or click a room: outline at its wall faces, at a height above the floor.
+  toolbarVariants: [
+    { id: 'sketch', label: 'layer.ceiling_sketch', icon: '▤', iconName: 'ceiling', placementType: 'free_polygon' },
+    {
+      id: 'by_room', label: 'layer.ceiling_by_room', icon: '⊡', iconName: 'ceiling', placementType: 'pick',
+      defaults: { base_offset: '2.7', height_offset: '0' },
+      fields: ['base_offset', 'material'],
+      fieldLabels: { base_offset: 'Height' },
+    },
+  ],
 
   geometry(el: CanonicalElement, ctx): SlabFacts | null {
     if (el.geometry !== 'polygon') return null;

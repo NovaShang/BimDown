@@ -11,6 +11,7 @@ import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import { ElementNode3D, ElementHighlight3D } from '../adapters/r3f/ElementNode3D.tsx';
 import type { GeometryContext } from '../elements/archetypes.ts';
 import { buildStaticBatch, releaseStaticBatch } from './staticBatch.ts';
+import { crossLevelIndex, type CrossLevelIndex } from '../model/crossLevel.ts';
 
 interface FloorRenderData {
   levelId: string;
@@ -132,8 +133,14 @@ function useVisibleLevels(allFloors: boolean): Set<string> {
 export default function FloorGroup({ allFloors: forceAll = false }: { allFloors?: boolean }) {
   const allFloors = useAllFloorsElements(forceAll);
   const visibleLevels = useVisibleLevels(forceAll);
-  const project = useEditorState().project;
+  const { project, document: liveDoc, currentLevel } = useEditorState();
   const mepSystems = project?.mepSystems;
+  // Roofs / slabs / shafts of every level: wall tops attach across levels.
+  const liveElements = liveDoc?.elements;
+  const crossLevel = useMemo(
+    () => crossLevelIndex(project, liveElements && currentLevel ? { levelId: currentLevel, elements: liveElements } : null),
+    [project, liveElements, currentLevel],
+  );
   const types = project?.types;
 
   // Keyed on content, so a new floors array with the same elevations keeps
@@ -160,6 +167,7 @@ export default function FloorGroup({ allFloors: forceAll = false }: { allFloors?
               levelElevations={levelElevations}
               mepSystems={mepSystems}
               types={types}
+              crossLevel={crossLevel}
             />
           </group>
         );
@@ -168,13 +176,14 @@ export default function FloorGroup({ allFloors: forceAll = false }: { allFloors?
   );
 }
 
-const RenderElements = memo(function RenderElements({ elements, levelId, levelElevation, levelElevations, mepSystems, types, ghost }: {
+const RenderElements = memo(function RenderElements({ elements, levelId, levelElevation, levelElevations, mepSystems, types, crossLevel, ghost }: {
   elements: CanonicalElement[];
   levelId: string;
   levelElevation: number;
   levelElevations: Map<string, number>;
   mepSystems?: import('../types.ts').SystemDef[];
   types?: import('../model/types/catalog.ts').TypeCatalog;
+  crossLevel?: CrossLevelIndex;
   ghost?: boolean;
 }) {
   const allElements = useMemo(() => {
@@ -189,8 +198,8 @@ const RenderElements = memo(function RenderElements({ elements, levelId, levelEl
     const allLevels: Level[] = Array.from(levelElevations.entries()).map(
       ([id, elevation]) => ({ id, number: '', name: '', elevation }),
     );
-    return buildGeometryContext({ level, allLevels, allElements, mepSystems, types });
-  }, [levelId, levelElevation, levelElevations, allElements, mepSystems, types]);
+    return buildGeometryContext({ level, allLevels, allElements, mepSystems, types, crossLevel });
+  }, [levelId, levelElevation, levelElevations, allElements, mepSystems, types, crossLevel]);
 
   // mesh_file elements always go to MeshInstances (loads external .glb);
   // everything else goes through the V2 element-module path.

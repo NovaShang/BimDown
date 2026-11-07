@@ -4,6 +4,7 @@ import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../m
 import type { PropertyField } from './_propertyFields.ts';
 import type { Level, SystemDef } from '../types.ts';
 import type { TypeCatalog } from '../model/types/catalog.ts';
+import type { CrossLevelIndex } from '../model/crossLevel.ts';
 
 // ─── Archetype ───────────────────────────────────────────────────────────────
 
@@ -64,6 +65,11 @@ export interface GeometryContext {
 
   /** Project element types (wall layers etc.); undefined when the project has none. */
   projectTypes(): TypeCatalog | undefined;
+
+  /** Elements on other levels that geometry here depends on (roofs walls
+   *  attach to, shafts through slabs). Undefined when the caller has no
+   *  project (single-level tests): same-level lookups only then. */
+  crossLevel?: CrossLevelIndex;
 }
 
 // ─── Draw contexts ───────────────────────────────────────────────────────────
@@ -161,6 +167,8 @@ export interface PlacementContext {
   elements: ReadonlyMap<string, CanonicalElement>;
   levels: readonly Level[];
   levelId: string;
+  /** Toolbar variant being placed (see ToolbarVariant). */
+  variantId?: string;
 }
 
 export interface ElementModule<TFacts = unknown> {

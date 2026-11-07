@@ -14,6 +14,10 @@
  */
 import { BufferAttribute, BufferGeometry, ShapeUtils, Vector2 } from 'three';
 import type { Point } from '../../model/elements.ts';
+import type { TopPiece } from '../../geometry/attach.ts';
+
+/** Absolute top elevation z = a·x + b·y + c (an attached wall's top). */
+type TopPlane = { a: number; b: number; c: number };
 
 export interface WallSolidInput {
   start: Point;
@@ -24,6 +28,9 @@ export interface WallSolidInput {
   height: number;
   baseY: number;
   openings: { position: number; width: number; height: number; sillHeight: number; shape: string }[];
+  /** Top attached to a roof / slab: footprint pieces with their own top plane
+   *  (absolute elevation). Replaces the flat top at `height`. */
+  topPieces?: TopPiece[];
 }
 
 const EPS = 1e-9;
@@ -52,23 +59,43 @@ export function buildStraightWallSolid(w: WallSolidInput): BufferGeometry | null
   }
 
   const tOf = (p: Point) => (p.x - w.start.x) * ux + (p.y - w.start.y) * uy;
-  let tMin = Infinity, tMax = -Infinity;
-  for (const p of w.footprint) { const t = tOf(p); tMin = Math.min(tMin, t); tMax = Math.max(tMax, t); }
-
   const out = new PrismWriter(w.baseY);
-  let cursor = tMin;
-  for (const c of cuts) {
-    if (c.lo > cursor) out.prism(clipToSpan(w.footprint, tOf, cursor, Math.min(c.lo, tMax)), 0, w.height);
-    const lo = Math.max(c.lo, tMin), hi = Math.min(c.hi, tMax);
-    if (hi > lo) {
-      const span = clipToSpan(w.footprint, tOf, lo, hi);
-      if (c.y0 > 0) out.prism(span, 0, Math.min(c.y0, w.height));
-      if (c.y1 < w.height) out.prism(span, Math.max(c.y1, 0), w.height);
+  const pieces: { poly: Point[]; top: number | TopPlane }[] = w.topPieces
+    ? w.topPieces.map(pc => ({ poly: pc.poly, top: pc.top }))
+    : [{ poly: w.footprint, top: w.height }];
+  for (const pc of pieces) {
+    let tMin = Infinity, tMax = -Infinity;
+    for (const p of pc.poly) { const t = tOf(p); tMin = Math.min(tMin, t); tMax = Math.max(tMax, t); }
+    const topAt = (span: Point[]) => typeof pc.top === 'number' ? pc.top : maxRel(span, pc.top, w.baseY);
+    let cursor = tMin;
+    for (const c of cuts) {
+      if (c.lo > cursor) out.prism(clipToSpan(pc.poly, tOf, cursor, Math.min(c.lo, tMax)), 0, pc.top);
+      const lo = Math.max(c.lo, tMin), hi = Math.min(c.hi, tMax);
+      if (hi > lo) {
+        const span = clipToSpan(pc.poly, tOf, lo, hi);
+        const top = topAt(span);
+        if (c.y0 > 0) out.prism(span, 0, Math.min(c.y0, top));
+        if (c.y1 < top) out.prism(span, Math.max(c.y1, 0), pc.top);
+      }
+      cursor = Math.max(cursor, c.hi);
     }
-    cursor = Math.max(cursor, c.hi);
+    if (cursor < tMax) out.prism(clipToSpan(pc.poly, tOf, cursor, tMax), 0, pc.top);
   }
-  if (cursor < tMax) out.prism(clipToSpan(w.footprint, tOf, cursor, tMax), 0, w.height);
   return out.geometry();
+}
+
+/** Closed prisms of the pieces (flat bottom at baseY, each its own top), no openings. */
+export function buildPiecesSolid(pieces: TopPiece[], baseY: number): BufferGeometry | null {
+  const out = new PrismWriter(baseY);
+  for (const pc of pieces) out.prism(pc.poly, 0, pc.top);
+  return out.geometry();
+}
+
+/** Highest top over a polygon, relative to the wall base. */
+function maxRel(poly: Point[], top: TopPlane, baseY: number): number {
+  let z = -Infinity;
+  for (const p of poly) z = Math.max(z, top.a * p.x + top.b * p.y + top.c - baseY);
+  return z;
 }
 
 /** Footprint ∩ { tLo ≤ t ≤ tHi } (Sutherland–Hodgman against two half-planes). */
@@ -96,8 +123,12 @@ class PrismWriter {
   private baseY: number;
   constructor(baseY: number) { this.baseY = baseY; }
 
-  prism(poly: Point[], y0: number, y1: number): void {
-    if (poly.length < 3 || y1 - y0 < 1e-6) return;
+  /** Prism from y0 up to y1 (relative to baseY), or up to a sloped top plane (absolute). */
+  prism(poly: Point[], y0: number, y1: number | TopPlane): void {
+    if (poly.length < 3) return;
+    const flat = typeof y1 === 'number' ? y1 : null;
+    const plane = typeof y1 === 'number' ? null : y1;
+    if (flat !== null && flat - y0 < 1e-6) return;
     let area = 0;
     for (let i = 0; i < poly.length; i++) {
       const a = poly[i], b = poly[(i + 1) % poly.length];
@@ -105,12 +136,21 @@ class PrismWriter {
     }
     if (Math.abs(area) < 1e-10) return;
     const ccw = area > 0 ? poly : [...poly].reverse();
-    const yb = this.baseY + y0, yt = this.baseY + y1;
+    const yb = this.baseY + y0;
+    const top = (p: Point) => plane ? Math.max(yb, plane.a * p.x + plane.b * p.y + plane.c) : this.baseY + flat!;
+    if (plane && ccw.every(p => top(p) - yb < 1e-6)) return;
+    // Top normal: up for a flat top, the plane's normal for a sloped one:
+    // z = a·x + b·y (model) → world normal (−a, 1, b)/len (world z = −model y).
+    let tnx = 0, tny = 1, tnz = 0;
+    if (plane) {
+      const len = Math.hypot(plane.a, plane.b, 1);
+      tnx = -plane.a / len; tny = 1 / len; tnz = plane.b / len;
+    }
     // Model (x, y) → world (x, elevation, -y).
     const tris = ShapeUtils.triangulateShape(ccw.map(p => new Vector2(p.x, p.y)), []);
     for (const [a, b, c] of tris) {
       const pa = ccw[a], pb = ccw[b], pc = ccw[c];
-      this.tri(pa.x, yt, -pa.y, pb.x, yt, -pb.y, pc.x, yt, -pc.y, 0, 1, 0);
+      this.tri(pa.x, top(pa), -pa.y, pb.x, top(pb), -pb.y, pc.x, top(pc), -pc.y, tnx, tny, tnz);
       this.tri(pa.x, yb, -pa.y, pc.x, yb, -pc.y, pb.x, yb, -pb.y, 0, -1, 0);
     }
     for (let i = 0; i < ccw.length; i++) {
@@ -120,8 +160,9 @@ class PrismWriter {
       if (el < 1e-9) continue;
       // Outward normal of a CCW edge is (ey, -ex) in model XY → (ey, 0, ex) in world.
       const nx = ey / el, nz = ex / el;
-      this.tri(a.x, yb, -a.y, b.x, yb, -b.y, b.x, yt, -b.y, nx, 0, nz);
-      this.tri(a.x, yb, -a.y, b.x, yt, -b.y, a.x, yt, -a.y, nx, 0, nz);
+      const ta = top(a), tb = top(b);
+      this.tri(a.x, yb, -a.y, b.x, yb, -b.y, b.x, tb, -b.y, nx, 0, nz);
+      this.tri(a.x, yb, -a.y, b.x, tb, -b.y, a.x, ta, -a.y, nx, 0, nz);
     }
   }
 

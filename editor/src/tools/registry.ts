@@ -14,6 +14,7 @@ import { rotateTool } from './rotateTool.ts';
 import { drawTool } from './drawTool.ts';
 import { trimCornerTool, trimSingleTool, splitTool } from './wallModifyTools.ts';
 import { drawRegionTool } from './drawRegionTool.ts';
+import { drawPickTool } from './drawPickTool.ts';
 import { drawDimensionTool, drawTextTool, drawTagTool } from './annotationTools.ts';
 import { drawSectionTool } from './drawSectionTool.ts';
 import { underlayTool } from './underlayTool.ts';
@@ -48,6 +49,8 @@ const toolRegistry: Record<string, ToolHandler> = {
   draw_hosted: drawHostedTool,
   // Grid-driven batch layout (columns at grids, beams between columns, beam system)
   draw_region: drawRegionTool,
+  // Floor / roof / ceiling boundary picked from walls or a room
+  draw_pick: drawPickTool,
 
   // Annotation (dimension / text / tag)
   draw_dimension: drawDimensionTool,

@@ -9,7 +9,7 @@ import type { TypeCatalog } from '../model/types/catalog.ts';
 import type { ViewOptions, ViewOptionKey } from './viewOptions.ts';
 import type { ViewsState, ViewsAction } from '../views/viewTypes.ts';
 
-export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region'
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region' | 'draw_pick'
   | 'trim_corner' | 'trim_single' | 'split'
   | 'draw_dimension' | 'draw_text' | 'draw_tag'
   | 'draw_section'
