@@ -34,6 +34,10 @@ export function createMemoryDataSource(initialFiles?: ProjectFileMap): MemoryDat
       files.set(path, content);
     },
 
+    async deleteFile(path) {
+      files.delete(path);
+    },
+
     // The editor is the only writer; its own saves are already in its state.
     watchChanges() {
       return () => {};

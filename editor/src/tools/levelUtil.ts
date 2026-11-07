@@ -1,7 +1,7 @@
 import type { ToolStateSnapshot } from './types.ts';
 
 /** Find the next level above the current one for top_level_id defaults. */
-export function resolveNextLevelId(state: ToolStateSnapshot): string {
+export function resolveNextLevelId(state: Pick<ToolStateSnapshot, 'document' | 'project'>): string {
   const currentLevelId = state.document?.levelId ?? '';
   const levels = state.project?.levels ?? [];
   const currentIdx = levels.findIndex(l => l.id === currentLevelId);

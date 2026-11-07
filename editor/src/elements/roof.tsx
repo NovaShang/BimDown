@@ -5,7 +5,8 @@
  */
 import type { ReactNode } from 'react';
 import { type BufferGeometry } from 'three';
-import type { ElementModule, GeometryContext } from './archetypes.ts';
+import type { ElementModule, GeometryContext, PlacementContext } from './archetypes.ts';
+import { resolveHeight } from '../three/utils/elementTo3D.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PolygonElement, Point } from '../model/elements.ts';
 import { createRoofGeometry } from '../three/utils/roofGeometry.ts';
@@ -157,6 +158,27 @@ export interface RoofFacts {
   holes: Point[][];
 }
 
+const WALL_TABLES = new Set(['wall', 'structure_wall', 'curtain_wall']);
+const DEFAULT_STOREY = 3.0;
+
+/** A new roof sits on top of the walls: the highest wall top on this level
+ *  (relative to it), else the next level up, else one default storey. */
+export function defaultRoofBaseOffset({ elements, levels, levelId }: PlacementContext): number {
+  const elevations = new Map(levels.map(l => [l.id, l.elevation]));
+  const elevation = elevations.get(levelId) ?? 0;
+  let top = -Infinity;
+  for (const el of elements.values()) {
+    if (!WALL_TABLES.has(el.tableName)) continue;
+    const { height, baseOffset } = resolveHeight(el.attrs, elevation, elevations, DEFAULT_STOREY);
+    top = Math.max(top, baseOffset + height);
+  }
+  if (top === -Infinity) {
+    const above = levels.filter(l => l.elevation > elevation).map(l => l.elevation);
+    top = above.length > 0 ? Math.min(...above) - elevation : DEFAULT_STOREY;
+  }
+  return Number(top.toFixed(3));
+}
+
 export const roofModule: ElementModule<RoofFacts> = {
   table: 'roof',
   discipline: 'architecture',
@@ -172,6 +194,7 @@ export const roofModule: ElementModule<RoofFacts> = {
     BASE_OFFSET_FIELD,
   ],
   propertyFields: [],
+  placementDefaults: ctx => ({ base_offset: String(defaultRoofBaseOffset(ctx)) }),
   layerStyle: { displayName: 'Roofs', color: '#8d6e63', icon: '△', order: 7.5 },
   renderZIndex: 19,
 

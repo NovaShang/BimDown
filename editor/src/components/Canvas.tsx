@@ -3,6 +3,7 @@ import { useCoreEditorState, useSelectionState, useEditorDispatch } from '../sta
 import type { ProcessedLayer, EditorAction } from '../state/editorTypes.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { getToolHandler } from '../tools/registry.ts';
+import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
 import type { ToolContext, ToolStateSnapshot, TransformAction } from '../tools/types.ts';
 import type { SnapResult } from '../utils/snap.ts';
 import { useCanvasTransform } from '../hooks/useCanvasTransform.ts';
@@ -460,6 +461,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           return;
         }
         if (stateRef.current.activeTool.startsWith('draw_')) {
+          // Polygon tools: right-click closes the outline (3+ vertices).
+          if (isDrawingPolygon(stateRef.current) && finishPolygon(stateRef.current, globalDispatch)) return;
           if (stateRef.current.drawingState?.points.length) {
             globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
           } else {

@@ -97,6 +97,18 @@ export function createFileSystemDataSource(
       selfWrites.set(path, (await fileHandle.getFile()).lastModified);
     },
 
+    async deleteFile(path: string): Promise<void> {
+      const parts = path.split('/');
+      let dir: FileSystemDirectoryHandle = dirHandle;
+      try {
+        for (const part of parts.slice(0, -1)) dir = await dir.getDirectoryHandle(part);
+        await dir.removeEntry(parts[parts.length - 1]!);
+      } catch (err) {
+        if ((err as DOMException)?.name !== 'NotFoundError') throw err;
+      }
+      selfWrites.delete(path);
+    },
+
     async resolveUrl(path: string): Promise<string> {
       try {
         return URL.createObjectURL(await getFile(dirHandle, path));

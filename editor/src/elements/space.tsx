@@ -216,9 +216,16 @@ export const spaceModule: ElementModule<SpaceFacts> = {
     }];
   },
 
-  autoFillOnPlace(existingCount) {
-    const n = existingCount + 1;
-    return { name: i18n.t('space.defaultName', { n, defaultValue: `Room ${n}` }) };
+  autoFillOnPlace(existing) {
+    // Next number after the highest numeric room number (or the count), so
+    // deleting a room never hands out a number that is still in use.
+    let n = existing.length;
+    for (const el of existing) {
+      const v = parseInt(el.attrs.number ?? '', 10);
+      if (Number.isFinite(v) && String(v) === (el.attrs.number ?? '').trim() && v > n) n = v;
+    }
+    n += 1;
+    return { number: String(n), name: i18n.t('space.defaultName', { n, defaultValue: `Room ${n}` }) };
   },
 };
 

@@ -4,6 +4,7 @@ import { toSelectionId } from '../model/ids.ts';
 import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
+import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
   hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
@@ -84,6 +85,12 @@ export function useCanvasKeyboard({
             globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
           } else {
             globalDispatch({ type: 'CLEAR_SELECTION' });
+          }
+          break;
+        case 'Enter':
+          // Polygon tools: Enter closes the outline (3+ vertices).
+          if (!stateRef.current.readonly && isDrawingPolygon(stateRef.current)) {
+            if (finishPolygon(stateRef.current, globalDispatch)) e.preventDefault();
           }
           break;
         case '=': case '+':

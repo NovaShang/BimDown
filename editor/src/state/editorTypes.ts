@@ -95,6 +95,8 @@ export type EditorAction =
   | { type: 'APPLY_PATCH'; description: string; patches: Map<string, CanonicalElement | null>; before?: Map<string, CanonicalElement | null> }
   | { type: 'DELETE_ELEMENTS'; ids: string[] }
   | { type: 'UPDATE_ATTRS'; id: string; attrs: Record<string, string> }
+  /** Same attrs on several elements, one undo step (multi-selection edit). */
+  | { type: 'UPDATE_ATTRS_MANY'; ids: string[]; attrs: Record<string, string> }
   | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean }
   | { type: 'COMMIT_PREVIEW'; description: string; before: Map<string, CanonicalElement | null>; after: Map<string, CanonicalElement | null> }
   | { type: 'SET_EDIT_MODE'; active: boolean }

@@ -71,6 +71,29 @@ export default defineConfig({
             return
           }
 
+          // POST /api/delete — remove files from sample_data
+          if (url === '/api/delete' && req.method === 'POST') {
+            let body = ''
+            req.on('data', (chunk: Buffer) => { body += chunk.toString() })
+            req.on('end', () => {
+              try {
+                const { model, paths } = JSON.parse(body) as { model?: string; paths: string[] }
+                const modelDir = model ? path.join(sampleDataDir, model) : sampleDataDir
+                for (const p of paths) {
+                  const filePath = path.join(modelDir, p)
+                  if (!filePath.startsWith(sampleDataDir)) continue
+                  if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+                }
+                res.writeHead(200, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ ok: true }))
+              } catch (err) {
+                res.writeHead(400, { 'Content-Type': 'application/json' })
+                res.end(JSON.stringify({ error: String(err) }))
+              }
+            })
+            return
+          }
+
           // GET /api/watch — SSE stream for file change notifications
           if (url === '/api/watch' && req.method === 'GET') {
             res.writeHead(200, {

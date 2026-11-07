@@ -8,6 +8,9 @@ export interface DataSource {
   fetchText(path: string): Promise<string | null>;
   /** Write text content to a path */
   saveFile(path: string, content: string): Promise<void>;
+  /** Optional: delete a file (missing files are not an error). Needed to
+   *  remove a level's folder; without it the files are left in place. */
+  deleteFile?(path: string): Promise<void>;
   /** Subscribe to file changes. Returns unsubscribe function. */
   watchChanges(onFileChanged: (path: string) => void): () => void;
   /** Resolve a project-relative path to a loadable URL (e.g. for Three.js loaders).
@@ -43,6 +46,15 @@ export function createLocalDataSource(model: string): DataSource {
         body: JSON.stringify({ model, files: [{ path, content }] }),
       });
       if (!resp.ok) throw new Error(`Save failed: ${resp.status}`);
+    },
+
+    async deleteFile(path: string): Promise<void> {
+      const resp = await fetch('/api/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model, paths: [path] }),
+      });
+      if (!resp.ok) throw new Error(`Delete failed: ${resp.status}`);
     },
 
     async resolveUrl(path: string): Promise<string> {

@@ -15,21 +15,47 @@ export function isMepLineTable(name: string): name is MepLineTable {
   return (MEP_LINE_TABLES as readonly string[]).includes(name);
 }
 
-/** MEP system disciplines (from `global/mep_system.csv` rows) that are
- *  meaningful for a given line table. A duct can carry HVAC supply/return
- *  or smoke-evac (fire); a pipe can be plumbing or fire sprinkler; conduit
- *  and cable tray serve power (electrical) and low-voltage (data). The
- *  toolbar / property-panel system dropdowns filter to these so users
- *  don't see e.g. plumbing systems on a duct. */
-const MEP_LINE_DISCIPLINES: Record<MepLineTable, readonly string[]> = {
-  duct: ['hvac', 'fire'],
-  pipe: ['plumbing', 'fire'],
-  conduit: ['electrical', 'data'],
-  cable_tray: ['electrical', 'data'],
+/** What a system carries, which decides the line tables it can run in. */
+type Medium = 'air' | 'fluid' | 'electric';
+
+const MEDIUM_TABLES: Record<Medium, readonly MepLineTable[]> = {
+  air: ['duct'],
+  fluid: ['pipe'],
+  electric: ['conduit', 'cable_tray'],
 };
 
-export function disciplinesForMepLine(table: string): readonly string[] | null {
-  return isMepLineTable(table) ? MEP_LINE_DISCIPLINES[table] : null;
+/** Common system codes (Revit / ASHRAE style abbreviations). */
+const AIR_CODES = /^(SA|RA|EA|OA|TA|FA|MA|SEA|SPA|SMK|SE|KEA|TEA|GEA)$/;
+const FLUID_CODES = /^(CHWS|CHWR|CHW|CWS|CWR|CW|HWS|HWR|HW|HHWS|HHWR|DHWS|DHWR|DHW|DCW|DW|SAN|SW|V|VENT|CD|COND|G|GAS|FP|SPK|STM|RF|RW|REF)$/;
+const ELECTRIC_CODES = /^(PWR|POWER|LTG|LIGHTING|DATA|COM|TEL|LV|EM)$/;
+
+function mediumOf(system: { system_type: string; name?: string; discipline?: string }): Medium | null {
+  const code = system.system_type.trim().toUpperCase();
+  if (FLUID_CODES.test(code)) return 'fluid';
+  if (AIR_CODES.test(code)) return 'air';
+  if (ELECTRIC_CODES.test(code)) return 'electric';
+  const text = `${system.system_type} ${system.name ?? ''}`.toLowerCase();
+  if (/\bair\b|exhaust|ventilation|smoke/.test(text)) return 'air';
+  if (/water|chilled|condenser|steam|sanit|drain|waste|sprinkler|gas|refriger|fuel/.test(text)) return 'fluid';
+  if (/power|lighting|data|telecom|cable|electr/.test(text)) return 'electric';
+  switch (system.discipline) {
+    case 'plumbing': case 'fire': return 'fluid';
+    case 'electrical': case 'data': return 'electric';
+    default: return null; // hvac (air or water) / other: no opinion
+  }
+}
+
+/**
+ * Whether a project MEP system (`global/mep_system.csv` row) can run in a
+ * given line table: air systems in ducts, water / gas / drainage in pipes,
+ * power and data in conduit and cable tray. The toolbar and property-panel
+ * system dropdowns filter with this. Systems whose medium can't be told (an
+ * HVAC system with an unknown code) are offered everywhere.
+ */
+export function systemFitsTable(system: { system_type: string; name?: string; discipline?: string }, table: string): boolean {
+  if (!isMepLineTable(table)) return true;
+  const medium = mediumOf(system);
+  return !medium || MEDIUM_TABLES[medium].includes(table);
 }
 
 /** Strip an element-id prefix ("lv-1:eq-X" → "eq-X"). Used to bucket both

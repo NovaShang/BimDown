@@ -5,11 +5,14 @@ import { emptyHistory, pushCommand, applyUndo, applyRedo, createCommand } from '
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
 import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
+import { arcLength } from '../geometry/arc.ts';
+import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { isVerticalSpanTable } from '../model/tableRegistry.ts';
 import { collectMepBranch, isMepLineTable } from '../model/mepTopology.ts';
 import { bondEndpoints } from '../model/bondEndpoints.ts';
 import { parsePortRef } from '../utils/portRef.ts';
-import { serializeToGeoJson } from '../model/serialize.ts';
+import { serializeToGeoJson, groupByLayer } from '../model/serialize.ts';
+import type { EditCommand, LevelSnapshot } from '../model/history.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
@@ -204,7 +207,7 @@ function cleanupOrphanMepNodes(
 /** Actions that mutate the document — blocked in readonly mode. */
 const MUTATION_ACTIONS: Set<string> = new Set([
   'CREATE_ELEMENT', 'CREATE_ELEMENTS', 'DELETE_ELEMENTS', 'MOVE_ELEMENTS', 'RESIZE_ELEMENT',
-  'UPDATE_ATTRS', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS', 'APPLY_PATCH',
+  'UPDATE_ATTRS', 'UPDATE_ATTRS_MANY', 'COMMIT_PREVIEW', 'DUPLICATE_ELEMENTS', 'APPLY_PATCH',
   'UNDO', 'REDO', 'ADD_LEVEL', 'REMOVE_LEVEL', 'RENAME_LEVEL',
 ]);
 
@@ -443,7 +446,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     // --- Document editing actions ---
 
     case 'INIT_DOCUMENT':
-      return { ...state, document: action.document, history: emptyHistory, documentVersion: 0, lastMutation: null };
+      // Element commands belong to the previous level's document; level
+      // commands (add / remove / rename) stay undoable across the switch.
+      return {
+        ...state, document: action.document, documentVersion: 0, lastMutation: null,
+        history: {
+          undoStack: state.history.undoStack.filter(c => c.level),
+          redoStack: state.history.redoStack.filter(c => c.level),
+        },
+      };
 
     case 'MOVE_ELEMENTS': {
       if (!state.document) return state;
@@ -583,6 +594,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         lastMutation: { version: state.documentVersion + 1, keys: collectMutationKeys(before, after) },
         selectedIds: state.drawingTarget ? state.selectedIds : new Set([action.element.id]),
         visibleLayers,
+        // Sequential defaults (Room N, number) advance with every placement.
+        drawingAttrs: state.drawingTarget?.tableName === action.element.tableName
+          ? { ...state.drawingAttrs, ...autoFillFor(action.element.tableName, next) }
+          : state.drawingAttrs,
       };
     }
 
@@ -719,17 +734,34 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const next = new Map(state.document.elements);
       const existingIds = new Set(next.keys());
       const newSelectionIds: string[] = [];
-      for (const rawId of rawIds) {
-        const el = next.get(rawId);
-        if (!el) continue;
-        const newId = generateId(el.tableName, existingIds);
+      // Hosted children (doors / windows / openings on a wall, stair runs,
+      // equipment ports) travel with a duplicated host, re-hosted on the copy.
+      const selected = new Set(rawIds.filter(id => next.has(id)));
+      const children: string[] = [];
+      for (const el of state.document.elements.values()) {
+        if (el.hostId && selected.has(el.hostId) && !selected.has(el.id)) children.push(el.id);
+      }
+      const newIdOf = new Map<string, string>();
+      for (const rawId of [...selected, ...children]) {
+        const newId = generateId(next.get(rawId)!.tableName, existingIds);
         existingIds.add(newId);
-        const cloned = { ...moveElement(el, offset.dx, offset.dy), id: newId, attrs: { ...el.attrs, id: newId } };
+        newIdOf.set(rawId, newId);
+      }
+      for (const [rawId, newId] of newIdOf) {
+        const el = next.get(rawId)!;
+        let cloned: CanonicalElement = { ...moveElement(el, offset.dx, offset.dy), id: newId, attrs: { ...el.attrs, id: newId } };
+        const newHost = el.hostId ? newIdOf.get(el.hostId) : undefined;
+        if (newHost) {
+          cloned = { ...cloned, hostId: newHost, attrs: { ...cloned.attrs, host_id: newHost } };
+        } else if (el.hostId) {
+          // Copied without its host: stay on the same host, slid along it.
+          cloned = slideOnHost(cloned, el, state.document.elements.get(el.hostId), offset);
+        }
         next.set(newId, cloned);
         before.set(newId, null);
         after.set(newId, cloned);
-        // Selection IDs keep the level prefix
-        newSelectionIds.push(state.currentLevel ? toSelectionId(state.currentLevel, newId) : newId);
+        // Selection IDs keep the level prefix (children are not selected)
+        if (selected.has(rawId)) newSelectionIds.push(state.currentLevel ? toSelectionId(state.currentLevel, newId) : newId);
       }
       if (newSelectionIds.length === 0) return state;
       return {
@@ -763,6 +795,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if ((updated.geometry === 'line' || updated.geometry === 'spatial_line') && 'thickness' in action.attrs) {
         const t = parseFloat(action.attrs.thickness);
         if (Number.isFinite(t) && t > 0) (updated as LineElement).strokeWidth = t;
+      }
+      // Same for a section's plan width (duct / pipe / beam size_x, diameter).
+      if ((updated.geometry === 'line' || updated.geometry === 'spatial_line') && 'size_x' in action.attrs && !updated.hostId) {
+        const w = resolveLineStrokeWidth(updated.tableName, updated.attrs);
+        if (w != null) (updated as LineElement).strokeWidth = w;
       }
 
       // Sync start_z/end_z attrs → SpatialLineElement startZ/endZ fields.
@@ -842,6 +879,39 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         history: pushCommand(state.history, createCommand('Update properties', before, after)),
         documentVersion: state.documentVersion + 1,
         lastMutation: { version: state.documentVersion + 1, keys: [`${updated.discipline}/${updated.tableName}`] }
+      };
+    }
+
+    case 'UPDATE_ATTRS_MANY': {
+      // Apply UPDATE_ATTRS per element (keeps all its syncing rules), then
+      // fold the commands it pushed into one undo step.
+      const original = new Set(state.history.undoStack);
+      const keys = new Set<string>();
+      let s = state;
+      for (const id of action.ids) {
+        s = editorReducer(s, { type: 'UPDATE_ATTRS', id, attrs: action.attrs });
+        if (s.lastMutation && s.lastMutation !== state.lastMutation) for (const k of s.lastMutation.keys) keys.add(k);
+      }
+      const added = s.history.undoStack.filter(c => !original.has(c));
+      if (added.length === 0) return s;
+      const before = new Map<string, CanonicalElement | null>();
+      const after = new Map<string, CanonicalElement | null>();
+      for (const c of added) {
+        for (const [id, el] of c.before) if (!before.has(id)) before.set(id, el);
+        for (const [id, el] of c.after) after.set(id, el);
+      }
+      let kept = s.history.undoStack.filter(c => original.has(c));
+      // Typing "0.35" edits the field three times: keep it one undo step.
+      const mergeKey = `${[...action.ids].sort().join(',')}|${Object.keys(action.attrs).sort().join(',')}`;
+      const prev = kept[kept.length - 1];
+      if (prev?.mergeKey === mergeKey) {
+        for (const [id, el] of prev.before) before.set(id, el);
+        kept = kept.slice(0, -1);
+      }
+      return {
+        ...s,
+        history: { undoStack: [...kept, { ...createCommand('Update properties', before, after), mergeKey }], redoStack: [] },
+        lastMutation: { version: s.documentVersion, keys: [...keys] },
       };
     }
 
@@ -1013,8 +1083,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'UNDO': {
-      if (!state.document || state.history.undoStack.length === 0) return state;
+      if (state.history.undoStack.length === 0) return state;
       const cmd = state.history.undoStack[state.history.undoStack.length - 1];
+      if (cmd.level) return undoLevelCommand(state, cmd);
+      if (!state.document) return state;
       const result = applyUndo(state.history, state.document.elements);
       if (!result) return state;
       return {
@@ -1027,8 +1099,10 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     }
 
     case 'REDO': {
-      if (!state.document || state.history.redoStack.length === 0) return state;
+      if (state.history.redoStack.length === 0) return state;
       const cmd = state.history.redoStack[state.history.redoStack.length - 1];
+      if (cmd.level) return redoLevelCommand(state, cmd);
+      if (!state.document) return state;
       const result = applyRedo(state.history, state.document.elements);
       if (!result) return state;
       return {
@@ -1053,13 +1127,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         // Modules opt in to sequential defaults / other tool-activation
         // auto-fills via `autoFillOnPlace`. Counts existing elements of this
         // table so each placement bumps the next default value.
-        const mod = getElementModule(action.target.tableName);
-        if (mod?.autoFillOnPlace && state.document) {
-          let count = 0;
-          for (const el of state.document.elements.values()) {
-            if (el.tableName === action.target.tableName) count++;
-          }
-          Object.assign(attrs, mod.autoFillOnPlace(count));
+        if (state.document) {
+          Object.assign(attrs, autoFillFor(action.target.tableName, state.document.elements));
+          const defaults = getElementModule(action.target.tableName)?.placementDefaults?.({
+            elements: state.document.elements, levels: state.project?.levels ?? [], levelId: state.currentLevel,
+          });
+          if (defaults) Object.assign(attrs, defaults);
         }
       }
       return { ...state, drawingTarget: action.target, drawingAttrs: attrs };
@@ -1114,31 +1187,18 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.project) return state;
       const levels = [...state.project.levels, action.level];
       levels.sort((a, b) => a.elevation - b.elevation);
-      const floors = new Map(state.project.floors);
-      floors.set(action.level.id, { levelId: action.level.id, levelName: action.level.name, layers: [] });
-      return {
-        ...state,
-        project: { ...state.project, levels, floors },
-        currentLevel: action.level.id,
-        visibleLayers: new Set<string>(),
-        selectedIds: new Set(),
-        hoveredId: null,
-      };
+      const floor = { levelId: action.level.id, levelName: action.level.name, layers: [] };
+      return pushLevelCommand(state, 'Add level',
+        { levels: state.project.levels, levelId: action.level.id, floor: null },
+        { levels, levelId: action.level.id, floor });
     }
 
     case 'REMOVE_LEVEL': {
-      if (!state.project) return state;
+      if (!state.project || !state.project.levels.some(l => l.id === action.levelId)) return state;
       const levels = state.project.levels.filter(l => l.id !== action.levelId);
-      const floors = new Map(state.project.floors);
-      floors.delete(action.levelId);
-      const newLevel = levels.length > 0 ? levels[0].id : '';
-      return {
-        ...state,
-        project: { ...state.project, levels, floors },
-        currentLevel: state.currentLevel === action.levelId ? newLevel : state.currentLevel,
-        selectedIds: new Set(),
-        hoveredId: null,
-      };
+      return pushLevelCommand(state, 'Remove level',
+        { levels: state.project.levels, levelId: action.levelId, floor: currentFloor(state, action.levelId) },
+        { levels, levelId: action.levelId, floor: null });
     }
 
     case 'RENAME_LEVEL': {
@@ -1147,12 +1207,130 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         l.id === action.levelId ? { ...l, name: action.name, elevation: action.elevation } : l
       );
       levels.sort((a, b) => a.elevation - b.elevation);
-      return { ...state, project: { ...state.project, levels } };
+      return pushLevelCommand(state, 'Rename level',
+        { levels: state.project.levels, levelId: action.levelId },
+        { levels, levelId: action.levelId });
     }
 
     default:
       return state;
   }
+}
+
+// ─── Level commands (undoable add / remove / rename) ─────────────────────────
+
+/** The level's content as a FloorData; for the open level, from the live document. */
+function currentFloor(state: EditorState, levelId: string): import('../types.ts').FloorData | null {
+  const floor = state.project?.floors.get(levelId) ?? null;
+  const doc = state.document;
+  if (!doc || doc.levelId !== levelId) return floor;
+  const levelName = state.project?.levels.find(l => l.id === levelId)?.name || levelId;
+  const layers: LayerData[] = [];
+  for (const [key, els] of groupByLayer([...doc.elements.values()].filter(e => e.tableName !== 'grid'))) {
+    const [discipline, tableName] = key.split('/');
+    layers.push({ tableName, discipline, geojsonContent: serializeToGeoJson(els), csvRows: new Map(els.map(e => [e.id, e.attrs])) });
+  }
+  return { levelId, levelName, layers };
+}
+
+/** Put the project's levels (and the affected floor) into `snap`'s shape. */
+function applyLevelSnapshot(state: EditorState, snap: LevelSnapshot): EditorState {
+  if (!state.project) return state;
+  const floors = new Map(state.project.floors);
+  let next: EditorState = state;
+  if (snap.floor === null) {
+    floors.delete(snap.levelId);
+    next = { ...state, project: { ...state.project, levels: snap.levels, floors } };
+    if (state.currentLevel === snap.levelId) {
+      // The open level is gone: drop its document (EditorShell must not save
+      // it back into the removed folder) and open the first remaining level.
+      next = { ...next, document: null, currentLevel: '' };
+      const first = snap.levels[0]?.id;
+      if (first) next = editorReducer(next, { type: 'SET_LEVEL', levelId: first });
+    }
+    return next;
+  }
+  if (snap.floor) floors.set(snap.levelId, snap.floor);
+  next = { ...state, project: { ...state.project, levels: snap.levels, floors } };
+  // A level that (re)appears is opened, like Add Level does.
+  if (snap.floor && state.currentLevel !== snap.levelId) {
+    next = editorReducer(next, { type: 'SET_LEVEL', levelId: snap.levelId });
+  }
+  return next;
+}
+
+function pushLevelCommand(state: EditorState, description: string, before: LevelSnapshot, after: LevelSnapshot): EditorState {
+  const cmd: EditCommand = { ...createCommand(description, new Map(), new Map()), level: { before, after } };
+  return { ...applyLevelSnapshot(state, after), history: pushCommand(state.history, cmd) };
+}
+
+function undoLevelCommand(state: EditorState, cmd: EditCommand): EditorState {
+  const { before, after } = cmd.level!;
+  // Redo must bring back what the level holds now, not what it held when added.
+  const redoCmd: EditCommand = after.floor
+    ? { ...cmd, level: { before, after: { ...after, floor: currentFloor(state, after.levelId) ?? after.floor } } }
+    : cmd;
+  const next = applyLevelSnapshot(state, before);
+  return {
+    ...next,
+    history: { undoStack: state.history.undoStack.slice(0, -1), redoStack: [...state.history.redoStack, redoCmd] },
+  };
+}
+
+function redoLevelCommand(state: EditorState, cmd: EditCommand): EditorState {
+  const { before, after } = cmd.level!;
+  const undoCmd: EditCommand = before.floor
+    ? { ...cmd, level: { before: { ...before, floor: currentFloor(state, before.levelId) ?? before.floor }, after } }
+    : cmd;
+  const next = applyLevelSnapshot(state, after);
+  return {
+    ...next,
+    history: { undoStack: [...state.history.undoStack, undoCmd], redoStack: state.history.redoStack.slice(0, -1) },
+  };
+}
+
+/** A module's `autoFillOnPlace` defaults for the next placement of `tableName`. */
+function autoFillFor(tableName: string, elements: ReadonlyMap<string, CanonicalElement>): Record<string, string> {
+  const mod = getElementModule(tableName);
+  if (!mod?.autoFillOnPlace) return {};
+  const existing: CanonicalElement[] = [];
+  for (const el of elements.values()) if (el.tableName === tableName) existing.push(el);
+  return mod.autoFillOnPlace(existing);
+}
+
+/**
+ * A hosted element (door / window / wall opening) duplicated on its own:
+ * keep it on the original host at the projected position, but never on top
+ * of the original — then it goes right next to it (side picked by the offset,
+ * flipped when the wall is too short).
+ */
+function slideOnHost(
+  clone: CanonicalElement,
+  original: CanonicalElement,
+  host: CanonicalElement | undefined,
+  offset: { dx: number; dy: number },
+): CanonicalElement {
+  if (!host || (host.geometry !== 'line' && host.geometry !== 'spatial_line')) return clone;
+  if (original.geometry !== 'line' || !('position' in original.attrs)) return clone;
+  const wall = host as LineElement;
+  const width = parseFloat(original.attrs.width ?? '') || Math.hypot(original.end.x - original.start.x, original.end.y - original.start.y);
+  const pos = parseFloat(original.attrs.position ?? '') || computeHostedPosition(wall, midpoint(original));
+  const len = wall.arc ? arcLength(wall.start, wall.end, wall.arc) : Math.hypot(wall.end.x - wall.start.x, wall.end.y - wall.start.y);
+  const moved = midpoint(original);
+  let next = computeHostedPosition(wall, { x: moved.x + offset.dx, y: moved.y + offset.dy });
+  if (Math.abs(next - pos) < width) {
+    const gap = width + 0.1;
+    const side = next >= pos ? 1 : -1;
+    next = pos + side * gap;
+    if (next + width / 2 > len || next - width / 2 < 0) next = pos - side * gap;
+  }
+  next = Math.max(width / 2, Math.min(len - width / 2, next));
+  const { start, end } = resolveHostedGeometry(wall, next, width);
+  return { ...clone, start, end, locationParam: next, attrs: { ...clone.attrs, position: next.toFixed(3) } } as CanonicalElement;
+}
+
+function midpoint(el: LineElement): { x: number; y: number } {
+  return { x: (el.start.x + el.end.x) / 2, y: (el.start.y + el.end.y) / 2 };
 }
 
 function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalElement {

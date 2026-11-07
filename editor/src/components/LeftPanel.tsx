@@ -10,6 +10,7 @@ import { ScrollArea } from './ui/scroll-area';
 import { Icon } from './Icons.tsx';
 import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
+import ConfirmDialog from './ConfirmDialog.tsx';
 import MepSystemDialog from './MepSystemDialog.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { formatElevation, getProjectUnits } from '../utils/units.ts';
@@ -157,6 +158,7 @@ export default function LeftPanel({
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
   const [renameTarget, setRenameTarget] = useState<Level | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Level | null>(null);
   /** When non-null, opens the MEP system dialog. `null` slot is the add path;
    *  passing an existing SystemDef opens it in edit mode. */
   const [mepSystemDialog, setMepSystemDialog] = useState<{ open: boolean; initial?: SystemDef }>({ open: false });
@@ -427,13 +429,24 @@ export default function LeftPanel({
         />
       )}
 
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t('dialog.deleteLevel')}
+          message={t('dialog.deleteLevelMessage', { name: deleteTarget.name || deleteTarget.id })}
+          confirmLabel={t('panel.delete')}
+          danger
+          onConfirm={() => dispatch({ type: 'REMOVE_LEVEL', levelId: deleteTarget.id })}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
       {/* Context Menu */}
       {contextMenu && (
         <LevelContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
           onRename={() => setRenameTarget(contextMenu.level)}
-          onDelete={() => dispatch({ type: 'REMOVE_LEVEL', levelId: contextMenu.level.id })}
+          onDelete={() => setDeleteTarget(contextMenu.level)}
           onClose={() => setContextMenu(null)}
         />
       )}

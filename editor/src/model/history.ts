@@ -1,9 +1,25 @@
 import type { CanonicalElement } from './elements.ts';
+import type { FloorData, Level } from '../types.ts';
+
+/** Project level list around a level add / remove / rename, plus the
+ *  affected level's content when it is added or removed. */
+export interface LevelSnapshot {
+  levels: Level[];
+  levelId: string;
+  /** undefined = untouched (rename), null = the level doesn't exist. */
+  floor?: FloorData | null;
+}
 
 export interface EditCommand {
   description: string;
   before: Map<string, CanonicalElement | null>;  // null = element didn't exist
   after: Map<string, CanonicalElement | null>;   // null = element was deleted
+  /** Set for level commands (element maps are then empty). Unlike element
+   *  commands these survive switching levels. */
+  level?: { before: LevelSnapshot; after: LevelSnapshot };
+  /** Consecutive commands with the same key fold into one undo step
+   *  (typing a value into a multi-selection's field). */
+  mergeKey?: string;
 }
 
 export interface HistoryState {

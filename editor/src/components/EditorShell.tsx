@@ -3,7 +3,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, stampSpatialZMarker } from '../utils/persist.ts';
+import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, stampSpatialZMarker, removeLevelFiles, restoreLevelFiles } from '../utils/persist.ts';
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
@@ -61,10 +61,15 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   const flushPendingSave = useRef(async () => {
     clearTimeout(persistTimer.current);
     const currentState = stateRef.current;
+    // The next document's versions restart at 0: without this reset, edits
+    // on a level opened after a clean switch were not saved until its
+    // version passed the previous level's.
+    lastProcessedVersion.current = 0;
+    // No document: its level was just removed, nothing of it may be written.
+    if (!currentState.document) pendingKeys.current.clear();
     if (!currentState.document || pendingKeys.current.size === 0) return;
     const changedKeys = new Set(pendingKeys.current);
     pendingKeys.current.clear();
-    lastProcessedVersion.current = 0;
     try {
       await persistDoc.current(currentState.document, changedKeys);
       // If grids changed, persist to global/grid.csv and sync state
@@ -186,15 +191,37 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     return () => clearTimeout(persistTimer.current);
   }, [state.documentVersion, state.lastMutation]);
 
-  // Persist levels when they change (add, remove, rename)
+  // Persist levels when they change (add, remove, rename). A removed level's
+  // folder is deleted (contents kept here so undo can write them back).
   const prevLevelsRef = useRef(state.project?.levels);
+  const removedLevelFiles = useRef(new Map<string, Record<string, string>>());
+  const levelFileOps = useRef<Promise<void>>(Promise.resolve());
   useEffect(() => {
     const levels = state.project?.levels;
-    if (!levels || levels === prevLevelsRef.current) return;
-    if (prevLevelsRef.current) {
-      persistLevels(levels, ds).catch(err => console.error('Persist levels failed:', err));
-    }
+    const prev = prevLevelsRef.current;
+    if (!levels || levels === prev) return;
     prevLevelsRef.current = levels;
+    if (!prev) return;
+    persistLevels(levels, ds).catch(err => console.error('Persist levels failed:', err));
+    const now = new Set(levels.map(l => l.id));
+    const was = new Set(prev.map(l => l.id));
+    for (const { id } of prev) {
+      if (now.has(id)) continue;
+      levelFileOps.current = levelFileOps.current
+        .then(() => removeLevelFiles(ds, id))
+        .then(files => { removedLevelFiles.current.set(id, files); })
+        .catch(err => console.error('Remove level files failed:', err));
+    }
+    for (const { id } of levels) {
+      if (was.has(id)) continue;
+      levelFileOps.current = levelFileOps.current
+        .then(async () => {
+          const files = removedLevelFiles.current.get(id);
+          removedLevelFiles.current.delete(id);
+          if (files) await restoreLevelFiles(ds, files);
+        })
+        .catch(err => console.error('Restore level files failed:', err));
+    }
   }, [state.project?.levels, ds]);
 
   // Use document model for rendering when available

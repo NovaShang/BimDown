@@ -6,6 +6,7 @@ export function memoryDataSource(files: Record<string, string>): DataSource & { 
     files,
     async fetchText(path: string) { return files[path] ?? null; },
     async saveFile(path: string, content: string) { files[path] = content; },
+    async deleteFile(path: string) { delete files[path]; },
     async resolveUrl(path: string) { return path; },
     watchChanges() { return () => {}; },
   };

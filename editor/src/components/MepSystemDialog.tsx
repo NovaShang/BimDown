@@ -14,12 +14,12 @@ interface MepSystemDialogProps {
   initial?: SystemDef;
 }
 
+// The spec's mep_system.discipline values.
 const DISCIPLINE_OPTIONS = [
   { value: 'hvac', label: 'HVAC' },
   { value: 'plumbing', label: 'Plumbing' },
   { value: 'electrical', label: 'Electrical' },
-  { value: 'fire', label: 'Fire Protection' },
-  { value: 'data', label: 'Data / Telecom' },
+  { value: 'other', label: 'Other' },
 ];
 
 const DEFAULT_COLOR = '#3b82f6';

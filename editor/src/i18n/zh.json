@@ -272,6 +272,8 @@
   "prop.Mesh": "网格体",
   "prop.Other": "其他",
   "prop.elementsSelected": "已选择 {{count}} 个构件",
+  "prop.mixed": "多个值",
+  "prop.multipleTypes": "多种构件",
 
   "view.2d": "二维视图",
   "view.3d": "三维视图",
@@ -305,6 +307,8 @@
 
   "dialog.addLevel": "添加楼层",
   "dialog.renameLevel": "重命名楼层",
+  "dialog.deleteLevel": "删除楼层",
+  "dialog.deleteLevelMessage": "删除{{name}}及其上的所有构件？对应文件会被删除，可用撤销（Ctrl+Z）恢复。",
   "dialog.name": "名称",
   "dialog.elevation": "标高 (m)",
   "dialog.cancel": "取消",
@@ -329,8 +333,8 @@
   "hint.line": "点击起点 → 点击终点 · Esc 取消",
   "hint.vertical": "点击放置竖管 · Esc 取消",
   "hint.point": "点击放置 · Esc 取消",
-  "hint.polygon": "点击添加顶点 · 右键闭合 · Esc 取消",
-  "hint.polygonClose": "继续点击添加 · 右键或 Enter 闭合 · Esc 取消",
+  "hint.polygon": "点击添加顶点 · 点回起点、右键或 Enter 闭合 · Esc 取消",
+  "hint.polygonClose": "继续点击添加 · 点回起点、右键或 Enter 闭合 · Esc 取消",
   "hint.hosted": "点击墙体放置 · Esc 取消",
   "hint.relocate": "点击放置 · Esc 取消",
   "hint.relocateHosted": "点击墙体重新定位 · Esc 取消",

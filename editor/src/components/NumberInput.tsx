@@ -16,6 +16,7 @@ interface NumberInputProps {
    *  input. The parsed decimal value is in the chosen unit (`'ft'` or `'in'`),
    *  matching the project unit so we never convert behind the user's back. */
   parseImperial?: 'ft' | 'in';
+  placeholder?: string;
 }
 
 function clampAndRound(val: number, step: number, min?: number, max?: number) {
@@ -40,7 +41,7 @@ function formatForDisplay(raw: string, step: number): string {
   return decimals > 0 ? fixed.replace(/\.?0+$/, '') || '0' : fixed;
 }
 
-export function NumberInput({ value, onChange, step = 1, min, max, className, parseImperial }: NumberInputProps) {
+export function NumberInput({ value, onChange, step = 1, min, max, className, parseImperial, placeholder }: NumberInputProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -124,6 +125,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className, pa
             type="text"
             inputMode="decimal"
             value={displayValue}
+            placeholder={placeholder}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}

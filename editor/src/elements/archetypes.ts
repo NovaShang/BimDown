@@ -148,6 +148,13 @@ export interface SelectionHandle {
  * `geometry()` and input to `draw2D` / `draw3D`. Each element defines its own
  * Facts type; there is no global IR.
  */
+/** What `placementDefaults` sees when a placement tool activates. */
+export interface PlacementContext {
+  elements: ReadonlyMap<string, CanonicalElement>;
+  levels: readonly Level[];
+  levelId: string;
+}
+
 export interface ElementModule<TFacts = unknown> {
   // ─── Identity ──────────────────────────────────────────────────────────────
   table: string;
@@ -248,12 +255,20 @@ export interface ElementModule<TFacts = unknown> {
   selectionHandles?(facts: TFacts, element: CanonicalElement): SelectionHandle[] | undefined;
 
   /**
-   * Called when the placement tool for this table activates. Receives the
-   * count of existing elements of this table in the loaded document; returned
-   * attrs are merged on top of `getDefaultDrawingAttrs` so the toolbar shows
-   * them pre-populated. Used for sequential defaults like "Room N".
+   * Called when the placement tool for this table activates and again after
+   * each placement. Receives the existing elements of this table in the
+   * document; returned attrs are merged on top of the drawing attrs so the
+   * toolbar shows them pre-populated. Used for sequential defaults like
+   * "Room N".
    */
-  autoFillOnPlace?(existingCount: number): Record<string, string>;
+  autoFillOnPlace?(existing: readonly CanonicalElement[]): Record<string, string>;
+
+  /**
+   * Called once when the placement tool for this table activates, with the
+   * current document and levels; returned attrs are merged into the drawing
+   * attrs. Used for context-dependent defaults (roof at the top of the walls).
+   */
+  placementDefaults?(ctx: PlacementContext): Record<string, string>;
 
   /**
    * Whether instances of this element type should participate as targets in

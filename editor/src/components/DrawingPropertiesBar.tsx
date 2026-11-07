@@ -11,7 +11,7 @@ import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
-import { disciplinesForMepLine } from '../model/mepTopology.ts';
+import { systemFitsTable } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import { cn } from '../lib/utils.ts';
 
@@ -27,13 +27,11 @@ export default function DrawingPropertiesBar() {
 
   const levels = state.project?.levels ?? [];
   // Inject project-level mep_system options at render time, filtered to the
-  // disciplines that make sense for this table (e.g. a duct only sees HVAC /
-  // fire systems, not plumbing). When no matching systems exist we leave
-  // options undefined so the field degrades to a text input rather than
-  // showing an empty dropdown.
-  const acceptedDisciplines = disciplinesForMepLine(target.tableName);
+  // systems this table can carry (a duct sees air systems, a pipe water).
+  // When no matching systems exist we leave options undefined so the field
+  // degrades to a text input rather than showing an empty dropdown.
   const systemOptions = (state.project?.mepSystems ?? [])
-    .filter(s => !acceptedDisciplines || acceptedDisciplines.includes(s.discipline))
+    .filter(s => systemFitsTable(s, target.tableName))
     .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
   const fields = getDrawingFields(target.tableName, levels).map(f =>
     f.key === 'system_type' && systemOptions.length > 0

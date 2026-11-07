@@ -5,7 +5,7 @@ import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { PROPERTY_GROUPS, type PropertyField } from '../elements/_propertyFields.ts';
-import { disciplinesForMepLine } from '../model/mepTopology.ts';
+import { systemFitsTable } from '../model/mepTopology.ts';
 import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import type { ProjectUnit } from '../types.ts';
 import { Input } from './ui/input';
@@ -58,29 +58,36 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
 
   const [firstId, firstData] = selectedData.entries().next().value!;
-  const style = LAYER_STYLES[firstData.tableName];
-  const csv = firstData.csv;
   const isSingleSelection = selectedData.size === 1;
+  const tables = new Set([...selectedData.values()].map(d => d.tableName));
+  const mixedTables = tables.size > 1;
+  const style = mixedTables ? undefined : LAYER_STYLES[firstData.tableName];
+  // Multi-selection: a field shows its value when every element agrees,
+  // otherwise blank ("Mixed"); editing sets it on all of them (one undo step).
+  const csv: CsvRow = isSingleSelection ? firstData.csv : commonValues([...selectedData.values()].map(d => d.csv));
+  // Only elements of the open level's document can be edited.
+  const editableSelection = [...selectedData.keys()].every(sid => state.document?.elements.has(sid.slice(sid.indexOf(':') + 1)));
 
   const handleChange = (key: string, value: string) => {
-    if (!isSingleSelection) return;
-    dispatch({ type: 'UPDATE_ATTRS', id: firstId, attrs: { [key]: value } });
+    if (isSingleSelection) dispatch({ type: 'UPDATE_ATTRS', id: firstId, attrs: { [key]: value } });
+    else dispatch({ type: 'UPDATE_ATTRS_MANY', ids: [...selectedData.keys()], attrs: { [key]: value } });
   };
 
   const fields = (() => {
     const mod = getElementModule(firstData.tableName);
     if (!mod) return [];
+    // Mixed tables: only the fields every selected type has.
+    const shared = (key: string) => [...tables].every(tb => getElementModule(tb)?.propertyFields.some(f => f.key === key));
     const levelOptions = levels.map(l => ({ value: l.id, label: l.name || l.id }));
     // Inject dynamic options at render time. Level + MEP system definitions
     // live in project state, not in the static element module. For MEP line
     // tables (duct / pipe / etc.) filter to the disciplines that make sense
     // for that table. When no matching systems exist we leave the field as a
     // plain text input rather than showing an empty dropdown.
-    const acceptedDisciplines = disciplinesForMepLine(firstData.tableName);
     const systemOptions = (state.project?.mepSystems ?? [])
-      .filter(s => !acceptedDisciplines || acceptedDisciplines.includes(s.discipline))
+      .filter(s => [...tables].every(tb => systemFitsTable(s, tb)))
       .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
-    return mod.propertyFields.map(f => {
+    return mod.propertyFields.filter(f => !mixedTables || shared(f.key)).map(f => {
       if (f.key === 'top_level_id') return { ...f, options: levelOptions };
       if (f.key === 'system_type' && systemOptions.length > 0) return { ...f, options: systemOptions };
       return f;
@@ -122,12 +129,14 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
               backgroundColor: style?.color ? `color-mix(in srgb, ${style.color} 14%, transparent)` : undefined,
             }}
           >
-            <Icon name={firstData.tableName} width={15} height={15} />
+            <Icon name={mixedTables ? 'default' : firstData.tableName} width={15} height={15} />
           </span>
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-tight">
-            {style ? t(`display.${style.displayName}`) : firstData.tableName}
+            {mixedTables ? t('prop.multipleTypes') : style ? t(`display.${style.displayName}`) : firstData.tableName}
           </span>
-          <span className="shrink-0 rounded bg-[var(--bg-input)] px-1.5 py-0.5 text-[9px] text-muted-foreground tabular-nums">{firstId}</span>
+          {isSingleSelection && (
+            <span className="shrink-0 rounded bg-[var(--bg-input)] px-1.5 py-0.5 text-[9px] text-muted-foreground tabular-nums">{firstId}</span>
+          )}
         </div>
         <Button
           variant="ghost"
@@ -171,7 +180,8 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
                         key={f.key}
                         field={f}
                         value={csv[f.key] ?? ''}
-                        editable={!readonly && isSingleSelection && f.type !== 'readonly'}
+                        editable={!readonly && editableSelection && f.type !== 'readonly'}
+                        mixed={!isSingleSelection && csv[f.key] === undefined && [...selectedData.values()].some(d => (d.csv[f.key] ?? '') !== '')}
                         onChange={handleChange}
                         projectUnit={projectUnit}
                         t={(key: string, fallback?: string) => t(key, { defaultValue: fallback }) as string}
@@ -188,12 +198,24 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
   );
 }
 
+/** Values shared by every row; keys where the rows differ are left out. */
+function commonValues(rows: CsvRow[]): CsvRow {
+  const out: CsvRow = {};
+  const keys = new Set(rows.flatMap(r => Object.keys(r)));
+  for (const k of keys) {
+    const v = rows[0][k] ?? '';
+    if (rows.every(r => (r[k] ?? '') === v)) out[k] = v;
+  }
+  return out;
+}
+
 // ─── Property Row ────────────────────────────────────────────────────────────
 
 function PropertyRow({
   field: f,
   value,
   editable,
+  mixed,
   onChange,
   projectUnit,
   t,
@@ -201,6 +223,8 @@ function PropertyRow({
   field: PropertyField;
   value: string;
   editable: boolean;
+  /** Multi-selection whose elements disagree on this field. */
+  mixed?: boolean;
   onChange: (key: string, value: string) => void;
   projectUnit: ProjectUnit;
   t: (key: string, fallback?: string) => string;
@@ -211,6 +235,7 @@ function PropertyRow({
   // through unchanged. Underlying CSV values are NOT converted — they're
   // interpreted as the project unit per BimDown's store-as-displayed model.
   const renderedUnit = f.unit === 'm' ? getUnitSuffix(projectUnit).trim() : f.unit;
+  const mixedLabel = t('prop.mixed', 'Mixed');
 
   return (
     <div className="-mx-1 flex items-center gap-2 rounded-md px-1 py-[3px] transition-colors hover:bg-foreground/[0.03]">
@@ -226,12 +251,13 @@ function PropertyRow({
           />
         ) : f.type === 'readonly' || !editable ? (
           <span className="truncate px-1.5 text-right text-[11px] tabular-nums text-foreground/70">
-            {value !== '' ? value : <span className="text-muted-foreground/40">&mdash;</span>}
+            {value !== '' ? value : <span className="text-muted-foreground/40">{mixed ? mixedLabel : <>&mdash;</>}</span>}
           </span>
         ) : f.type === 'select' && f.options ? (
           <Select value={value} onValueChange={(v) => { if (v) onChange(f.key, v); }}>
             <SelectTrigger className={FIELD_SELECT}>
               <span className="truncate">{(() => {
+                if (mixed) return <span className="text-muted-foreground/60">{mixedLabel}</span>;
                 const o = f.options!.find(o => o.value === value);
                 // system_type labels are user-defined project names, not i18n keys.
                 const labelOf = (lbl: string) => f.key === 'system_type' ? lbl : t(`option.${lbl}`, lbl);
@@ -253,6 +279,7 @@ function PropertyRow({
               className={FIELD_INPUT}
               value={value}
               onChange={v => onChange(f.key, v)}
+              placeholder={mixed ? mixedLabel : undefined}
               step={f.step}
               min={f.min}
               max={f.max}
@@ -265,6 +292,7 @@ function PropertyRow({
             className={FIELD_INPUT}
             type="text"
             value={value}
+            placeholder={mixed ? mixedLabel : undefined}
             onChange={e => onChange(f.key, e.target.value)}
           />
         )}

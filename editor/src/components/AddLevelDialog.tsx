@@ -30,6 +30,19 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
     }
   }, [open, defaultName, defaultElevation]);
 
+  // Esc closes from anywhere (capture phase, before the canvas shortcuts).
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -41,10 +54,16 @@ export default function AddLevelDialog({ open, onClose, onConfirm, defaultName, 
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={onClose}>
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      // Pressing on the backdrop (not the form) closes, like Cancel.
+      onPointerDown={e => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <form
+        role="dialog"
+        aria-modal="true"
+        aria-label={dialogTitle}
         className="w-72 rounded-lg border border-border bg-card p-4 shadow-xl"
-        onClick={e => e.stopPropagation()}
         onSubmit={handleSubmit}
       >
         <div className="mb-3 text-[12px] font-semibold text-foreground">{dialogTitle}</div>

@@ -1,4 +1,5 @@
-import type { ToolHandler, ToolContext } from './types.ts';
+import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
+import type { EditorAction } from '../state/editorTypes.ts';
 import type { PolygonElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
@@ -6,6 +7,7 @@ import { snapPoint } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { getProjectUnits } from '../utils/units.ts';
+import { placementTypeForTable } from '../model/tableRegistry.ts';
 
 /** Minimum 3 vertices to form a polygon */
 const MIN_VERTICES = 3;
@@ -34,7 +36,7 @@ export const drawPolygonTool: ToolHandler = {
       const dx = pt.x - first.x;
       const dy = pt.y - first.y;
       if (Math.sqrt(dx * dx + dy * dy) < CLOSE_DISTANCE) {
-        createPolygon(ctx, points);
+        createPolygon(ctx.getState(), ctx.dispatch, points);
         ctx.setSnap(null);
         return;
       }
@@ -65,8 +67,32 @@ export const drawPolygonTool: ToolHandler = {
   },
 };
 
-function createPolygon(ctx: ToolContext, vertices: { x: number; y: number }[]) {
-  const state = ctx.getState();
+/** The active tool is drawing a polygon outline (slab, roof, ceiling, …). */
+export function isDrawingPolygon(state: { activeTool: string; drawingTarget: { tableName: string; variantId?: string } | null }): boolean {
+  if (state.activeTool === 'draw_polygon') return true;
+  return state.activeTool === 'draw' && !!state.drawingTarget
+    && placementTypeForTable(state.drawingTarget.tableName) === 'free_polygon';
+}
+
+/**
+ * Close the polygon being drawn (right-click / Enter). Returns false when
+ * fewer than 3 vertices are placed, so the caller can fall back to cancel.
+ */
+export function finishPolygon(
+  state: Pick<ToolStateSnapshot, 'drawingTarget' | 'drawingAttrs' | 'drawingState' | 'document' | 'project' | 'currentLevel'>,
+  dispatch: (action: EditorAction) => void,
+): boolean {
+  const points = state.drawingState?.points ?? [];
+  if (!state.drawingTarget || points.length < MIN_VERTICES) return false;
+  createPolygon(state, dispatch, points);
+  return true;
+}
+
+function createPolygon(
+  state: Pick<ToolStateSnapshot, 'drawingTarget' | 'drawingAttrs' | 'document' | 'project' | 'currentLevel'>,
+  dispatch: (action: EditorAction) => void,
+  vertices: { x: number; y: number }[],
+) {
   const target = state.drawingTarget;
   if (!target) return;
 
@@ -85,6 +111,6 @@ function createPolygon(ctx: ToolContext, vertices: { x: number; y: number }[]) {
     attrs: mergedAttrs,
   };
 
-  ctx.dispatch({ type: 'CREATE_ELEMENT', element });
-  ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+  dispatch({ type: 'CREATE_ELEMENT', element });
+  dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
 }

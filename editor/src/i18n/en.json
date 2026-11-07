@@ -272,6 +272,8 @@
   "prop.Mesh": "Mesh",
   "prop.Other": "Other",
   "prop.elementsSelected": "{{count}} elements selected",
+  "prop.mixed": "Mixed",
+  "prop.multipleTypes": "Multiple types",
 
   "view.2d": "2D View",
   "view.3d": "3D View",
@@ -305,6 +307,8 @@
 
   "dialog.addLevel": "Add Level",
   "dialog.renameLevel": "Rename Level",
+  "dialog.deleteLevel": "Delete Level",
+  "dialog.deleteLevelMessage": "Delete {{name}} and everything on it? Its files are removed; Undo (Ctrl+Z) brings it back.",
   "dialog.name": "Name",
   "dialog.elevation": "Elevation (m)",
   "dialog.cancel": "Cancel",
@@ -329,8 +333,8 @@
   "hint.line": "Click start point → Click end point · Esc cancel",
   "hint.vertical": "Click to place vertical run · Esc cancel",
   "hint.point": "Click to place · Esc cancel",
-  "hint.polygon": "Click to add vertices · Right-click to close · Esc cancel",
-  "hint.polygonClose": "Click to add more · Right-click or Enter to close · Esc cancel",
+  "hint.polygon": "Click to add vertices · Click the first point, right-click or Enter to close · Esc cancel",
+  "hint.polygonClose": "Click to add more · Click the first point, right-click or Enter to close · Esc cancel",
   "hint.hosted": "Click on a wall to place · Esc cancel",
   "hint.relocate": "Click to place · Esc cancel",
   "hint.relocateHosted": "Click on a wall to relocate · Esc cancel",

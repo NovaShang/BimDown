@@ -2,6 +2,7 @@ import type { DocumentState } from '../model/document.ts';
 import type { Level, GridData, SystemDef } from '../types.ts';
 import { groupByLayer, serializeToGeoJson, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
 import type { DataSource } from './dataSource.ts';
+import { allTableNames } from '../model/tableRegistry.ts';
 
 /**
  * Persist document state via the data source.
@@ -27,18 +28,49 @@ export async function persistDocument(
     const [, tableName] = key.split('/');
     const levelId = doc.levelId;
 
+    // A layer whose last element was deleted: remove its files (an empty
+    // CSV would fail validation) when the data source can delete.
+    const write = (path: string, content: string) =>
+      content === '' && ds.deleteFile ? ds.deleteFile(path) : ds.saveFile(path, content);
+
     if (!isCsvOnlyTable(tableName)) {
       const geomPath = `${levelId}/${tableName}.geojson`;
       const geomContent = serializeToGeoJson(groupElements, elevation);
-      saves.push(ds.saveFile(geomPath, geomContent));
+      saves.push(write(geomPath, geomContent));
     }
 
     const csvPath = `${levelId}/${tableName}.csv`;
     const csvContent = serializeToCsv(groupElements, tableName);
-    saves.push(ds.saveFile(csvPath, csvContent));
+    saves.push(write(csvPath, csvContent));
   }
 
   await Promise.all(saves);
+}
+
+/**
+ * Delete every file under `{levelId}/` and return their contents (path →
+ * text), so undoing the level removal can put them back verbatim. Without
+ * `listFiles` the known table files are probed. No-op without `deleteFile`.
+ */
+export async function removeLevelFiles(ds: DataSource, levelId: string): Promise<Record<string, string>> {
+  const snapshot: Record<string, string> = {};
+  if (!ds.deleteFile) return snapshot;
+  const prefix = `${levelId}/`;
+  const paths = ds.listFiles
+    ? (await ds.listFiles()).filter(p => p.startsWith(prefix))
+    : allTableNames().flatMap(t => [`${prefix}${t}.csv`, `${prefix}${t}.geojson`]);
+  await Promise.all(paths.map(async path => {
+    const text = await ds.fetchText(path);
+    if (text == null) return;
+    snapshot[path] = text;
+    await ds.deleteFile!(path);
+  }));
+  return snapshot;
+}
+
+/** Write back files captured by `removeLevelFiles`. */
+export async function restoreLevelFiles(ds: DataSource, snapshot: Record<string, string>): Promise<void> {
+  await Promise.all(Object.entries(snapshot).map(([path, text]) => ds.saveFile(path, text)));
 }
 
 export async function persistLevels(levels: Level[], ds: DataSource): Promise<void> {
