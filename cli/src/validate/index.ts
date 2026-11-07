@@ -11,6 +11,7 @@ import { validateReferences } from './references.js';
 import { validateRanges } from './ranges.js';
 import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
+import { validateAnnotations } from './annotations.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -86,6 +87,11 @@ export function validate(dir: string): string[] {
   // 7. Reference validation
   for (const entry of csvEntries) {
     issues.push(...validateReferences(entry.path, entry.table, entry.data, idRegistry));
+  }
+
+  // 7b. Annotation tables: numbers, dimension references, same-level hosts
+  for (const entry of csvEntries) {
+    issues.push(...validateAnnotations(entry.path, entry.tableName, entry.data, idRegistry));
   }
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)

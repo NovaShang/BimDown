@@ -1,7 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { discoverLayout, listFiles } from '../utils/fs.js';
-import { ID_PREFIXES, GEOJSON_FILE_NAMES, GLOBAL_ONLY_TABLES } from '../schema/registry.js';
+import { ID_PREFIXES, GEOJSON_FILE_NAMES, GLOBAL_ONLY_TABLES, ANNOTATION_TABLES } from '../schema/registry.js';
 
 // Tables where the GeoJSON file is optional:
 // - opening: wall-mode is CSV-only, slab-mode has geometry
@@ -46,6 +46,8 @@ export function validateStructure(dir: string): string[] {
     } else if (ext === '.csv') {
       if (!KNOWN_CSV_NAMES.has(f) && !KNOWN_GLOBAL_EXTRAS.has(f)) {
         issues.push(`global/${f}  unknown file — only known table CSVs are allowed`);
+      } else if (ANNOTATION_TABLES.has(f.replace('.csv', ''))) {
+        issues.push(`global/${f}  annotations belong to a level plan — put ${f} in a level directory`);
       }
     } else if (ext === '.geojson') {
       if (!KNOWN_GEOJSON_NAMES.has(f)) {

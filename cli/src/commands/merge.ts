@@ -45,9 +45,10 @@ const KNOWN_ID_FIELDS = new Set([
 ]);
 
 // Fields that contain port references "host_id:port_name" (or bare "host_id").
-// Only the host_id portion is remapped; port_name is preserved.
+// Only the host_id portion is remapped; port_name is preserved. Dimension
+// references ("w-1:left") share the syntax.
 const PORT_REF_FIELDS = new Set([
-  'from', 'to',
+  'from', 'to', 'start_ref', 'end_ref',
 ]);
 
 interface SourceData {

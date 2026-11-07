@@ -108,6 +108,16 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `mep_node`   | Point        | `Point` 3D | Topology node (fitting/accessory in Revit) |
 | `connector`  | None (CSV)   | — | Connection port on equipment/terminal/mep_node — host-local offset + outward direction, cross-section, flow direction, domain. Curves reference it via `from`/`to` (`host_id:name`). CSV-only. |
 
+### Annotation
+
+Plan annotations, CSV only, in level directories only (never `global/`). They reference model elements by id, so they follow edits; see [csv-schema/annotation/](csv-schema/annotation/).
+
+| Table        | Geometry file | Description |
+|--------------|---------------|-------------|
+| `dimension`  | No (CSV points) | Linear dimension: two measured points, each optionally stuck to an element (`start_ref` / `end_ref`: `w-1`, `w-1:left`, `w-1:end`, `d-1:start`, …), a `direction` (empty = aligned) and an `offset` for the dimension line |
+| `text_note`  | No (CSV point) | Free text at `x`,`y` with `size` and `rotation` |
+| `tag`        | No (CSV point) | Label of one element (`host_id`): door/window mark, room name + number + area, number/name/type/size; empty `x`,`y` = default spot that follows the host |
+
 ### Fallback
 
 | Table  | Geometry file | Description |
@@ -203,6 +213,9 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `mep_node` | `mn` | `mn-1` |
 | `connector` | `cn` | `cn-1` |
 | `mesh` | `ms` | `ms-1` |
+| `dimension` | `dm` | `dm-1` |
+| `text_note` | `tx` | `tx-1` |
+| `tag` | `tg` | `tg-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
 
@@ -239,6 +252,7 @@ Some elements have no geometry file:
 - **Door/Window/Wall-Opening**: Fully defined by `host_id` + `position`. Absolute coordinates would require re-syncing when the host wall moves.
 - **Space**: Defined by seed point `(x, y)` in CSV. Boundary polygon is auto-computed by `bimdown build` from surrounding walls, curtain walls, room separators, and structure walls using a half-edge face tracing algorithm. The generated `space.geojson` contains `Polygon` features whose IDs match the space CSV rows.
 - **Grid/Level**: Global reference data with coordinates in CSV.
+- **Dimension/Text note/Tag**: Annotations with inline CSV coordinates. A dimension end with a reference is re-derived from the referenced element (location line: the stored point projected onto it; `:start`/`:end`; wall face `:left`/`:right`; `:center`); the stored coordinates are the last resolved points and the fallback. Tags read their text (number, name, size, room area) from the host.
 
 ### Unified Foundation Type
 

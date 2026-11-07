@@ -9,6 +9,8 @@ import { discoverLayout } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
 import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
+import { renderAnnotations } from './annotations.js';
+import { projectUnits } from './utils/units.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -142,6 +144,12 @@ export function renderLevel(projectDir: string, levelId: string): string {
   }
   // Space (CSV seed or generated boundary geojson)
   elements.push(...renderSpaces(levelDir.path));
+
+  // Dimensions, text notes and tags, drawn on top of everything
+  const annotations = renderAnnotations(levelDir.path, layout.globalDir, projectUnits(projectDir));
+  if (annotations.bounds) {
+    elements.push({ tableName: 'annotation', svg: annotations.parts.join('\n'), bounds: annotations.bounds });
+  }
 
   for (const e of elements) {
     minX = Math.min(minX, e.bounds.minX);
