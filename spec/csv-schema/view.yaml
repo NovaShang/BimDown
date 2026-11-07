@@ -1,0 +1,36 @@
+name: view
+description: "Saved drawing views (global/view.csv only). A `section` is a vertical cut along the plan line start→end, looking to the LEFT of that direction (a line drawn west→east looks north). Elevations and plans are derived and need no rows."
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: name
+    type: string
+
+  - name: view_type
+    type: enum
+    required: true
+    values:
+      - section
+
+  - name: start_x
+    type: float
+    required: true
+
+  - name: start_y
+    type: float
+    required: true
+
+  - name: end_x
+    type: float
+    required: true
+
+  - name: end_y
+    type: float
+    required: true
+
+  - name: depth
+    type: float
+    description: Far clip distance in front of the cut line (project units). Empty = unlimited.

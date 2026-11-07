@@ -20,6 +20,7 @@ BimDown uses **CSV for attributes** and a **geometry layer** that may be encoded
 ├── global/
 │   ├── level.csv                    # floor level definitions (with elevations)
 │   ├── grid.csv                     # structural grid lines
+│   ├── view.csv                     # saved section views (optional)
 │   ├── wall.csv / wall.geojson      # multi-story walls (span > 1 level above)
 │   ├── stair.csv / stair.geojson    # multi-story stairs
 │   ├── pipe.csv / pipe.geojson      # vertical risers
@@ -47,7 +48,7 @@ All elements belong to a **base level** (their `base_level_id`).
 
 - **`base_level_id` always equals the containing directory's level** — no cross-directory references. To express a multi-level element, place it in `global/`.
 - **Level directory** (e.g. `1F/`, `2F/`): elements whose vertical extent stays within one level above their base.
-- **Global directory** (`global/`): elements that span **more than one level above** their base (multi-story walls, vertical pipe risers, etc.), plus `level.csv` and `grid.csv`.
+- **Global directory** (`global/`): elements that span **more than one level above** their base (multi-story walls, vertical pipe risers, etc.), plus `level.csv`, `grid.csv` and `view.csv`.
 - **Spatial elements** (beams, ramps, ducts, etc.) should be placed in the level directory they primarily belong to. Only truly cross-level instances go in `global/`.
 
 Consequence: editing or rendering one level view requires loading at most **two directories** — the current level and `global/`.
@@ -64,6 +65,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 |---------|---------------|-------------|
 | `level` | No  | Floor levels by elevation |
 | `grid`  | No  | Structural/reference grid lines (inline coords in CSV) |
+| `view`  | No  | Saved section views: `view_type=section`, plan line `start_*`→`end_*` (looks to its left), optional far-clip `depth` |
 
 ### Architecture
 
