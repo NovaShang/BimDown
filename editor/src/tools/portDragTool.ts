@@ -22,6 +22,7 @@ import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { findPipeBodyHit, type PipeBodyHit } from '../utils/pipeBodyHit.ts';
 import { generateId } from '../model/ids.ts';
+import { reservedIds } from '../mep/reservedIds.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { splitCurveAt } from '../model/mepSplit.ts';
 
@@ -252,7 +253,7 @@ export function finishPortDrag(ctx: ToolContext): void {
     // Single id-allocation pool: split-target + new-downstream + new-node +
     // every pipe / elbow that materialiseRoute is about to mint must all
     // pull from the same set so two distinct rows never share an id.
-    const existingIds = new Set(elements.keys());
+    const existingIds = reservedIds(elements);
     const patch = buildTJunctionPatch(state.pipeHit, existingIds);
     if (patch) {
       const polyline = orthoRoute(state.origin, state.pipeHit.point, {

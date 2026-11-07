@@ -19,6 +19,7 @@ import {
   ROOF_TYPE_OPTIONS,
   EQUIPMENT_TYPE_OPTIONS,
   TERMINAL_TYPE_OPTIONS,
+  BOOLEAN_OPTIONS,
 } from './_options.ts';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -98,6 +99,12 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   system_type:     { key: 'system_type',     label: 'System Type',     type: 'select', group: 'system' },
   equipment_type:  { key: 'equipment_type',  label: 'Equipment Type',  type: 'select', options: EQUIPMENT_TYPE_OPTIONS, group: 'system' },
   terminal_type:   { key: 'terminal_type',   label: 'Terminal Type',   type: 'select', options: TERMINAL_TYPE_OPTIONS, group: 'system' },
+  // MEP design data
+  flow:            { key: 'flow',            label: 'Flow',            type: 'number', unit: 'L/s', min: 0, step: 10, group: 'system' },
+  load:            { key: 'load',            label: 'Load',            type: 'number', unit: 'W', min: 0, step: 10, group: 'system' },
+  circuit_id:      { key: 'circuit_id',      label: 'Circuit',         type: 'readonly', group: 'system' },
+  insulation_thickness: { key: 'insulation_thickness', label: 'Insulation', type: 'number', unit: 'm', min: 0, step: 0.01, group: 'material' },
+  flexible:        { key: 'flexible',        label: 'Flexible',        type: 'select', options: BOOLEAN_OPTIONS, group: 'geometry' },
 
   // Curtain wall
   u_grid_count:    { key: 'u_grid_count',    label: 'U Grids',         type: 'number', min: 0, step: 1, group: 'curtain_wall' },

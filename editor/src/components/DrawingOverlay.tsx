@@ -9,6 +9,7 @@ import { isWallDrawTable } from '../tools/wallDrawTool.ts';
 import WallDrawPreview, { TypedBadge } from './WallDrawPreview.tsx';
 import { pointSizeAttrsForTable } from '../model/tableRegistry.ts';
 import { getElementModule } from '../elements/registry.ts';
+import { mepDrawingPreview } from '../mep/MepDrawingPreview.tsx';
 
 /** Length label positioned at the midpoint of a line, offset perpendicular to it */
 function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point; scale: number; projectUnit: ProjectUnit }) {
@@ -384,6 +385,8 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   }
 
   if (activeTool === 'draw_point') {
+    const mepPreview = mepDrawingPreview({ activeTool, tableName, points, cursor, drawingAttrs, scale });
+    if (mepPreview) return mepPreview;
     const Preview = tableName ? getElementModule(tableName)?.placementPreview : undefined;
     if (cursor && Preview) {
       return <Preview cursor={cursor} rotation={drawingState.rotation} attrs={drawingAttrs} scale={scale} />;

@@ -1,12 +1,13 @@
 /**
- * Equipment / terminal / mep_node — point archetype, MEP discipline.
- * Simple rounded-rect 2D marker + 3D box.
+ * Equipment / terminal — point archetype, MEP discipline.
+ * Plan symbol by type with a tag; simple 3D body by type (mep/DeviceView).
  */
 import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
-import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
-import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import type { CanonicalElement, PointElement } from '../model/elements.ts';
+import { Device2D, Device3D, type DeviceFacts } from '../mep/DeviceView.tsx';
+import { resolveMepSystemColor } from './_mepLineShared.tsx';
 import { BASE_OFFSET_FIELD, EQUIPMENT_TYPE_OPTIONS, TERMINAL_TYPE_OPTIONS } from './_options.ts';
 import { equipmentStarters } from './equipment_starters.ts';
 
@@ -31,18 +32,7 @@ const STARTER_OPTIONS_TERMINAL = [
 
 const DEFAULT_POINT_HEIGHT = 0.5;
 
-export interface EquipmentFacts {
-  id: string;
-  position: Point;
-  width: number;
-  depth: number;
-  height: number;
-  rotationDeg: number;
-  baseY: number;
-  material: string;
-  color: string;
-  table: string;
-}
+export type EquipmentFacts = DeviceFacts;
 
 function makeEquipmentModule(opts: {
   table: string;
@@ -53,7 +43,9 @@ function makeEquipmentModule(opts: {
   defaults: Record<string, string>;
   csvHeaders: string[];
   drawingFields: any[];
+  toolbarVariants?: ElementModule['toolbarVariants'];
 }): ElementModule<EquipmentFacts> {
+  const typeKey = opts.table === 'equipment' ? 'equipment_type' : 'terminal_type';
   return {
     table: opts.table,
     discipline: 'mep',
@@ -65,14 +57,19 @@ function makeEquipmentModule(opts: {
     propertyFields: [],
     layerStyle: opts.layerStyle,
     renderZIndex: opts.renderZIndex,
+    toolbarVariants: opts.toolbarVariants,
 
     geometry(el: CanonicalElement, ctx: GeometryContext): EquipmentFacts | null {
       if (el.geometry !== 'point') return null;
       const p = el as PointElement;
       const baseOffset = parseFloat(p.attrs.base_offset || '0') || 0;
       const height = parseFloat(p.attrs.height || `${DEFAULT_POINT_HEIGHT}`) || DEFAULT_POINT_HEIGHT;
+      const systemType = p.attrs.system_type || '';
+      const first = systemType.split(',')[0].trim();
+      const override = first ? ctx.projectSystems().find(s => s.system_type.trim() === first)?.color : undefined;
       return {
         id: p.id,
+        table: opts.table,
         position: p.position,
         width: p.width,
         depth: p.height,  // PointElement.height is the 2D y-extent (depth in plan)
@@ -81,43 +78,22 @@ function makeEquipmentModule(opts: {
         baseY: ctx.levelElevation + baseOffset,
         material: p.attrs.material || '',
         color: opts.color,
-        table: opts.table,
+        type: p.attrs[typeKey] || 'other',
+        number: p.attrs.number || '',
+        systemType,
+        systemColor: first ? resolveMepSystemColor(first, override) : '',
+        flow: parseFloat(p.attrs.flow || '0') || 0,
+        load: parseFloat(p.attrs.load || '0') || 0,
+        circuit: p.attrs.circuit_id || '',
       };
     },
 
-    draw2D(facts): ReactNode {
-      return (
-        <g data-id={facts.id} transform={`translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`}>
-          <rect
-            x={-facts.width / 2} y={-facts.depth / 2}
-            width={facts.width} height={facts.depth}
-            fill={facts.color + '30'} stroke={facts.color}
-            strokeWidth={0.02} rx={0.03} ry={0.03}
-          />
-        </g>
-      );
+    draw2D(facts, drawCtx): ReactNode {
+      return <Device2D facts={facts} selected={drawCtx.selected} />;
     },
 
     draw3D(facts, drawCtx): ReactNode {
-      const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
-      const isHL = drawCtx.selected || drawCtx.hovered;
-      // three.js rotation.y = θ turns plan +X to (cos θ, sin θ): spec rotation is CCW.
-      const rotY = (facts.rotationDeg * Math.PI) / 180;
-      return (
-        <mesh
-          position={[facts.position.x, facts.baseY + facts.height / 2, -facts.position.y]}
-          rotation={[0, rotY, 0]}
-          scale={[facts.width, facts.height, facts.depth]}
-          material={isHL ? undefined : material}
-          userData={{ elementId: facts.id }}
-        >
-          <boxGeometry args={[1, 1, 1]} />
-          {isHL && (
-            <meshStandardMaterial attach="material" color="#06b6d4"
-              transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-          )}
-        </mesh>
-      );
+      return <Device3D facts={facts} isHL={drawCtx.selected || drawCtx.hovered} />;
     },
 
     bbox(facts) {
@@ -133,7 +109,7 @@ function makeEquipmentModule(opts: {
 
 export const equipmentModule = makeEquipmentModule({
   table: 'equipment', prefix: 'eq', color: '#e63946',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'equipment_type', 'family', 'type', 'rotation'],
+  csvHeaders: ['number', 'base_offset', 'height', 'system_type', 'equipment_type', 'family', 'type', 'rotation', 'flow', 'load', 'circuit_id'],
   defaults: { base_offset: '0', system_type: '', equipment_type: 'other', family: '', type: '', rotation: '0' },
   drawingFields: [
     { key: STARTER_KEY_ATTR, label: 'Template', type: 'select', options: STARTER_OPTIONS_EQUIPMENT },
@@ -147,7 +123,7 @@ export const equipmentModule = makeEquipmentModule({
 
 export const terminalModule = makeEquipmentModule({
   table: 'terminal', prefix: 'tm', color: '#f77f00',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'terminal_type', 'family', 'type', 'rotation'],
+  csvHeaders: ['number', 'base_offset', 'height', 'system_type', 'terminal_type', 'family', 'type', 'rotation', 'flow', 'load', 'circuit_id'],
   defaults: { base_offset: '0', system_type: '', terminal_type: 'other', family: '', type: '', rotation: '0' },
   drawingFields: [
     { key: STARTER_KEY_ATTR, label: 'Template', type: 'select', options: STARTER_OPTIONS_TERMINAL },
@@ -158,6 +134,12 @@ export const terminalModule = makeEquipmentModule({
   ],
   layerStyle: { displayName: 'Terminals', color: '#f77f00', icon: '◆', order: 13 },
   renderZIndex: 91,
+  // Single placement, or an array over a rectangle (sprinkler grid with its
+  // branch piping, light grid) — mep/arrayTool.ts.
+  toolbarVariants: [
+    { id: 'single', label: 'layer.terminal', icon: '◆', iconName: 'terminal', placementType: 'free_point' },
+    { id: 'array', label: 'mep.tool.array', icon: '⁙', placementType: 'free_point' },
+  ],
 });
 
 // mep_node now lives in its own module (elements/mep_node.tsx) because it

@@ -25,6 +25,7 @@ import { isMepLineTable } from './mepTopology.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { findPipeBodyHit } from '../utils/pipeBodyHit.ts';
 import { endZ, isVertical, splitCurveAt, zAt } from './mepSplit.ts';
+import { reservedIds } from '../mep/reservedIds.ts';
 
 const DEFAULT_TOLERANCE = 0.01; // 1 cm in meters
 
@@ -94,7 +95,7 @@ export function bondEndpoints(
   const newElements: CanonicalElement[] = [];
   const updates = new Map<string, CanonicalElement>();
   // Track allocated ids so we don't collide with each other.
-  const usedIds = new Set(elements.keys());
+  const usedIds = reservedIds(elements);
 
   // Helper: read the latest version of any element (mutation in flight).
   const liveElement = (id: string): CanonicalElement | null => {

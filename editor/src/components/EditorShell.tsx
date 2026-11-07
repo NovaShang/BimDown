@@ -18,6 +18,7 @@ import TopBar from './TopBar.tsx';
 import DrawingPropertiesBar from './DrawingPropertiesBar.tsx';
 import RightPanel from './RightPanel.tsx';
 import DrawingHints from './DrawingHints.tsx';
+import MepOverlay from '../mep/MepOverlay.tsx';
 import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
@@ -393,6 +394,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         <DrawingHints />
         <UnderlayHint />
         <CalibrateDialog />
+        {!state.readonly && <MepOverlay />}
         {/* The tour teaches editing tools: not for read-only / shared views */}
         {!state.readonly && <OnboardingTour />}
       </div>

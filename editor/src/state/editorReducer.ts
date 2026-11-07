@@ -10,6 +10,7 @@ import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { isVerticalSpanTable, lineWidthAttrForTable, pointSizeAttrsForTable } from '../model/tableRegistry.ts';
 import { collectMepBranch, isMepLineTable } from '../model/mepTopology.ts';
 import { bondEndpoints } from '../model/bondEndpoints.ts';
+import { externalNodeRefs } from '../mep/externalRefs.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { serializeToGeoJson, groupByLayer } from '../model/serialize.ts';
 import type { EditCommand, LevelSnapshot } from '../model/history.ts';
@@ -153,6 +154,8 @@ function cleanupOrphanMepNodes(
   nextElements: Map<string, CanonicalElement>,
   before: Map<string, CanonicalElement | null>,
   after: Map<string, CanonicalElement | null>,
+  /** Node ids that runs on other levels reference (riser ends): never orphans. */
+  keep: ReadonlySet<string> = new Set(),
 ): Map<string, CanonicalElement> {
   // Index mep_node ids (raw + level-stripped) so port-ref hostId values
   // resolve regardless of which form was written.
@@ -187,7 +190,10 @@ function cleanupOrphanMepNodes(
   for (const node of nodeById.values()) {
     // Active fittings are user-placed — never auto-delete.
     if ((node.attrs.kind ?? '').trim()) continue;
-    if ((counts.get(node.id) ?? 0) < 2) doomed.add(node.id);
+    if (keep.has(node.id)) continue;
+    // A cap / deliberate open end keeps its single run.
+    const single = node.attrs.fitting === 'cap' || node.attrs.fitting === 'open';
+    if ((counts.get(node.id) ?? 0) < (single ? 1 : 2)) doomed.add(node.id);
   }
   if (doomed.size === 0) return nextElements;
 
@@ -676,7 +682,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // by auto-creating / reusing a passive mep_node and rewriting from/to.
       next = applyEndpointBonding(next, [action.element.id], before, after);
       // GC any passive mep_nodes that ended up with < 2 references.
-      next = cleanupOrphanMepNodes(next, before, after);
+      next = cleanupOrphanMepNodes(next, before, after, externalNodeRefs(state.project, state.currentLevel));
       // Make sure any bonded-in mep_node layer becomes visible too.
       for (const el of after.values()) {
         if (!el) continue;
@@ -724,7 +730,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         }
       }
       next = applyEndpointBonding(next, candidatePipeIds, before, after);
-      next = cleanupOrphanMepNodes(next, before, after);
+      next = cleanupOrphanMepNodes(next, before, after, externalNodeRefs(state.project, state.currentLevel));
       for (const el of after.values()) {
         if (!el) continue;
         visibleLayers.add(`${el.discipline}/${el.tableName}`);
@@ -754,7 +760,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
         if (isMepLineTable(el.tableName)) candidatePipeIds.push(el.id);
       }
       next = applyEndpointBonding(next, candidatePipeIds, before, after);
-      next = cleanupOrphanMepNodes(next, before, after);
+      next = cleanupOrphanMepNodes(next, before, after, externalNodeRefs(state.project, state.currentLevel));
       for (const el of after.values()) {
         if (!el) continue;
         visibleLayers.add(`${el.discipline}/${el.tableName}`);
@@ -803,7 +809,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (before.size === 0) return state;
       // GC passive mep_nodes that lost their last MEP-curve reference when
       // pipes / ducts were deleted above.
-      const gced = cleanupOrphanMepNodes(next, before, after);
+      const gced = cleanupOrphanMepNodes(next, before, after, externalNodeRefs(state.project, state.currentLevel));
       // Remove deleted IDs from selection (match both prefixed and raw)
       const nextSelected = new Set(state.selectedIds);
       for (const sid of state.selectedIds) {
@@ -1171,7 +1177,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       }
       // Always run the passive-node GC: pipe endpoint drags can leave a node
       // with < 2 references even without a bonding pass.
-      const gced = cleanupOrphanMepNodes(new Map(nextElements), before, after);
+      const gced = cleanupOrphanMepNodes(new Map(nextElements), before, after, externalNodeRefs(state.project, state.currentLevel));
       if (gced !== nextElements) nextElements = gced;
       const documentChanged = nextElements !== state.document.elements;
       return {

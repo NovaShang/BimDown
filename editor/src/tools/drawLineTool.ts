@@ -12,6 +12,7 @@ import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { wallDrawTool, isWallDrawTable } from './wallDrawTool.ts';
+import { routePointerDown, routePointerMove } from '../mep/routeTool.ts';
 
 /** When true, the multi-click stair placement tool handles this event instead
  *  of the regular line-creation flow. Straight stairs and every other table
@@ -27,6 +28,12 @@ export const VERTICAL_MODE_KEY = '__vertical_mode';
 
 function isVerticalMode(attrs: Record<string, string>): boolean {
   return attrs[VERTICAL_MODE_KEY] === 'true';
+}
+
+/** MEP runs (duct / pipe / conduit / cable tray) use the continuous router
+ *  (mep/routeTool.ts); its single-click vertical mode stays here. */
+function shouldDelegateToRouter(state: { drawingTarget: { tableName: string } | null; drawingAttrs: Record<string, string> }): boolean {
+  return isMepLineTable(state.drawingTarget?.tableName) && !isVerticalMode(state.drawingAttrs);
 }
 
 /**
@@ -74,6 +81,10 @@ export const drawLineTool: ToolHandler = {
     // tool that lays down stair + stair_landing + stair_run in one placement.
     if (shouldDelegateToStairTool(ctx.getState())) {
       drawStairTool.onPointerDown?.(ctx, e);
+      return;
+    }
+    if (shouldDelegateToRouter(ctx.getState())) {
+      routePointerDown(ctx, e);
       return;
     }
 
@@ -188,6 +199,10 @@ export const drawLineTool: ToolHandler = {
     }
     if (shouldDelegateToStairTool(ctx.getState())) {
       drawStairTool.onPointerMove?.(ctx, e);
+      return;
+    }
+    if (shouldDelegateToRouter(ctx.getState())) {
+      routePointerMove(ctx, e);
       return;
     }
 

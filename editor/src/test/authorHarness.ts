@@ -114,9 +114,15 @@ export function authorHouse(): Harness {
   h.done();
   h.pick('stair'); h.click(1, 1); h.click(1, 5); h.done();
   h.pick('column'); h.click(3, 7.5); h.done();
-  h.pick('duct', { start_z: '2.8', end_z: '2.8' }); h.click(1, 6); h.click(5, 6); h.done();
-  h.pick('pipe', { start_z: '0.5', end_z: '0.5' }); h.click(7, 1); h.click(9, 1); h.done();
-  h.pick('equipment'); h.click(8, 6); h.done();
-  h.pick('terminal'); h.click(2, 2); h.done();
+  // MEP, connected end to end (bimdown build reports open ends): an FCU
+  // feeding a diffuser (duct out of its SA port, elbow, drop onto the
+  // diffuser neck), and hot water from a heater to a basin (riser, run,
+  // drop and stub into the basin's hot inlet).
+  h.pick('equipment', { __starter_key: 'fcu_chw_2pipe' }); h.click(3, 6); h.done();
+  h.pick('terminal', { __starter_key: 'diffuser_supply' }); h.click(1, 3); h.done();
+  h.pick('duct'); h.click(2.5, 6); h.click(1, 6); h.click(1, 3); h.done();
+  h.pick('equipment', { __starter_key: 'water_heater' }); h.click(8, 2); h.done();
+  h.pick('terminal', { __starter_key: 'lavatory' }); h.click(7.95, 6); h.done();
+  h.pick('pipe', { start_z: '2.2', size_x: '0.02' }); h.click(7.85, 2); h.click(7.85, 5.775); h.done();
   return h;
 }

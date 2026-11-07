@@ -30,3 +30,4 @@ import './dimension.tsx';
 import './text_note.tsx';
 import './tag.tsx';
 import './furniture.tsx';
+import './circuit.tsx';

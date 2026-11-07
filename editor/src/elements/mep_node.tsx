@@ -15,15 +15,20 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, LineElement, Point } from '../model/elements.ts';
-import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
 import { MEP_LINE_TABLES } from '../model/mepTopology.ts';
+import { analyzeFittings, type FittingInfo } from '../mep/fittings.ts';
+import { Accessory2D, Accessory3D, Fitting2D, Fitting3D, accessoryLength, type AccessoryLook } from '../mep/FittingView.tsx';
+import { resolveMepSystemColor } from './_mepLineShared.tsx';
+import type { V3 } from '../mep/geom3d.ts';
+import { ACCESSORY_KIND_OPTIONS, FITTING_OPTIONS } from './_options.ts';
 
 export type EffectiveKind =
   | 'orphan' | 'cap' | 'coupling' | 'reducer' | 'transition' | 'elbow'
-  | 'tee' | 'cross' | 'manifold'
+  | 'tee' | 'cross' | 'manifold' | 'tap' | 'wye' | 'open'
   // accessories (explicit kind):
-  | 'valve' | 'damper' | 'pump' | 'strainer' | 'check_valve'
+  | 'valve' | 'gate_valve' | 'ball_valve' | 'butterfly_valve' | 'globe_valve' | 'balancing_valve'
+  | 'damper' | 'fire_damper' | 'pump' | 'strainer' | 'check_valve'
   | 'flow_meter' | 'sensor' | 'access_panel' | 'other_accessory' | 'custom';
 
 interface ConnectedPipe {
@@ -57,6 +62,14 @@ export interface MepNodeFacts {
   sizeH: number;
   /** Rotation around the world Z axis, in degrees CCW. */
   rotationDeg: number;
+  /** Level elevation (three.js base for level-relative z). */
+  levelY: number;
+  /** Passive fitting body (null for accessories / orphans). */
+  fitting: FittingInfo | null;
+  /** Accessory body (null for passive fittings). */
+  accessory: AccessoryLook | null;
+  color: string;
+  riserRight: Map<string, V3>;
 }
 
 function findConnected(node: PointElement, ctx: GeometryContext): ConnectedPipe[] {
@@ -121,140 +134,121 @@ function deriveKind(connected: ConnectedPipe[]): EffectiveKind {
   return 'manifold';
 }
 
-// Color-coded marker per kind (placeholder until per-kind 2D symbols land).
-const KIND_COLOR: Record<EffectiveKind, string> = {
-  orphan: '#ff4444',
-  cap: '#ff8888',
-  coupling: '#cccccc',
-  reducer: '#ffaa55',
-  transition: '#ffaa55',
-  elbow: '#88ccff',
-  tee: '#66aaff',
-  cross: '#3388ff',
-  manifold: '#0055cc',
-  valve: '#ff6b6b',
-  damper: '#ff8866',
-  pump: '#ff4444',
-  strainer: '#dd8866',
-  check_valve: '#ff7755',
-  flow_meter: '#aa66ff',
-  sensor: '#66ddaa',
-  access_panel: '#888888',
-  other_accessory: '#999999',
-  custom: '#aaaaaa',
-};
+/** Run direction of an accessory: its `out` port (host frame, rotated), else the first connected run, else its rotation. */
+function accessoryDirection(p: PointElement, ctx: GeometryContext, connected: ConnectedPipe[], rotationDeg: number): V3 {
+  const rot = (rotationDeg * Math.PI) / 180;
+  for (const c of ctx.hostedOf(p.id)) {
+    if (c.tableName !== 'connector' || (c.attrs.name || '') !== 'out') continue;
+    const dx = parseFloat(c.attrs.dir_x || '1') || 0, dy = parseFloat(c.attrs.dir_y || '0') || 0, dz = parseFloat(c.attrs.dir_z || '0') || 0;
+    return [dx * Math.cos(rot) - dy * Math.sin(rot), dx * Math.sin(rot) + dy * Math.cos(rot), dz];
+  }
+  const first = connected[0];
+  if (first) return [first.dirX, first.dirY, first.dirZ];
+  return [Math.cos(rot), Math.sin(rot), 0];
+}
 
 export const mepNodeModule: ElementModule<MepNodeFacts> = {
   table: 'mep_node',
   discipline: 'mep',
   archetype: 'point',
   prefix: 'mn',
-  csvHeaders: ['number', 'base_offset', 'system_type', 'kind', 'family', 'type', 'shape', 'size_w', 'size_h', 'rotation'],
-  defaults: { base_offset: '0', system_type: '', kind: '', family: '', type: '', shape: '', size_w: '', size_h: '', rotation: '0' },
-  drawingFields: [],
+  csvHeaders: ['number', 'base_offset', 'system_type', 'kind', 'fitting', 'family', 'type', 'shape', 'size_w', 'size_h', 'rotation'],
+  defaults: { base_offset: '0', system_type: '', kind: '', fitting: '', family: '', type: '', shape: '', size_w: '', size_h: '', rotation: '0' },
+  drawingFields: [
+    { key: 'kind', label: 'Accessory', type: 'select', options: ACCESSORY_KIND_OPTIONS },
+    { key: 'fitting', label: 'Fitting', type: 'select', options: FITTING_OPTIONS },
+  ],
   propertyFields: [],
   layerStyle: { displayName: 'MEP Nodes', color: '#ff6b6b', icon: '●', order: 13.5 },
   renderZIndex: 92,
-  hiddenFromToolbar: true,  // Users don't place nodes directly — they materialize from pipe/duct topology.
+  // Fittings materialize from pipe / duct topology; only accessories (valves,
+  // dampers) are placed, with the Accessory tool: a click on a run splits it
+  // and drops the accessory inline (mep/accessoryTool.ts).
+  toolbarVariants: [
+    { id: 'accessory', label: 'mep.tool.accessory', icon: '⋈', iconName: 'mep_node', placementType: 'free_point', defaults: { kind: 'gate_valve' } },
+  ],
 
   geometry(el: CanonicalElement, ctx: GeometryContext): MepNodeFacts | null {
     if (el.geometry !== 'point') return null;
     const p = el as PointElement;
     const connected = findConnected(p, ctx);
     const declaredKind = (p.attrs.kind || '').trim();
-    const effectiveKind = declaredKind ? (declaredKind as EffectiveKind) : deriveKind(connected);
+    const analysis = analyzeFittings(ctx);
+    const fitting = declaredKind ? null : (analysis.byNode.get(p.id) ?? null);
+    const effectiveKind = declaredKind
+      ? (declaredKind as EffectiveKind)
+      : ((fitting?.kind as EffectiveKind | undefined) ?? deriveKind(connected));
     const baseOffset = parseFloat(p.attrs.base_offset || '0') || 0;
+    // System colour: the node's own tag, else the first connected run's.
+    let systemType = p.attrs.system_type || '';
+    if (!systemType) {
+      for (const c of connected) {
+        const s = ctx.elementById(c.id)?.attrs.system_type;
+        if (s) { systemType = s; break; }
+      }
+    }
+    const override = ctx.projectSystems().find(s => s.system_type.trim() === systemType.trim())?.color;
+    const color = systemType ? resolveMepSystemColor(systemType, override) : '#888888';
+    const rotationDeg = parseFloat(p.attrs.rotation || '0') || 0;
+    let accessory: AccessoryLook | null = null;
+    if (declaredKind) {
+      const dir3 = accessoryDirection(p, ctx, connected, rotationDeg);
+      const h = Math.hypot(dir3[0], dir3[1]);
+      const dir = h > 1e-6 ? { x: dir3[0] / h, y: dir3[1] / h } : { x: 1, y: 0 };
+      const first = connected[0];
+      const table = first?.table ?? 'pipe';
+      const width = parseFloat(p.attrs.size_w || '') || first?.sizeX || 0.05;
+      const height = parseFloat(p.attrs.size_h || '') || first?.sizeY || width;
+      const round = (p.attrs.shape || first?.shape || 'round') === 'round';
+      accessory = {
+        kind: declaredKind, at: p.position, dir, dir3, z: baseOffset,
+        length: accessoryLength(declaredKind, table, width), width, height, round,
+      };
+    }
     return {
       id: p.id,
       position: p.position,
       baseY: ctx.levelElevation + baseOffset,
+      levelY: ctx.levelElevation,
       declaredKind,
       effectiveKind,
       connected,
-      systemType: p.attrs.system_type || '',
+      systemType,
       material: p.attrs.material || '',
       shape: p.attrs.shape || '',
       sizeW: parseFloat(p.attrs.size_w || '0') || 0,
       sizeH: parseFloat(p.attrs.size_h || '0') || 0,
-      rotationDeg: parseFloat(p.attrs.rotation || '0') || 0,
+      rotationDeg,
+      fitting,
+      accessory,
+      color,
+      riserRight: analysis.riserRight,
     };
   },
 
   draw2D(facts, drawCtx): ReactNode {
-    // Placeholder: small circle marker color-coded by effective kind. Symbol
-    // fidelity (proper elbow arc / tee perpendicular / valve bowtie) is a
-    // follow-up render pass in Step 7 (tools / 2D symbols).
-    //
-    // Passive fittings with 2+ collinear connections (coupling) are visually
-    // invisible — a coupling is a phantom in real BIM drawings too.
-    //
-    // Selection policy: passive nodes (declaredKind empty) are PURE topology
-    // derivatives — auto-created by endpoint bonding, auto-deleted when
-    // orphaned, and always moved by the pipes they join. They never get
-    // `data-id` and the group is pointer-events: none so clicks fall
-    // through to whatever's underneath. Active accessories (valve / damper
-    // / pump with explicit kind) keep normal selectability + hit zones.
-    const k = facts.effectiveKind;
-    const isPassive = !facts.declaredKind;
-    // Passive fittings (elbow/tee/cross/reducer/coupling/cap) render NOTHING:
-    // their incident curves are snapped onto this node (see mepFittingRender),
-    // so the miter-joined run already draws the fitting body. Drawing a marker
-    // here would just put a dot back in the middle of a continuous run.
-    if (isPassive) return null;
-    const color = drawCtx.selected ? '#3a7bff' : (KIND_COLOR[k] ?? '#999');
-    const r = k === 'orphan' || k === 'cap' ? 0.06 : 0.08;
-    const opacity = 0.6;
-    return (
-      <g data-id={facts.id}>
-        <circle
-          cx={facts.position.x} cy={facts.position.y} r={r}
-          fill={color} fillOpacity={opacity}
-          stroke={color} strokeWidth={0.012}
-        />
-        {/* Always-clickable invisible hit zone */}
-        <circle
-          cx={facts.position.x} cy={facts.position.y} r={0.1}
-          fill="transparent" data-id={facts.id}
-        />
-      </g>
-    );
+    // Passive fittings draw their real body (radiused elbow, tee with
+    // collars, reducer) between the trimmed runs; couplings and mitred
+    // corners draw nothing. Accessories draw their plan symbol across the run.
+    if (facts.accessory) {
+      return <Accessory2D look={facts.accessory} id={facts.id} color={facts.color} selected={drawCtx.selected} system={facts.systemType} />;
+    }
+    if (!facts.fitting) return null;
+    return <Fitting2D info={facts.fitting} id={facts.id} color={facts.color} selected={drawCtx.selected} />;
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    // Accessory body cube. Future: derive geometry per declared kind (valve
-    // handle, damper blade, etc.).
-    // Passive fittings render no body: the snapped incident curves (see
-    // mepFittingRender) already form the bend / branch / step in 3D. Only
-    // user-placed accessories (declared kind) draw a body.
-    if (!facts.declaredKind) return null;
-    // Size: accessories use declared size; fall back to a small default.
-    const size = facts.sizeW > 0 ? facts.sizeW : 0.12;
-    const material = getBimMaterial(resolveBimMaterial(facts.material, 'mep_node'));
     const isHL = drawCtx.selected || drawCtx.hovered;
-    // three.js rotation.y = θ turns plan +X to (cos θ, sin θ): spec rotation is CCW.
-    const rotY = (facts.rotationDeg * Math.PI) / 180;
-    return (
-      <mesh
-        position={[facts.position.x, facts.baseY, -facts.position.y]}
-        rotation={[0, rotY, 0]}
-        scale={[size, size, size]}
-        material={isHL ? undefined : material}
-        userData={{ elementId: facts.id }}
-      >
-        <boxGeometry args={[1, 1, 1]} />
-        {isHL && (
-          <meshStandardMaterial attach="material" color="#06b6d4"
-            transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-        )}
-      </mesh>
-    );
+    if (facts.accessory) {
+      return <Accessory3D look={facts.accessory} id={facts.id} color={facts.color} baseY={facts.levelY} isHL={isHL} system={facts.systemType} />;
+    }
+    if (!facts.fitting) return null;
+    return <Fitting3D info={facts.fitting} id={facts.id} color={facts.color} baseY={facts.levelY} riserRight={facts.riserRight} isHL={isHL} />;
   },
 
   bbox(facts) {
-    return {
-      x: facts.position.x - 0.1, y: facts.position.y - 0.1,
-      w: 0.2, h: 0.2,
-    };
+    const r = facts.accessory ? facts.accessory.length / 2 : 0.1;
+    return { x: facts.position.x - r, y: facts.position.y - r, w: 2 * r, h: 2 * r };
   },
 };
 

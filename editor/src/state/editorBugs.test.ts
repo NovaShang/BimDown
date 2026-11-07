@@ -184,18 +184,28 @@ describe('MEP B4 templates', () => {
     h.click(6, 2);
     const eq = els(h.state, 'equipment')[0] as PointElement;
     expect(eq.attrs.base_offset).toBe('1');
-    expect(eq.attrs.system_type ?? '').toBe(''); // several systems: left to the user
+    // several systems: the comma list of its ports' systems (as Revit exports equipment)
+    expect(eq.attrs.system_type).toBe('SA,RA,OA,CHWS,CHWR,CD');
   });
 });
 
 describe('MEP B5-B7 endpoint joining in 3D', () => {
+  // Pipes are added as finished elements so these tests pin the reducer's
+  // endpoint bonding itself (the router adds its own rise / drop segments).
+  let n = 0;
   const pipe = (h: ReturnType<typeof createHarness>, a: [number, number], b: [number, number], z0: string, z1: string, extra: Record<string, string> = {}) => {
-    h.pick('pipe', { start_z: z0, end_z: z1, system_type: 'DCW', ...extra });
-    h.click(...a); h.click(...b); h.done();
+    const id = `pi-${++n}`;
+    const el: SpatialLineElement = {
+      id, tableName: 'pipe', discipline: 'mep', geometry: 'spatial_line',
+      start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] }, startZ: parseFloat(z0), endZ: parseFloat(z1), strokeWidth: 0.05,
+      attrs: { id, shape: 'round', size_x: '0.05', system_type: 'DCW', start_z: z0, end_z: z1, ...extra },
+    };
+    h.dispatch({ type: 'CREATE_ELEMENT', element: el });
   };
   const nodes = (s: EditorState) => els(s, 'mep_node') as PointElement[];
 
   it('a fitting node gets the pipe height, not the level', () => {
+    n = 0;
     const h = createHarness();
     pipe(h, [0, 0], [4, 0], '5.8', '5.8');
     pipe(h, [4, 0], [4, 3], '5.8', '5.8');
@@ -203,6 +213,7 @@ describe('MEP B5-B7 endpoint joining in 3D', () => {
   });
 
   it('ends at the same plan point but different heights do not join; a riser never joins itself', () => {
+    n = 0;
     const h = createHarness();
     pipe(h, [0, 0], [4, 0], '0.5', '0.5');
     pipe(h, [4, 0], [4, 3], '3', '3');
@@ -215,6 +226,7 @@ describe('MEP B5-B7 endpoint joining in 3D', () => {
   });
 
   it('a branch into a sloped pipe keeps the slope on both halves', () => {
+    n = 0;
     const h = createHarness();
     pipe(h, [0, 0], [10, 0], '0.5', '0.4');
     pipe(h, [5, 3], [5, 0], '0.45', '0.45');

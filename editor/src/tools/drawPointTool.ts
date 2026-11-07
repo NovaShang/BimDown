@@ -10,11 +10,20 @@ import { variantDefaults } from './variantDefaults.ts';
 import { STARTER_KEY_ATTR } from '../elements/equipment.tsx';
 import { getStarter, materializeStarter } from '../elements/equipment_starters.ts';
 import { getElementModule } from '../elements/registry.ts';
+import { accessoryPointerDown } from '../mep/accessoryTool.ts';
+import { arrayPointerDown, arrayPointerMove } from '../mep/arrayTool.ts';
 
 /** A module's own place tool (e.g. library furniture), if it declares one. */
 function moduleTool(ctx: ToolContext): ToolHandler | undefined {
   const target = ctx.getState().drawingTarget;
   return target ? getElementModule(target.tableName)?.placeTool : undefined;
+}
+
+/** MEP placements with their own gesture: inline accessories, terminal arrays. */
+function mepDelegate(target: { tableName: string; variantId?: string } | null): 'accessory' | 'array' | null {
+  if (target?.tableName === 'mep_node') return 'accessory';
+  if (target?.tableName === 'terminal' && target.variantId === 'array') return 'array';
+  return null;
 }
 
 export const drawPointTool: ToolHandler = {
@@ -24,6 +33,9 @@ export const drawPointTool: ToolHandler = {
     const custom = moduleTool(ctx);
     if (custom) return custom.onPointerDown?.(ctx, e);
     if (e.button !== 0) return;
+    const mep = mepDelegate(ctx.getState().drawingTarget);
+    if (mep === 'accessory') { accessoryPointerDown(ctx, e); return; }
+    if (mep === 'array') { arrayPointerDown(ctx, e); return; }
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
@@ -99,6 +111,7 @@ export const drawPointTool: ToolHandler = {
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
     const custom = moduleTool(ctx);
     if (custom) return custom.onPointerMove?.(ctx, e);
+    if (mepDelegate(ctx.getState().drawingTarget) === 'array') { arrayPointerMove(ctx, e); return; }
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     if (!svgPt) return;
 
