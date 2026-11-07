@@ -75,6 +75,8 @@ export interface ImportReport {
     /** Derived net area vs the IFC space outline, over rooms that closed. */
     area: { compared: number; meanAbsPct: number; medianAbsPct: number; maxAbsPct: number; within5Pct: number } | null;
     worst: { id: string; name?: string; ifcArea: number; netArea: number }[];
+    /** Space id → "number name" for the spaces named in `issues`. */
+    labels: Record<string, string>;
   };
   /** Plan shift applied to bring a far-away model near the origin (meters). */
   offset: { x: number; y: number } | null;
@@ -251,11 +253,11 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   progress('cleanup', 0.82);
   let snapped = 0, corners = 0, tees = 0;
   for (const lines of groupLines(ctx, BOUNDARY).values()) {
-    snapped += snapEnds(ctx, lines);
+    snapped += snapEnds(lines);
     const j = joinEnds(ctx, lines);
     corners += j.corners; tees += j.tees;
     tees += extendIntoBodies(ctx, lines);
-    snapped += snapEnds(ctx, lines);
+    snapped += snapEnds(lines);
     tees += settleTees(ctx, lines);
   }
   for (const id of by(['IfcDoor'])) if (!done(id)) convertHosted(ctx, id, 'door');
@@ -286,7 +288,7 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
     for (const lines of groupLines(ctx, BOUNDARY).values()) {
       if (!lines.some(l => only.has(l))) continue;
       joinEnds(ctx, lines, only);
-      snapEnds(ctx, lines);
+      snapEnds(lines);
       settleTees(ctx, lines);
     }
   }
@@ -484,13 +486,23 @@ function buildReport(
     classes,
     notes: ctx.notes.slice(0, 200),
     joins,
-    rooms: { count: spaces.length, issues: rooms.issues, warnings: rooms.warnings, area, worst },
+    rooms: { count: spaces.length, issues: rooms.issues, warnings: rooms.warnings, area, worst, labels: issueLabels(spaces, rooms.issues) },
     offset,
     timings: {
       parseMs: Math.round(timings.parseMs), geometryMs: Math.round(timings.geometryMs), convertMs: Math.round(timings.convertMs),
       cleanupMs: Math.round(timings.cleanupMs), totalMs: Math.round(timings.totalMs),
     },
   };
+}
+
+function issueLabels(spaces: SpaceRef[], issues: RoomIssue[]): Record<string, string> {
+  const wanted = new Set(issues.flatMap(i => [...i.spaceIds, ...(i.inside ?? [])]));
+  const out: Record<string, string> = {};
+  for (const s of spaces) {
+    if (!wanted.has(s.el.id)) continue;
+    out[s.el.id] = [s.el.attrs.number, s.el.attrs.name].filter(Boolean).join(' ') || s.el.id;
+  }
+  return out;
 }
 
 const round1 = (v: number) => Math.round(v * 10) / 10;

@@ -37,8 +37,8 @@ function ends(lines: OutEl[]): End[] {
   return out;
 }
 
-/** Merge ends closer than 5 cm (single-link clusters) onto their mean. */
-export function snapEnds(ctx: ImportContext, lines: OutEl[]): number {
+/** Merge ends closer than 5 cm (single-link clusters) onto one point each. */
+export function snapEnds(lines: OutEl[]): number {
   const all = ends(lines);
   const parent = all.map((_, i) => i);
   const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));

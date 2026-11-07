@@ -53,6 +53,8 @@ export function convertSlab(ctx: ImportContext, types: TypeCatalog, id: number, 
   if (polys.length === 0) { ctx.skip(id, 'no plan footprint'); return []; }
   const level = ctx.levelOf(id, mesh.min.z);
   const thickness = slabThickness(ctx, id, mesh);
+  // Sheets a few mm thick are paving / terrain helpers, not building slabs
+  if (thickness < 0.005 && table !== 'roof') { ctx.skip(id, 'thinner than 5 mm (helper or terrain sheet)'); return []; }
   const ls = layerSet(model, id);
   const out: OutEl[] = [];
   if (polys.length > 1) ctx.note(`${ctx.label(id) ?? id}: ${polys.length} separate pieces imported as separate ${table} rows`);

@@ -81,6 +81,12 @@ export function convertHosted(ctx: ImportContext, id: number, table: 'door' | 'w
   const width = agrees(ow, measuredW) ? ow : measuredW;
   const height = agrees(oh, measuredH) ? oh : measuredH;
   let position = pr.t;
+  if (table === 'opening') {
+    // A bare opening where a door, window or opening already cuts the host (one per wall leaf, or exported twice)
+    const same = ctx.out.find(o => (o.table === 'door' || o.table === 'window' || o.table === 'opening') && o.attrs.host_id === host.id &&
+      Math.abs(Number(o.attrs.position) - position) < 0.05 && Math.abs(Number(o.attrs.width) - width) < 0.1);
+    if (same) { ctx.skip(id, `same cut as another door / window / opening on the wall`); return null; }
+  }
   if (position < width / 2 - 0.05 || position > pr.length - width / 2 + 0.05) {
     ctx.note(`${host.id}: ${table} ${ctx.label(id) ?? id} reaches past the wall end; centred at ${r3(position)} m of ${r3(pr.length)} m`);
   }
