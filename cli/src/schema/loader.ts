@@ -1,5 +1,5 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
-import { join, basename } from 'node:path';
+import { join } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import type { RawSchema, RawField, ResolvedField } from './types.js';
 

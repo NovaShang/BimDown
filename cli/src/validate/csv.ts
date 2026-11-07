@@ -10,6 +10,10 @@ export function validateCsvHeaders(
   const expected = new Set(table.csvFields.map((f) => f.name));
   const actual = new Set(data.headers);
 
+  for (const h of data.duplicateHeaders ?? []) {
+    issues.push(`${path}  duplicate column "${h}" (merged on read; rewrite the file with one "${h}" column)`);
+  }
+
   for (const h of data.headers) {
     if (!expected.has(h)) {
       issues.push(`${path}  unexpected column "${h}"`);

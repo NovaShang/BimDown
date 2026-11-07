@@ -1,6 +1,6 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
-import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES } from '../schema/registry.js';
+import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import { discoverLayout } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
 import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
@@ -12,7 +12,6 @@ const BOUNDARY_TABLES = ['wall', 'structure_wall', 'curtain_wall', 'room_separat
 
 export function validateGeometry(dir: string): string[] {
   const warnings: string[] = [];
-  const registry = buildRegistry(getSpecDir());
   const layout = discoverLayout(dir);
 
   const allDirs = [
