@@ -13,6 +13,7 @@ import {
   featureId,
   type BimDownFeature,
 } from '../utils/geojson.js';
+import { injectVolume } from './volume.js';
 import { runQuery } from './engine.js';
 
 const INSERT_BATCH_SIZE = 500;
@@ -80,6 +81,7 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
     if (levelsReady) {
       await injectZExtent(conn, name, table.computedFields.some((f) => f.name === 'height'));
     }
+    await injectVolume(conn, name);
   }
 
   return tables;
@@ -334,7 +336,13 @@ async function injectGeometry(
     await runQuery(conn, `INSERT INTO "${stagingName}" VALUES ${valuesSql}`);
   }
 
-  const setClause = cols.map((c) => `"${c}" = g."${c}"`).join(', ');
+  // A column the CSV already has (e.g. foundation `length`, a pad's Y size)
+  // keeps its CSV value on rows whose geometry doesn't compute it.
+  const setClause = cols
+    .map((c) => existingSet.has(c)
+      ? `"${c}" = COALESCE(CAST(g."${c}" AS VARCHAR), "${tableName}"."${c}")`
+      : `"${c}" = g."${c}"`)
+    .join(', ');
   await runQuery(
     conn,
     `UPDATE "${tableName}" SET ${setClause} FROM "${stagingName}" g WHERE "${tableName}".id = g.id AND "${tableName}"._partition = g._partition`,

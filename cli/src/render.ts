@@ -24,6 +24,9 @@ const COLORS: Record<string, { stroke: string; fill?: string }> = {
   stair:              { stroke: '#f4a261', fill: 'rgba(244,162,97,0.2)' },
   beam:               { stroke: '#9b5de5' },
   brace:              { stroke: '#9b5de5' },
+  foundation:         { stroke: '#8d6e63', fill: 'rgba(141,110,99,0.15)' },
+  opening:            { stroke: '#ff8a65', fill: '#ffffff' },
+  grid:               { stroke: '#ef476f' },
   duct:               { stroke: '#00b4d8' },
   pipe:               { stroke: '#48bfe3' },
   cable_tray:         { stroke: '#90be6d' },
@@ -56,8 +59,14 @@ const OVERHEAD_LINE_TABLES = new Set(['beam', 'brace']);
 const OVERHEAD_STROKE_WIDTH = 0.04;
 const OVERHEAD_DASH = '0.3,0.15';
 
+// Foundations are below the cut plane: dashed outline, drawn first.
+const BELOW_DASH = '0.25,0.12';
+const GRID_BUBBLE_R = 0.5;
+
 const RENDER_ORDER = [
+  'foundation',
   'slab', 'structure_slab',
+  'opening',
   'beam', 'brace',
   'wall', 'structure_wall', 'room_separator', 'curtain_wall',
   'column', 'structure_column',
@@ -83,8 +92,14 @@ interface WallRef {
   thickness: number;
 }
 
-export function renderLevel(projectDir: string, levelId: string): string {
+export interface RenderOptions {
+  /** Draw the grid from global/grid.csv (default true). */
+  grids?: boolean;
+}
+
+export function renderLevel(projectDir: string, levelId: string, opts: RenderOptions = {}): string {
   const layout = discoverLayout(projectDir);
+  const gridSvg: RenderedElement[] = opts.grids === false ? [] : renderGrids(layout.globalDir);
   const levelDir = layout.levelDirs.find((d) => d.name === levelId);
   if (!levelDir) {
     throw new Error(`Level "${levelId}" not found. Available: ${layout.levelDirs.map((d) => d.name).join(', ')}`);
@@ -129,19 +144,23 @@ export function renderLevel(projectDir: string, levelId: string): string {
       catch { continue; }
 
       const thicknessMap = csvThicknesses.get(tableName);
+      const rows = SIZED_TABLES.has(tableName) ? readRows(src.path, tableName) : undefined;
       for (const feat of fc.features) {
-        const rendered = renderFeature(tableName, feat, thicknessMap);
+        const rendered = renderFeature(tableName, feat, thicknessMap, rows?.get(String(feat.properties?.id ?? '')));
         if (rendered) elements.push(rendered);
       }
     }
   }
 
-  // Door / window (CSV + host wall)
-  for (const t of ['door', 'window'] as const) {
+  // Door / window / wall opening (CSV + host wall)
+  for (const t of ['door', 'window', 'opening'] as const) {
     elements.push(...renderHostedFromCsv(levelDir.path, t, wallById));
   }
   // Space (CSV seed or generated boundary geojson)
   elements.push(...renderSpaces(levelDir.path));
+
+  // Grids frame the view only when there is model content; drawn under it.
+  if (elements.length > 0) elements.unshift(...gridSvg);
 
   for (const e of elements) {
     minX = Math.min(minX, e.bounds.minX);
@@ -173,13 +192,21 @@ export function renderLevel(projectDir: string, levelId: string): string {
 
 // ─── Per-feature rendering ────────────────────────────────
 
+/** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation']);
+
 function renderFeature(
   tableName: string,
   feat: BimDownFeature,
   thicknessMap: Map<string, number> | undefined,
+  row?: Record<string, string>,
 ): RenderedElement | null {
   const id = String(feat.properties?.id ?? '');
   if (!id) return null;
+  if (tableName === 'foundation') return renderFoundation(id, feat, row ?? {});
+  if ((tableName === 'column' || tableName === 'structure_column') && feat.geometry.type === 'Point') {
+    return renderColumn(tableName, id, feat, row ?? {});
+  }
   const color = COLORS[tableName] ?? DEFAULT_COLOR;
   const isOverhead = OVERHEAD_LINE_TABLES.has(tableName);
   const dashArray = isOverhead ? OVERHEAD_DASH : tableName === 'room_separator' ? '0.2,0.1' : undefined;
@@ -213,18 +240,157 @@ function renderFeature(
     case 'Polygon': {
       const ring = g.coordinates[0];
       if (!ring || ring.length < 3) return null;
-      const pts = ring.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(' ');
       const fill = color.fill ?? 'none';
-      const svg = `    <polygon id="${id}" points="${pts}" fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const p of ring) {
-        minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
-        maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
-      }
-      return { tableName, svg, bounds: { minX, minY, maxX, maxY } };
+      // All rings: inner rings (shafts, holes) cut the fill (even-odd).
+      let svg = `    <path id="${id}" d="${polygonPath(g.coordinates)}" fill-rule="evenodd" fill="${fill}" stroke="${color.stroke}" stroke-width="0.05" />`;
+      if (tableName === 'opening') svg += '\n' + crossLines(ring, color.stroke);
+      return { tableName, svg, bounds: ringBounds(ring) };
     }
   }
   return null;
+}
+
+// ─── Structure: columns, foundations, grids ───────────────
+
+function polygonPath(rings: number[][][]): string {
+  return rings
+    .filter((r) => r.length >= 3)
+    .map((r) => `M ${r.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(' L ')} Z`)
+    .join(' ');
+}
+
+function ringBounds(ring: number[][]) {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of ring) {
+    minX = Math.min(minX, p[0]); minY = Math.min(minY, p[1]);
+    maxX = Math.max(maxX, p[0]); maxY = Math.max(maxY, p[1]);
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/** Diagonal cross over a ring's bounding box (plan symbol for a slab opening). */
+function crossLines(ring: number[][], stroke: string): string {
+  const b = ringBounds(ring);
+  return `    <path d="M ${fmt(b.minX)},${fmt(b.minY)} L ${fmt(b.maxX)},${fmt(b.maxY)} M ${fmt(b.maxX)},${fmt(b.minY)} L ${fmt(b.minX)},${fmt(b.maxY)}" stroke="${stroke}" stroke-width="0.03" fill="none" />`;
+}
+
+const num = (v: string | undefined) => {
+  const n = parseFloat(v ?? '');
+  return Number.isFinite(n) && n > 0 ? n : NaN;
+};
+
+const pointsAttr = (pts: number[][]) => pts.map((p) => `${fmt(p[0])},${fmt(p[1])}`).join(' ');
+
+/** Rectangle w × d centred on (x, y), turned by `rotDeg` (CCW), as polygon points. */
+function rotatedRect(x: number, y: number, w: number, d: number, rotDeg: number): number[][] {
+  const a = (rotDeg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
+  return [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]]
+    .map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
+}
+
+/** Column at its real section size (round → circle, others → rotated bbox). */
+function renderColumn(tableName: string, id: string, feat: BimDownFeature, row: Record<string, string>): RenderedElement {
+  const color = COLORS[tableName] ?? DEFAULT_COLOR;
+  const [x, y] = (feat.geometry as { coordinates: number[] }).coordinates;
+  const sx = num(row.size_x) || 0.3;
+  const sy = num(row.size_y) || sx;
+  const fill = color.fill ?? color.stroke;
+  if ((row.shape ?? '') === 'round') {
+    const r = sx / 2;
+    const svg = `    <circle id="${id}" cx="${fmt(x)}" cy="${fmt(y)}" r="${fmt(r)}" fill="${fill}" stroke="${color.stroke}" stroke-width="0.02" />`;
+    return { tableName, svg, bounds: { minX: x - r, minY: y - r, maxX: x + r, maxY: y + r } };
+  }
+  const rot = typeof feat.properties.rotation === 'number' ? feat.properties.rotation : 0;
+  const pts = rotatedRect(x, y, sx, sy, rot);
+  const svg = `    <polygon id="${id}" points="${pointsAttr(pts)}" fill="${fill}" stroke="${color.stroke}" stroke-width="0.02" />`;
+  return { tableName, svg, bounds: ringBounds(pts) };
+}
+
+/**
+ * Foundation (spec foundation.yaml), dashed as below the cut plane:
+ * Point = pad width × length (pile: circle of diameter width), LineString =
+ * strip of `width`, Polygon = raft / pile cap at its footprint.
+ */
+function renderFoundation(id: string, feat: BimDownFeature, row: Record<string, string>): RenderedElement | null {
+  const color = COLORS.foundation;
+  const style = `fill="${color.fill}" stroke="${color.stroke}" stroke-width="0.05" stroke-dasharray="${BELOW_DASH}"`;
+  const g = feat.geometry;
+  if (g.type === 'Point') {
+    const [x, y] = g.coordinates;
+    const isPile = row.kind === 'pile';
+    // width / length per spec; size_x / size_y from older files still read.
+    const w = num(row.width) || num(row.size_x) || (isPile ? 0.6 : 1.5);
+    const l = num(row.length) || num(row.size_y);
+    if (isPile && !Number.isFinite(l)) {
+      const r = w / 2;
+      return {
+        tableName: 'foundation',
+        svg: `    <circle id="${id}" cx="${fmt(x)}" cy="${fmt(y)}" r="${fmt(r)}" ${style} />`,
+        bounds: { minX: x - r, minY: y - r, maxX: x + r, maxY: y + r },
+      };
+    }
+    const rot = typeof feat.properties.rotation === 'number' ? feat.properties.rotation : 0;
+    const pts = rotatedRect(x, y, w, Number.isFinite(l) ? l : w, rot);
+    return { tableName: 'foundation', svg: `    <polygon id="${id}" points="${pointsAttr(pts)}" ${style} />`, bounds: ringBounds(pts) };
+  }
+  if (g.type === 'LineString') {
+    if (g.coordinates.length < 2) return null;
+    const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return null;
+    // Strip width is `width`; `thickness` is the depth.
+    const hw = (num(row.width) || 0.8) / 2;
+    const nx = (-dy / len) * hw, ny = (dx / len) * hw;
+    const pts = [[a[0] + nx, a[1] + ny], [b[0] + nx, b[1] + ny], [b[0] - nx, b[1] - ny], [a[0] - nx, a[1] - ny]];
+    return { tableName: 'foundation', svg: `    <polygon id="${id}" points="${pointsAttr(pts)}" ${style} />`, bounds: ringBounds(pts) };
+  }
+  if (g.type === 'Polygon') {
+    const ring = g.coordinates[0];
+    if (!ring || ring.length < 3) return null;
+    return {
+      tableName: 'foundation',
+      svg: `    <path id="${id}" d="${polygonPath(g.coordinates)}" fill-rule="evenodd" ${style} />`,
+      bounds: ringBounds(ring),
+    };
+  }
+  return null;
+}
+
+/** Grid axes from global/grid.csv: dash-dot line + numbered bubble at the start. */
+function renderGrids(globalDir: string): RenderedElement[] {
+  const path = join(globalDir, 'grid.csv');
+  if (!existsSync(path)) return [];
+  const color = COLORS.grid.stroke;
+  const out: RenderedElement[] = [];
+  for (const row of readCsv(path).rows) {
+    const x1 = parseFloat(row.start_x ?? ''), y1 = parseFloat(row.start_y ?? '');
+    const x2 = parseFloat(row.end_x ?? ''), y2 = parseFloat(row.end_y ?? '');
+    if (![x1, y1, x2, y2].every(Number.isFinite) || (x1 === x2 && y1 === y2)) continue;
+    const label = escapeXml(row.number || row.id || '');
+    const r = GRID_BUBBLE_R;
+    const svg = [
+      `    <line id="${row.id}" x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="${color}" stroke-width="0.03" stroke-dasharray="0.6,0.15,0.05,0.15" />`,
+      `    <circle cx="${fmt(x1)}" cy="${fmt(y1)}" r="${r}" fill="#ffffff" stroke="${color}" stroke-width="0.04" />`,
+      `    <text x="${fmt(x1)}" y="${fmt(y1)}" font-size="0.45" font-weight="bold" fill="${color}" text-anchor="middle" dominant-baseline="central" transform="scale(1,-1) translate(0,${fmt(-2 * y1)})">${label}</text>`,
+    ].join('\n');
+    out.push({
+      tableName: 'grid', svg,
+      bounds: {
+        minX: Math.min(x1 - r, x2), minY: Math.min(y1 - r, y2),
+        maxX: Math.max(x1 + r, x2), maxY: Math.max(y1 + r, y2),
+      },
+    });
+  }
+  return out;
+}
+
+function readRows(dirPath: string, tableName: string): Map<string, Record<string, string>> {
+  const out = new Map<string, Record<string, string>>();
+  const csvPath = join(dirPath, `${tableName}.csv`);
+  if (!existsSync(csvPath)) return out;
+  for (const row of readCsv(csvPath).rows) if (row.id) out.set(row.id, row);
+  return out;
 }
 
 // ─── Walls/host indexing ──────────────────────────────────
@@ -265,7 +431,7 @@ function readThicknessFromCsv(dirPath: string, tableName: string): Map<string, n
 
 // ─── Door / window (hosted) ───────────────────────────────
 
-function renderHostedFromCsv(levelPath: string, tableName: 'door' | 'window', wallById: Map<string, WallRef>): RenderedElement[] {
+function renderHostedFromCsv(levelPath: string, tableName: 'door' | 'window' | 'opening', wallById: Map<string, WallRef>): RenderedElement[] {
   const csvPath = join(levelPath, `${tableName}.csv`);
   if (!existsSync(csvPath)) return [];
   const csv = readCsv(csvPath);
@@ -291,7 +457,7 @@ function renderHostedFromCsv(levelPath: string, tableName: 'door' | 'window', wa
     const x1 = cx - ux * half, y1 = cy - uy * half;
     const x2 = cx + ux * half, y2 = cy + uy * half;
 
-    const sw = tableName === 'door' ? 0.22 : 0.18;
+    const sw = tableName === 'door' ? 0.22 : tableName === 'opening' ? 0.24 : 0.18;
     const svg = `    <line id="${row.id}" x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="${color.stroke}" stroke-width="${sw}" />`;
     out.push({
       tableName, svg,

@@ -12,3 +12,16 @@ fields:
 
   - name: thickness
     type: float
+
+  - name: material_grade
+    type: string
+    description: Strength grade, e.g. C30 (concrete), Q355 / S355 (steel), GL24h (timber).
+
+  - name: span_direction
+    type: float
+    description: Main span direction of a one-way slab or deck, degrees CCW from +X. Empty = two-way / not set.
+
+  - name: volume
+    type: float
+    computed: true
+    description: Material volume (section × length / height, area × thickness), hydrated at query time.

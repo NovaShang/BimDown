@@ -4,4 +4,12 @@ bases:
   - structural_section_profile
   - materialized
 
-fields: []
+fields:
+  - name: material_grade
+    type: string
+    description: Strength grade, e.g. C30 (concrete), Q355 / S355 (steel), GL24h (timber).
+
+  - name: volume
+    type: float
+    computed: true
+    description: Material volume (section × length / height, area × thickness), hydrated at query time.

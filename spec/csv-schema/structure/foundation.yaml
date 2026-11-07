@@ -3,20 +3,48 @@ bases:
   - element
   - materialized
 description: >
-  Unified foundation type. Geometry form is determined by the GeoJSON geometry type:
-  - Point: isolated/pad footing (section in CSV: shape, size_x, size_y)
-  - LineString: strip/continuous footing (thickness, width in CSV)
-  - Polygon: raft/mat foundation
+  Unified foundation table. The top face is at level elevation + base_offset;
+  the body hangs down by `thickness`. The GeoJSON geometry gives the footprint,
+  `kind` names the foundation type (empty = the default for the geometry):
+  - Point: isolated pad footing (kind pad, default), `width` along X ×
+    `length` along Y (empty = square) centred on the point, turned by
+    `rotation`; or a pile (kind pile): round with diameter `width`, or
+    rectangular `width` × `length` when `length` is set; `thickness` is the
+    pile length.
+  - LineString: strip / continuous footing (kind strip, default), `width`
+    across the centre line.
+  - Polygon: raft / mat (kind raft, default), pile cap (kind pile_cap) or a pad
+    with an irregular footprint (kind pad), drawn at its real footprint.
   Computed geometry fields are hydrated from GeoJSON at query time.
 
 fields:
+  - name: kind
+    type: enum
+    values:
+      - pad
+      - strip
+      - raft
+      - pile_cap
+      - pile
+    description: Foundation type. Empty = from geometry (Point pad, LineString strip, Polygon raft).
+
   - name: thickness
     type: float
+    description: Depth below the top face (pile = pile length).
 
   - name: width
     type: float
-    description: Width of strip foundation or pad dimension
+    description: Point pad size along X / pile diameter; strip footing width.
 
   - name: length
     type: float
-    description: Length of pad foundation
+    description: Point pad size along Y (empty = width); rectangular pile size along Y.
+
+  - name: material_grade
+    type: string
+    description: Strength grade, e.g. C30, C35/45.
+
+  - name: volume
+    type: float
+    computed: true
+    description: Material volume (section × length / height, area × thickness), hydrated at query time.
