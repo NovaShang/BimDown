@@ -11,7 +11,7 @@ import type { ElementQuantities } from './quantities.ts';
 import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { pointInPolygon } from '../geometry/spaceBoundary.ts';
 import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
-import { circuitsIn, type CircuitSummary } from '../mep/circuits.ts';
+import { MEP_SCHEDULES, mepValueFn } from './mepSchedules.ts';
 import { OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
 import { drawingLabel, drawingLang, type DrawingLang } from '../export/drawing/labels.ts';
 
@@ -26,6 +26,8 @@ export interface ScheduleColumn {
   total?: boolean;
   /** Shown before the user customises columns. */
   defaultOn?: boolean;
+  /** Decimals shown and exported (per project unit, or one for all). */
+  digits?: number | Partial<Record<ProjectUnit, number>>;
 }
 
 export interface ScheduleCategory {
@@ -37,6 +39,8 @@ export interface ScheduleCategory {
   groupBy?: string;
   /** Only rows this accepts (e.g. accessories among mep_node rows). */
   filter?: (el: CanonicalElement) => boolean;
+  /** false: one row per group (totals summed) until the user ticks "Itemize". */
+  itemize?: boolean;
 }
 
 export interface ScheduleRow {
@@ -46,6 +50,8 @@ export interface ScheduleRow {
   levelId: string;
   table: string;
   values: Record<string, string | number | undefined>;
+  /** Rows a collapsed (non-itemized) group row stands for. */
+  members?: { sid: string; levelId: string }[];
 }
 
 const C = (key: string, label: string, kind: ColumnKind, defaultOn = true, total = false): ScheduleColumn => ({ key, label, kind, defaultOn, total });
@@ -98,36 +104,12 @@ export const SCHEDULES: ScheduleCategory[] = [
     columns: [NUMBER, LEVEL, CATEGORY, C('size', 'schedule.col.size', 'text'), MATERIAL,
       C('length', 'schedule.col.length', 'length', true, true), C('count', 'schedule.col.count', 'count', true, true)],
   },
-  {
-    key: 'mep', label: 'schedule.mep', tables: ['duct', 'pipe', 'conduit', 'cable_tray'], groupBy: 'system_type',
-    columns: [CATEGORY, C('system_type', 'schedule.col.system', 'text'), C('size', 'schedule.col.size', 'text'),
-      C('insulation', 'schedule.col.insulation', 'length'), LEVEL,
-      NUMBER, C('length', 'schedule.col.length', 'length', true, true), C('count', 'schedule.col.count', 'count', false, true)],
-  },
-  {
-    // Inline accessories (valves, dampers, strainers …); passive fittings are not listed
-    key: 'accessories', label: 'schedule.accessories', tables: ['mep_node'], groupBy: 'kind',
-    filter: el => !!(el.attrs.kind ?? '').trim(),
-    columns: [C('kind', 'schedule.col.kind', 'text'), C('system_type', 'schedule.col.system', 'text'), C('size', 'schedule.col.size', 'text'),
-      LEVEL, NUMBER, C('count', 'schedule.col.count', 'count', true, true)],
-  },
-  {
-    // Electrical circuits with their connected load (sum of the devices' load)
-    key: 'circuits', label: 'schedule.circuits', tables: ['circuit'], groupBy: 'panel',
-    columns: [C('panel', 'schedule.col.panel', 'text'), NUMBER, C('name', 'schedule.col.name', 'text'), LEVEL,
-      C('voltage', 'schedule.col.voltage', 'text'), C('rating', 'schedule.col.rating', 'text'),
-      C('devices', 'schedule.col.devices', 'count', true, true), C('load_w', 'schedule.col.loadW', 'count', true, true)],
-  },
+  ...MEP_SCHEDULES,
   {
     // Library components: count by family / variant, with the room they stand in
     key: 'furniture', label: 'schedule.furniture', tables: ['furniture'], groupBy: 'family_variant',
     columns: [C('family_variant', 'schedule.col.familyVariant', 'text'), C('room', 'schedule.col.room', 'text'), LEVEL, NUMBER,
       C('size', 'schedule.col.size', 'text'), C('count', 'schedule.col.count', 'count', true, true)],
-  },
-  {
-    key: 'equipment', label: 'schedule.equipment', tables: ['equipment', 'terminal'], groupBy: 'type',
-    columns: [NUMBER, LEVEL, CATEGORY, C('type', 'schedule.col.type', 'text'), C('system_type', 'schedule.col.system', 'text'),
-      C('count', 'schedule.col.count', 'count', true, true)],
   },
 ];
 
@@ -204,21 +186,6 @@ function levelRooms(elements: CanonicalElement[], context: CanonicalElement[]): 
   return out.sort((x, y) => x.area - y.area);
 }
 
-/** Circuit rows: panel tag, connected devices and load. */
-function circuitValues(el: CanonicalElement, circuits: Map<string, CircuitSummary>, context: CanonicalElement[]): Record<string, string | number> {
-  const c = circuits.get(el.id);
-  const panelId = c?.panelId ?? el.attrs.host_id ?? '';
-  const panel = context.find(e => e.id === panelId);
-  const load = c?.load ?? 0;
-  return {
-    panel: panel?.attrs.number || panelId,
-    voltage: el.attrs.voltage ? `${el.attrs.voltage} V` : '',
-    rating: el.attrs.rating ? `${el.attrs.rating} A` : '',
-    devices: c?.devices.length ?? 0,
-    load_w: Math.round(load),
-  };
-}
-
 /** Furniture rows: "Family · Variant" in the UI language, and the room it stands in. */
 function furnitureValues(el: CanonicalElement, rooms: LevelRoom[], lang: DrawingLang): Record<string, string> {
   const r = resolveFurniture(el.attrs);
@@ -246,12 +213,7 @@ export function scheduleRows(
   const rows: ScheduleRow[] = [];
   const lowest = allLevels[0];
   const roomCache = new Map<string, LevelRoom[]>();
-  const circuitCache = new Map<string, Map<string, CircuitSummary>>();
-  const circuits = (levelId: string, context: CanonicalElement[]) => {
-    let c = circuitCache.get(levelId);
-    if (!c) circuitCache.set(levelId, c = new Map(circuitsIn(new Map(context.map(e => [e.id, e]))).map(x => [x.id, x])));
-    return c;
-  };
+  const mepValues = mepValueFn(unit, lang);
   const rooms = (levelId: string, elements: CanonicalElement[], context: CanonicalElement[]) => {
     let r = roomCache.get(levelId);
     if (!r) roomCache.set(levelId, r = levelRooms(elements, context));
@@ -265,17 +227,21 @@ export function scheduleRows(
       const values = rowValues(el, level, q, unit, displayName, lang);
       if (cat.filter && !cat.filter(el)) continue;
       if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context), lang));
-      if (el.tableName === 'circuit') Object.assign(values, circuitValues(el, circuits(level.id, context), context));
+      const mep = mepValues(el, level.id, context, values);
+      if (mep) Object.assign(values, mep);
       rows.push({ sid: `${level.id}:${el.id}`, id: el.id, levelId: level.id, table: el.tableName, values });
     }
   }
   // Multi-storey elements in global/ count once, on their base level
   for (const el of global) {
-    if (!tables.has(el.tableName) || !lowest) continue;
+    if (!tables.has(el.tableName) || !lowest || (cat.filter && !cat.filter(el))) continue;
     const level = allLevels.find(l => l.id === el.attrs.base_level_id) ?? lowest;
     const context = [...(levels.find(l => l.level.id === level.id)?.elements ?? []), ...global];
     const q = elementQuantities(el, level, allLevels, context);
-    rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values: rowValues(el, level, q, unit, displayName, lang) });
+    const values = rowValues(el, level, q, unit, displayName, lang);
+    const mep = mepValues(el, level.id, context, values);
+    if (mep) Object.assign(values, mep);
+    rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values });
   }
   return rows;
 }
@@ -330,10 +296,42 @@ export function groupRows(rows: ScheduleRow[], groupBy: string, columns: Schedul
   return keys.map(k => ({ key: k, rows: map.get(k)!, totals: totalsOf(map.get(k)!, columns) }));
 }
 
-/** Cell text in project units. */
-export function formatCell(v: string | number | undefined, kind: ColumnKind, unit: ProjectUnit): string {
+/** Group rows collapsed to one row each (text shown when the group shares it, totals summed), as one group. */
+export function collapseGroups(groups: RowGroup[], columns: ScheduleColumn[]): RowGroup[] {
+  const rows: ScheduleRow[] = groups.filter(g => g.rows.length > 0).map(g => {
+    const first = g.rows[0];
+    const values: ScheduleRow['values'] = {};
+    for (const c of columns) {
+      if (c.total) { values[c.key] = g.totals[c.key]; continue; }
+      const v = first.values[c.key];
+      values[c.key] = g.rows.every(r => r.values[c.key] === v) ? v : undefined;
+    }
+    return { ...first, values, members: g.rows.map(r => ({ sid: r.sid, levelId: r.levelId })) };
+  });
+  return [{ key: '', rows, totals: totalsOf(rows, columns) }];
+}
+
+/**
+ * The groups a schedule shows: sorted rows grouped by `groupBy`; when not
+ * itemized, each group collapsed to one row (then sorted).
+ */
+export function scheduleGroups(rows: ScheduleRow[], columns: ScheduleColumn[], groupBy: string, sort: SortState, itemize = true): RowGroup[] {
+  const groups = groupRows(sortRows(rows, sort), groupBy, columns);
+  if (itemize || !groupBy) return groups;
+  const [g] = collapseGroups(groups, columns);
+  return [{ ...g, rows: sortRows(g.rows, sort) }];
+}
+
+/** Decimals for a column in `unit` (undefined = the kind's default). */
+export function columnDigits(c: Pick<ScheduleColumn, 'digits'>, unit: ProjectUnit): number | undefined {
+  return typeof c.digits === 'number' ? c.digits : c.digits?.[unit];
+}
+
+/** Cell text in project units (`digits` overrides the kind's decimals). */
+export function formatCell(v: string | number | undefined, kind: ColumnKind, unit: ProjectUnit, digits?: number): string {
   if (v === undefined || v === '') return '';
   if (typeof v === 'string') return v;
+  if (digits !== undefined) return kind === 'count' ? String(Number(v.toFixed(digits))) : v.toFixed(digits);
   switch (kind) {
     case 'count': return String(v);
     case 'length': return v.toFixed(unit === 'mm' ? 0 : unit === 'm' ? 3 : 2);
@@ -354,16 +352,21 @@ function csvCell(s: string): string {
   return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
 }
 
-/** CSV text: header, rows (numbers unformatted, full precision rounded to 6), group subtotals and a total line. */
-export function scheduleCsv(groups: RowGroup[], columns: ScheduleColumn[], header: string[], totalLabel: string): string {
+/** A number rounded to the column's decimals (6 when it has none), for CSV / XLSX. */
+export function roundValue<T extends string | number | undefined>(v: T, c: ScheduleColumn, unit: ProjectUnit): T {
+  return (typeof v === 'number' ? Number(v.toFixed(columnDigits(c, unit) ?? 6)) : v) as T;
+}
+
+/** CSV text: header, rows (numbers unformatted, rounded to the column's decimals or 6), group subtotals and a total line. */
+export function scheduleCsv(groups: RowGroup[], columns: ScheduleColumn[], header: string[], totalLabel: string, unit: ProjectUnit = 'm'): string {
   const lines = [header.map(csvCell).join(',')];
-  const cell = (v: string | number | undefined) => (typeof v === 'number' ? String(Number(v.toFixed(6))) : csvCell(v ?? ''));
+  const cell = (v: string | number | undefined, c: ScheduleColumn) => (typeof v === 'number' ? String(roundValue(v, c, unit)) : csvCell(v ?? ''));
   for (const g of groups) {
-    for (const r of g.rows) lines.push(columns.map(c => cell(r.values[c.key])).join(','));
-    if (groups.length > 1) lines.push(columns.map((c, i) => (i === 0 ? csvCell(`${totalLabel}: ${g.key || '—'}`) : c.total ? cell(g.totals[c.key]) : '')).join(','));
+    for (const r of g.rows) lines.push(columns.map(c => cell(r.values[c.key], c)).join(','));
+    if (groups.length > 1) lines.push(columns.map((c, i) => (i === 0 ? csvCell(`${totalLabel}: ${g.key || '—'}`) : c.total ? cell(g.totals[c.key], c) : '')).join(','));
   }
   const all = groups.flatMap(g => g.rows);
   const grand = totalsOf(all, columns);
-  lines.push(columns.map((c, i) => (i === 0 ? csvCell(totalLabel) : c.total ? cell(grand[c.key]) : '')).join(','));
+  lines.push(columns.map((c, i) => (i === 0 ? csvCell(totalLabel) : c.total ? cell(grand[c.key], c) : '')).join(','));
   return lines.join('\n') + '\n';
 }

@@ -5,8 +5,8 @@ import { LAYER_STYLES } from '../types.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { triggerDownload } from '../export/download.ts';
 import {
-  SCHEDULES, scheduleRows, sortRows, groupRows, totalsOf, formatCell, unitSuffix, scheduleCsv,
-  type ScheduleCategory, type SortState,
+  SCHEDULES, scheduleRows, scheduleGroups, totalsOf, formatCell, unitSuffix, scheduleCsv, columnDigits, roundValue,
+  type ScheduleCategory, type ScheduleRow, type SortState, type RowGroup,
 } from '../schedule/schedules.ts';
 import { buildXlsx, type XlsxCell } from '../schedule/xlsx.ts';
 import { elementBounds } from '../schedule/quantities.ts';
@@ -20,10 +20,10 @@ export const SCHEDULE_TOGGLE_EVENT = 'bimdown:toggle-schedule';
 /** Canvas listens for this to zoom the plan to a model-space box. */
 export const ZOOM_TO_EVENT = 'bimdown:zoom-to';
 
-interface Config { columns: string[]; groupBy: string; sort: SortState }
+interface Config { columns: string[]; groupBy: string; sort: SortState; itemize: boolean }
 
 function defaultConfig(cat: ScheduleCategory): Config {
-  return { columns: cat.columns.filter(c => c.defaultOn !== false).map(c => c.key), groupBy: cat.groupBy ?? '', sort: null };
+  return { columns: cat.columns.filter(c => c.defaultOn !== false).map(c => c.key), groupBy: cat.groupBy ?? '', sort: null, itemize: cat.itemize !== false };
 }
 
 const fileSafe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'schedule';
@@ -58,14 +58,16 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
   }, [cat, state.project, state.document, state.documentVersion, unit, t]);
 
   const columns = cat.columns.filter(c => config.columns.includes(c.key));
-  const groups = groupRows(sortRows(rows, config.sort), config.groupBy, columns);
+  const groups = scheduleGroups(rows, columns, config.groupBy, config.sort, config.itemize);
+  // Group headers and subtotals only when itemized (collapsed groups are one row each)
+  const grouped = !!config.groupBy && config.itemize;
   const grand = totalsOf(rows, columns);
   const header = columns.map(c => {
     const u = unitSuffix(c.kind, unit);
     return u ? `${t(c.label)} (${u})` : t(c.label);
   });
 
-  const select = (sid: string, levelId: string) => {
+  const select = (sid: string, levelId: string, sids: string[] = [sid]) => {
     const raw = toElementId(sid);
     const zoom = (el: Parameters<typeof elementBounds>[0] | undefined) => {
       if (!el) return;
@@ -77,7 +79,7 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
       window.dispatchEvent(new CustomEvent(ZOOM_TO_EVENT, { detail: { minX: b.minX - pad - 4, minY: b.minY - pad - h * 0.9, maxX: b.maxX + pad + 4, maxY: b.maxY + pad } }));
     };
     if (levelId === 'global') {
-      dispatch({ type: 'SELECT', ids: [sid] });
+      dispatch({ type: 'SELECT', ids: sids });
       for (const gl of state.project?.globalLayers ?? []) zoom(parseLayer(gl).find(e => e.id === raw));
       return;
     }
@@ -85,18 +87,20 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
       dispatch({ type: 'SET_LEVEL', levelId });
       // The plan re-initialises its document for the new level on the next render
       setTimeout(() => {
-        dispatch({ type: 'SELECT', ids: [sid] });
+        dispatch({ type: 'SELECT', ids: sids });
         const floor = state.project?.floors.get(levelId);
         if (floor) for (const l of floor.layers) zoom(parseLayer(l).find(e => e.id === raw));
       }, 50);
       return;
     }
-    dispatch({ type: 'SELECT', ids: [sid] });
+    dispatch({ type: 'SELECT', ids: sids });
     zoom(state.document?.elements.get(raw));
   };
+  /** A collapsed row selects its members on its level. */
+  const selectRow = (r: ScheduleRow) => select(r.sid, r.levelId, r.members?.filter(m => m.levelId === r.levelId).map(m => m.sid) ?? [r.sid]);
 
   const exportCsv = () => {
-    const csv = scheduleCsv(groups, columns, header, t('schedule.total'));
+    const csv = scheduleCsv(groups, columns, header, t('schedule.total'), unit);
     triggerDownload(new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8' }), `${fileSafe(state.modelName)}-${cat.key}.csv`);
   };
   const exportXlsx = async () => {
@@ -106,22 +110,22 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
       const cols = c.columns.filter(col => cfg.columns.includes(col.key));
       const all = state.project ? scheduleRows(c, state.project, unit, displayName, state.document?.levelId, state.document?.elements) : [];
       if (all.length === 0) return null;
-      const gs = groupRows(sortRows(all, cfg.sort), cfg.groupBy, cols);
+      const gs = scheduleGroups(all, cols, cfg.groupBy, cfg.sort, cfg.itemize);
       const out: XlsxCell[][] = [cols.map(col => {
         const u = unitSuffix(col.kind, unit);
         return u ? `${t(col.label)} (${u})` : t(col.label);
       })];
       const bold = [0];
       for (const g of gs) {
-        for (const r of g.rows) out.push(cols.map(col => r.values[col.key] ?? ''));
+        for (const r of g.rows) out.push(cols.map(col => roundValue(r.values[col.key], col, unit) ?? ''));
         if (gs.length > 1) {
           bold.push(out.length);
-          out.push(cols.map((col, i) => (i === 0 ? `${t('schedule.total')}: ${g.key || '—'}` : col.total ? g.totals[col.key] : '')));
+          out.push(cols.map((col, i) => (i === 0 ? `${t('schedule.total')}: ${g.key || '—'}` : col.total ? roundValue(g.totals[col.key], col, unit) : '')));
         }
       }
       const tot = totalsOf(all, cols);
       bold.push(out.length);
-      out.push(cols.map((col, i) => (i === 0 ? t('schedule.total') : col.total ? tot[col.key] : '')));
+      out.push(cols.map((col, i) => (i === 0 ? t('schedule.total') : col.total ? roundValue(tot[col.key], col, unit) : '')));
       return { name: t(c.label), rows: out, boldRows: bold };
     }).filter((s): s is NonNullable<typeof s> => s !== null);
     if (sheets.length === 0) return;
@@ -160,6 +164,12 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
             {cat.columns.filter(c => c.kind === 'text').map(c => <option key={c.key} value={c.key}>{t(c.label)}</option>)}
           </select>
         </label>
+        {config.groupBy && (
+          <label className="flex shrink-0 cursor-pointer items-center gap-1 text-[10px] text-muted-foreground" title={t('schedule.itemizeHint')}>
+            <input type="checkbox" checked={config.itemize} onChange={e => setConfig({ itemize: e.target.checked })} data-testid="schedule-itemize" />
+            {t('schedule.itemize')}
+          </label>
+        )}
         <div className="relative shrink-0">
           <button className="h-6 rounded-md px-2 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground"
             onClick={() => setShowColumns(v => !v)} data-testid="schedule-columns">{t('schedule.columnsBtn')}</button>
@@ -199,14 +209,14 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
             </thead>
             <tbody>
               {groups.map(g => (
-                <GroupRows key={g.key} group={g} columns={columns} unit={unit} grouped={!!config.groupBy}
+                <GroupRows key={g.key} group={g} columns={columns} unit={unit} grouped={grouped}
                   groupLabel={`${t(cat.columns.find(c => c.key === config.groupBy)?.label ?? '')}: ${g.key || '—'}`}
-                  selected={selectedRaw} onSelect={select} totalLabel={t('schedule.subtotal')} />
+                  selected={selectedRaw} onSelect={selectRow} totalLabel={t('schedule.subtotal')} />
               ))}
               <tr className="sticky bottom-0 bg-[var(--panel-bg,var(--background))] font-semibold">
                 {columns.map((c, i) => (
                   <td key={c.key} className={cn('border-t border-border px-2 py-1', c.kind === 'text' ? 'text-left' : 'text-right')}>
-                    {i === 0 ? `${t('schedule.total')} (${rows.length})` : c.total ? formatCell(grand[c.key], c.kind, unit) : ''}
+                    {i === 0 ? `${t('schedule.total')} (${rows.length})` : c.total ? formatCell(grand[c.key], c.kind, unit, columnDigits(c, unit)) : ''}
                   </td>
                 ))}
               </tr>
@@ -219,13 +229,13 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
 }
 
 function GroupRows({ group, columns, unit, grouped, groupLabel, selected, onSelect, totalLabel }: {
-  group: ReturnType<typeof groupRows>[number];
+  group: RowGroup;
   columns: ScheduleCategory['columns'];
   unit: ReturnType<typeof getProjectUnits>;
   grouped: boolean;
   groupLabel: string;
   selected: Set<string>;
-  onSelect: (sid: string, levelId: string) => void;
+  onSelect: (row: ScheduleRow) => void;
   totalLabel: string;
 }) {
   return (
@@ -238,10 +248,10 @@ function GroupRows({ group, columns, unit, grouped, groupLabel, selected, onSele
       {group.rows.map(r => (
         <tr key={r.sid} data-sid={r.sid}
           className={cn('cursor-pointer hover:bg-accent/60', selected.has(r.sid) && 'bg-[var(--accent-dim)]')}
-          onClick={() => onSelect(r.sid, r.levelId)}>
+          onClick={() => onSelect(r)}>
           {columns.map(c => (
             <td key={c.key} className={cn('whitespace-nowrap border-b border-border/30 px-2 py-[3px]', c.kind === 'text' ? 'text-left' : 'text-right')}>
-              {formatCell(r.values[c.key], c.kind, unit)}
+              {formatCell(r.values[c.key], c.kind, unit, columnDigits(c, unit))}
             </td>
           ))}
         </tr>
@@ -250,7 +260,7 @@ function GroupRows({ group, columns, unit, grouped, groupLabel, selected, onSele
         <tr className="text-foreground/70">
           {columns.map((c, i) => (
             <td key={c.key} className={cn('border-b border-border/60 px-2 py-[3px] italic', c.kind === 'text' ? 'text-left' : 'text-right')}>
-              {i === 0 ? totalLabel : c.total ? formatCell(group.totals[c.key], c.kind, unit) : ''}
+              {i === 0 ? totalLabel : c.total ? formatCell(group.totals[c.key], c.kind, unit, columnDigits(c, unit)) : ''}
             </td>
           ))}
         </tr>
