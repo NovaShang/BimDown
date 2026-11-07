@@ -4,9 +4,10 @@ import { geometryTypeForTable, isHostedTable } from './elements.ts';
 import { defaultAttrsForTable, lineWidthAttrForTable, pointSizeAttrsForTable } from './tableRegistry.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
+import { ANNOTATION_TABLES, annotationElementFromRow } from '../annotation/model.ts';
 
 /** Tables that are CSV-only (no geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector', ...ANNOTATION_TABLES]);
 
 /** Tables with mixed geometry (different geometry types in the same layer). */
 const MIXED_GEOMETRY_TABLES = new Set(['foundation']);
@@ -186,7 +187,9 @@ function parseCsvOnlyLayer(layer: LayerData): CanonicalElement[] {
     if (!id) continue;
     const attrs = csvToAttrs(csv, id);
 
-    if (layer.tableName === 'space' || layer.tableName === 'mesh') {
+    if (ANNOTATION_TABLES.has(layer.tableName)) {
+      elements.push(annotationElementFromRow(layer.tableName, layer.discipline, id, attrs));
+    } else if (layer.tableName === 'space' || layer.tableName === 'mesh') {
       const el: PointElement = {
         geometry: 'point', id,
         tableName: layer.tableName, discipline: layer.discipline,

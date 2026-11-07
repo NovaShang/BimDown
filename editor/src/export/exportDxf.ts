@@ -2,6 +2,9 @@ import type { ProjectData } from '../types.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { triggerDownload } from './download.ts';
+import { isAnnotationTable } from '../annotation/model.ts';
+import { drawAnnotations, drawAnnotationsDxf } from './annotationExport.ts';
+import { getProjectUnits } from '../utils/units.ts';
 
 // DXF color indices (AutoCAD ACI) — approximate matches to our layer colors
 const LAYER_COLORS: Record<string, number> = {
@@ -44,9 +47,11 @@ export async function exportDxf(project: ProjectData, modelName: string): Promis
   }
 
   for (const tableName of allTableNames) {
+    if (isAnnotationTable(tableName)) continue;
     const color = LAYER_COLORS[tableName] ?? DEFAULT_ACI;
     dxf.addLayer(tableName.toUpperCase(), color, 'CONTINUOUS');
   }
+  dxf.addLayer('ANNOTATION', DEFAULT_ACI, 'CONTINUOUS');
 
   for (const level of project.levels) {
     const floor = project.floors.get(level.id);
@@ -55,8 +60,14 @@ export async function exportDxf(project: ProjectData, modelName: string): Promis
     const elements = parseFloorLayers(floor.layers);
 
     for (const el of elements) {
+      if (isAnnotationTable(el.tableName)) continue;
       dxf.setActiveLayer(el.tableName.toUpperCase());
       drawElement(dxf, el);
+    }
+    // Dimensions, text notes and tags (same Y convention as drawElement)
+    if (elements.some(el => isAnnotationTable(el.tableName))) {
+      dxf.setActiveLayer('ANNOTATION');
+      drawAnnotationsDxf(dxf, drawAnnotations(elements, getProjectUnits({ project })), y => -y);
     }
   }
 

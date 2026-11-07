@@ -9,6 +9,8 @@ import { getSpaceFaceGraph, findSpaceBoundary, BOUNDARY_TABLES } from '../geomet
 // imports this module — and the host (e.g. the BimClaw web app) has its
 // own merged resources, so a second init wipes them out.
 import i18n from 'i18next';
+import { polygonArea } from '../annotation/rooms.ts';
+import { formatArea } from '../annotation/geometry.ts';
 
 /** Vertical offset (in model units) between the seed and the rendered name
  *  label. Same number is used by both draw2D and the selection handle so the
@@ -23,6 +25,15 @@ export interface SpaceFacts {
   vertices?: Point[];
   number: string;
   name: string;
+  /** Derived area (polygon rooms), for the plain label. */
+  area?: number;
+  /** A tag labels this room — the plain label steps aside. */
+  tagged?: boolean;
+}
+
+/** Rooms that have a tag on this level (one scan per render pass). */
+function taggedRooms(ctx: GeometryContext): Set<string> {
+  return ctx.memo('space-tagged', () => new Set(ctx.elementsByTable('tag').map(t => t.attrs.host_id ?? '')));
 }
 
 function centroid(vertices: Point[]): Point {
@@ -88,9 +99,9 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         // on the seed (not the polygon centroid) so the label, the move
         // handle and the user's click point all line up — moving the seed
         // visually moves everything together.
-        return { id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name };
+        return { id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name, area: polygonArea(derived), tagged: taggedRooms(ctx).has(el.id) };
       }
-      return { id: el.id, kind: 'point', anchor: pt.position, number, name };
+      return { id: el.id, kind: 'point', anchor: pt.position, number, name, tagged: taggedRooms(ctx).has(el.id) };
     }
     if (el.geometry === 'polygon') {
       const poly = el as PolygonElement;
@@ -99,7 +110,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         id: el.id, kind: 'polygon',
         anchor: centroid(poly.vertices),
         vertices: poly.vertices,
-        number, name,
+        number, name, area: polygonArea(poly.vertices), tagged: taggedRooms(ctx).has(el.id),
       };
     }
     return null;
@@ -131,10 +142,11 @@ export const spaceModule: ElementModule<SpaceFacts> = {
       />
     ) : null;
 
-    if (!facts.number && !facts.name) {
+    if ((!facts.number && !facts.name) || facts.tagged) {
       return <g data-id={facts.id}>{outline}{marker}</g>;
     }
     const { x, y } = facts.anchor;
+    const areaY = y - NAME_LABEL_OFFSET - (facts.name ? 0.32 : 0);
     return (
       <g data-id={facts.id}>
         {outline}
@@ -151,6 +163,13 @@ export const spaceModule: ElementModule<SpaceFacts> = {
             fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={500} fill="#5a9fff"
             transform={`translate(${x},${y - NAME_LABEL_OFFSET}) scale(1,-1) translate(${-x},${-(y - NAME_LABEL_OFFSET)})`}>
             {facts.name}
+          </text>
+        )}
+        {facts.area !== undefined && facts.area > 0 && (
+          <text x={x} y={areaY} textAnchor="middle" dominantBaseline="central"
+            fontSize={0.18} fontFamily="Inter, sans-serif" fill="#7aa7ff"
+            transform={`translate(${x},${areaY}) scale(1,-1) translate(${-x},${-areaY})`}>
+            {formatArea(facts.area)}
           </text>
         )}
       </g>

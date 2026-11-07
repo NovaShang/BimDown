@@ -14,6 +14,7 @@ import { rotateTool } from './rotateTool.ts';
 import { drawTool } from './drawTool.ts';
 import { trimCornerTool, trimSingleTool, splitTool } from './wallModifyTools.ts';
 import { drawRegionTool } from './drawRegionTool.ts';
+import { drawDimensionTool, drawTextTool, drawTagTool } from './annotationTools.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -45,6 +46,11 @@ const toolRegistry: Record<string, ToolHandler> = {
   draw_hosted: drawHostedTool,
   // Grid-driven batch layout (columns at grids, beams between columns, beam system)
   draw_region: drawRegionTool,
+
+  // Annotation (dimension / text / tag)
+  draw_dimension: drawDimensionTool,
+  draw_text: drawTextTool,
+  draw_tag: drawTagTool,
 };
 
 export function getToolHandler(tool: Tool): ToolHandler {

@@ -22,8 +22,7 @@ import LineLengthRow from './LineLengthRow.tsx';
 import { TypeSelect } from './TypeSelect.tsx';
 import EditTypeDialog from './EditTypeDialog.tsx';
 import { findType, isTypedTable, typeParamState, typeValues } from '../model/types/catalog.ts';
-import { elementQuantities } from '../model/quantities.ts';
-import { toElementId } from '../model/ids.ts';
+import QuantitiesSection from './QuantitiesSection.tsx';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -240,7 +239,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
               </Collapsible>
             );
           })}
-          {isSingleSelection && <QuantitiesBlock selectionId={firstId} />}
+          {isSingleSelection && <QuantitiesSection selectionId={firstId} />}
         </div>
       </ScrollArea>
     </>
@@ -256,38 +255,6 @@ function commonValues(rows: CsvRow[]): CsvRow {
     if (rows.every(r => (r[k] ?? '') === v)) out[k] = v;
   }
   return out;
-}
-
-// ─── Quantities (computed, read-only) ────────────────────────────────────────
-
-/** Take-off of the selected element: volume, area, length (model/quantities). */
-function QuantitiesBlock({ selectionId }: { selectionId: string }) {
-  const { t } = useTranslation();
-  const state = useEditorState();
-  const el = state.document?.elements.get(toElementId(selectionId));
-  if (!el || !state.project) return null;
-  const elevations = new Map(state.project.levels.map(l => [l.id, l.elevation]));
-  const q = elementQuantities(el, elevations.get(state.currentLevel) ?? 0, elevations);
-  if (q.volume === undefined) return null;
-  const unit = getUnitSuffix(getProjectUnits(state)).trim();
-  const rows: [string, number | undefined, string][] = [
-    ['prop.qty.volume', q.volume, `${unit}³`],
-    ['prop.qty.area', q.area, `${unit}²`],
-    ['prop.qty.length', q.length, unit],
-  ];
-  return (
-    <div className="mt-1">
-      <div className="bg-foreground/[0.05] px-3 py-1.5 text-[10px] font-semibold text-foreground/65">{t('prop.Quantities')}</div>
-      <div className="px-3 pb-1.5 pt-1">
-        {rows.filter(([, v]) => v !== undefined && Number.isFinite(v)).map(([key, v, u]) => (
-          <div key={key} className="flex h-[22px] items-center justify-between text-[11px]">
-            <span className="text-muted-foreground">{t(key)}</span>
-            <span className="tabular-nums">{v!.toFixed(3)} <span className="text-[9px] text-muted-foreground">{u}</span></span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
 }
 
 // ─── Property Row ────────────────────────────────────────────────────────────

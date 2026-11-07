@@ -21,6 +21,9 @@ import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
+import SchedulePanel, { SCHEDULE_TOGGLE_EVENT } from './SchedulePanel.tsx';
+import { setAnnotationUnits } from '../annotation/geometry.ts';
+import { getProjectUnits } from '../utils/units.ts';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
@@ -32,6 +35,21 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
 
   const isMobile = useMediaQuery('(max-width: 768px)');
   const [mobilePanel, setMobilePanel] = useState<'left' | 'right' | null>(null);
+
+  // Schedule view: toggled from the top bar or by the host app (window event)
+  const [showSchedule, setShowSchedule] = useState(false);
+  useEffect(() => {
+    const toggle = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setShowSchedule(v => (typeof open === 'boolean' ? open : !v));
+    };
+    window.addEventListener(SCHEDULE_TOGGLE_EVENT, toggle);
+    return () => window.removeEventListener(SCHEDULE_TOGGLE_EVENT, toggle);
+  }, []);
+
+  // Dimension text / annotation sizes follow the project's units
+  const projectUnit = getProjectUnits(state);
+  setAnnotationUnits(projectUnit);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -356,6 +374,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
             readonly={state.readonly}
           />
         )}
+        {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
         <DrawingHints />
         {/* The tour teaches editing tools: not for read-only / shared views */}
         {!state.readonly && <OnboardingTour />}

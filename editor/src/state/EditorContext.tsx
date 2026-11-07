@@ -1,6 +1,7 @@
 import { createContext, useContext, useReducer, useMemo, type ReactNode, type Dispatch } from 'react';
 import type { EditorState, EditorAction } from './editorTypes.ts';
 import { editorReducer, initialState } from './editorReducer.ts';
+import { syncAnnotations } from '../annotation/sync.ts';
 import { toElementId } from '../model/ids.ts';
 
 /** Selection-only slice — changes here do NOT trigger re-renders in document consumers. */
@@ -22,8 +23,13 @@ const SelectionContext = createContext<SelectionState>({
 });
 const DispatchContext = createContext<Dispatch<EditorAction>>(() => {});
 
+/** The editor reducer plus the annotation associativity pass. */
+export function rootReducer(state: EditorState, action: EditorAction): EditorState {
+  return syncAnnotations(state, editorReducer(state, action), action);
+}
+
 export function EditorProvider({ children, readonly }: { children: ReactNode; readonly?: boolean }) {
-  const [state, dispatch] = useReducer(editorReducer, { ...initialState, readonly: readonly ?? false });
+  const [state, dispatch] = useReducer(rootReducer, { ...initialState, readonly: readonly ?? false });
 
   // Stable selection reference — only changes when selectedIds/hoveredId actually change.
   // selectedRawIds is pre-computed here so per-element render paths can do an

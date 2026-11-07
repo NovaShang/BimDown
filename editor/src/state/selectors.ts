@@ -13,6 +13,8 @@ export function isDisciplineVisible(discipline: string, state: EditorState): boo
   if (state.activeDiscipline === 'all') return true;
   if (discipline === state.activeDiscipline) return true;
   if (discipline === 'reference') return true;
+  // Annotations (dimensions, text, tags) belong to every view, like Revit's annotate tab
+  if (discipline === 'annotation') return true;
   if (discipline === 'architecture' && state.showArchContext && state.activeDiscipline !== 'architecture') return true;
   return false;
 }

@@ -16,6 +16,7 @@ import { previewRegion } from '../tools/drawRegionTool.ts';
 import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
 import PortDragOverlay from './PortDragOverlay.tsx';
+import AnnotationOverlay from './AnnotationOverlay.tsx';
 import Minimap from './Minimap.tsx';
 import { pruneCache } from './ElementNode.tsx';
 import { REVERSE_PREFIX_MAP, toSelectionId, toElementId } from '../model/ids.ts';
@@ -228,6 +229,16 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     findElementId,
     setSnap: setActiveSnap,
   }), [dispatch, screenToSvg, findElementId, transformRef]);
+
+  // Zoom requests from outside the canvas (schedule rows)
+  useEffect(() => {
+    const onZoom = (e: Event) => {
+      const b = (e as CustomEvent<{ minX: number; minY: number; maxX: number; maxY: number }>).detail;
+      if (b) applyZoomToBBox(b.minX, b.minY, b.maxX, b.maxY);
+    };
+    window.addEventListener('bimdown:zoom-to', onZoom);
+    return () => window.removeEventListener('bimdown:zoom-to', onZoom);
+  }, [applyZoomToBBox]);
 
   // ────── KEYBOARD SHORTCUTS ──────
   const onToolKeyDown = useCallback(
@@ -526,6 +537,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <SnapOverlay snap={activeSnap} scale={scale} />
 
         <PortDragOverlay scale={scale} />
+
+        <AnnotationOverlay scale={scale} />
 
         {state.drawingState && (
           <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} elements={state.document?.elements ?? null} projectUnit={getProjectUnits(state)}

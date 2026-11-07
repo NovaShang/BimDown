@@ -14,6 +14,7 @@ import { Icon } from './Icons.tsx';
 import type { IconName } from './Icons.tsx';
 import { cn } from '../lib/utils';
 import ModifyToolsGroup from './ModifyToolsGroup.tsx';
+import AnnotationTools from './AnnotationTools.tsx';
 
 interface FloatingToolbarProps {
   activeDiscipline: string | null;
@@ -462,6 +463,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           </Tooltip>
         ))}
       </div>
+
+      {/* Dimension / text / tag — every discipline */}
+      <AnnotationTools />
 
       {/* Grid tool — reference and structure (structural layout starts from the grid) */}
       {(activeDiscipline === 'reference' || activeDiscipline === 'structure') && <>

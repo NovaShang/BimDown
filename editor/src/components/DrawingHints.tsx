@@ -17,6 +17,9 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   trim_corner:  'hint.trimCorner',
   trim_single:  'hint.trimSingle',
   split:        'hint.split',
+  draw_dimension: 'hint.dimension',
+  draw_text:    'hint.text',
+  draw_tag:     'hint.tag',
 };
 
 export default function DrawingHints() {
@@ -42,17 +45,20 @@ export default function DrawingHints() {
   // Wall placement: one hint per draw mode; the first trim pick has its own.
   const wallMode = activeTool === 'draw_line' && isWallDrawTable(drawingTarget?.tableName)
     ? wallDrawOptions(drawingAttrs).mode : null;
-  const text = regionHint
-    ? t(regionHint)
-    : wallMode
-      ? t(`hint.wall_${wallMode}`)
-      : (activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState?.pick
-        ? t(`${hintKey}2`)
-        : isVerticalLine
-          ? t('hint.vertical')
-          : isPolygonClosable
-            ? t('hint.polygonClose')
-            : t(hintKey);
+  const isWallRun = activeTool === 'draw_dimension' && drawingAttrs.dim_mode === 'wall_run';
+  const text = isWallRun
+    ? t('hint.dimensionWallRun')
+    : regionHint
+      ? t(regionHint)
+      : wallMode
+        ? t(`hint.wall_${wallMode}`)
+        : (activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState?.pick
+          ? t(`${hintKey}2`)
+          : isVerticalLine
+            ? t('hint.vertical')
+            : isPolygonClosable
+              ? t('hint.polygonClose')
+              : t(hintKey);
 
   return (
     <div className="absolute top-16 left-1/2 z-20 -translate-x-1/2 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-200">

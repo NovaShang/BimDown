@@ -26,3 +26,6 @@ import './mesh.tsx';
 import './mep_lines.tsx';
 import './mep_node.tsx';
 import './connector.tsx';
+import './dimension.tsx';
+import './text_note.tsx';
+import './tag.tsx';
