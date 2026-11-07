@@ -676,7 +676,10 @@ export function roofInputFor(outline: P2[], attrs: RoofAttrs): RoofInput {
   }
   const explicit = parseNumberList(attrs.edge_slopes);
   if (explicit.length === ring.length && explicit.some(v => v > 0)) {
-    return { outline: ring, edgeSlopes: explicit.map(v => (Number.isFinite(v) && v > 0 ? v : 0)) };
+    const edgeSlopes = explicit.map(v => (Number.isFinite(v) && v > 0 ? v : 0));
+    // A mansard keeps its upper deck over explicit (steep) edge slopes.
+    const cap = roofType === 'mansard' ? mansardCap(ring, Math.max(...edgeSlopes)) : undefined;
+    return { outline: ring, edgeSlopes, cap };
   }
   if (roofType === 'mansard' && slope > 0) {
     const steep = mansardSlope(slope);
