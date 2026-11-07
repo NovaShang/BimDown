@@ -25,6 +25,7 @@ import { analyzeFittings, continuesStraight, curveZ } from '../mep/fittings.ts';
 import { mepCrossingGaps } from '../mep/crossings.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { MepLine2D, MepLine3D } from '../mep/MepLineView.tsx';
+import { systemPreset } from '../mep/systemPresets.ts';
 
 export interface MepLineFacts {
   id: string;
@@ -353,8 +354,9 @@ function buildVerticalRiserFootprint(
   ];
 }
 
-/** Curated colors for the canonical MEP system_type abbreviations (see
- *  agent-skill/references/bim-modeling.md). Anything not in this table falls
+/** Curated colors for other MEP system_type abbreviations (see
+ *  agent-skill/references/bim-modeling.md); the system library codes
+ *  (mep/systemPresets.ts) take their preset colour first. Anything not in this table falls
  *  back to a deterministic hash of system_type below — so the user always sees
  *  a consistent color per system, even before a project-level system table
  *  exists. */
@@ -390,8 +392,9 @@ function hashSystemColor(s: string): string {
  *    1. Project-level `mep_system.csv` row whose `system_type` matches and has
  *       a non-empty `color` (passed in as `projectOverride`, pre-resolved by
  *       `mepLineGeometry` via `ctx.projectSystems()`).
- *    2. Editor's curated `SYSTEM_COLORS` table.
- *    3. Deterministic hash of `system_type`.
+ *    2. The system library preset (mep/systemPresets.ts, aliases included).
+ *    3. Editor's curated `SYSTEM_COLORS` table.
+ *    4. Deterministic hash of `system_type`.
  *  Empty `systemType` short-circuits to the caller's `fallback` color. */
 /** Public wrapper around `resolveSystemColor` for UI callers (e.g. the
  *  MEP Systems legend in LeftPanel) that need to render the same color the
@@ -404,6 +407,8 @@ function resolveSystemColor(systemType: string, fallback: string, projectOverrid
   const key = systemType.trim();
   if (!key) return fallback;
   if (projectOverride && projectOverride.trim()) return projectOverride.trim();
+  const preset = systemPreset(key);
+  if (preset) return preset.color;
   if (key in SYSTEM_COLORS) return SYSTEM_COLORS[key];
   return hashSystemColor(key);
 }
