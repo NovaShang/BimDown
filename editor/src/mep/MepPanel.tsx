@@ -13,7 +13,7 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { isMepLineTable } from '../model/mepTopology.ts';
 import { endZ } from '../model/mepSplit.ts';
-import { checkDocument, systemRows, systemMemberIds } from './mepModel.ts';
+import { checkDocument, externalMep, systemRows, systemMemberIds } from './mepModel.ts';
 import { setMepView, useMepView, type ProblemMarker } from './mepView.ts';
 import { computeRunFlows, runHydraulics, sizeDuct, sizePipe, sizeSystem } from './calc.ts';
 import { circuitsIn, isPanel, newCircuit } from './circuits.ts';
@@ -38,7 +38,9 @@ export default function MepPanel() {
   const sel = (ids: string[]) => dispatch({ type: 'SELECT', ids: ids.map(id => level ? toSelectionId(level, id) : id) });
 
   const rows = useMemo(() => (elements ? systemRows(elements) : []), [elements]);
-  const problems = useMemo(() => (elements && (tab === 'check' || view.showProblems) ? checkDocument(elements) : []), [elements, tab, view.showProblems]);
+  const project = state.project;
+  const ext = useMemo(() => externalMep(project, level), [project, level]);
+  const problems = useMemo(() => (elements && (tab === 'check' || view.showProblems) ? checkDocument(elements, ext) : []), [elements, ext, tab, view.showProblems]);
   const warnings = problems.filter(p => p.severity === 'warning');
 
   // Problem markers follow the document while the check is on.
@@ -85,9 +87,21 @@ export default function MepPanel() {
         {tab === 'check' && (
           <CheckTab problems={problems} readonly={readonly} onSelect={id => sel([id])}
             onCap={p => {
+              // One undoable patch (so it is saved as one change): the cap node and the run's ref to it.
               const el = elements.get(p.id);
-              const cap = el ? capOpenEnd(el, p, elements, level) : null;
-              if (cap) dispatch({ type: 'APPLY_PATCH', patches: new Map(cap.map(e => [e.id, e])), description: 'Cap open end' });
+              const cap = el ? capOpenEnd(el, elements, level) : null;
+              if (!cap) {
+                // The run ends on a fitting with nothing else: make that fitting the cap.
+                const node = p.at && [...elements.values()].find(n => n.tableName === 'mep_node' && n.geometry === 'point'
+                  && Math.hypot((n as PointElement).position.x - p.at![0], (n as PointElement).position.y - p.at![1]) < 0.01);
+                if (node) dispatch({ type: 'UPDATE_ATTRS', id: node.id, attrs: { fitting: 'cap' } });
+                return;
+              }
+              const curve = elements.get(cap.curveId)!;
+              dispatch({ type: 'APPLY_PATCH', description: 'Cap open end', patches: new Map<string, CanonicalElement | null>([
+                [cap.node.id, cap.node],
+                [curve.id, { ...curve, attrs: { ...curve.attrs, [cap.side]: cap.node.id } }],
+              ]) });
             }} />
         )}
         {tab === 'circuits' && (
@@ -258,8 +272,8 @@ function SelectedRun({ elements, selectedIds, readonly, onApply }: {
   );
 }
 
-/** A cap (or open-end marker) node on an open run end. */
-function capOpenEnd(el: CanonicalElement, p: MepProblem, elements: ReadonlyMap<string, CanonicalElement>, level: string): CanonicalElement[] | null {
+/** A cap node for the first open end of a run. */
+function capOpenEnd(el: CanonicalElement, elements: ReadonlyMap<string, CanonicalElement>, level: string): { node: PointElement; curveId: string; side: 'from' | 'to' } | null {
   if (!isMepLineTable(el.tableName) || (el.geometry !== 'line' && el.geometry !== 'spatial_line')) return null;
   const c = el as MepCurve;
   const side = !(c.attrs.from || '').trim() ? 'from' : !(c.attrs.to || '').trim() ? 'to' : null;
@@ -271,6 +285,5 @@ function capOpenEnd(el: CanonicalElement, p: MepProblem, elements: ReadonlyMap<s
     id, tableName: 'mep_node', discipline: 'mep', geometry: 'point', position: { ...at }, width: 0, height: 0,
     attrs: { ...defaultAttrs('mep_node', level), id, fitting: 'cap', kind: '', system_type: c.attrs.system_type ?? '', base_offset: String(endZ(c, side === 'from' ? 'start' : 'end')) },
   };
-  void p;
-  return [node, { ...c, attrs: { ...c.attrs, [side]: id } }];
+  return { node, curveId: c.id, side };
 }

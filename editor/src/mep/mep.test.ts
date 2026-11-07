@@ -230,3 +230,31 @@ describe('circuits', () => {
     expect(warnings(h.state)).toEqual([]);
   });
 });
+
+describe('cross-level risers', () => {
+  it('keep the node a run on another level ends on', () => {
+    const h = createHarness([
+      { id: 'lv-1', number: '1', name: 'L1', elevation: 0 },
+      { id: 'lv-2', number: '2', name: 'L2', elevation: 4 },
+    ]);
+    // lv-2 has a run ending on lv-1's riser-top node mn-1.
+    const floors = new Map([['lv-2', { levelId: 'lv-2', levelName: 'L2', layers: [{
+      tableName: 'pipe', discipline: 'mep', geojsonContent: '',
+      csvRows: new Map([['pi-1', { id: 'pi-1', from: 'mn-1', to: '' }]]),
+    }] }]]);
+    h.dispatch({ type: 'SET_PROJECT', model: 'test', grids: [], project: { ...h.state.project!, floors } });
+    const riser: SpatialLineElement = {
+      id: 'pi-1', tableName: 'pipe', discipline: 'mep', geometry: 'spatial_line', start: { x: 0, y: 0 }, end: { x: 0, y: 0 },
+      startZ: 0.5, endZ: 4.6, strokeWidth: 0.1, attrs: { id: 'pi-1', size_x: '0.1', system_type: 'CWR', to: 'mn-1' },
+    };
+    const node: PointElement = {
+      id: 'mn-1', tableName: 'mep_node', discipline: 'mep', geometry: 'point', position: { x: 0, y: 0 }, width: 0, height: 0,
+      attrs: { id: 'mn-1', base_offset: '4.6', kind: '' },
+    };
+    h.dispatch({ type: 'APPLY_PATCH', patches: new Map<string, CanonicalElement | null>([['mn-1', node], ['pi-1', riser]]), description: 'seed' });
+    h.pick('pipe', { start_z: '3', system_type: 'DCW' });
+    h.click(5, 5); h.click(8, 5); h.done();
+    expect(els(h.state, 'mep_node').map(n => n.id)).toContain('mn-1');
+    expect(els(h.state, 'pipe').find(p => p.id === 'pi-1')!.attrs.to).toBe('mn-1');
+  });
+});

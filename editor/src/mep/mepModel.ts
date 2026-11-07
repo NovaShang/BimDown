@@ -7,13 +7,36 @@ import { isMepLineTable } from '../model/mepTopology.ts';
 import { endZ } from '../model/mepSplit.ts';
 import { checkMep, type MepModelIn, type MepProblem, type Vec3 } from './mepCheck.ts';
 import { inSystem } from './mepView.ts';
+import type { LayerData, ProjectData } from '../types.ts';
+import { crossLevelRefs } from './externalRefs.ts';
 
 type MepCurve = LineElement | SpatialLineElement;
 
 const num = (v: string | undefined, d = 0) => { const n = parseFloat(v ?? ''); return Number.isFinite(n) ? n : d; };
 
-export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>): MepModelIn {
-  const m: MepModelIn = { curves: [], hosts: [], ports: [], circuits: [], complete: false };
+/** What the other levels (and global/) contribute: refs their runs make and the hosts they hold. */
+export interface ExternalMep { refs: string[]; hosts: string[] }
+
+const HOST_TABLES = new Set(['equipment', 'terminal', 'mep_node']);
+
+export function externalMep(project: ProjectData | null, currentLevel: string): ExternalMep {
+  const refs: string[] = [];
+  const hosts: string[] = [];
+  const scan = (layers: readonly LayerData[]) => {
+    refs.push(...crossLevelRefs(layers));
+    for (const layer of layers) {
+      if (HOST_TABLES.has(layer.tableName)) for (const id of layer.csvRows.keys()) hosts.push(id);
+    }
+  };
+  if (project) {
+    for (const [levelId, floor] of project.floors) if (levelId !== currentLevel) scan(floor.layers);
+    scan(project.globalLayers);
+  }
+  return { refs, hosts };
+}
+
+export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep): MepModelIn {
+  const m: MepModelIn = { curves: [], hosts: [], ports: [], circuits: [], complete: false, externalRefs: ext?.refs, externalHosts: ext?.hosts };
   const hosts = new Map<string, PointElement>();
   for (const el of elements.values()) {
     if (isMepLineTable(el.tableName) && (el.geometry === 'line' || el.geometry === 'spatial_line')) {
@@ -52,8 +75,8 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>): 
   return m;
 }
 
-export function checkDocument(elements: ReadonlyMap<string, CanonicalElement>): MepProblem[] {
-  return checkMep(buildMepModel(elements));
+export function checkDocument(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep): MepProblem[] {
+  return checkMep(buildMepModel(elements, ext));
 }
 
 export interface SystemRow {
