@@ -6,6 +6,12 @@ import { triggerDownload } from './download.ts';
 import type { GeometryContext } from '../elements/archetypes.ts';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import { curtainWallModule, type CurtainWallFacts } from '../elements/curtain_wall.tsx';
+import { roofModule } from '../elements/roof.tsx';
+import { wallModule } from '../elements/wall.tsx';
+import { structureWallModule } from '../elements/structure_wall.tsx';
+import { wallSolid } from '../elements/_lineWallShared.tsx';
+import { roofGeometryFromSolution } from '../three/utils/roofGeometry.ts';
+import { buildCrossLevelIndex } from '../model/crossLevel.ts';
 import { curtainWallPieces } from '../elements/curtainWallLayout.ts';
 import { doorParts } from '../elements/_opening3D.tsx';
 import { bimMaterialAppearance, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
@@ -61,6 +67,7 @@ export async function exportGltf(project: ProjectData, modelName: string): Promi
     return mat;
   }
 
+  const crossLevel = buildCrossLevelIndex(project);
   for (const level of project.levels) {
     const floor = project.floors.get(level.id);
     if (!floor) continue;
@@ -75,7 +82,7 @@ export async function exportGltf(project: ProjectData, modelName: string): Promi
         // Members, panels and doors as the 3D view draws them.
         ctx ??= buildGeometryContext({
           level, allLevels: project.levels, allElements: new Map(elements.map(e => [e.id, e])),
-          mepSystems: project.mepSystems, types: project.types,
+          mepSystems: project.mepSystems, types: project.types, crossLevel,
         });
         const facts = curtainWallModule.geometry(el, ctx);
         if (facts) {
@@ -84,6 +91,26 @@ export async function exportGltf(project: ProjectData, modelName: string): Promi
           group.add(g);
         }
         continue;
+      }
+      // Sloped roofs and walls attached to a roof: the 3D view's solids.
+      const solidModule = el.tableName === 'roof' ? roofModule
+        : el.attrs.top_attach_id && el.tableName === 'wall' ? wallModule
+          : el.attrs.top_attach_id && el.tableName === 'structure_wall' ? structureWallModule : null;
+      if (solidModule) {
+        ctx ??= buildGeometryContext({
+          level, allLevels: project.levels, allElements: new Map(elements.map(e => [e.id, e])),
+          mepSystems: project.mepSystems, types: project.types, crossLevel,
+        });
+        const facts = solidModule.geometry(el, ctx) as any;
+        const geo = !facts ? null : el.tableName === 'roof'
+          ? roofGeometryFromSolution(facts.solution, facts.vertices, facts.baseY, facts.thickness, facts.holes)
+          : wallSolid(facts, facts.footprint);
+        if (geo) {
+          const mesh = new Mesh(geo, getMaterial(el.tableName));
+          mesh.name = `${el.tableName}:${el.id}`;
+          group.add(mesh);
+          continue;
+        }
       }
       const params = elementTo3DParams(el, level.elevation, levelElevations);
       if (!params) continue;
