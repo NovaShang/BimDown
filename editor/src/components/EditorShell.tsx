@@ -3,7 +3,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, stampSpatialZMarker } from '../utils/persist.ts';
+import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, stampSpatialZMarker, persistSections } from '../utils/persist.ts';
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
@@ -21,6 +21,7 @@ import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
+import ViewPane from '../views/ViewPane.tsx';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
@@ -197,6 +198,13 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     prevLevelsRef.current = levels;
   }, [state.project?.levels, ds]);
 
+  // Persist saved section views after a user edit (UPDATE_SECTIONS with persist).
+  const sectionsSaveSeq = state.views.sectionsSaveSeq;
+  useEffect(() => {
+    if (sectionsSaveSeq === 0 || stateRef.current.readonly) return;
+    persistSections(stateRef.current.project?.sections ?? [], ds).catch(err => console.error('Persist sections failed:', err));
+  }, [sectionsSaveSeq, ds]);
+
   // Use document model for rendering when available
   const processedLayers = useMemo(
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
@@ -300,6 +308,8 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
             overlayItems={overlayItems}
           />
         )}
+        {/* Elevation / section pane docked over the right of the canvas */}
+        <ViewPane />
         {/* Hide the top discipline bar while the snap panel occupies the same slot. */}
         {!(!state.readonly && isSnapInteraction(state.activeTool, state.drawingState)) && <TopBar />}
         {!state.readonly && <DrawingPropertiesBar />}

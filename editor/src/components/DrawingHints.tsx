@@ -9,6 +9,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_polygon: 'hint.polygon',
   draw_hosted:  'hint.hosted',
   draw_grid:    'hint.line',
+  draw_section: 'hint.section',
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
