@@ -12,6 +12,7 @@ import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/g
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 import { renderAnnotations } from './annotations.js';
 import { projectUnits } from './utils/units.js';
+import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -29,6 +30,7 @@ const COLORS: Record<string, { stroke: string; fill?: string }> = {
   brace:              { stroke: '#9b5de5' },
   foundation:         { stroke: '#8d6e63', fill: 'rgba(141,110,99,0.15)' },
   opening:            { stroke: '#ff8a65', fill: '#ffffff' },
+  roof:               { stroke: '#8d6e63', fill: 'rgba(141,110,99,0.06)' },
   grid:               { stroke: '#ef476f' },
   duct:               { stroke: '#00b4d8' },
   pipe:               { stroke: '#48bfe3' },
@@ -69,6 +71,7 @@ const GRID_BUBBLE_R = 0.5;
 const RENDER_ORDER = [
   'foundation',
   'slab', 'structure_slab',
+  'roof',
   'opening',
   'beam', 'brace',
   'wall', 'structure_wall', 'room_separator', 'curtain_wall',
@@ -155,6 +158,9 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
     }
   }
 
+  // Shafts from other levels crossing this level's floor
+  elements.push(...renderShaftsFrom(layout.levelDirs, levelDir.name, levelElevations(layout.globalDir)));
+
   // Door / window / wall opening (CSV + host wall)
   for (const t of ['door', 'window', 'opening'] as const) {
     elements.push(...renderHostedFromCsv(levelDir.path, t, wallById));
@@ -202,7 +208,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 // ─── Per-feature rendering ────────────────────────────────
 
 /** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
-const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation']);
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof']);
 
 function renderFeature(
   tableName: string,
@@ -213,6 +219,7 @@ function renderFeature(
   const id = String(feat.properties?.id ?? '');
   if (!id) return null;
   if (tableName === 'foundation') return renderFoundation(id, feat, row ?? {});
+  if (tableName === 'roof' && feat.geometry.type === 'Polygon') return renderRoof(id, feat, row ?? {});
   if ((tableName === 'column' || tableName === 'structure_column') && feat.geometry.type === 'Point') {
     return renderColumn(tableName, id, feat, row ?? {});
   }
@@ -295,6 +302,109 @@ function rotatedRect(x: number, y: number, w: number, d: number, rotDeg: number)
   const a = (rotDeg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   return [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]]
     .map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
+}
+
+// ─── Roofs and shafts ─────────────────────────────────────
+
+/**
+ * Roof plan: outline, ridges and hips (solid), valleys (dashed) and one
+ * down-slope arrow per roof plane with its slope, from the same roof planes
+ * the editor builds (geo/roof-solver.ts: edge_slopes or roof_type + slope).
+ */
+function renderRoof(id: string, feat: BimDownFeature, row: Record<string, string>): RenderedElement | null {
+  const rings = (feat.geometry as { coordinates: number[][][] }).coordinates;
+  const ring = rings[0];
+  if (!ring || ring.length < 3) return null;
+  const color = COLORS.roof;
+  const outline = ring.map(p => ({ x: p[0], y: p[1] }));
+  const parts = [`    <path id="${id}" d="${polygonPath(rings)}" fill-rule="evenodd" fill="${color.fill}" stroke="${color.stroke}" stroke-width="0.05" />`];
+  let sol: RoofSolution | null = null;
+  try { sol = solveRoof(roofInputFor(outline, row)); } catch { sol = null; }
+  if (sol) {
+    for (const l of sol.lines) {
+      const dash = l.kind === 'valley' ? ' stroke-dasharray="0.25,0.12"' : '';
+      const w = l.kind === 'ridge' ? 0.05 : 0.035;
+      parts.push(`    <path d="M ${fmt(l.a.x)},${fmt(l.a.y)} L ${fmt(l.b.x)},${fmt(l.b.y)}" stroke="${color.stroke}" stroke-width="${w}" fill="none"${dash} />`);
+    }
+    for (const ar of slopeArrows(sol)) {
+      const dx = ar.to.x - ar.from.x, dy = ar.to.y - ar.from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len, head = Math.min(0.25, len * 0.35);
+      const bx = ar.to.x - ux * head, by = ar.to.y - uy * head;
+      parts.push(`    <path d="M ${fmt(ar.from.x)},${fmt(ar.from.y)} L ${fmt(bx)},${fmt(by)}" stroke="${color.stroke}" stroke-width="0.025" fill="none" />`);
+      parts.push(`    <polygon points="${fmt(ar.to.x)},${fmt(ar.to.y)} ${fmt(bx - uy * head * 0.45)},${fmt(by + ux * head * 0.45)} ${fmt(bx + uy * head * 0.45)},${fmt(by - ux * head * 0.45)}" fill="${color.stroke}" />`);
+      const tx = ar.from.x - uy * 0.25, ty = ar.from.y + ux * 0.25;
+      parts.push(`    <text x="${fmt(tx)}" y="${fmt(-ty)}" transform="scale(1,-1)" font-size="0.25" text-anchor="middle" dominant-baseline="central" fill="${color.stroke}" font-family="sans-serif">${escapeXml(ar.label)}</text>`);
+    }
+  }
+  return { tableName: 'roof', svg: parts.join('\n'), bounds: ringBounds(ring) };
+}
+
+/** A down-slope arrow per sloped roof plane, in its largest piece. */
+function slopeArrows(sol: RoofSolution): { from: { x: number; y: number }; to: { x: number; y: number }; label: string }[] {
+  const best = new Map<number, { area: number; poly: { x: number; y: number }[] }>();
+  for (const pc of sol.pieces) {
+    const pl = sol.planes[pc.plane];
+    if (Math.hypot(pl.a, pl.b) < 1e-6) continue;
+    const area = Math.abs(signedArea(pc.poly));
+    const cur = best.get(pc.plane);
+    if (!cur || area > cur.area) best.set(pc.plane, { area, poly: pc.poly });
+  }
+  const out: { from: { x: number; y: number }; to: { x: number; y: number }; label: string }[] = [];
+  for (const [plane, { area, poly }] of best) {
+    if (area < 0.05) continue;
+    const pl = sol.planes[plane];
+    const g = Math.hypot(pl.a, pl.b);
+    const ux = -pl.a / g, uy = -pl.b / g;
+    const c = centroid(poly);
+    const len = Math.max(0.3, Math.min(1.2, Math.sqrt(area) * 0.35));
+    const deg = (Math.atan(g) * 180) / Math.PI;
+    const label = deg < 5 ? `${(g * 100).toFixed(1).replace(/\.0$/, '')}%` : `${Math.round(deg * 10) / 10}°`;
+    out.push({ from: { x: c.x - ux * len / 2, y: c.y - uy * len / 2 }, to: { x: c.x + ux * len / 2, y: c.y + uy * len / 2 }, label });
+  }
+  return out;
+}
+
+function levelElevations(globalDir: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const p = join(globalDir, 'level.csv');
+  if (!existsSync(p)) return out;
+  for (const row of readCsv(p).rows) if (row.id) out.set(row.id, Number(row.elevation) || 0);
+  return out;
+}
+
+/**
+ * Shafts (opening rows with top_level_id) of other levels whose height range
+ * reaches this level's floor: outline and a cross, as on their own level.
+ */
+function renderShaftsFrom(levelDirs: { name: string; path: string }[], levelId: string, elev: Map<string, number>): RenderedElement[] {
+  const here = elev.get(levelId);
+  if (here === undefined) return [];
+  const out: RenderedElement[] = [];
+  const color = COLORS.opening;
+  for (const d of levelDirs) {
+    if (d.name === levelId) continue;
+    const rows = readRows(d.path, 'opening');
+    const shafts = [...rows.values()].filter(r => r.top_level_id);
+    if (shafts.length === 0) continue;
+    const path = join(d.path, `${GEOJSON_FILE_NAMES.opening}.geojson`);
+    if (!existsSync(path)) continue;
+    let fc;
+    try { fc = parseGeoJsonFile(path); } catch { continue; }
+    for (const row of shafts) {
+      const base = elev.get(d.name), top = elev.get(row.top_level_id);
+      if (base === undefined || top === undefined) continue;
+      const z0 = base + (Number(row.base_offset) || 0), z1 = top + (Number(row.top_offset) || 0);
+      if (!(here > z0 + 1e-6 && here <= z1 + 1e-6)) continue;
+      const feat = fc.features.find(f => String(f.properties?.id) === row.id);
+      if (!feat || feat.geometry.type !== 'Polygon') continue;
+      const ring = feat.geometry.coordinates[0];
+      if (!ring || ring.length < 3) continue;
+      const svg = `    <path id="${row.id}" d="${polygonPath(feat.geometry.coordinates)}" fill="${color.fill}" stroke="${color.stroke}" stroke-width="0.05" />\n${crossLines(ring, color.stroke)}`;
+      out.push({ tableName: 'opening', svg, bounds: ringBounds(ring) });
+    }
+  }
+  return out;
 }
 
 /** Column at its real section size (round → circle, others → rotated bbox). */

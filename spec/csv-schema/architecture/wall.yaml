@@ -14,3 +14,11 @@ fields:
     type: reference
     reference: wall_type
     description: Optional wall_type id. Empty type parameters (thickness, material) inherit the type's value; a set value overrides it for this element.
+
+  - name: top_attach_id
+    type: reference
+    reference: element
+    description: >
+      Attach Top (Revit): id of a roof or slab (any level) whose underside the
+      wall top follows wherever the wall is under it; elsewhere the wall keeps
+      its top_level_id / top_offset top. Empty = not attached.
