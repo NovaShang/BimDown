@@ -26,6 +26,7 @@ import ModifyHost from './ModifyHost.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
 import SchedulePanel, { SCHEDULE_TOGGLE_EVENT } from './SchedulePanel.tsx';
+import WarningsPanel, { WARNINGS_TOGGLE_EVENT, useModelWarnings } from './WarningsPanel.tsx';
 import { setAnnotationUnits, setAnnotationScale } from '../annotation/geometry.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import ViewPane from '../views/ViewPane.tsx';
@@ -59,6 +60,18 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     };
     window.addEventListener(SCHEDULE_TOGGLE_EVENT, toggle);
     return () => window.removeEventListener(SCHEDULE_TOGGLE_EVENT, toggle);
+  }, []);
+
+  // Warnings panel (Review Warnings): toggled from the top bar badge or by the host app
+  const [showWarnings, setShowWarnings] = useState(false);
+  const warnings = useModelWarnings(state);
+  useEffect(() => {
+    const toggle = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setShowWarnings(v => (typeof open === 'boolean' ? open : !v));
+    };
+    window.addEventListener(WARNINGS_TOGGLE_EVENT, toggle);
+    return () => window.removeEventListener(WARNINGS_TOGGLE_EVENT, toggle);
   }, []);
 
   // Sheets view: toggled from the top bar or by the host app (window event)
@@ -452,7 +465,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         {/* Elevation / section pane docked over the right of the canvas */}
         <ViewPane />
         {/* Hide the top discipline bar while the snap panel occupies the same slot. */}
-        {!(!state.readonly && isSnapInteraction(state.activeTool, state.drawingState)) && <TopBar />}
+        {!(!state.readonly && isSnapInteraction(state.activeTool, state.drawingState)) && <TopBar warningCount={warnings.length} />}
         {!state.readonly && <DrawingPropertiesBar />}
         {!state.readonly && <FloatingToolbar activeDiscipline={activeDiscipline} />}
         <ViewToolbar
@@ -469,6 +482,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
           />
         )}
         {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
+        {showWarnings && <WarningsPanel warnings={warnings} onClose={() => setShowWarnings(false)} />}
         {showSheets && (
           <Suspense fallback={null}>
             <SheetsPanel onClose={() => setShowSheets(false)} />
