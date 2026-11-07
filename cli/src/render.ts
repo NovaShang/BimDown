@@ -16,6 +16,7 @@ import { renderFurniture } from './furniture/render.js';
 import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
 import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
 import { cellKinds, gridLines, parsePanels } from './curtain-grid.js';
+import { renderStairs } from './stair/render.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -87,6 +88,8 @@ const RENDER_ORDER = [
 ];
 
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
+/** Drawn by renderStairs (runs, landings, walking line, derived railings). */
+const STAIR_TABLES = new Set(['stair', 'stair_run', 'stair_landing', 'railing']);
 
 interface RenderedElement {
   tableName: string;
@@ -140,7 +143,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
   const elements: RenderedElement[] = [];
 
   for (const tableName of RENDER_ORDER) {
-    if (CSV_ONLY_TABLES.has(tableName)) continue;
+    if (CSV_ONLY_TABLES.has(tableName) || STAIR_TABLES.has(tableName)) continue;
     // MEP (runs, fittings, devices, accessories) has its own plan graphics.
     if (MEP_RENDER_TABLES.has(tableName)) {
       if (tableName === 'duct') elements.push(...renderMep(sources.map(s => s.path), layout.globalDir));
@@ -165,6 +168,9 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
       }
     }
   }
+
+  // Stairs (runs, landings, walking line) and railings
+  elements.push(...renderStairs(projectDir, levelId));
 
   // Furniture / library components (plan symbols), under doors and rooms
   elements.push(...renderFurniture(levelDir.path));

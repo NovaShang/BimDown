@@ -19,6 +19,7 @@ import { validateSheets } from './sheets.js';
 import { validateGroups } from './groups.js';
 import { validateEnvelope } from './envelope.js';
 import { validateCurtainWallCsv } from './curtain-wall.js';
+import { validateStairs } from './stairs.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -136,6 +137,8 @@ export function validate(dir: string): string[] {
   for (const entry of csvEntries) {
     if (entry.tableName === 'curtain_wall') issues.push(...validateCurtainWallCsv(entry.path, entry.data));
   }
+  // 7h. Stairs: parts / railings hosted on a stair (or slab), multi-storey top level
+  issues.push(...validateStairs(dir).issues);
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);

@@ -10,6 +10,7 @@ import { typeWarnings } from '../catalog/index.js';
 import { mepWarnings } from '../mep/index.js';
 import { groupWarningsForDir } from './group-warnings.js';
 import { curtainWallWarnings } from '../validate/curtain-wall.js';
+import { validateStairs } from '../validate/stairs.js';
 
 export type { RoomIssue };
 
@@ -34,7 +35,7 @@ export function build(dir: string): BuildResult {
   const issues = [...resolveIssues, ...validate(dir)];
 
   // 2. Geometry warnings (connectivity, hosted bounds, overlap)
-  const warnings = [...validateGeometry(dir), ...typeWarnings(dir), ...groupWarningsForDir(dir), ...curtainWallWarnings(dir)];
+  const warnings = [...validateGeometry(dir), ...typeWarnings(dir), ...groupWarningsForDir(dir), ...curtainWallWarnings(dir), ...validateStairs(dir).warnings];
 
   // 2b. MEP connectivity (open ends, unresolved / misplaced port refs, system mismatches)
   warnings.push(...mepWarnings(dir));

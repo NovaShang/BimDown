@@ -1,0 +1,40 @@
+name: railing_type
+bases:
+  - element_type
+  - materialized
+type_of: [railing]
+description: >
+  A railing type: height, top rail and infill shared by every railing whose
+  type_id points here. `material` is the rail and baluster material.
+
+fields:
+  - name: height
+    type: float
+    description: Top of rail above the walking surface, m.
+
+  - name: top_rail_shape
+    type: enum
+    values:
+      - round
+      - rect
+    description: Top rail section (default round).
+
+  - name: top_rail_size
+    type: float
+    description: Top rail diameter / width, m (default 0.05).
+
+  - name: infill
+    type: enum
+    values:
+      - balusters
+      - glass
+      - none
+    description: Infill between the walking surface and the top rail (default balusters).
+
+  - name: baluster_spacing
+    type: float
+    description: Baluster centre spacing, m (default 0.12).
+
+  - name: baluster_size
+    type: float
+    description: Square baluster size, m (default 0.025).
