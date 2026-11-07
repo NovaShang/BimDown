@@ -20,8 +20,17 @@ export function formatProblem(p: MepProblem & { dir: string }): string {
   return `${p.dir ? `${p.dir}/` : ''}${p.table}.csv  ${p.id}: [${p.code}] ${p.message}`;
 }
 
-/** Connectivity warnings for `bimdown build` (info-level findings are left out). */
+/** Problems `bimdown build` reports as errors: a port / fitting / circuit reference to nothing. */
+const ERROR_CODES = new Set(['dangling_ref']);
+
+/** Connectivity warnings for `bimdown build` (info-level findings and errors are left out). */
 export function mepWarnings(dir: string): string[] {
   const r = mepReport(dir);
-  return r.problems.filter(p => p.severity === 'warning').map(formatProblem);
+  return r.problems.filter(p => p.severity === 'warning' && !ERROR_CODES.has(p.code)).map(formatProblem);
+}
+
+/** Connectivity errors for `bimdown build`: references to elements or ports that don't exist. */
+export function mepErrors(dir: string): string[] {
+  const r = mepReport(dir);
+  return r.problems.filter(p => p.severity === 'warning' && ERROR_CODES.has(p.code)).map(formatProblem);
 }

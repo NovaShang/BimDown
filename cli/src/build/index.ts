@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, copyFileSync, rmSync, symlinkSync } from 'node:fs';
 import { join } from 'node:path';
+import { tmpdir } from 'node:os';
 import { validate } from '../validate/index.js';
 import { discoverLayout } from '../utils/fs.js';
 import { computeSpaceBoundaries, type RoomIssue } from './space-boundary.js';
@@ -7,7 +8,7 @@ import { validateGeometry } from './geometry-warnings.js';
 import { resolveHostedCoords } from './resolve-hosted-coords.js';
 import { snapEndpoints, type SnapRecord } from './snap-endpoints.js';
 import { typeWarnings } from '../catalog/index.js';
-import { mepWarnings } from '../mep/index.js';
+import { mepErrors, mepWarnings } from '../mep/index.js';
 import { groupWarningsForDir } from './group-warnings.js';
 import { curtainWallWarnings } from '../validate/curtain-wall.js';
 import { validateStairs } from '../validate/stairs.js';
@@ -37,8 +38,10 @@ export function build(dir: string): BuildResult {
   // 2. Geometry warnings (connectivity, hosted bounds, overlap)
   const warnings = [...validateGeometry(dir), ...typeWarnings(dir), ...groupWarningsForDir(dir), ...curtainWallWarnings(dir), ...validateStairs(dir).warnings];
 
-  // 2b. MEP connectivity (open ends, unresolved / misplaced port refs, system mismatches)
+  // 2b. MEP connectivity (open ends, misplaced port refs, system mismatches);
+  // a reference to a missing element or port is an error
   warnings.push(...mepWarnings(dir));
+  issues.push(...mepErrors(dir));
 
   // 3. Compute space boundaries per level → write space.geojson
   const artifacts: string[] = [];
@@ -58,4 +61,29 @@ export function build(dir: string): BuildResult {
   }
 
   return { issues, warnings, artifacts, snappedEndpoints: snaps.length, snaps, roomIssues };
+}
+
+/**
+ * `bimdown validate`: the same checks as build without touching the project.
+ * Build writes (snapped endpoints, resolved host refs, space.geojson), so it
+ * runs on a scratch copy: data files copied, everything else (meshes, images)
+ * linked.
+ */
+export function validateOnly(dir: string): BuildResult {
+  const scratch = mkdtempSync(join(tmpdir(), 'bimdown-validate-'));
+  try {
+    copyData(dir, scratch);
+    return build(scratch);
+  } finally {
+    rmSync(scratch, { recursive: true, force: true });
+  }
+}
+
+function copyData(from: string, to: string) {
+  for (const e of readdirSync(from, { withFileTypes: true })) {
+    const src = join(from, e.name), dest = join(to, e.name);
+    if (e.isDirectory()) { mkdirSync(dest); copyData(src, dest); }
+    else if (/\.(csv|geojson|json)$/i.test(e.name)) copyFileSync(src, dest);
+    else symlinkSync(src, dest);
+  }
 }

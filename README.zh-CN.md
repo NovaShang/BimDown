@@ -74,7 +74,8 @@ npm install -g bimdown-cli
 
 ```bash
 bimdown init ./my-project               # 创建新的 BimDown 项目
-bimdown build ./my-project               # 验证并计算边界（别名：validate）
+bimdown build ./my-project               # 验证并计算边界（会写入修正和 space.geojson）
+bimdown validate ./my-project            # 同样的检查，只读
 bimdown info ./my-project                # 打印项目概要（楼层、构件数量）
 ```
 
