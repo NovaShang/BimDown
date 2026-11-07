@@ -1,0 +1,60 @@
+name: furniture_params
+abstract: true
+description: Library component parameters shared by furniture rows and furniture types.
+
+fields:
+  - name: family
+    type: enum
+    required: true
+    description: Library family. Schedules count instances with GROUP BY family, variant.
+    values:
+      - desk
+      - office_chair
+      - chair
+      - meeting_table
+      - dining_table
+      - coffee_table
+      - sofa
+      - armchair
+      - bed
+      - nightstand
+      - wardrobe
+      - bookshelf
+      - filing_cabinet
+      - sideboard
+      - reception_counter
+      - locker
+      - base_cabinet
+      - wall_cabinet
+      - tall_cabinet
+      - refrigerator
+      - stove
+      - dishwasher
+      - washing_machine
+      - toilet_partition
+      - car
+      - parking_space
+      - tree
+      - plant
+      - person
+      - generic_box
+      - generic_cylinder
+
+  - name: variant
+    type: string
+    description: >
+      Family variant (e.g. bed single/double/king, sofa 2_seat/3_seat/l_shape,
+      desk standard/pedestal/l_shape, base_cabinet doors/drawers/sink). Empty =
+      the family's first variant. Must be a variant of the family.
+
+  - name: size_x
+    type: float
+    description: Width along the local X axis (left-right when facing the front), meters.
+
+  - name: size_y
+    type: float
+    description: Depth along the local Y axis (front to back), meters.
+
+  - name: height
+    type: float
+    description: Overall height above the base, meters.

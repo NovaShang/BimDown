@@ -1,0 +1,11 @@
+name: furniture_type
+bases:
+  - element_type
+  - furniture_params
+type_of: [furniture]
+description: >
+  A named library component (e.g. "Desk 1600 x 800"): family, variant and
+  default size shared by every furniture row whose type_id points here. Instance
+  rows keep their own position, rotation and mirror.
+
+fields: []

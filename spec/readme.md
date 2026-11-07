@@ -237,6 +237,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `wall_type` / `slab_type` / `roof_type` / `ceiling_type` | `wt` / `slt` / `rot` / `clt` | `wt-ext-concrete-eps` |
 | `door_type` / `window_type` / `curtain_wall_type` | `dt` / `wnt` / `cwt` | `dt-single-900` |
 | `column_type` / `beam_type` | `colt` / `bmt` | `bmt-steel-ipe-300` |
+| `furniture_type` | `fut` | `fut-desk-1600` |
 | `type_layer` | `tl` | `tl-1` |
 | `dimension` | `dm` | `dm-1` |
 | `text_note` | `tx` | `tx-1` |
@@ -341,6 +342,7 @@ Like Revit family types: a named set of defaults that many elements share. All t
 | `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `material`; type-only thermal |
 | `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `material` |
 | `beam_type` | `beam`, `brace` | same as `column_type` |
+| `furniture_type` | `furniture` | `family`, `variant`, `size_x`, `size_y`, `height` |
 
 **Resolution rule.** A field a type table shares by name with the instance table is a *type parameter*. An instance with `type_id` leaves it **empty to inherit** the type's value, or sets it to **override** for that element. Required instance fields (`wall.thickness`, `door.width`, …) may be empty when the type supplies them. Untyped elements are unchanged. Tools write a value equal to the type's back as empty, so editing a type updates every instance that follows it.
 

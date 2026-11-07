@@ -14,6 +14,7 @@ import { validateGeoJsonFile } from './geojson.js';
 import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.js';
 import { validateAnnotations } from './annotations.js';
 import { validateFurnitureRows } from '../furniture/validate.js';
+import { effectiveRows } from '../catalog/index.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -93,7 +94,11 @@ export function validate(dir: string): string[] {
 
   // 6b. Furniture variant belongs to its family
   for (const entry of csvEntries) {
-    if (entry.tableName === 'furniture') issues.push(...validateFurnitureRows(entry.path, entry.data));
+    if (entry.tableName === 'furniture' || entry.tableName === 'furniture_type') {
+      // Instances: family / variant as resolved through their type (an empty value inherits it).
+      const rows = entry.tableName === 'furniture' ? effectiveRows(dir, 'furniture', entry.data.rows) : entry.data.rows;
+      issues.push(...validateFurnitureRows(entry.path, { ...entry.data, rows }));
+    }
   }
 
   // 7. Reference validation

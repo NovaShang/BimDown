@@ -1,9 +1,10 @@
 /** `bimdown render` layer for the `furniture` table of one level directory. */
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { readCsv } from '../utils/csv.js';
 import { parseGeoJsonFile } from '../utils/geojson.js';
 import { furnitureToSvg } from './svg.js';
+import { effectiveRows } from '../catalog/index.js';
 
 export interface RenderedFurniture {
   tableName: 'furniture';
@@ -18,7 +19,8 @@ export function renderFurniture(levelPath: string): RenderedFurniture[] {
   try { fc = parseGeoJsonFile(geoPath); } catch { return []; }
   const csvPath = join(levelPath, 'furniture.csv');
   const rows = new Map<string, Record<string, string>>();
-  if (existsSync(csvPath)) for (const row of readCsv(csvPath).rows) rows.set(row.id, row);
+  // Type-resolved rows: an instance may take family / variant / size from its furniture_type.
+  if (existsSync(csvPath)) for (const row of effectiveRows(dirname(levelPath), 'furniture', readCsv(csvPath).rows)) rows.set(row.id, row);
 
   const out: RenderedFurniture[] = [];
   for (const f of fc.features) {

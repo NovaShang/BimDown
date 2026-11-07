@@ -21,7 +21,7 @@ export const ID_PREFIXES: Record<string, string> = {
   // Element types (global/ only) and the layers of layered types
   wall_type: 'wt', slab_type: 'slt', roof_type: 'rot', ceiling_type: 'clt',
   door_type: 'dt', window_type: 'wnt', curtain_wall_type: 'cwt',
-  column_type: 'colt', beam_type: 'bmt',
+  column_type: 'colt', beam_type: 'bmt', furniture_type: 'fut',
   type_layer: 'tl',
   // Annotations
   dimension: 'dm', text_note: 'tx', tag: 'tg',
@@ -34,7 +34,7 @@ export const ID_PREFIXES: Record<string, string> = {
 export const TYPE_TABLES = new Set([
   'wall_type', 'slab_type', 'roof_type', 'ceiling_type',
   'door_type', 'window_type', 'curtain_wall_type',
-  'column_type', 'beam_type',
+  'column_type', 'beam_type', 'furniture_type',
 ]);
 
 /** Type tables whose build-up is a stack of type_layer rows. */

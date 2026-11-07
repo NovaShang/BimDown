@@ -1,0 +1,11 @@
+id,name,description,family,variant,size_x,size_y,height
+fut-desk-1600,Desk 1600 x 800,Office desk,desk,standard,1.6,0.8,0.75
+fut-desk-1400,Desk 1400 x 700,Compact office desk,desk,standard,1.4,0.7,0.75
+fut-office-chair,Office chair,Swivel task chair,office_chair,,,,
+fut-meeting-table-8,Meeting table 8 seats,Rectangular meeting table,meeting_table,rect,2.4,1.2,0.75
+fut-bed-double,Bed double 1600,Double bed,bed,double,1.6,2,
+fut-bed-single,Bed single 900,Single bed,bed,single,0.9,2,
+fut-sofa-3,Sofa 3-seat,Three-seat sofa,sofa,3_seat,,,
+fut-wardrobe-1200,Wardrobe 1200,Hinged-door wardrobe,wardrobe,hinged,1.2,0.6,2.2
+fut-base-cabinet-600,Base cabinet 600,Kitchen base cabinet,base_cabinet,doors,0.6,0.6,0.9
+fut-refrigerator,Refrigerator,Single-door refrigerator,refrigerator,single,,,
