@@ -16,6 +16,7 @@ import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
 import { cn } from '../lib/utils.ts';
 import { isWallDrawTable } from '../tools/wallDrawTool.ts';
 import WallDrawOptionsBar from './WallDrawOptionsBar.tsx';
+import GridDrawOptionsBar from './GridDrawOptionsBar.tsx';
 import { useState } from 'react';
 import { Pencil } from 'lucide-react';
 import { TypeSelect } from './TypeSelect.tsx';
@@ -34,7 +35,7 @@ export default function DrawingPropertiesBar() {
   const [typeDialogOpen, setTypeDialogOpen] = useState(false);
 
   const target = state.drawingTarget;
-  if (!target) return null;
+  if (!target) return state.activeTool === 'draw_grid' ? <GridDrawOptionsBar /> : null;
 
   const levels = state.project?.levels ?? [];
   // Inject project-level mep_system options at render time, filtered to the

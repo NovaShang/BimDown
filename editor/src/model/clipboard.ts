@@ -76,9 +76,11 @@ export function pasteElements(
   offset: Point,
   types?: TypeCatalog,
   numbers?: NumberPool,
+  /** Grid names of the target project (pasted grids take the next free ones). */
+  gridNames?: Set<string>,
 ): { elements: CanonicalElement[]; selected: string[] } {
   const source = new Map(p.elements.map(e => [e.id, e]));
-  const { clones, idMap } = cloneElements(source, source.keys(), { taken, numbers });
+  const { clones, idMap } = cloneElements(source, source.keys(), { taken, numbers, gridNames });
   const placed = transformElements(clones, clones.keys(), translation(offset.x, offset.y));
   const typeIds = new Set((types?.types ?? []).map(t => t.id));
   const sameLevels = p.levels.every(l => levels.some(m => m.id === l.id));

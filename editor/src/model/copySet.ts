@@ -78,6 +78,39 @@ export function nextFreeNumber(n: string, used: ReadonlySet<string>): string {
   }
 }
 
+/** A–Z, AA, AB… (bijective base 26) ↔ 1, 2, 3… */
+export function letterLabel(n: number): string {
+  let s = '';
+  for (let k = Math.max(1, Math.floor(n)); k > 0; k = Math.floor((k - 1) / 26)) s = String.fromCharCode(65 + ((k - 1) % 26)) + s;
+  return s;
+}
+
+export function letterIndex(label: string): number {
+  let n = 0;
+  for (const c of label.toUpperCase()) n = n * 26 + (c.charCodeAt(0) - 64);
+  return n;
+}
+
+const LETTERS = /^[A-Za-z]+$/;
+
+/** The next grid name after `name` not in `used`: B after A, AA after Z, 2 after 1, A2 after A1. */
+export function nextGridName(name: string, used: ReadonlySet<string>): string {
+  const n = name.trim();
+  if (!LETTERS.test(n)) return nextFreeNumber(n || '0', used);
+  const lower = n === n.toLowerCase();
+  for (let i = letterIndex(n) + 1; ; i++) {
+    const c = lower ? letterLabel(i).toLowerCase() : letterLabel(i);
+    if (!used.has(c)) return c;
+  }
+}
+
+/** Names of the grids among `elements`. */
+export function gridNames(elements: Iterable<CanonicalElement>): Set<string> {
+  const out = new Set<string>();
+  for (const el of elements) if (el.tableName === 'grid' && el.attrs.number?.trim()) out.add(el.attrs.number.trim());
+  return out;
+}
+
 /** The selection plus everything that has to travel with it (raw ids). */
 export function expandCopySet(elements: ReadonlyMap<string, CanonicalElement>, ids: Iterable<string>): Set<string> {
   const set = new Set<string>();
@@ -119,6 +152,9 @@ export interface CloneOptions {
   preset?: ReadonlyMap<string, string>;
   /** Numbers in use: copied rooms and doors take the next free one (and add it). */
   numbers?: NumberPool;
+  /** Grid names in use where the copies go (default: the grids of `elements`).
+   *  Copied grids always take the next free name: two axes can't share one. */
+  gridNames?: Set<string>;
 }
 
 /**
@@ -142,6 +178,7 @@ export function cloneElements(
     list.push(el);
   }
   const keep = !!opts.keepOutsideRefs;
+  let gridPool = opts.gridNames;
   const map = (id: string): string | null => idMap.get(id) ?? (keep && elements.has(id) ? id : null);
   const clones = new Map<string, CanonicalElement>();
   for (const el of list) {
@@ -165,6 +202,11 @@ export function cloneElements(
       if (!used) opts.numbers.set(el.tableName, used = new Set());
       attrs.number = nextFreeNumber(attrs.number.trim(), used);
       used.add(attrs.number);
+    }
+    if (el.tableName === 'grid') {
+      gridPool ??= gridNames(elements.values());
+      attrs.number = nextGridName(attrs.number ?? '', gridPool);
+      gridPool.add(attrs.number);
     }
     if (el.tableName === 'dimension') {
       for (const side of ['start_ref', 'end_ref'] as const) {

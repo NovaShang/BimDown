@@ -83,9 +83,10 @@ export function pasteAligned(state: EditorState, dispatch: Dispatch, p: Clipboar
   const patches: LevelPatches = new Map();
   let select: string[] | undefined;
   const numbers = getModifyOptions().renumberCopies ? projectNumbers(state) : undefined;
+  const gridNames = new Set(state.grids.map(g => g.number));
   for (const levelId of levels) {
     if (!project.levels.some(l => l.id === levelId)) continue;
-    const { elements, selected } = pasteElements(p, levelId, project.levels, takenIds(state, levelId), { x: 0, y: 0 }, project.types, numbers);
+    const { elements, selected } = pasteElements(p, levelId, project.levels, takenIds(state, levelId), { x: 0, y: 0 }, project.types, numbers, gridNames);
     patches.set(levelId, new Map(elements.map(el => [el.id, el])));
     if (levelId === state.currentLevel) select = selected.map(id => toSelectionId(levelId, id));
   }

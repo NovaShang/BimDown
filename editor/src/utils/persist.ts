@@ -126,7 +126,9 @@ function parseLayerToElements(layer: { tableName: string; csvRows: Map<string, R
 export async function persistGrids(grids: GridData[], ds: DataSource): Promise<void> {
   const pinned = grids.some(g => g.pinned);
   const header = 'id,number,start_x,start_y,end_x,end_y' + (pinned ? ',pinned' : '');
-  const rows = grids.map(g => `${g.id},${g.number},${g.x1},${g.y1},${g.x2},${g.y2}` + (pinned ? `,${g.pinned ? 'true' : ''}` : ''));
+  // Model precision (as the GeoJSON layers): an arrayed axis is 25.2, not 25.200000000000003
+  const r = (n: number) => Number(n.toFixed(3));
+  const rows = grids.map(g => `${g.id},${g.number},${r(g.x1)},${r(g.y1)},${r(g.x2)},${r(g.y2)}` + (pinned ? `,${g.pinned ? 'true' : ''}` : ''));
   await ds.saveFile('global/grid.csv', [header, ...rows].join('\n') + '\n');
 }
 

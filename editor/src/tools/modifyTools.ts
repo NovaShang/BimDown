@@ -479,7 +479,7 @@ export const pasteTool: ToolHandler = {
     const s = ctx.getState();
     const at = snapped(ctx, e, undefined, new Set());
     if (!p || !at || !s.document || !s.project) return;
-    const { elements, selected } = pasteElements(p, s.currentLevel, s.project.levels, takenIdsFor(s), { x: at.x - p.base.x, y: at.y - p.base.y }, s.project.types, copyNumbers(s));
+    const { elements, selected } = pasteElements(p, s.currentLevel, s.project.levels, takenIdsFor(s), { x: at.x - p.base.x, y: at.y - p.base.y }, s.project.types, copyNumbers(s), new Set(s.grids.map(g => g.number)));
     if (pasteNeedsTypesSaved(p, s.project.types)) ctx.dispatch({ type: 'SET_TYPES', types: { ...s.project.types!, saved: true, fromDisk: false } });
     commit(ctx, 'Paste', { patch: new Map(elements.map(el => [el.id, el])), select: selected });
     pasting.payload = null;
