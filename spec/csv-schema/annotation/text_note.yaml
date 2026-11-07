@@ -1,5 +1,7 @@
 name: text_note
-description: Free text on a level plan (CSV only, level directories only).
+description: >
+  Free text on a level plan (level directories) or on a section / elevation
+  view (global/, with view_id). CSV only.
 
 fields:
   - name: id
@@ -23,10 +25,28 @@ fields:
 
   - name: size
     type: float
-    default: 0.25
-    description: Text height in project units.
+    description: >
+      Legacy fixed text height in project units (same model size at every
+      scale). Used only when paper_size is empty.
+
+  - name: paper_size
+    type: float
+    description: >
+      Text height on paper in mm. The model height is paper_size × scale / 1000
+      metres at the scale of the view or sheet viewport (2.5 mm = 0.25 m at
+      1:100, 0.5 m at 1:200), so the note reads the same on every sheet. Wins
+      over size; both empty = 2.5 mm.
 
   - name: rotation
     type: float
     default: 0
     description: Rotation in degrees CCW.
+
+  - name: view_id
+    type: string
+    description: >
+      View the annotation is drawn in instead of a level plan: a section id of
+      global/view.csv, or north / south / east / west for the derived
+      elevations. Rows with a view_id live in global/{table}.csv and their
+      coordinates are view coordinates: x along the view (left to right as
+      seen), y = absolute elevation. Empty = a plan annotation (level directory).

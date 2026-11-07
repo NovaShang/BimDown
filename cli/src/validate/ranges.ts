@@ -40,6 +40,8 @@ const TABLE_FIELD_MAX: Record<string, Record<string, number>> = {
   underlay: { x: 1e7, y: 1e7, scale: 1e6 },
   // Trees, cars and long counters outgrow the 10 m section limit.
   furniture: { size_x: 30, size_y: 30 },
+  // Paper millimetres and a scale denominator, not model lengths.
+  sheet_viewport: { x: 1e7, y: 1e7, scale: 1e7 },
 };
 
 export function validateRanges(path: string, table: ResolvedTable, data: CsvData, units = 'm'): string[] {

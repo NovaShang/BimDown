@@ -1,0 +1,66 @@
+name: sheet_viewport
+description: >
+  One view placed on a sheet (global/sheet_viewport.csv only). x / y is the
+  centre of the viewport on the paper in millimetres from the sheet's
+  bottom-left corner; the view is drawn at 1:scale around the centre of its
+  own extent. Annotation sizes (text, tags, dimensions) are paper sizes, so
+  they read the same at every scale.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: sheet_id
+    type: reference
+    reference: sheet
+    required: true
+
+  - name: view_type
+    type: enum
+    required: true
+    values: [plan, section, elevation, schedule, legend]
+    description: >
+      plan = the plan of level_id; section = the section view_id of
+      global/view.csv; elevation = the derived elevation view_id (north /
+      south / east / west); schedule = the schedule table `schedule`;
+      legend = the symbol legend of the views on the sheet.
+
+  - name: level_id
+    type: reference
+    reference: level
+    description: Level of a plan viewport (required for view_type plan).
+
+  - name: view_id
+    type: string
+    description: Section id (view.csv) or elevation direction (north, south, east, west).
+
+  - name: schedule
+    type: enum
+    values: [rooms, doors, windows, walls, slabs, columns, framing, mep, equipment]
+    description: Schedule shown by a schedule viewport.
+
+  - name: discipline
+    type: enum
+    default: architecture
+    values: [architecture, structure, mep, all]
+    description: What a plan viewport shows (others are hidden or half-toned).
+
+  - name: scale
+    type: int
+    default: 100
+    description: Scale denominator (100 = 1:100). Ignored by schedule and legend viewports.
+
+  - name: x
+    type: float
+    required: true
+    description: Viewport centre X on the sheet, mm from the left edge of the paper.
+
+  - name: y
+    type: float
+    required: true
+    description: Viewport centre Y on the sheet, mm from the bottom edge of the paper.
+
+  - name: title
+    type: string
+    description: Viewport title under the view. Empty = the view's name (e.g. "Level 2 Plan").

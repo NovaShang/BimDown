@@ -2,7 +2,7 @@ import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
 import { discoverLayout, listFiles, ASSET_DIRS } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
-import { ID_PREFIXES, GEOJSON_FILE_NAMES, GLOBAL_ONLY_TABLES, ANNOTATION_TABLES } from '../schema/registry.js';
+import { ID_PREFIXES, GEOJSON_FILE_NAMES, GLOBAL_ONLY_TABLES, ANNOTATION_TABLES, VIEW_ANNOTATION_TABLES } from '../schema/registry.js';
 
 // Tables where the GeoJSON file is optional:
 // - opening: wall-mode is CSV-only, slab-mode has geometry
@@ -22,7 +22,7 @@ const ROOT_NOTE_FILE = /^(LICEN[CS]E|COPYING|NOTICE|README|CREDITS)(\.(txt|md))?
 const MIN_FORMAT_VERSION = 2;
 
 /** Fields of project_metadata.json — keep in sync with spec/project_metadata.schema.yaml. */
-export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'units', 'source', 'spatial_z'];
+export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'project_number', 'client', 'address', 'units', 'source', 'spatial_z'];
 
 export function validateStructure(dir: string): string[] {
   const issues: string[] = [];
@@ -49,7 +49,7 @@ export function validateStructure(dir: string): string[] {
     } else if (ext === '.csv') {
       if (!KNOWN_CSV_NAMES.has(f) && !KNOWN_GLOBAL_EXTRAS.has(f)) {
         issues.push(`global/${f}  unknown file — only known table CSVs are allowed`);
-      } else if (ANNOTATION_TABLES.has(f.replace('.csv', ''))) {
+      } else if (ANNOTATION_TABLES.has(f.replace('.csv', '')) && !VIEW_ANNOTATION_TABLES.has(f.replace('.csv', ''))) {
         issues.push(`global/${f}  annotations belong to a level plan — put ${f} in a level directory`);
       }
     } else if (ext === '.geojson') {

@@ -1,0 +1,50 @@
+name: sheet
+description: >
+  A drawing sheet (global/sheet.csv only): a title block on one paper size with
+  views placed on it (global/sheet_viewport.csv). The title block shows the
+  project fields of project_metadata.json (project_name, project_number,
+  client, address), the sheet number and name, the date, the revision and the
+  scale of each viewport. Not a building element: build and render ignore
+  sheets.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: number
+    type: string
+    required: true
+    description: Sheet number shown in the title block and used in view references (e.g. A-101). Unique.
+
+  - name: name
+    type: string
+    description: Sheet title (e.g. "Ground floor plan").
+
+  - name: paper
+    type: enum
+    default: A1
+    values: [A0, A1, A2, A3, A4]
+    description: ISO 216 paper size, landscape.
+
+  - name: revision
+    type: string
+    description: Current revision mark (e.g. "B").
+
+  - name: revision_date
+    type: string
+    description: Date of the current revision, YYYY-MM-DD.
+
+  - name: revision_note
+    type: string
+    description: What the current revision changed.
+
+  - name: issue_date
+    type: string
+    description: Issue date printed in the title block, YYYY-MM-DD. Empty = the export date.
+
+  - name: drawn_by
+    type: string
+
+  - name: checked_by
+    type: string

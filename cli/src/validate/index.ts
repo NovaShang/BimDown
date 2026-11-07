@@ -15,6 +15,7 @@ import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.j
 import { validateAnnotations } from './annotations.js';
 import { validateFurnitureRows } from '../furniture/validate.js';
 import { effectiveRows } from '../catalog/index.js';
+import { validateSheets } from './sheets.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -114,6 +115,10 @@ export function validate(dir: string): string[] {
   for (const entry of csvEntries) {
     issues.push(...validateAnnotations(entry.path, entry.tableName, entry.data, idRegistry));
   }
+
+  // 7d. Sheets: unique numbers, what each viewport shows, scale, position on the paper
+  const globalCsv = (t: string) => csvEntries.find(e => e.path === `global/${t}.csv`)?.data ?? null;
+  issues.push(...validateSheets(globalCsv('sheet'), globalCsv('sheet_viewport'), idRegistry));
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);

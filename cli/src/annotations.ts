@@ -338,7 +338,8 @@ export function renderAnnotations(levelPath: string, globalPath: string, units: 
   for (const r of notes) {
     const p = { x: Number(r.x), y: Number(r.y) };
     if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !r.text) continue;
-    const size = Number(r.size) || 0.25 * m;
+    // paper_size is mm on paper; render draws at 1:100 (2.5 mm = 0.25 m)
+    const size = Number(r.paper_size) ? Number(r.paper_size) * 0.1 * m : Number(r.size) || 0.25 * m;
     const rot = Number(r.rotation) || 0;
     const lines = r.text.split('\\n');
     const a = rot * Math.PI / 180;
