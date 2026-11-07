@@ -39,6 +39,8 @@ interface Group {
   receiveShadow: boolean;
   renderOrder: number;
   hasUv: boolean;
+  /** Vertex colours (library furniture): merged only with other coloured sources. */
+  hasColor: boolean;
   sources: Source[];
 }
 
@@ -104,10 +106,11 @@ export function buildStaticBatch(source: Object3D): StaticBatch {
       if (mesh.isMesh && batchable(mesh)) {
         const mat = mesh.material as Material;
         const hasUv = !!mesh.geometry.attributes.uv && mesh.geometry.attributes.uv.itemSize === 2;
-        const key = `${mat.uuid}|${mesh.castShadow ? 1 : 0}${mesh.receiveShadow ? 1 : 0}|${mesh.renderOrder}|${hasUv ? 1 : 0}`;
+        const hasColor = !!mesh.geometry.attributes.color && mesh.geometry.attributes.color.itemSize === 3;
+        const key = `${mat.uuid}|${mesh.castShadow ? 1 : 0}${mesh.receiveShadow ? 1 : 0}|${mesh.renderOrder}|${hasUv ? 1 : 0}${hasColor ? 1 : 0}`;
         let g = groups.get(key);
         if (!g) {
-          g = { material: mat, castShadow: mesh.castShadow, receiveShadow: mesh.receiveShadow, renderOrder: mesh.renderOrder, hasUv, sources: [] };
+          g = { material: mat, castShadow: mesh.castShadow, receiveShadow: mesh.receiveShadow, renderOrder: mesh.renderOrder, hasUv, hasColor, sources: [] };
           groups.set(key, g);
         }
         g.sources.push({ mesh, elementId, matrix });
@@ -161,6 +164,7 @@ function mergeSources(g: Group): Mesh {
   const position = new Float32Array(vertexCount * 3);
   const normal = new Float32Array(vertexCount * 3);
   const uv = g.hasUv ? new Float32Array(vertexCount * 2) : null;
+  const color = g.hasColor ? new Float32Array(vertexCount * 3) : null;
   const index = vertexCount > 65535 ? new Uint32Array(indexCount) : new Uint16Array(indexCount);
   const vertexStarts = new Uint32Array(g.sources.length);
   const ids: (string | null)[] = [];
@@ -184,6 +188,10 @@ function mergeSources(g: Group): Mesh {
       const u = geo.attributes.uv;
       for (let i = 0; i < n; i++) { uv[(vo + i) * 2] = u.getX(i); uv[(vo + i) * 2 + 1] = u.getY(i); }
     }
+    if (color) {
+      const c = geo.attributes.color;
+      for (let i = 0; i < n; i++) { color[(vo + i) * 3] = c.getX(i); color[(vo + i) * 3 + 1] = c.getY(i); color[(vo + i) * 3 + 2] = c.getZ(i); }
+    }
     // A mirroring transform flips the winding; swap two corners to keep faces front-facing.
     const flip = s.matrix.determinant() < 0;
     const src = geo.index;
@@ -201,6 +209,7 @@ function mergeSources(g: Group): Mesh {
   geo.setAttribute('position', new BufferAttribute(position, 3));
   geo.setAttribute('normal', new BufferAttribute(normal, 3));
   if (uv) geo.setAttribute('uv', new BufferAttribute(uv, 2));
+  if (color) geo.setAttribute('color', new BufferAttribute(color, 3));
   geo.setIndex(new BufferAttribute(index.subarray(0, io), 1));
   geo.computeBoundingBox();
   geo.computeBoundingSphere();

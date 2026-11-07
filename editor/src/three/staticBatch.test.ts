@@ -74,4 +74,22 @@ describe('static batching', () => {
       expect(face.dot(n)).toBeGreaterThan(0.99);
     }
   });
+
+  it('keeps vertex colours (library furniture) and does not mix coloured with plain meshes', () => {
+    const mat = new MeshStandardMaterial({ vertexColors: true });
+    const src = new Group();
+    for (let i = 0; i < 2; i++) {
+      const g = new BoxGeometry(1, 1, 1).toNonIndexed();
+      g.setAttribute('color', new Float32BufferAttribute(new Array(g.attributes.position.count * 3).fill(i ? 0.25 : 0.75), 3));
+      const m = new Mesh(g, mat);
+      m.position.x = i * 2;
+      src.add(m);
+    }
+    src.add(new Mesh(new BoxGeometry(1, 1, 1), mat));
+    const merged = buildStaticBatch(src).objects.filter(o => o.userData.batch) as Mesh[];
+    expect(merged).toHaveLength(2);
+    const coloured = merged.find(m => m.geometry.attributes.color)!;
+    const c = coloured.geometry.attributes.color;
+    expect([c.getX(0), c.getX(c.count - 1)]).toEqual([0.75, 0.25]);
+  });
 });
