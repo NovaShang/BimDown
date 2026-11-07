@@ -629,7 +629,8 @@ function HoverHighlight({ svgRef, getCanvasScale, subscribeTransform }: {
       el.style.removeProperty('--canvas-scale');
     });
     if (!hoveredId) return;
-    const els = Array.from(svg.querySelectorAll<SVGElement>(`[data-id="${hoveredId}"]`));
+    // hoveredId is a selection id ("lv-1:w-3"); plan nodes carry the raw id.
+    const els = Array.from(svg.querySelectorAll<SVGElement>(`[data-id="${CSS.escape(toElementId(hoveredId))}"]`));
     const applyScale = () => {
       const scale = String(getCanvasScale());
       for (const el of els) el.style.setProperty('--canvas-scale', scale);
@@ -647,8 +648,8 @@ function HoverTooltip() {
   if (!hoveredId) return null;
   return (
     <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 glass-panel rounded border border-border px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150">
-      <span className="text-[10px] font-normal text-muted-foreground">{getElementType(hoveredId)}</span>
-      {hoveredId}
+      <span className="text-[10px] font-normal text-muted-foreground">{getElementType(toElementId(hoveredId))}</span>
+      {toElementId(hoveredId)}
     </div>
   );
 }

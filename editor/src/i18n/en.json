@@ -285,6 +285,7 @@
 
   "view.2d": "2D View",
   "view.3d": "3D View",
+  "view.loading3d": "Loading 3D viewer…",
   "view.zoomToFit": "Zoom to Fit",
   "view.toggleMinimap": "Toggle Minimap",
   "view.floor.current": "Current",

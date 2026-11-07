@@ -285,6 +285,7 @@
 
   "view.2d": "二维视图",
   "view.3d": "三维视图",
+  "view.loading3d": "正在加载三维视图…",
   "view.zoomToFit": "缩放至全部",
   "view.toggleMinimap": "切换小地图",
   "view.floor.current": "当前层",

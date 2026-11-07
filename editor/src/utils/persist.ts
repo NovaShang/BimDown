@@ -7,6 +7,8 @@ import { serializeTypeFiles, type TypeCatalog } from '../model/types/catalog.ts'
 import { sectionsToCsv, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
 import type { SectionDef } from '../views/viewTypes.ts';
 
+const EMPTY_FEATURE_COLLECTION = '{\n  "type": "FeatureCollection",\n  "features": []\n}\n';
+
 /**
  * Persist document state via the data source.
  */
@@ -33,10 +35,15 @@ export async function persistDocument(
     const [, tableName] = key.split('/');
     const levelId = doc.levelId;
 
-    // A layer whose last element was deleted: remove its files (an empty
-    // CSV would fail validation) when the data source can delete.
-    const write = (path: string, content: string) =>
-      content === '' && ds.deleteFile ? ds.deleteFile(path) : ds.saveFile(path, content);
+    // A layer whose last element was deleted (or a wall-opening layer with no
+    // slab openings): remove its files (an empty CSV would fail validation)
+    // when the data source can delete; otherwise geometry becomes an empty
+    // FeatureCollection, never a 0-byte file.
+    const write = (path: string, content: string) => {
+      if (content !== '') return ds.saveFile(path, content);
+      if (ds.deleteFile) return ds.deleteFile(path);
+      return ds.saveFile(path, path.endsWith('.geojson') ? EMPTY_FEATURE_COLLECTION : content);
+    };
 
     if (!isCsvOnlyTable(tableName)) {
       const geomPath = `${levelId}/${tableName}.geojson`;

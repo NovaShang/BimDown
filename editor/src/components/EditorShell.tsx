@@ -1,4 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
@@ -32,6 +33,7 @@ import { UnderlayHint, CalibrateDialog } from '../underlay/UnderlayDialogs.tsx';
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
 
 export default function EditorShell({ paddingRight = 0 }: { paddingRight?: number }) {
+  const { t } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const ds = useDataSource();
@@ -355,7 +357,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
           />
         )}
         {state.viewMode === '3d' ? (
-          <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">Loading 3D viewer...</p></div></div>}>
+          <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">{t('view.loading3d')}</p></div></div>}>
             <Canvas3D overlayItems={overlayItems} elevation={currentElevation} />
           </Suspense>
         ) : (

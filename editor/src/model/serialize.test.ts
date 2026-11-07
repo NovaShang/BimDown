@@ -83,4 +83,16 @@ describe('loading a CSV with a repeated column', () => {
     expect(new Set(wallCols).size).toBe(wallCols.length);
     expect(ds.files['lv-1/wall.csv'].split('\n')[1].split(',')[0]).toBe('w-1');
   });
+
+  it('wall openings only: no opening.geojson, or an empty FeatureCollection when the source cannot delete', async () => {
+    const wall: CanonicalElement = { geometry: 'line', id: 'w-1', tableName: 'wall', discipline: 'architecture', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, strokeWidth: 0.2, attrs: { id: 'w-1', thickness: '0.2' } };
+    const op: CanonicalElement = { geometry: 'line', id: 'op-1', tableName: 'opening', discipline: 'architecture', start: { x: 2.5, y: 0 }, end: { x: 3.5, y: 0 }, strokeWidth: 0.2, hostId: 'w-1', attrs: { id: 'op-1', host_id: 'w-1', position: '3', width: '1', height: '2' } };
+    const ds = memoryDataSource({ 'lv-1/opening.geojson': '{"type":"FeatureCollection","features":[]}' });
+    await persistDocument(createDocument('lv-1', [wall, op]), ds, new Set(['architecture/opening']), 0);
+    expect(ds.files['lv-1/opening.geojson']).toBeUndefined();
+    expect(ds.files['lv-1/opening.csv']).toContain('op-1');
+    const noDelete = { ...memoryDataSource({}), deleteFile: undefined };
+    await persistDocument(createDocument('lv-1', [wall, op]), noDelete, new Set(['architecture/opening']), 0);
+    expect(JSON.parse(noDelete.files['lv-1/opening.geojson'])).toEqual({ type: 'FeatureCollection', features: [] });
+  });
 });

@@ -16,8 +16,11 @@ export interface RampFacts {
   start: Point;
   end: Point;
   width: number;
+  /** Level-local Z (above the level the ramp is on). */
   startZ: number;
   endZ: number;
+  /** Level elevation (world Y of the level's floor). */
+  baseY: number;
   length: number;
   angle: number;       // around Y in world space
   material: string;
@@ -41,7 +44,7 @@ export const rampModule: ElementModule<RampFacts> = {
   layerStyle: { displayName: 'Ramps', color: '#7b68ee', icon: '⟋', order: 9.1 },
   renderZIndex: 31,
 
-  geometry(el: CanonicalElement, _ctx: GeometryContext): RampFacts | null {
+  geometry(el: CanonicalElement, ctx: GeometryContext): RampFacts | null {
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
     const ln = el as LineElement;
     const dx = ln.end.x - ln.start.x;
@@ -71,6 +74,7 @@ export const rampModule: ElementModule<RampFacts> = {
       start: ln.start, end: ln.end,
       width,
       startZ, endZ,
+      baseY: ctx.levelElevation,
       length: len,
       angle: Math.atan2(dy, dx),
       material: ln.attrs.material || 'concrete',
@@ -119,18 +123,20 @@ export const rampModule: ElementModule<RampFacts> = {
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    // Box at min(startZ, endZ); V1 ramp builder uses the same simplification.
+    // A slab along the slope: centre at mid-height, pitched about its width
+    // axis (rotation Y = plan direction, then Z = pitch), on the ramp's level.
     const cx = (facts.start.x + facts.end.x) / 2;
     const cySvg = (facts.start.y + facts.end.y) / 2;
-    const baseY = Math.min(facts.startZ, facts.endZ);
-    const cy = baseY + RAMP_THICKNESS / 2;
+    const rise = facts.endZ - facts.startZ;
+    const pitch = Math.atan2(rise, facts.length);
+    const cy = facts.baseY + (facts.startZ + facts.endZ) / 2 + RAMP_THICKNESS / 2;
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'ramp'));
     const isHL = drawCtx.selected || drawCtx.hovered;
     return (
       <mesh
         position={[cx, cy, -cySvg]}
-        rotation={[0, facts.angle, 0]}
-        scale={[facts.length, RAMP_THICKNESS, facts.width]}
+        rotation={[0, facts.angle, pitch]}
+        scale={[Math.hypot(facts.length, rise), RAMP_THICKNESS, facts.width]}
         material={isHL ? undefined : material}
         userData={{ elementId: facts.id }}
       >
