@@ -13,6 +13,7 @@ import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
 import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.js';
 import { validateAnnotations } from './annotations.js';
+import { validateCurtainWallCsv } from './curtain-wall.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -101,6 +102,11 @@ export function validate(dir: string): string[] {
   // 7c. Annotation tables: numbers, dimension references, same-level hosts
   for (const entry of csvEntries) {
     issues.push(...validateAnnotations(entry.path, entry.tableName, entry.data, idRegistry));
+  }
+
+  // 7d. Curtain walls: grid line lists and panel overrides
+  for (const entry of csvEntries) {
+    if (entry.tableName === 'curtain_wall') issues.push(...validateCurtainWallCsv(entry.path, entry.data));
   }
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
