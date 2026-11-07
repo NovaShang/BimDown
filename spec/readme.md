@@ -334,9 +334,23 @@ Structural tables also carry an optional `material_grade` (C30, Q355, GL24h…) 
 
 `opening` supports two modes via the same table:
 - **Wall opening**: `host_id` → wall, with `position`, `width`, `height`, and an optional sill `base_offset` (CSV, like door/window). No GeoJSON.
-- **Slab opening**: `host_id` → slab, with GeoJSON `Polygon` geometry.
+- **Slab / roof opening**: `host_id` → slab, structure_slab or roof, with GeoJSON `Polygon` geometry, cut vertically (skylights, dormer openings).
+- **Shaft**: a `Polygon` opening with `top_level_id` (+ `top_offset`); it cuts every slab, structure_slab, ceiling and roof whose body lies between its bottom (its level + `base_offset`) and its top, on every level. `host_id` may stay empty. One `opening` per level hosted on each slab also works.
 
-For multi-story shaft openings: export one `opening` per level, each hosted on its respective slab.
+### Roofs and Attached Walls
+
+A roof is a footprint polygon (the eave outline, overhang included); `base_offset` is the underside at the eaves. `edge_slopes` gives one slope per footprint edge (`;`-separated degrees, edge i from vertex i to i+1, 0 = gable / rake edge): each sloped edge is a plane rising inward, and the roof underside is the lowest plane reaching each point, so L / T / U footprints get exact ridges, hips and valleys. Without `edge_slopes`, `roof_type` + `slope` imply them (hip: all edges; gable: all but the wing ends; shed: one eave; mansard: all edges, steeper, with a flat deck). A flat roof drains with small edge slopes (`1.2;0;0;0`). `roof_type: extrusion` sweeps `profile` (`u,z;...`: rise z at distance u across the first edge) along the first edge.
+
+A wall (or structure_wall) with `top_attach_id` = a roof or slab id (any level) has its top follow that element's underside wherever the wall is under it (gable end walls, walls under a sloped ceiling); elsewhere it keeps its `top_level_id` / `top_offset` top.
+
+```csv
+# lv-2/roof.csv — L-shaped gable over a 6-edge outline, wing ends at edges 2 and 5
+id,roof_type,slope,edge_slopes,thickness
+ro-1,gable,35,35;35;0;35;35;0,0.25
+# lv-2/wall.csv — walls under it attach their tops
+id,thickness,top_level_id,top_attach_id
+w-1,0.2,lv-3,ro-1
+```
 
 ### MEP Topology
 
@@ -359,6 +373,19 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 
 **Revit import**: Curves are created from endpoint coordinates. Fittings are auto-inserted at junctions where curves meet nodes.
 
+### Curtain Wall Grids and Panels
+
+A curtain wall is a grid of cells: columns along the wall (col 0 at the start), rows up from the base (row 0 at the bottom).
+- **Uniform**: `v_grid_count` columns × `u_grid_count` rows (or a line every `v_spacing` / `u_spacing` when the count is empty; default 3 × 3).
+- **Explicit**: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, semicolon-separated (`1.2;2.4;3.9`); they override the counts. Lines must lie inside the wall.
+- **Panels**: `panels` = `col:row=kind` overrides, `;`-separated, `*` = every col / row (`*:0=solid;1:0=door`). Kinds: `glass` (default, `panel_material`), `solid` (opaque spandrel, `solid_material`), `door`, `double_door` (hinged on the cell's start side, swinging to the wall's left; no bottom transom), `empty` (mullions only).
+- **Mullions**: `mullion_width` (along the wall; Ø when round), `mullion_depth`, `mullion_profile` (`rect`/`round`, interior members only), all type parameters. Two curtain walls meeting at an endpoint share one corner mullion.
+
+```csv
+id,v_grids,u_grids,panels
+cw-1,1.5;3.3;4.8,0.9;2.4,*:0=solid;1:0=door;3:2=empty
+```
+
 ### Material Enum
 
 A fixed enum of 15 common structural/architectural materials. Represents the **primary material** of an element. Multi-layer constructions are expressed through element types (below); `material` stays the primary (core) material.
@@ -375,7 +402,7 @@ Like Revit family types: a named set of defaults that many elements share. All t
 | `ceiling_type` | `ceiling` | `material` + layers (thickness is type-only) |
 | `door_type` | `door` | `width`, `height`, `operation`, `material`; type-only `frame_width`, `u_value`, `shgc`, `vt` |
 | `window_type` | `window` | same as `door_type` |
-| `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `material`; type-only thermal |
+| `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `solid_material`, `mullion_width`, `mullion_depth`, `mullion_profile`, `material`; type-only thermal |
 | `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `material` |
 | `beam_type` | `beam`, `brace` | same as `column_type` |
 | `furniture_type` | `furniture` | `family`, `variant`, `size_x`, `size_y`, `height` |

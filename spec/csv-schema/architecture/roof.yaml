@@ -13,13 +13,40 @@ fields:
       - hip
       - shed
       - mansard
+      - extrusion
+    description: >
+      Shape. flat / gable / hip / shed / mansard with one `slope` are footprint
+      roofs whose slope-defining edges are implied (hip: every edge; gable:
+      all but the wing ends; shed: one eave); `edge_slopes` overrides that.
+      extrusion: the `profile` swept along the first footprint edge.
 
   - name: slope
     type: float
-    description: Slope angle in degrees (0 = flat roof)
+    description: Slope angle in degrees (0 = flat roof). With edge_slopes set, the largest edge slope.
+
+  - name: edge_slopes
+    type: string
+    description: >
+      Footprint roof (Revit "defines slope" per sketch line): one slope in
+      degrees per footprint edge, semicolon-separated, edge i running from
+      vertex i to vertex i+1 of the polygon ring. 0 = the edge does not define
+      a slope (gable / rake end). E.g. "30;0;30;0" is a gable over a rectangle,
+      "1.2;0;0;0" a flat roof draining to the first edge. Empty = implied by
+      roof_type + slope. Each sloped edge is a plane rising inward from that
+      edge; the roof underside is the lowest plane reaching each point (exact
+      ridges, hips and valleys for L / T / U footprints).
+
+  - name: profile
+    type: string
+    description: >
+      Extrusion roof only: the underside rise above base_offset across the
+      footprint, as "u,z;u,z;..." where u is the distance (m) from the first
+      footprint edge, measured into the footprint, and z the rise (m). The
+      profile is swept along the first edge; points in between are linear.
 
   - name: thickness
     type: float
+    description: Roof slab thickness (perpendicular to a sloped roof). base_offset is the underside at the eaves.
 
   - name: type_id
     type: reference

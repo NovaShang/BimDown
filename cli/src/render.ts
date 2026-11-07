@@ -14,6 +14,8 @@ import { renderAnnotations } from './annotations.js';
 import { projectUnits } from './utils/units.js';
 import { renderFurniture } from './furniture/render.js';
 import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
+import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
+import { cellKinds, gridLines, parsePanels } from './curtain-grid.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -31,6 +33,7 @@ const COLORS: Record<string, { stroke: string; fill?: string }> = {
   brace:              { stroke: '#9b5de5' },
   foundation:         { stroke: '#8d6e63', fill: 'rgba(141,110,99,0.15)' },
   opening:            { stroke: '#ff8a65', fill: '#ffffff' },
+  roof:               { stroke: '#8d6e63', fill: 'rgba(141,110,99,0.06)' },
   grid:               { stroke: '#ef476f' },
   duct:               { stroke: '#00b4d8' },
   pipe:               { stroke: '#48bfe3' },
@@ -71,6 +74,7 @@ const GRID_BUBBLE_R = 0.5;
 const RENDER_ORDER = [
   'foundation',
   'slab', 'structure_slab',
+  'roof',
   'opening',
   'beam', 'brace',
   'wall', 'structure_wall', 'room_separator', 'curtain_wall',
@@ -164,6 +168,8 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 
   // Furniture / library components (plan symbols), under doors and rooms
   elements.push(...renderFurniture(levelDir.path));
+  // Shafts from other levels crossing this level's floor
+  elements.push(...renderShaftsFrom(layout.levelDirs, levelDir.name, levelElevations(layout.globalDir)));
 
   // Door / window / wall opening (CSV + host wall)
   for (const t of ['door', 'window', 'opening'] as const) {
@@ -212,7 +218,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 // ─── Per-feature rendering ────────────────────────────────
 
 /** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
-const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation']);
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall']);
 
 function renderFeature(
   tableName: string,
@@ -223,6 +229,10 @@ function renderFeature(
   const id = String(feat.properties?.id ?? '');
   if (!id) return null;
   if (tableName === 'foundation') return renderFoundation(id, feat, row ?? {});
+  if (tableName === 'roof' && feat.geometry.type === 'Polygon') return renderRoof(id, feat, row ?? {});
+  if (tableName === 'curtain_wall' && feat.geometry.type === 'LineString' && !feat.properties.arc) {
+    return renderCurtainWall(id, feat, thicknessMap?.get(id) ?? DEFAULT_STROKE_WIDTH.curtain_wall, row ?? {});
+  }
   if ((tableName === 'column' || tableName === 'structure_column') && feat.geometry.type === 'Point') {
     return renderColumn(tableName, id, feat, row ?? {});
   }
@@ -269,6 +279,72 @@ function renderFeature(
   return null;
 }
 
+// ─── Curtain walls ─────────────────────────────────────────
+
+const CURTAIN_STROKE = '#2f8fb8';
+const CURTAIN_FILL = '#d6eaf8';
+
+/**
+ * Curtain wall: glazing strip with a tick at every vertical grid line (spec
+ * readme "Curtain Wall Grids and Panels"); bottom-row door cells are left open
+ * and drawn with their swing.
+ */
+function renderCurtainWall(id: string, feat: BimDownFeature, width: number, row: Record<string, string>): RenderedElement | null {
+  const c = (feat.geometry as { coordinates: number[][] }).coordinates;
+  if (c.length < 2) return null;
+  const a = { x: c[0][0], y: c[0][1] }, b = { x: c[c.length - 1][0], y: c[c.length - 1][1] };
+  const len = Math.hypot(b.x - a.x, b.y - a.y);
+  if (len < 1e-6) return null;
+  const u = { x: (b.x - a.x) / len, y: (b.y - a.y) / len };
+  const n = { x: -u.y, y: u.x };
+  const at = (t: number, s = 0) => [a.x + u.x * t + n.x * s, a.y + u.y * t + n.y * s];
+  const xs = [0, ...gridLines(row.v_grids, row.v_grid_count, row.v_spacing, len), len];
+  const rowsN = gridLines(row.u_grids, row.u_grid_count, row.u_spacing, Number.MAX_VALUE).length + 1;
+  const kinds = cellKinds(parsePanels(row.panels).rules, xs.length - 1, rowsN);
+  const mw = num(row.mullion_width) || 0.05;
+  const hw = width / 2;
+  const parts: string[] = [];
+  const pts: number[][] = [];
+
+  // Glazing strip, one run per stretch of non-door bottom cells.
+  const isDoor = (i: number) => kinds[i][0] === 'door' || kinds[i][0] === 'double_door';
+  for (let i = 0; i < xs.length - 1;) {
+    if (isDoor(i)) { i++; continue; }
+    let j = i;
+    while (j + 1 < xs.length - 1 && !isDoor(j + 1)) j++;
+    const ring = [at(xs[i], hw), at(xs[j + 1], hw), at(xs[j + 1], -hw), at(xs[i], -hw)];
+    pts.push(...ring);
+    parts.push(`<polygon points="${pointsAttr(ring)}" fill="${CURTAIN_FILL}" stroke="${CURTAIN_STROKE}" stroke-width="0.02" />`);
+    i = j + 1;
+  }
+  // Mullion ticks at every vertical grid line, ends included.
+  const tick = Math.max(hw * 1.6, 0.08);
+  const d = xs.map((x) => { const p = at(x, tick), q = at(x, -tick); pts.push(p, q); return `M ${fmt(p[0])},${fmt(p[1])} L ${fmt(q[0])},${fmt(q[1])}`; });
+  parts.push(`<path d="${d.join(' ')}" stroke="${CURTAIN_STROKE}" stroke-width="0.03" fill="none" />`);
+  // Door swings (leaf open at 90° to the wall's left, quarter arc back to the closed position).
+  for (let i = 0; i < xs.length - 1; i++) {
+    if (!isDoor(i)) continue;
+    const x0 = xs[i] + mw / 2, x1 = xs[i + 1] - mw / 2;
+    if (x1 - x0 < 0.05) continue;
+    const leaves = kinds[i][0] === 'double_door'
+      ? [{ hinge: x0, dir: 1, l: (x1 - x0) / 2 }, { hinge: x1, dir: -1, l: (x1 - x0) / 2 }]
+      : [{ hinge: x0, dir: 1, l: x1 - x0 }];
+    for (const lf of leaves) {
+      const arc: number[][] = [];
+      for (let k = 0; k <= 12; k++) {
+        const th = (Math.PI / 2) * (1 - k / 12);
+        arc.push(at(lf.hinge + lf.dir * lf.l * Math.cos(th), lf.l * Math.sin(th)));
+      }
+      pts.push(...arc);
+      const h = at(lf.hinge);
+      parts.push(`<path d="M ${fmt(h[0])},${fmt(h[1])} L ${fmt(arc[0][0])},${fmt(arc[0][1])}" stroke="${COLORS.door.stroke}" stroke-width="0.03" fill="none" />`);
+      parts.push(`<polyline points="${pointsAttr(arc)}" stroke="${COLORS.door.stroke}" stroke-width="0.015" fill="none" />`);
+    }
+  }
+  const svg = `    <g id="${id}">${parts.join('')}</g>`;
+  return { tableName: 'curtain_wall', svg, bounds: ringBounds(pts) };
+}
+
 // ─── Structure: columns, foundations, grids ───────────────
 
 function polygonPath(rings: number[][][]): string {
@@ -305,6 +381,109 @@ function rotatedRect(x: number, y: number, w: number, d: number, rotDeg: number)
   const a = (rotDeg * Math.PI) / 180, c = Math.cos(a), s = Math.sin(a);
   return [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]]
     .map(([u, v]) => [x + u * c - v * s, y + u * s + v * c]);
+}
+
+// ─── Roofs and shafts ─────────────────────────────────────
+
+/**
+ * Roof plan: outline, ridges and hips (solid), valleys (dashed) and one
+ * down-slope arrow per roof plane with its slope, from the same roof planes
+ * the editor builds (geo/roof-solver.ts: edge_slopes or roof_type + slope).
+ */
+function renderRoof(id: string, feat: BimDownFeature, row: Record<string, string>): RenderedElement | null {
+  const rings = (feat.geometry as { coordinates: number[][][] }).coordinates;
+  const ring = rings[0];
+  if (!ring || ring.length < 3) return null;
+  const color = COLORS.roof;
+  const outline = ring.map(p => ({ x: p[0], y: p[1] }));
+  const parts = [`    <path id="${id}" d="${polygonPath(rings)}" fill-rule="evenodd" fill="${color.fill}" stroke="${color.stroke}" stroke-width="0.05" />`];
+  let sol: RoofSolution | null = null;
+  try { sol = solveRoof(roofInputFor(outline, row)); } catch { sol = null; }
+  if (sol) {
+    for (const l of sol.lines) {
+      const dash = l.kind === 'valley' ? ' stroke-dasharray="0.25,0.12"' : '';
+      const w = l.kind === 'ridge' ? 0.05 : 0.035;
+      parts.push(`    <path d="M ${fmt(l.a.x)},${fmt(l.a.y)} L ${fmt(l.b.x)},${fmt(l.b.y)}" stroke="${color.stroke}" stroke-width="${w}" fill="none"${dash} />`);
+    }
+    for (const ar of slopeArrows(sol)) {
+      const dx = ar.to.x - ar.from.x, dy = ar.to.y - ar.from.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const ux = dx / len, uy = dy / len, head = Math.min(0.25, len * 0.35);
+      const bx = ar.to.x - ux * head, by = ar.to.y - uy * head;
+      parts.push(`    <path d="M ${fmt(ar.from.x)},${fmt(ar.from.y)} L ${fmt(bx)},${fmt(by)}" stroke="${color.stroke}" stroke-width="0.025" fill="none" />`);
+      parts.push(`    <polygon points="${fmt(ar.to.x)},${fmt(ar.to.y)} ${fmt(bx - uy * head * 0.45)},${fmt(by + ux * head * 0.45)} ${fmt(bx + uy * head * 0.45)},${fmt(by - ux * head * 0.45)}" fill="${color.stroke}" />`);
+      const tx = ar.from.x - uy * 0.25, ty = ar.from.y + ux * 0.25;
+      parts.push(`    <text x="${fmt(tx)}" y="${fmt(-ty)}" transform="scale(1,-1)" font-size="0.25" text-anchor="middle" dominant-baseline="central" fill="${color.stroke}" font-family="sans-serif">${escapeXml(ar.label)}</text>`);
+    }
+  }
+  return { tableName: 'roof', svg: parts.join('\n'), bounds: ringBounds(ring) };
+}
+
+/** A down-slope arrow per sloped roof plane, in its largest piece. */
+function slopeArrows(sol: RoofSolution): { from: { x: number; y: number }; to: { x: number; y: number }; label: string }[] {
+  const best = new Map<number, { area: number; poly: { x: number; y: number }[] }>();
+  for (const pc of sol.pieces) {
+    const pl = sol.planes[pc.plane];
+    if (Math.hypot(pl.a, pl.b) < 1e-6) continue;
+    const area = Math.abs(signedArea(pc.poly));
+    const cur = best.get(pc.plane);
+    if (!cur || area > cur.area) best.set(pc.plane, { area, poly: pc.poly });
+  }
+  const out: { from: { x: number; y: number }; to: { x: number; y: number }; label: string }[] = [];
+  for (const [plane, { area, poly }] of best) {
+    if (area < 0.05) continue;
+    const pl = sol.planes[plane];
+    const g = Math.hypot(pl.a, pl.b);
+    const ux = -pl.a / g, uy = -pl.b / g;
+    const c = centroid(poly);
+    const len = Math.max(0.3, Math.min(1.2, Math.sqrt(area) * 0.35));
+    const deg = (Math.atan(g) * 180) / Math.PI;
+    const label = deg < 5 ? `${(g * 100).toFixed(1).replace(/\.0$/, '')}%` : `${Math.round(deg * 10) / 10}°`;
+    out.push({ from: { x: c.x - ux * len / 2, y: c.y - uy * len / 2 }, to: { x: c.x + ux * len / 2, y: c.y + uy * len / 2 }, label });
+  }
+  return out;
+}
+
+function levelElevations(globalDir: string): Map<string, number> {
+  const out = new Map<string, number>();
+  const p = join(globalDir, 'level.csv');
+  if (!existsSync(p)) return out;
+  for (const row of readCsv(p).rows) if (row.id) out.set(row.id, Number(row.elevation) || 0);
+  return out;
+}
+
+/**
+ * Shafts (opening rows with top_level_id) of other levels whose height range
+ * reaches this level's floor: outline and a cross, as on their own level.
+ */
+function renderShaftsFrom(levelDirs: { name: string; path: string }[], levelId: string, elev: Map<string, number>): RenderedElement[] {
+  const here = elev.get(levelId);
+  if (here === undefined) return [];
+  const out: RenderedElement[] = [];
+  const color = COLORS.opening;
+  for (const d of levelDirs) {
+    if (d.name === levelId) continue;
+    const rows = readRows(d.path, 'opening');
+    const shafts = [...rows.values()].filter(r => r.top_level_id);
+    if (shafts.length === 0) continue;
+    const path = join(d.path, `${GEOJSON_FILE_NAMES.opening}.geojson`);
+    if (!existsSync(path)) continue;
+    let fc;
+    try { fc = parseGeoJsonFile(path); } catch { continue; }
+    for (const row of shafts) {
+      const base = elev.get(d.name), top = elev.get(row.top_level_id);
+      if (base === undefined || top === undefined) continue;
+      const z0 = base + (Number(row.base_offset) || 0), z1 = top + (Number(row.top_offset) || 0);
+      if (!(here > z0 + 1e-6 && here <= z1 + 1e-6)) continue;
+      const feat = fc.features.find(f => String(f.properties?.id) === row.id);
+      if (!feat || feat.geometry.type !== 'Polygon') continue;
+      const ring = feat.geometry.coordinates[0];
+      if (!ring || ring.length < 3) continue;
+      const svg = `    <path id="${row.id}" d="${polygonPath(feat.geometry.coordinates)}" fill="${color.fill}" stroke="${color.stroke}" stroke-width="0.05" />\n${crossLines(ring, color.stroke)}`;
+      out.push({ tableName: 'opening', svg, bounds: ringBounds(ring) });
+    }
+  }
+  return out;
 }
 
 /** Column at its real section size (round → circle, others → rotated bbox). */
@@ -408,7 +587,8 @@ function readRows(dirPath: string, tableName: string): Map<string, Record<string
   const out = new Map<string, Record<string, string>>();
   const csvPath = join(dirPath, `${tableName}.csv`);
   if (!existsSync(csvPath)) return out;
-  for (const row of readCsv(csvPath).rows) if (row.id) out.set(row.id, row);
+  // Effective rows: a typed element's empty parameters come from its type.
+  for (const row of effectiveRows(dirname(dirPath), tableName, readCsv(csvPath).rows)) if (row.id) out.set(row.id, row);
   return out;
 }
 

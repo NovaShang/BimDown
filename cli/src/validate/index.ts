@@ -17,6 +17,8 @@ import { validateFurnitureRows } from '../furniture/validate.js';
 import { effectiveRows } from '../catalog/index.js';
 import { validateSheets } from './sheets.js';
 import { validateGroups } from './groups.js';
+import { validateEnvelope } from './envelope.js';
+import { validateCurtainWallCsv } from './curtain-wall.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -122,6 +124,18 @@ export function validate(dir: string): string[] {
   issues.push(...validateSheets(globalCsv('sheet'), globalCsv('sheet_viewport'), idRegistry));
   // 7e. Model groups: members and their group on one level
   issues.push(...validateGroups(csvEntries, idRegistry));
+  // 7f. Envelope: roof edge slopes / profiles, wall top attachment, shafts
+  const levelElevation = new Map<string, number>();
+  for (const entry of csvEntries) {
+    if (entry.tableName !== 'level') continue;
+    for (const row of entry.data.rows) if (row.id) levelElevation.set(row.id, Number(row.elevation) || 0);
+  }
+  issues.push(...validateEnvelope(dir, csvEntries, idRegistry, levelElevation));
+
+  // 7g. Curtain walls: grid line lists and panel overrides
+  for (const entry of csvEntries) {
+    if (entry.tableName === 'curtain_wall') issues.push(...validateCurtainWallCsv(entry.path, entry.data));
+  }
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);

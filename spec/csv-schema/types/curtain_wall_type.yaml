@@ -15,3 +15,18 @@ fields:
 
   - name: panel_material
     type: string
+
+  - name: mullion_width
+    type: float
+
+  - name: mullion_depth
+    type: float
+
+  - name: mullion_profile
+    type: enum
+    values:
+      - rect
+      - round
+
+  - name: solid_material
+    type: string

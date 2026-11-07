@@ -2,18 +2,20 @@ name: opening
 bases:
   - element
 description: >
-  Opening (void) in a host element. host_id is always required.
-  Geometry form depends on the host type:
+  Opening (void) in a host element. Geometry form depends on the host type:
   - Wall opening: host_id references a wall. Uses position (distance in meters from wall start),
     width, and height. No GeoJSON geometry.
-  - Slab opening: host_id references a slab. Uses a GeoJSON Polygon (2D, in slab plane)
-    to define the void shape.
+  - Slab / roof opening: host_id references a slab, structure_slab or roof. Uses a GeoJSON
+    Polygon (2D plan) to define the void shape, cut vertically (skylights, dormer openings).
+  - Shaft: a Polygon opening with top_level_id. It cuts every slab, structure_slab, ceiling and roof
+    whose body lies between its bottom (this level + base_offset) and its top
+    (top_level_id + top_offset), on every level. host_id may be empty.
 
 fields:
   - name: host_id
     type: reference
     reference: element
-    required: true
+    description: Host wall / slab / roof. Required except for shafts (top_level_id set).
 
   - name: position
     type: float
@@ -41,4 +43,15 @@ fields:
     type: float
     default: 0
     storage: csv
-    description: Sill height of a wall opening above the host's base level, meters. Only for wall openings.
+    description: Sill height of a wall opening above the host's base level, meters; for a shaft, its bottom above this level.
+
+  - name: top_level_id
+    type: reference
+    reference: level
+    description: Shaft only - the level the shaft rises to. Empty = an opening in its host only.
+
+  - name: top_offset
+    type: float
+    default: 0
+    storage: csv
+    description: Shaft only - offset of the shaft top from top_level_id, meters.
