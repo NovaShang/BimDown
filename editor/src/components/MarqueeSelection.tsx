@@ -9,6 +9,8 @@ export default function MarqueeSelection({ marquee }: MarqueeSelectionProps) {
   const h = Math.abs(marquee.y2 - marquee.y1);
 
   if (w < 2 && h < 2) return null;
+  // Right → left is a crossing selection (dashed), left → right a window (solid)
+  const crossing = marquee.x2 < marquee.x1;
 
   return (
     <div
@@ -18,7 +20,7 @@ export default function MarqueeSelection({ marquee }: MarqueeSelectionProps) {
         top: y,
         width: w,
         height: h,
-        border: '1px solid var(--color-accent, #0891b2)',
+        border: `1px ${crossing ? 'dashed' : 'solid'} var(--color-accent, #0891b2)`,
         background: 'var(--accent-dim, rgba(8,145,178,0.12))',
         pointerEvents: 'none',
       }}
