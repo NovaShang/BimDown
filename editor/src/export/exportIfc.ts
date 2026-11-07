@@ -39,6 +39,7 @@ import type { StairRunFacts } from '../elements/stair_run.tsx';
 import type { RailingFacts } from '../elements/railing.tsx';
 import type { RampFacts } from '../elements/ramp.tsx';
 import type { CurtainWallFacts } from '../elements/curtain_wall.tsx';
+import { curtainWallPieces } from '../elements/curtainWallLayout.ts';
 import type { EquipmentFacts } from '../elements/equipment.tsx';
 import type { SpaceFacts } from '../elements/space.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
@@ -581,20 +582,39 @@ class Exporter {
       tail: this.pt4('IfcCurtainWall', 'NOTDEFINED'),
     });
     rec.external = el.geometry === 'line' ? isExternalWall(el as LineElement, scope.faces) : true;
-    const frameStyle = this.styleFor(f.frameMaterial, 'curtain_wall');
-    const panelStyle = this.styleFor(f.panelMaterial, 'curtain_wall');
     const parts: H[] = [];
+    // Members and plates: empty cells have none, solid panels carry their own material.
     for (const p of curtainWallParts(f)) {
       const isPanel = p.kind === 'panel';
+      const material = p.piece.material;
       const part = this.product({
         scope, el, key: `${rec.key}#${p.kind}:${p.index}`, type: isPanel ? 'IfcPlate' : 'IfcMember',
-        geom: { solids: [p.solid] }, styles: isPanel ? panelStyle : frameStyle,
+        geom: { solids: [p.solid] }, styles: this.styleFor(material, 'curtain_wall'),
         name: `${el.attrs.number || el.id} ${p.kind} ${p.index}`, objectType: isPanel ? 'CURTAIN_PANEL' : 'MULLION',
         tail: isPanel ? this.pt4('IfcPlate', 'CURTAIN_PANEL') : this.pt4('IfcMember', 'MULLION'),
         contained: false, register: false,
       });
-      this.singleMaterial(part.handle, isPanel ? f.panelMaterial : f.frameMaterial);
+      this.singleMaterial(part.handle, material);
       parts.push(part.handle);
+    }
+    // Door panels: an IfcDoor (frame + leaves as the 3D view) aggregated in the curtain wall.
+    for (const p of curtainWallPieces(f)) {
+      if (p.role !== 'door') continue;
+      const operation = p.kind === 'double_door' ? 'double_swing' : 'single_swing';
+      const frame = planFrame(v3(p.c.x, p.c.y, p.z0), p.angle);
+      const solids = openingPartSolids(frame, doorParts({ length: p.along, height: p.h, strokeWidth: p.across, operation }), p.h);
+      const frameStyle = this.styleFor(f.frameMaterial, 'curtain_wall');
+      const leafStyle = this.styleFor(f.panelMaterial, 'curtain_wall');
+      const tail: any[] = [w.plen(p.h), w.plen(p.along)];
+      if (w.ifc4) tail.push(w.enumv('IfcDoorTypeEnum', 'DOOR'), w.enumv('IfcDoorTypeOperationEnum', doorOperation(operation, 'left')), null);
+      const door = this.product({
+        scope, el, key: `${rec.key}#door:${p.index}`, type: 'IfcDoor',
+        geom: { frame, solids: solids.map(s => s.solid) }, styles: solids.map(s => (s.role === 'frame' ? frameStyle : leafStyle)),
+        name: `${el.attrs.number || el.id} door ${p.index}`, objectType: operation, tail,
+        contained: false, register: false,
+      });
+      this.singleMaterial(door.handle, f.frameMaterial);
+      parts.push(door.handle);
     }
     if (parts.length > 0) this.aggregates.push({ whole: rec.handle, parts });
     this.pset(rec, 'Pset_CurtainWallCommon', {

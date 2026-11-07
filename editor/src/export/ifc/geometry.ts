@@ -8,6 +8,7 @@ import type { Shape2D } from '../../three/primitives/types.ts';
 import { createProfile } from '../../three/primitives/profiles.ts';
 import { pointOnArc, arcLength, type ArcParams } from '../../geometry/arc.ts';
 import type { OpeningPart } from '../../elements/_opening3D.tsx';
+import { curtainWallPieces, type CurtainLayoutInput, type CwPiece } from '../../elements/curtainWallLayout.ts';
 import {
   type Frame, type Profile, type Solid, type V2, type V3,
   UP, add, cross, frameAt, frameY, memberFrame, normalize, planFrame, scale, sub, toWorld, v3,
@@ -280,36 +281,27 @@ export function railingGeom(r: RailingLike, opts = { spacing: 0.12, baluster: 0.
 
 // ─── Curtain walls ───────────────────────────────────────────────────────────
 
-export interface CurtainWallLike {
-  start: Point; end: Point; length: number; angle: number;
-  uGridCount: number; vGridCount: number; height: number; baseY: number;
+export interface CurtainPart { kind: 'mullion' | 'transom' | 'panel'; index: string; solid: Solid; piece: CwPiece }
+
+/** Body of one curtain wall member / panel (curtainWallPieces, as the 3D view draws it). */
+export function curtainPieceSolid(p: CwPiece): Solid {
+  if (p.round && p.role === 'mullion') {
+    return { kind: 'extrude', profile: { kind: 'circle', r: p.along / 2 }, frame: planFrame(v3(p.c.x, p.c.y, p.z0), p.angle), depth: p.h };
+  }
+  if (p.round) {
+    const ux = (Math.cos(p.angle) * p.along) / 2, uy = (Math.sin(p.angle) * p.along) / 2, z = p.z0 + p.h / 2;
+    const s = sweep(v3(p.c.x - ux, p.c.y - uy, z), v3(p.c.x + ux, p.c.y + uy, z), { kind: 'circle', r: p.h / 2 });
+    if (s) return s;
+  }
+  return box(p.c, p.z0, p.along, p.across, p.h, p.angle);
 }
 
-export interface CurtainPart { kind: 'mullion' | 'transom' | 'panel'; index: string; solid: Solid }
-
-/** Mullions, transoms and panels at the same positions / sizes as the 3D view. */
-export function curtainWallParts(cw: CurtainWallLike, mullion = 0.05, panel = 0.006): CurtainPart[] {
-  const ux = Math.cos(cw.angle), uy = Math.sin(cw.angle);
-  const at = (t: number) => ({ x: cw.start.x + ux * t, y: cw.start.y + uy * t });
-  const cellW = cw.length / cw.uGridCount;
-  const cellH = cw.height / cw.vGridCount;
+/** Mullions, transoms and panels at the 3D view's positions / sizes; doors are their own IfcDoor (curtainWallPieces). */
+export function curtainWallParts(cw: CurtainLayoutInput): CurtainPart[] {
   const parts: CurtainPart[] = [];
-  for (let i = 0; i <= cw.uGridCount; i++) {
-    parts.push({ kind: 'mullion', index: `${i}`, solid: box(at(i * cellW), cw.baseY, mullion, mullion, cw.height, cw.angle) });
-  }
-  for (let j = 0; j <= cw.vGridCount; j++) {
-    parts.push({ kind: 'transom', index: `${j}`, solid: box(at(cw.length / 2), cw.baseY + j * cellH - mullion / 2, cw.length, mullion, mullion, cw.angle) });
-  }
-  const pw = cellW - mullion, ph = cellH - mullion;
-  if (pw > 0.01 && ph > 0.01) {
-    for (let i = 0; i < cw.uGridCount; i++) {
-      for (let j = 0; j < cw.vGridCount; j++) {
-        parts.push({
-          kind: 'panel', index: `${i}_${j}`,
-          solid: box(at((i + 0.5) * cellW), cw.baseY + (j + 0.5) * cellH - ph / 2, pw, panel, ph, cw.angle),
-        });
-      }
-    }
+  for (const p of curtainWallPieces(cw)) {
+    if (p.role === 'door') continue;
+    parts.push({ kind: p.role, index: p.index, solid: curtainPieceSolid(p), piece: p });
   }
   return parts;
 }
