@@ -1,0 +1,16 @@
+name: fenestration
+abstract: true
+description: Thermal performance of a door, window or curtain wall unit (whole unit, frame included).
+
+fields:
+  - name: u_value
+    type: float
+    description: Thermal transmittance, W/(m²·K).
+
+  - name: shgc
+    type: float
+    description: Solar heat gain coefficient, 0-1.
+
+  - name: vt
+    type: float
+    description: Visible transmittance, 0-1.

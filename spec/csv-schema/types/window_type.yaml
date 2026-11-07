@@ -1,0 +1,31 @@
+name: window_type
+bases:
+  - element_type
+  - materialized
+  - fenestration
+type_of: [window]
+
+fields:
+  - name: width
+    type: float
+    required: true
+
+  - name: height
+    type: float
+
+  - name: operation
+    type: enum
+    values:
+      - fixed
+      - casement
+      - sliding
+      - awning
+      - hopper
+      - pivot
+      - double_hung
+      - single_hung
+      - tilt_and_turn
+
+  - name: frame_width
+    type: float
+    description: Visible frame width, meters.

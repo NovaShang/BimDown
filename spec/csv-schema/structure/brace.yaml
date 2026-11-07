@@ -4,4 +4,8 @@ bases:
   - structural_section_profile
   - materialized
 
-fields: []
+fields:
+  - name: type_id
+    type: reference
+    reference: beam_type
+    description: Optional beam_type id. Empty type parameters (shape, size_x, size_y, flange, web, thickness, material) inherit the type's value; a set value overrides it for this element.

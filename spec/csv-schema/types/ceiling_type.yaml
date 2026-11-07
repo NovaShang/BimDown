@@ -1,0 +1,6 @@
+name: ceiling_type
+bases:
+  - layered_type
+type_of: [ceiling]
+
+fields: []

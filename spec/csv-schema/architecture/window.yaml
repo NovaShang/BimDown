@@ -25,3 +25,8 @@ fields:
       - double_hung
       - single_hung
       - tilt_and_turn
+
+  - name: type_id
+    type: reference
+    reference: window_type
+    description: Optional window_type id. Empty type parameters (width, height, operation, material) inherit the type's value; a set value overrides it for this element.

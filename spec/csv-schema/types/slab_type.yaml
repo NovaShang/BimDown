@@ -1,0 +1,6 @@
+name: slab_type
+bases:
+  - layered_type
+type_of: [slab, structure_slab]
+
+fields: []

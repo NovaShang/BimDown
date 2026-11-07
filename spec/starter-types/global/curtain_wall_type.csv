@@ -1,0 +1,2 @@
+id,name,description,material,u_spacing,v_spacing,panel_material,u_value,shgc,vt
+cwt-glazed-1500,Glazed 1500 grid,Aluminium stick system with double-glazed panels,aluminum,1.5,1.5,glass,1.6,0.35,0.6

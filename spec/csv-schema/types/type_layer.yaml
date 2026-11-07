@@ -1,0 +1,47 @@
+name: type_layer
+bases:
+  - materialized
+description: >
+  One layer of a layered type (wall_type, slab_type, roof_type, ceiling_type).
+  `seq` 1 is the exterior face of a wall (its left side looking from start to
+  end, as in Revit for walls drawn clockwise) or the top face of a slab, roof
+  or ceiling.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: type_id
+    type: reference
+    reference: element
+    required: true
+    description: The wall_type / slab_type / roof_type / ceiling_type this layer belongs to.
+
+  - name: seq
+    type: integer
+    required: true
+    description: Layer order, 1 = exterior / top.
+
+  - name: function
+    type: enum
+    required: true
+    values:
+      - core
+      - substrate
+      - insulation
+      - air_gap
+      - membrane
+      - finish
+
+  - name: thickness
+    type: float
+    required: true
+
+  - name: conductivity
+    type: float
+    description: Thermal conductivity λ, W/(m·K).
+
+  - name: name
+    type: string
+    description: Product name, e.g. "EPS 100", "Lime plaster".

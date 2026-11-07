@@ -20,6 +20,7 @@ BimDown uses **CSV for attributes** and a **geometry layer** that may be encoded
 ├── global/
 │   ├── level.csv                    # floor level definitions (with elevations)
 │   ├── grid.csv                     # structural grid lines
+│   ├── wall_type.csv, door_type.csv, …, type_layer.csv   # element types (optional)
 │   ├── wall.csv / wall.geojson      # multi-story walls (span > 1 level above)
 │   ├── stair.csv / stair.geojson    # multi-story stairs
 │   ├── pipe.csv / pipe.geojson      # vertical risers
@@ -64,6 +65,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 |---------|---------------|-------------|
 | `level` | No  | Floor levels by elevation |
 | `grid`  | No  | Structural/reference grid lines (inline coords in CSV) |
+| `*_type`, `type_layer` | No | Element types and their layers — see [Element Types](#element-types) |
 
 ### Architecture
 
@@ -203,6 +205,10 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `mep_node` | `mn` | `mn-1` |
 | `connector` | `cn` | `cn-1` |
 | `mesh` | `ms` | `ms-1` |
+| `wall_type` / `slab_type` / `roof_type` / `ceiling_type` | `wt` / `slt` / `rot` / `clt` | `wt-ext-concrete-eps` |
+| `door_type` / `window_type` / `curtain_wall_type` | `dt` / `wnt` / `cwt` | `dt-single-900` |
+| `column_type` / `beam_type` | `colt` / `bmt` | `bmt-steel-ipe-300` |
+| `type_layer` | `tl` | `tl-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
 
@@ -272,7 +278,47 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 
 ### Material Enum
 
-A fixed enum of 15 common structural/architectural materials. Represents the **primary material** of an element. Composite/multi-layer constructions are not modeled — the Revit plugin handles layer composition independently.
+A fixed enum of 15 common structural/architectural materials. Represents the **primary material** of an element. Multi-layer constructions are expressed through element types (below); `material` stays the primary (core) material.
+
+### Element Types
+
+Like Revit family types: a named set of defaults that many elements share. All type tables live in `global/` (schemas in `csv-schema/types/`).
+
+| Type table | Used by (`type_id`) | Type parameters |
+|---|---|---|
+| `wall_type` | `wall`, `structure_wall` | `thickness`, `material` + layers |
+| `slab_type` | `slab`, `structure_slab` | `thickness`, `material` + layers |
+| `roof_type` | `roof` | `thickness`, `material` + layers |
+| `ceiling_type` | `ceiling` | `material` + layers (thickness is type-only) |
+| `door_type` | `door` | `width`, `height`, `operation`, `material`; type-only `frame_width`, `u_value`, `shgc`, `vt` |
+| `window_type` | `window` | same as `door_type` |
+| `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `material`; type-only thermal |
+| `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `material` |
+| `beam_type` | `beam`, `brace` | same as `column_type` |
+
+**Resolution rule.** A field a type table shares by name with the instance table is a *type parameter*. An instance with `type_id` leaves it **empty to inherit** the type's value, or sets it to **override** for that element. Required instance fields (`wall.thickness`, `door.width`, …) may be empty when the type supplies them. Untyped elements are unchanged. Tools write a value equal to the type's back as empty, so editing a type updates every instance that follows it.
+
+**Layers** (`type_layer.csv`): `type_id`, `seq` (1 = a wall's exterior face — its left side looking from start to end, as in Revit for walls drawn clockwise — or the top face of a slab/roof/ceiling), `function` (`core`, `substrate`, `insulation`, `air_gap`, `membrane`, `finish`), `material`, `thickness`, optional `conductivity` (W/(m·K)) and `name`. A layered type's thickness is the sum of its layers; its own `thickness` column may be empty (derived) or must equal that sum. When an instance overrides `thickness`, its core layer absorbs the difference (build warns).
+
+**Thermal fields** on door/window/curtain wall types: `u_value` (W/(m²·K), whole unit), `shgc` and `vt` (0–1).
+
+```csv
+# global/wall_type.csv
+id,name,material,thickness
+wt-ext-concrete-eps,Exterior - Concrete 200 + EPS 100,concrete,0.325
+# global/type_layer.csv
+id,type_id,seq,function,material,thickness,conductivity,name
+tl-2,wt-ext-concrete-eps,1,finish,composite,0.01,0.7,Exterior render
+tl-3,wt-ext-concrete-eps,2,insulation,insulation,0.1,0.035,EPS 100
+tl-4,wt-ext-concrete-eps,3,core,concrete,0.2,2.3,Reinforced concrete
+tl-5,wt-ext-concrete-eps,4,finish,gypsum,0.015,0.4,Gypsum plaster
+# lv-1/wall.csv — w-1 follows the type (0.325), w-2 overrides it
+id,type_id,thickness
+w-1,wt-ext-concrete-eps,
+w-2,wt-ext-concrete-eps,0.35
+```
+
+New projects start with a metric starter catalog ([`starter-types/global/`](starter-types/global/)): concrete, ETICS, brick cavity, timber frame and stud walls; floor, ground floor and roof build-ups; ceilings; single/double/sliding doors; casement/fixed/sliding/tilt-and-turn windows; concrete/steel/timber column and beam sections. `bimdown query` returns effective values (`SELECT thickness FROM wall` includes inherited ones) and type tables join directly: `SELECT w.id, t.name FROM wall w JOIN wall_type t ON w.type_id = t.id`.
 
 ### Format Versioning
 

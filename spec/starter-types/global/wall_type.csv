@@ -1,0 +1,8 @@
+id,name,description,material,thickness
+wt-concrete-200,Concrete 200,Plain cast-in-place concrete wall,concrete,0.2
+wt-ext-concrete-eps,Exterior - Concrete 200 + EPS 100,Render on EPS insulation on a concrete core with interior plaster,concrete,0.325
+wt-ext-brick-cavity,Exterior - Brick cavity 300,Brick outer leaf; ventilated cavity; mineral wool; brick inner leaf; plaster,brick,0.3
+wt-ext-timber-frame,Exterior - Timber frame 200,Fibre-cement cladding on battens; insulated timber studs; gypsum board,wood,0.2
+wt-int-stud-100,Interior - Stud partition 100,Gypsum board on both sides of steel studs with mineral wool,gypsum,0.1
+wt-int-masonry-150,Interior - Masonry 120 + plaster,Brick or block wall plastered on both sides,brick,0.15
+wt-concrete-300,Concrete 300,Structural or core concrete wall,concrete,0.3

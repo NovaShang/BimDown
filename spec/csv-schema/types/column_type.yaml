@@ -1,0 +1,9 @@
+name: column_type
+bases:
+  - element_type
+  - materialized
+  - structural_section_profile
+type_of: [column, structure_column]
+description: Section profile type. An architectural column accepts only the rect and round shapes.
+
+fields: []

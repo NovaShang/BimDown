@@ -1,0 +1,7 @@
+name: roof_type
+bases:
+  - layered_type
+type_of: [roof]
+description: Roof build-up. Unrelated to the roof's `roof_type` field (its shape - flat, gable, ...).
+
+fields: []

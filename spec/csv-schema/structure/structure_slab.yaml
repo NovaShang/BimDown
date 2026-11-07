@@ -12,3 +12,8 @@ fields:
 
   - name: thickness
     type: float
+
+  - name: type_id
+    type: reference
+    reference: slab_type
+    description: Optional slab_type id. Empty type parameters (thickness, material) inherit the type's value; a set value overrides it for this element.

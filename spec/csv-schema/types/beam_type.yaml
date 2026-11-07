@@ -1,0 +1,8 @@
+name: beam_type
+bases:
+  - element_type
+  - materialized
+  - structural_section_profile
+type_of: [beam, brace]
+
+fields: []
