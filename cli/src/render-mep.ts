@@ -31,6 +31,8 @@ const SYSTEM_COLORS: Record<string, string> = {
   CHWS: '#06b6d4', CHWR: '#0891b2', HWS: '#f97316', HWR: '#ea580c', CWS: '#10b981', CWR: '#059669',
   RF: '#ec4899', SF: '#fb923c', DW: '#1d4ed8', DCW: '#3b82f6', DHW: '#dc2626', DHWR: '#b91c1c',
   SS: '#92400e', VENT: '#a16207', SD: '#0369a1', GAS: '#facc15',
+  DHWS: '#dc2626', SAN: '#92400e', V: '#a16207', G: '#facc15', CD: '#14b8a6', FP: '#ef4444',
+  PWR: '#eab308', LTG: '#f59e0b',
   NP: '#fde047', EM: '#f43f5e', LV: '#eab308', HV: '#ca8a04', DATA: '#22c55e', FA: '#ef4444', SEC: '#a3a3a3',
 };
 
@@ -154,6 +156,13 @@ export function renderMep(dirs: string[], globalDir: string): MepRendered[] {
     }
   }
   const trimOf = new Map<string, number>(); // `${curveId}:${side}`
+  // One tag per straight run: a segment whose start continues a same-size run is not tagged.
+  const untagged = new Set<string>();
+  const sameRun = (a: Curve, b: Curve) => a.table === b.table && (a.row.system_type || '') === (b.row.system_type || '') && Math.abs(a.w - b.w) < 1e-6 && Math.abs(a.h - b.h) < 1e-6;
+  const markStraight = (x: Leg, y: Leg) => {
+    if (x.side === 'a' && sameRun(x.curve, y.curve)) untagged.add(x.curve.id);
+    if (y.side === 'a' && sameRun(x.curve, y.curve)) untagged.add(y.curve.id);
+  };
   const fittingSvg: { node: Host; svg: string; ps: P[] }[] = [];
   for (const [nodeId, legs] of legsByNode) {
     const node = hostById.get(nodeId)!;
@@ -177,6 +186,7 @@ export function renderMep(dirs: string[], globalDir: string): MepRendered[] {
     const hint = (node.row.fitting || '').trim();
     if (n === 2 && dot3(legs[0].dir, legs[1].dir) < -0.985) {
       const [a, b] = legs;
+      markStraight(a, b);
       if (Math.abs(a.curve.w - b.curve.w) > 1e-3 || Math.abs(a.curve.h - b.curve.h) > 1e-3 || a.curve.round !== b.curve.round) {
         kind = a.curve.round === b.curve.round ? 'reducer' : 'transition';
         const L = Math.max(0.1, (Math.max(Math.abs(a.curve.w - b.curve.w), Math.abs(a.curve.h - b.curve.h), 0.05) / 2) / Math.tan(20 * Math.PI / 180));
@@ -221,6 +231,7 @@ export function renderMep(dirs: string[], globalDir: string): MepRendered[] {
       let best: [number, number] | null = null, bd = 1;
       for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const d = dot3(legs[i].dir, legs[j].dir); if (d < bd) { bd = d; best = [i, j]; } }
       const main = best && bd < -0.985 ? best : null;
+      if (main) markStraight(legs[main[0]], legs[main[1]]);
       if (main && n === 3) {
         const br = legs.find((_, i) => i !== main[0] && i !== main[1])!;
         const m1 = legs[main[0]], m2 = legs[main[1]];
@@ -310,11 +321,11 @@ export function renderMep(dirs: string[], globalDir: string): MepRendered[] {
       for (let s = 0, k = 0; s <= L + 1e-9; s += step, k++) zz.push({ x: pa.x + u.x * Math.min(s, L) + n.x * (k % 2 ? 1 : -1) * hw * 0.85, y: pa.y + u.y * Math.min(s, L) + n.y * (k % 2 ? 1 : -1) * hw * 0.85 });
       svg += `<polyline points="${pts(zz)}" fill="none" stroke="${color}" stroke-width="${sw * 0.6}" />`;
     }
-    const label = sizeLabel(c);
+    const label = untagged.has(c.id) ? '' : sizeLabel(c);
     const font = c.table === 'duct' || c.table === 'cable_tray' ? 0.2 : 0.15;
     const slope = (c.b[2] - c.a[2]) / horLen;
     const tag = label + (c.table === 'pipe' && Math.abs(slope) >= 0.001 ? `  i=${(Math.abs(slope) * 100).toFixed(1)}%` : '');
-    if (horLen >= Math.max(1, tag.length * font * 0.62 + 0.3)) {
+    if (label && horLen >= Math.max(1, tag.length * font * 0.62 + 0.3)) {
       const m = { x: (c.a[0] + c.b[0]) / 2 + n.x * (hw + ins + font * 0.9), y: (c.a[1] + c.b[1]) / 2 + n.y * (hw + ins + font * 0.9) };
       svg += text(m.x, m.y, u, font, color, tag);
     }
