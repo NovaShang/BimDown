@@ -11,6 +11,7 @@ import { validateReferences } from './references.js';
 import { validateRanges } from './ranges.js';
 import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
+import { validateFurnitureRows } from '../furniture/validate.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -81,6 +82,11 @@ export function validate(dir: string): string[] {
   // 6. Enum validation
   for (const entry of csvEntries) {
     issues.push(...validateCsvEnums(entry.path, entry.table, entry.data));
+  }
+
+  // 6b. Furniture variant belongs to its family
+  for (const entry of csvEntries) {
+    if (entry.tableName === 'furniture') issues.push(...validateFurnitureRows(entry.path, entry.data));
   }
 
   // 7. Reference validation

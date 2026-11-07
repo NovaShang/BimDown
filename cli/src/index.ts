@@ -2,6 +2,7 @@ import { Command } from 'commander';
 import { resolve } from 'node:path';
 import { build } from './build/index.js';
 import { buildRegistry, getSpecDir } from './schema/registry.js';
+import { furnitureCatalogLines } from './furniture/catalog-text.js';
 import { discoverLayout, listFiles } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
 import { existsSync, writeFileSync } from 'node:fs';
@@ -145,7 +146,7 @@ program
   .option('-l, --level <id>', 'Level to render (defaults to lv-1)', 'lv-1')
   .option('-o, --output <file>', 'Output file path (defaults to render.png)', 'render.png')
   .option('-w, --width <px>', 'Image width in pixels', '2048')
-  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls). DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: ducts=cyan, pipes=light blue, cable tray=green, conduit=teal, equipment=red fill, terminals=orange fill.')
+  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls). DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: ducts=cyan, pipes=light blue, cable tray=green, conduit=teal, equipment=red fill, terminals=orange fill. Furniture and library components draw their grey plan symbols (back edge = local +Y).')
   .action(async (dir: string, opts: { level: string; output: string; width: string }) => {
     const absDir = resolve(dir);
     const { renderLevel } = await import('./render.js');
@@ -286,6 +287,7 @@ program
           console.log(`    ${f.name}: ${f.type}`);
         }
       }
+      if (t === 'furniture') for (const l of furnitureCatalogLines()) console.log(l);
       console.log();
     }
   });

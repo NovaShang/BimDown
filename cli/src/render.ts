@@ -9,6 +9,7 @@ import { discoverLayout } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
 import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
+import { renderFurniture } from './furniture/render.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -135,6 +136,9 @@ export function renderLevel(projectDir: string, levelId: string): string {
       }
     }
   }
+
+  // Furniture / library components (plan symbols), under doors and rooms
+  elements.push(...renderFurniture(levelDir.path));
 
   // Door / window (CSV + host wall)
   for (const t of ['door', 'window'] as const) {

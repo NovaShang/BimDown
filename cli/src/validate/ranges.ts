@@ -35,6 +35,8 @@ const DEFAULT_MAX = 1000;
 /** Deep foundations (drilled piers, piles) are far thicker than any wall or slab. */
 const TABLE_FIELD_MAX: Record<string, Record<string, number>> = {
   foundation: { thickness: 60 },
+  // Trees, cars and long counters outgrow the 10 m section limit.
+  furniture: { size_x: 30, size_y: 30 },
 };
 
 export function validateRanges(path: string, table: ResolvedTable, data: CsvData, units = 'm'): string[] {

@@ -16,6 +16,7 @@ export const ID_PREFIXES: Record<string, string> = {
   connector: 'cn',
   mep_system: 'sys',
   mesh: 'ms',
+  furniture: 'fu',
 };
 
 // Tables whose CSV lives only in global/ (not per-level)

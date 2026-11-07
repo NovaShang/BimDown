@@ -84,6 +84,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `ceiling`        | Polygon          | `Polygon` 2D | Ceiling surface |
 | `roof`           | Polygon          | `Polygon` 2D | Roof surface |
 | `room_separator` | Line             | `LineString` 2D | Invisible boundary line for room separation |
+| `furniture`      | Point            | `Point` 2D | Built-in parametric component: furniture, casework, appliances without ports, toilet partitions, cars / parking, planting, people, placeholders (`family`, `variant`, `size_x` × `size_y` × `height`, `mirror`) |
 
 ### Structure
 
@@ -114,6 +115,8 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | Table  | Geometry file | Description |
 |--------|---------------|-------------|
 | `mesh` | No (GLB)      | Generic 3D model for elements without parametric schema |
+
+`furniture` covers what used to need a GLB: a closed list of library families (`bimdown schema furniture` prints them with variants and default sizes). Plan symbols and low-poly 3D massing are generated from the family and its parameters, so files stay small and editable; `mesh_file` on a row overrides the 3D only. Local frame: `size_x` along X, `size_y` along Y, **+Y is the back** (the side against a wall), `rotation` CCW in GeoJSON properties. Empty sizes take the family / variant default. Exporters map families to IFC4 `IfcFurniture` (DESK, CHAIR, TABLE, BED, SOFA, SHELF, FILECABINET), `IfcElectricAppliance` (appliances), `IfcFurnishingElement`, `IfcGeographicElement` (trees) or `IfcBuildingElementProxy` (cars, parking, people, generic). Plumbing fixtures with pipe connections are MEP `terminal`s, not furniture.
 
 ---
 
@@ -204,6 +207,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `mep_node` | `mn` | `mn-1` |
 | `connector` | `cn` | `cn-1` |
 | `mesh` | `ms` | `ms-1` |
+| `furniture` | `fu` | `fu-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
 
