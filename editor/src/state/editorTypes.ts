@@ -182,7 +182,9 @@ export type EditorAction =
   | { type: 'UPDATE_ATTRS'; id: string; attrs: Record<string, string> }
   /** Same attrs on several elements, one undo step (multi-selection edit). */
   | { type: 'UPDATE_ATTRS_MANY'; ids: string[]; attrs: Record<string, string> }
-  | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean; wallJoins?: WallJoin[] }
+  | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean; wallJoins?: WallJoin[];
+      /** Hosted doors / windows as they were when the drag began: they keep that plan location. */
+      hostedBefore?: ReadonlyMap<string, CanonicalElement> }
   | { type: 'COMMIT_PREVIEW'; description: string; before: Map<string, CanonicalElement | null>; after: Map<string, CanonicalElement | null> }
   | { type: 'SET_EDIT_MODE'; active: boolean }
   | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }

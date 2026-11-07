@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
-import { findWallJoins, applyMoveJoins, applyReshapeJoins } from './wallJoins.ts';
+import { findWallJoins, applyMoveJoins, applyReshapeJoins, rehostChildren } from './wallJoins.ts';
 import { splitWall, trimExtendToCorner, trimExtendToReference } from './wallEdit.ts';
 import { resolveHostedGeometry } from './hosted.ts';
 
@@ -192,5 +192,51 @@ describe('modify tools', () => {
     const a = r.patch.get('w-1') as LineElement, b = r.patch.get(r.newId) as LineElement;
     expect(a.arc!.rx).toBeCloseTo(5);
     expect(b.arc!.rx).toBeCloseTo(5);
+  });
+});
+
+describe('doors keep their plan location when the host wall end is dragged (B10)', () => {
+  const center = (m: Map<string, CanonicalElement>, id: string) => {
+    const d = m.get(id) as LineElement;
+    return { x: (d.start.x + d.end.x) / 2, y: (d.start.y + d.end.y) / 2 };
+  };
+  /** Drag w-1's `side` end through `steps` previews (as the resize handle does), returning the final map. */
+  function drag(side: 'start' | 'end', to: { x: number; y: number }[]) {
+    const w = wall('w-1', 0, 0, 10, 0);
+    let m = new Map<string, CanonicalElement>([[w.id, w], ['d-1', door('d-1', w, 3)], ['wn-1', door('wn-1', w, 8, 1.2)]]);
+    const origin = new Map([...m].filter(([, e]) => e.hostId === 'w-1'));
+    let prev = w;
+    for (const p of to) {
+      const nw = { ...prev, [side]: p };
+      const next = new Map(m);
+      next.set(nw.id, nw);
+      rehostChildren(next, prev, nw, origin);
+      m = next; prev = nw;
+    }
+    return m;
+  }
+
+  it('lengthening or shortening from the start leaves the doors where they are', () => {
+    const m = drag('start', [{ x: -0.5, y: 0 }, { x: -1, y: 0 }, { x: 1, y: 0 }]);
+    expect(center(m, 'd-1').x).toBeCloseTo(3, 9);
+    expect(center(m, 'wn-1').x).toBeCloseTo(8, 9);
+    expect(parseFloat((m.get('d-1') as LineElement).attrs.position)).toBeCloseTo(2, 4);
+  });
+
+  it('turning the wall about its end projects each door from where it was, not from the last preview', () => {
+    const steps = Array.from({ length: 20 }, (_, i) => ({ x: 0, y: (i + 1) * 0.2 }));
+    const m = drag('start', steps);
+    const w = m.get('w-1') as LineElement;
+    const len = Math.hypot(10, 4), u = { x: 10 / len, y: -4 / len };
+    const along = (3 - 0) * u.x + (0 - 4) * u.y;     // (3, 0) projected onto the new line
+    const c = center(m, 'd-1');
+    expect(c.x).toBeCloseTo(w.start.x + u.x * along, 6);
+    expect(c.y).toBeCloseTo(w.start.y + u.y * along, 6);
+  });
+
+  it('clamps only a door the shortened wall no longer reaches', () => {
+    const m = drag('start', [{ x: 3.2, y: 0 }]);
+    expect(center(m, 'd-1').x).toBeCloseTo(3.2 + 0.45, 9);
+    expect(center(m, 'wn-1').x).toBeCloseTo(8, 9);
   });
 });

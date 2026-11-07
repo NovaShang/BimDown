@@ -301,13 +301,17 @@ function roundPos(v: number): string {
 
 /**
  * Re-seat hosted doors / windows / openings after their host wall changed
- * from `oldWall` to `newWall`. A door keeps its distance from whichever end
- * stayed put; when both ends moved it keeps its plan location (projected).
+ * from `oldWall` to `newWall`. A door on a straight wall keeps its plan
+ * location (Revit): its centre projected onto the new wall line — from
+ * `origin` (the hosted elements before the drag began, so a long drag doesn't
+ * drift) when given. Clamped only when it would fall off the wall. Arc walls
+ * keep the distance from whichever end stayed put.
  */
 export function rehostChildren(
   next: Map<string, CanonicalElement>,
   oldWall: LineElement,
   newWall: LineElement,
+  origin?: ReadonlyMap<string, CanonicalElement>,
 ): string[] {
   const touched: string[] = [];
   const startSame = dist(oldWall.start, newWall.start) < 1e-9;
@@ -320,13 +324,13 @@ export function rehostChildren(
     const width = parseFloat(h.attrs.width ?? '0.9') || 0.9;
     const oldPos = h.locationParam ?? (parseFloat(h.attrs.position ?? '') || 0);
     let pos: number;
-    if (startSame || newWall.arc || oldWall.arc) {
-      pos = oldPos;
-    } else if (endSame) {
-      pos = newLen - (oldLen - oldPos);
+    if (newWall.arc || oldWall.arc) {
+      pos = startSame || !endSame ? oldPos : newLen - (oldLen - oldPos);
     } else {
-      const c = { x: (h.start.x + h.end.x) / 2, y: (h.start.y + h.end.y) / 2 };
-      pos = projectOnWall(newWall, c)?.along ?? oldPos;
+      const o = origin?.get(id);
+      const at = o && (o.geometry === 'line' || o.geometry === 'spatial_line') ? o as LineElement : h;
+      const c = { x: (at.start.x + at.end.x) / 2, y: (at.start.y + at.end.y) / 2 };
+      pos = projectOnWall(newWall, c)?.along ?? (endSame && !startSame ? newLen - (oldLen - oldPos) : oldPos);
     }
     pos = Math.max(Math.min(width / 2, newLen / 2), Math.min(newLen - Math.min(width / 2, newLen / 2), pos));
     const { start, end } = resolveHostedGeometry(newWall, pos, width);
@@ -372,6 +376,7 @@ export function applyReshapeJoins(
   next: Map<string, CanonicalElement>,
   before: CanonicalElement,
   joins: readonly WallJoin[] | undefined,
+  origin?: ReadonlyMap<string, CanonicalElement>,
 ): string[] {
   if (!isJoinable(before)) return [];
   const all = joins ?? findWallJoins(prev, [before.id]);
@@ -381,7 +386,7 @@ export function applyReshapeJoins(
   for (const id of changed) {
     const was = prev.get(id), now = next.get(id);
     if (!was || !now) continue;
-    touched.push(id, ...rehostChildren(next, was as LineElement, now as LineElement));
+    touched.push(id, ...rehostChildren(next, was as LineElement, now as LineElement, origin));
   }
   return touched;
 }
