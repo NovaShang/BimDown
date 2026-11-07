@@ -66,6 +66,8 @@ export interface BimDownFeatureCollection {
 export function parseGeoJsonFile(filePath: string): BimDownFeatureCollection {
   let text = readFileSync(filePath, 'utf-8');
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  // An empty file (e.g. a layer whose last geometry row was removed) has no features.
+  if (text.trim() === '') return { type: 'FeatureCollection', features: [] };
 
   let parsed: unknown;
   try {
