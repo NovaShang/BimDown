@@ -558,5 +558,21 @@
   "schedule.col.shape": "Shape",
   "schedule.col.size": "Size",
   "schedule.col.system": "System",
-  "schedule.col.type": "Type"
+  "schedule.col.type": "Type",
+  "drawing.title.architecture": "{{level}} Plan",
+  "drawing.title.structure": "{{level}} Structural Plan",
+  "drawing.title.mep": "{{level}} MEP Plan",
+  "drawing.title.all": "{{level}} Combined Plan",
+  "drawing.project": "Project",
+  "drawing.drawing": "Drawing",
+  "drawing.scale": "Scale",
+  "drawing.date": "Date",
+  "drawing.sheet": "Sheet",
+  "drawing.elevation": "Elevation",
+  "drawing.units": "Units",
+  "drawing.north": "N",
+  "drawing.up": "UP",
+  "drawing.down": "DN",
+  "drawing.systems": "Systems",
+  "drawing.generatedBy": "Drawn with BimDown"
 }

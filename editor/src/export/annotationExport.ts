@@ -1,11 +1,10 @@
 /**
  * Plan annotations (dimensions, text notes, tags) as backend-neutral drawing
- * primitives in model coordinates (Y up), plus SVG and DXF writers, so the
- * PDF / DXF exporters draw exactly what the editor shows.
- *
- *   const prims = drawAnnotations(levelElements, unit);
- *   svgParts.push(annotationsToSvg(prims));          // PDF (svg2pdf), Y flipped
- *   drawAnnotationsDxf(dxf, prims, y => y);          // DXF
+ * primitives in model coordinates (Y up), so the PDF / DXF plan exports draw
+ * exactly what the editor shows. `planAnnotator` turns them into plan drawing
+ * items (export/drawing): registered once, every PDF sheet and DXF file gets
+ * them on G-ANNO-DIMS / G-ANNO-TEXT, and their text goes through the sheet's
+ * font handling (the CJK font when a label needs it).
  */
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import type { ProjectUnit } from '../types.ts';
@@ -16,9 +15,12 @@ import {
 } from '../annotation/geometry.ts';
 import { boundaryWalls, roomPolygon, polygonArea } from '../annotation/rooms.ts';
 import { textNoteLines } from '../elements/text_note.tsx';
+import { registerPlanAnnotator, type PlanAnnotator } from './drawing/annotations.ts';
+import { LAYERS } from './drawing/layers.ts';
 
-export interface AnnotationLine { a: Point; b: Point; width: number }
-export interface AnnotationText { at: Point; text: string; size: number; angle: number; bold?: boolean }
+/** `dim`: part of a dimension (G-ANNO-DIMS); otherwise text / tag (G-ANNO-TEXT). */
+export interface AnnotationLine { a: Point; b: Point; width: number; dim?: boolean }
+export interface AnnotationText { at: Point; text: string; size: number; angle: number; bold?: boolean; dim?: boolean }
 export interface AnnotationBox { center: Point; w: number; h: number; width: number }
 export interface AnnotationPrimitives {
   lines: AnnotationLine[];
@@ -45,17 +47,17 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit)
         const l = len(v);
         if (l < 0.08 * m) continue;
         const dir = mul(v, 1 / l);
-        out.lines.push({ a: add(p, mul(dir, 0.08 * m)), b: add(d, mul(dir, 0.1 * m)), width: sw });
+        out.lines.push({ a: add(p, mul(dir, 0.08 * m)), b: add(d, mul(dir, 0.1 * m)), width: sw, dim: true });
       }
-      out.lines.push({ a: g.d1, b: g.d2, width: sw });
+      out.lines.push({ a: g.d1, b: g.d2, width: sw, dim: true });
       const tick = mul(add(g.u, g.n), 0.12 * m / Math.SQRT2);
-      for (const d of [g.d1, g.d2]) out.lines.push({ a: sub(d, tick), b: add(d, tick), width: sw * 2.2 });
+      for (const d of [g.d1, g.d2]) out.lines.push({ a: sub(d, tick), b: add(d, tick), width: sw * 2.2, dim: true });
       const angle = readableAngle(g.u);
       const a = angle * Math.PI / 180;
       out.texts.push({
         at: add(mid(g.d1, g.d2), mul({ x: -Math.sin(a), y: Math.cos(a) }, 0.16 * m)),
         text: (el.attrs.text ?? '').trim() || formatDimension(g.value, unit),
-        size: 0.22 * m, angle,
+        size: 0.22 * m, angle, dim: true,
       });
     } else if (el.tableName === 'text_note' && el.geometry === 'point') {
       const lines = textNoteLines(el.attrs.text);
@@ -92,34 +94,33 @@ export function taggedRoomIds(elements: CanonicalElement[]): Set<string> {
   return new Set(elements.filter(e => e.tableName === 'tag').map(e => e.attrs.host_id ?? ''));
 }
 
-const f = (n: number) => (Number.isFinite(n) ? n.toFixed(3) : '0');
-const esc = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+/** Cap height as a share of the font size (Helvetica ≈ 0.72). */
+const CAP = 0.72;
 
-/** SVG markup in the PDF exporter's frame: x as is, y negated (SVG is Y down). */
-export function annotationsToSvg(p: AnnotationPrimitives, ink = '#1d3557'): string {
-  const parts: string[] = ['<g data-table="annotation">'];
+/**
+ * Plan drawing items for a level's dimensions, text notes and tags. Sizes are
+ * the editor's (model units), so a sheet shows them as on screen; dimension
+ * ticks and tag leaders keep their heavier pen. Tag boxes get a white mask
+ * (PDF only) so they read over the walls they sit on.
+ */
+export const planAnnotator: PlanAnnotator = ctx => {
+  if (!ctx.elements.some(e => isAnnotationTable(e.tableName))) return;
+  const p = drawAnnotations(ctx.elements, ctx.unit);
+  const dims = ctx.layer(LAYERS.annoDims), text = ctx.layer(LAYERS.annoText);
+  const m = metre(ctx.unit);
   for (const l of p.lines) {
-    parts.push(`<line x1="${f(l.a.x)}" y1="${f(-l.a.y)}" x2="${f(l.b.x)}" y2="${f(-l.b.y)}" stroke="${ink}" stroke-width="${f(l.width)}" fill="none"/>`);
+    ctx.add({ kind: 'path', layer: l.dim ? dims : text, pts: [l.a, l.b], closed: false, ...(l.width > 0.03 * m ? { weight: 0.35 } : {}) });
   }
   for (const b of p.boxes) {
-    parts.push(`<rect x="${f(b.center.x - b.w / 2)}" y="${f(-b.center.y - b.h / 2)}" width="${f(b.w)}" height="${f(b.h)}" fill="white" stroke="${ink}" stroke-width="${f(b.width)}"/>`);
+    const x0 = b.center.x - b.w / 2, x1 = b.center.x + b.w / 2, y0 = b.center.y - b.h / 2, y1 = b.center.y + b.h / 2;
+    ctx.add({ kind: 'path', layer: text, pts: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], closed: true, fill: '#ffffff' });
   }
   for (const t of p.texts) {
-    // Baseline-centred: svg2pdf ignores dominant-baseline, so shift by ~0.35 em
-    parts.push(`<text x="0" y="${f(t.size * 0.35)}" transform="translate(${f(t.at.x)},${f(-t.at.y)}) rotate(${f(-t.angle)})" font-size="${f(t.size)}" font-family="Helvetica, Arial, sans-serif"${t.bold ? ' font-weight="bold"' : ''} fill="${ink}" text-anchor="middle">${esc(t.text)}</text>`);
+    ctx.add({
+      kind: 'text', layer: t.dim ? dims : text, at: t.at, text: t.text, height: t.size * CAP,
+      align: 'center', valign: 'middle', rotation: (t.angle * Math.PI) / 180, bold: t.bold,
+    });
   }
-  parts.push('</g>');
-  return parts.join('\n');
-}
+};
 
-/** Draw primitives with a dxf-writer Drawing; `mapY` converts model Y to the drawing's Y. */
-export function drawAnnotationsDxf(
-  dxf: { drawLine(x1: number, y1: number, x2: number, y2: number): unknown; drawText(x: number, y: number, h: number, rot: number, text: string, hAlign?: string, vAlign?: string): unknown; drawRect(x1: number, y1: number, x2: number, y2: number): unknown },
-  p: AnnotationPrimitives,
-  mapY: (y: number) => number = y => y,
-): void {
-  for (const l of p.lines) dxf.drawLine(l.a.x, mapY(l.a.y), l.b.x, mapY(l.b.y));
-  for (const b of p.boxes) dxf.drawRect(b.center.x - b.w / 2, mapY(b.center.y - b.h / 2), b.center.x + b.w / 2, mapY(b.center.y + b.h / 2));
-  const flipped = mapY(1) < mapY(0);
-  for (const t of p.texts) dxf.drawText(t.at.x, mapY(t.at.y), t.size, flipped ? -t.angle : t.angle, t.text, 'center', 'middle');
-}
+registerPlanAnnotator(planAnnotator);

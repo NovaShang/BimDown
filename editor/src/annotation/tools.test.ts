@@ -8,7 +8,9 @@ import { pickReference, chainDirection, chainRows, wallRunPicks, dimensionElemen
 import { tempDimsFor } from './tempDims.ts';
 import { resolveDimension } from './geometry.ts';
 import { tagAllElements } from '../tools/annotationTools.ts';
-import { drawAnnotations, annotationsToSvg } from '../export/annotationExport.ts';
+import { drawAnnotations } from '../export/annotationExport.ts';
+import { buildPlanDrawing } from '../export/drawing/plan.ts';
+import { planToDxf } from '../export/exportDxf.ts';
 
 const els = (s: EditorState) => s.document!.elements;
 const lookup = (s: EditorState) => (id: string) => els(s).get(id);
@@ -89,8 +91,15 @@ describe('tags and export', () => {
     const prims = drawAnnotations([...els(state).values()], 'm');
     expect(prims.texts.map(t => t.text)).toEqual(expect.arrayContaining(['10000', 'North wing', 'Office', '101', '50.00 m²', 'D01']));
     expect(prims.boxes).toHaveLength(1); // door tag box; room tags are unboxed
-    const svg = annotationsToSvg(prims);
-    expect(svg).toContain('>10000</text>');
-    expect(svg).toContain('data-table="annotation"');
+  });
+
+  it('plan sheets (PDF / DXF) draw them on the annotation layers, tagged rooms without a second label', async () => {
+    const { state } = await load();
+    const d = buildPlanDrawing({ project: state.project!, levelId: 'lv-1' }, 100)!;
+    const texts = (layer: string) => d.items.flatMap(i => (i.kind === 'text' && i.layer === layer ? [i.text] : []));
+    expect(texts('G-ANNO-DIMS')).toEqual(['10000']);
+    expect(texts('G-ANNO-TEXT')).toEqual(expect.arrayContaining(['North wing', 'Office', '101', 'D01']));
+    expect(texts('A-AREA-IDEN')).not.toContain('Office'); // the room tag replaces the plain room label
+    expect(planToDxf(d)).toContain('\nG-ANNO-DIMS\n');
   });
 });

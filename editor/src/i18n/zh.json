@@ -558,5 +558,21 @@
   "schedule.col.shape": "形状",
   "schedule.col.size": "尺寸",
   "schedule.col.system": "系统",
-  "schedule.col.type": "类型"
+  "schedule.col.type": "类型",
+  "drawing.title.architecture": "{{level}}建筑平面图",
+  "drawing.title.structure": "{{level}}结构平面图",
+  "drawing.title.mep": "{{level}}机电平面图",
+  "drawing.title.all": "{{level}}综合平面图",
+  "drawing.project": "项目",
+  "drawing.drawing": "图名",
+  "drawing.scale": "比例",
+  "drawing.date": "日期",
+  "drawing.sheet": "图号",
+  "drawing.elevation": "标高",
+  "drawing.units": "单位",
+  "drawing.north": "北",
+  "drawing.up": "上",
+  "drawing.down": "下",
+  "drawing.systems": "系统",
+  "drawing.generatedBy": "BimDown 出图"
 }
