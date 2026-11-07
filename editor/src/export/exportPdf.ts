@@ -12,7 +12,10 @@ import { triggerDownload } from './download.ts';
 import { collectPlans, renderPlan, isoDate, type PlanExportOptions } from './drawing/plan.ts';
 import { sheetLayout, pickScale, scaleBarStep, type PaperSize, type Rect, type SheetLayout } from './drawing/sheet.ts';
 import { drawingLabel, drawingLang, type DrawingLang } from './drawing/labels.ts';
-import { tint } from './drawing/color.ts';
+import { parseColor, tint, toHex } from './drawing/color.ts';
+
+/** jsPDF takes hex / named colours only: system colours may be hsl() or rgb(). */
+const pdfColor = (css: string) => (/^#[0-9a-f]{6}$/i.test(css) ? css : toHex(parseColor(css)));
 import { needsUnicodeFont, loadUnicodeFont, CJK_FONT_FILE, CJK_FONT_NAME, type FontLoader } from './drawing/pdfFont.ts';
 import type { LineDash } from './drawing/layers.ts';
 import type { DrawItem, PlanDrawing } from './drawing/types.ts';
@@ -61,7 +64,7 @@ function sheetText(
     const w = doc.getTextWidth(text);
     if (w > o.maxWidth) { size *= o.maxWidth / w; doc.setFontSize(size * MM_TO_PT / CAP); }
   }
-  const color = o.color ?? '#1a1a1a';
+  const color = pdfColor(o.color ?? '#1a1a1a');
   doc.setTextColor(color);
   const fakeBold = !!o.bold && fonts.unicode;
   if (fakeBold) { doc.setDrawColor(color); doc.setLineWidth(size * 0.07); }
@@ -107,14 +110,14 @@ class PlanPage {
     if (it.halftone) color = tint(color, 0.6);
     const weight = it.weight ?? layer?.weight ?? 0.18;
     const dash = it.dash ?? layer?.dash ?? 'solid';
-    this.doc.setDrawColor(color);
+    this.doc.setDrawColor(pdfColor(color));
     this.doc.setLineWidth(weight);
     this.doc.setLineDashPattern(DASH_MM[dash], 0);
   }
 
   private fillColor(it: DrawItem & { fill?: string }) {
     const fill = it.fill ?? '#ffffff';
-    this.doc.setFillColor(it.halftone ? tint(fill, 0.65) : fill);
+    this.doc.setFillColor(pdfColor(it.halftone ? tint(fill, 0.65) : fill));
   }
 
   draw() {
@@ -315,7 +318,7 @@ function viewTitle(doc: JsPdf, fonts: Fonts, L: SheetLayout, d: PlanDrawing, inf
       if (row > Math.floor(V.h / rowH)) break;
       const ty = V.y + row * rowH;
       doc.setLineDashPattern([], 0);
-      doc.setDrawColor(it.color);
+      doc.setDrawColor(pdfColor(it.color));
       doc.setLineWidth(0.8);
       doc.line(x, ty - size / 2, x + swatch, ty - size / 2);
       sheetText(doc, fonts, it.label, x + swatch + 1.5 * k, ty, { size });

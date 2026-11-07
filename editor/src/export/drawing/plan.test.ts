@@ -140,6 +140,20 @@ describe('plan drawing', () => {
     expect(planToDxf(d)).toContain('\nP-FIXT\n');
   });
 
+  it('writes a PDF for systems whose colour is generated (hsl)', async () => {
+    const files = room();
+    files['lv-1/duct.csv'] = 'id,number,shape,size_x,size_y,system_type\ndu-1,,rect,0.4,0.3,ZZ-CUSTOM\n';
+    const { project, grids } = await open(files);
+    const { buildPlanPdf } = await import('../exportPdf.ts');
+    const { readFileSync } = await import('node:fs');
+    const fontLoader = async () => {
+      const b = readFileSync(new URL('../../assets/fonts/NotoSansSC-Regular-subset.ttf', import.meta.url));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    };
+    const pdf = await buildPlanPdf(project, 'test', { scope: 'all', discipline: 'mep', grids, fontLoader });
+    expect(pdf?.pages).toBeGreaterThan(0);
+  });
+
   it('chains wall outline edges into polylines', () => {
     const p = (x: number, y: number) => ({ x, y });
     expect(chainEdges([[p(0, 0), p(1, 0)], [p(1, 0), p(1, 1)], [p(5, 5), p(6, 5)]], 1e-9)).toEqual([
