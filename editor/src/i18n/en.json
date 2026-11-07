@@ -407,6 +407,8 @@
 
   "type.label": "Type",
   "type.none": "No type",
+  "type.addStarter": "Add starter types",
+  "type.noneInCategory": "No types in this category yet",
   "type.varies": "<varies>",
   "type.edit": "Edit Type",
   "type.properties": "Type Properties",

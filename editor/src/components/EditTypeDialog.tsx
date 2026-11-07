@@ -9,12 +9,12 @@ import {
   removeType, typeTableDef, typeTableFor, upsertType,
   type ElementType, type TypeCatalog, type TypeLayer,
 } from '../model/types/catalog.ts';
-import { starterCatalog } from '../model/types/starter.ts';
+import { starterCatalog, withStarterTypes } from '../model/types/starter.ts';
 import {
   MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS, STRUCTURAL_SHAPE_OPTIONS, SHAPE_OPTIONS,
 } from '../elements/_options.ts';
 import { LayerHatchDefs, layerFill } from '../elements/_layerHatch.tsx';
-import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
+import { getProjectUnits, getUnitSuffix, unitsPerMetreOf } from '../utils/units.ts';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { NumberInput } from './NumberInput.tsx';
@@ -90,8 +90,9 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
   const dispatch = useEditorDispatch();
   const def = typeTableFor(instanceTable);
   const unit = getUnitSuffix(getProjectUnits(state)).trim();
+  const upm = unitsPerMetreOf(getProjectUnits(state));
 
-  const [draft, setDraft] = useState<TypeCatalog>(() => state.project?.types ?? starterCatalog());
+  const [draft, setDraft] = useState<TypeCatalog>(() => state.project?.types ?? starterCatalog(upm));
   const [selId, setSelId] = useState(typeId);
   // Layer numbers as typed ("0.", "0.1"…), keyed `${layerId}:${field}`; the
   // layer keeps the parsed number.
@@ -99,7 +100,7 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
 
   useEffect(() => {
     if (!open) return;
-    const base = state.project?.types ?? starterCatalog();
+    const base = state.project?.types ?? starterCatalog(upm);
     setDraft(base);
     setRaw({});
     const first = base.types.find(x => x.table === def?.table)?.id ?? '';
@@ -255,6 +256,21 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
               <Trash2 className="size-3.5" />{t('type.delete')}
             </button>
           </div>
+
+          {categoryTypes.length === 0 && (() => {
+            const withStarter = withStarterTypes(draft, def.table, upm);
+            return (
+              <div className="mb-3 flex items-center gap-2 rounded-md border border-dashed border-border px-3 py-2 text-[11px] text-muted-foreground">
+                <span className="flex-1">{t('type.noneInCategory')}</span>
+                {withStarter && (
+                  <button type="button" className={BTN} data-testid="type-dialog-add-starter"
+                    onClick={() => { setDraft(withStarter); setSelId(withStarter.types.find(x => x.table === def.table)?.id ?? ''); }}>
+                    <Plus className="size-3.5" />{t('type.addStarter')}
+                  </button>
+                )}
+              </div>
+            );
+          })()}
 
           {sel && (
             <>

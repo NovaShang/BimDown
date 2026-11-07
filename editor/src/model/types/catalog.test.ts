@@ -8,7 +8,7 @@ import { editorReducer, initialState } from '../../state/editorReducer.ts';
 import type { EditorState } from '../../state/editorTypes.ts';
 import type { LineElement } from '../elements.ts';
 import { memoryDataSource, fc } from '../../test/memoryDataSource.ts';
-import { STARTER_TYPE_FILES, starterCatalog } from './starter.ts';
+import { STARTER_TYPE_FILES, starterCatalog, withStarterTypes } from './starter.ts';
 import {
   duplicateType, findType, parseTypeFiles, resolvedLayers, serializeTypeFiles,
   typeParamState, typesForInstanceTable, upsertType, type TypeCatalog,
@@ -72,6 +72,23 @@ describe('element types in the editor', () => {
     expect(eps.layers.map(l => `${l.function}:${l.thickness}`)).toEqual(['finish:0.01', 'insulation:0.1', 'core:0.2', 'finish:0.015']);
     expect(serializeTypeFiles(catalog)).toEqual(STARTER_TYPE_FILES);
     expect(parseTypeFiles(serializeTypeFiles(catalog))).toEqual(catalog.types);
+  });
+
+  it('starter types follow the project units; missing starter rows of a category can be added', () => {
+    const mm = starterCatalog(1000);
+    expect(findType(mm, 'wt-ext-concrete-eps')!.layers.map(l => l.thickness)).toEqual([10, 100, 200, 15]);
+    expect(findType(mm, 'fut-desk-1600')!.values).toMatchObject({ size_x: '1600', size_y: '800', height: '750' });
+    expect(findType(mm, 'fut-office-chair')!.values.size_x).toBe('');
+
+    // Saved catalog without furniture types: only the furniture starter rows are appended
+    const own = { types: starterCatalog().types.filter(t => t.table === 'wall_type').map(t => ({ ...t, name: `${t.name} (mine)` })), saved: true };
+    const next = withStarterTypes(own, 'furniture_type', 1000)!;
+    expect(next.types.slice(0, own.types.length)).toEqual(own.types);
+    const added = next.types.slice(own.types.length);
+    expect(added.length).toBeGreaterThan(3);
+    expect(added.every(t => t.table === 'furniture_type')).toBe(true);
+    expect(withStarterTypes(next, 'furniture_type')).toBeNull();
+    expect(withStarterTypes(own, 'wall_type')).toBeNull();
   });
 
   it('loads typed elements with effective values; overrides stay', async () => {

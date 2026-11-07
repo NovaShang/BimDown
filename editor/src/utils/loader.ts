@@ -3,6 +3,7 @@ import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import type { DataSource } from './dataSource.ts';
 import { TYPE_FILE_PATHS, isTypedTable, parseTypeFiles, resolveTypeAttrs, type TypeCatalog } from '../model/types/catalog.ts';
 import { starterCatalog } from '../model/types/starter.ts';
+import { getProjectUnits, unitsPerMetreOf } from './units.ts';
 import { sectionsFromRows, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
 import { sheetSetFromRows, SHEET_CSV_PATH, VIEWPORT_CSV_PATH } from '../sheets/sheetsIO.ts';
 import type { SheetSet } from '../sheets/sheetTypes.ts';
@@ -207,9 +208,10 @@ function resolveRowTypes(csvMap: Map<string, CsvRow>, tableName: string, types: 
 export async function loadTypeCatalog(
   ds: DataSource,
   fetchIfPresent: (p: string) => Promise<string | null> = p => ds.fetchText(p),
+  upm = 1,
 ): Promise<TypeCatalog> {
   const texts = await Promise.all(TYPE_FILE_PATHS.map(p => fetchIfPresent(p)));
-  if (texts.every(t => t === null)) return starterCatalog();
+  if (texts.every(t => t === null)) return starterCatalog(upm);
   const files: Record<string, string | null> = {};
   TYPE_FILE_PATHS.forEach((p, i) => { files[p] = texts[i]; });
   return { types: parseTypeFiles(files), saved: true, fromDisk: true };
@@ -221,7 +223,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const fetchIfPresent = (p: string) => fetchListed(ds, manifest, p);
 
   const metadata = await metadataPromise;
-  const types = await loadTypeCatalog(ds, fetchIfPresent);
+  const types = await loadTypeCatalog(ds, fetchIfPresent, unitsPerMetreOf(getProjectUnits({ project: { metadata } })));
   let elevatedSpatialZ = false;
 
   let levels: Level[] = [];

@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
+import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import { loadProject, loadGrids, loadLayer, loadMepSystems, loadTypeCatalog, loadSections, drawingFileReload } from '../utils/loader.ts';
 import { TYPE_FILE_PATHS } from '../model/types/catalog.ts';
@@ -78,7 +79,7 @@ export function useLiveProject(model: string): void {
       }
 
       if (TYPE_FILE_PATHS.includes(path)) {
-        const types = await loadTypeCatalog(ds);
+        const types = await loadTypeCatalog(ds, undefined, unitsPerMetreOf(getProjectUnits(stateRef.current)));
         if (active) dispatch({ type: 'SET_TYPES', types });
         return;
       }

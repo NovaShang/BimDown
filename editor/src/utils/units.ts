@@ -20,6 +20,11 @@ export function getProjectUnits(state: { project: { metadata?: { units?: string 
   return 'm';
 }
 
+/** Model units per metre (1000 for mm). */
+export function unitsPerMetreOf(unit: ProjectUnit): number {
+  return unit === 'mm' ? 1000 : unit === 'ft' ? 1 / 0.3048 : unit === 'in' ? 1 / 0.0254 : 1;
+}
+
 /** Suffix string to render next to numeric inputs, prefixed by a leading space
  *  so it composes cleanly with adjacent text (e.g. `'1.5' + ' m'`). */
 export function getUnitSuffix(unit: ProjectUnit): string {

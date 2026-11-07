@@ -407,6 +407,8 @@
 
   "type.label": "类型",
   "type.none": "无类型",
+  "type.addStarter": "添加预置类型",
+  "type.noneInCategory": "此类别还没有类型",
   "type.varies": "<多种>",
   "type.edit": "编辑类型",
   "type.properties": "类型属性",
