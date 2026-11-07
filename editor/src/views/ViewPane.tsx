@@ -5,6 +5,7 @@ import type { ElevationDir, SectionDef } from './viewTypes.ts';
 import { cn } from '../lib/utils';
 
 const OrthoView = lazy(() => import('./OrthoView.tsx'));
+const ViewDrawing = lazy(() => import('./ViewDrawing.tsx'));
 
 const DIRS: ElevationDir[] = ['north', 'south', 'east', 'west'];
 
@@ -17,6 +18,8 @@ export default function ViewPane() {
   const dispatch = useEditorDispatch();
   const [width, setWidth] = useState(() => Math.round(Math.min(720, Math.max(380, window.innerWidth * 0.42))));
   const resize = useRef<{ x: number; w: number } | null>(null);
+  // 3D (interactive ortho model) or 2D drawing (vector line work + annotations)
+  const [mode, setMode] = useState<'3d' | 'drawing'>('3d');
   const open = views.open;
   if (!open) return null;
 
@@ -93,6 +96,14 @@ export default function ViewPane() {
             </button>
           </div>
         )}
+        <div className="ml-2 flex items-center rounded-md border border-border p-0.5" title={t('views.modeTitle')}>
+          {(['3d', 'drawing'] as const).map(m => (
+            <button key={m} className={cn('h-5 cursor-pointer rounded border-none px-1.5 text-[10px]', mode === m ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]' : 'bg-transparent text-muted-foreground')}
+              data-testid={`view-mode-${m}`} onClick={() => setMode(m)}>
+              {t(m === '3d' ? 'views.mode3d' : 'views.modeDrawing')}
+            </button>
+          ))}
+        </div>
         <div className="ml-auto flex items-center gap-0.5">
           <button className={BTN} title={t('view.zoomToFit')} onClick={() => window.dispatchEvent(new Event('zoom-to-fit-view'))}>
             <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5"><path d="M2 6V2h4M14 6V2h-4M2 10v4h4M14 10v4h-4" /></svg>
@@ -109,7 +120,9 @@ export default function ViewPane() {
       </div>
       <div className="relative min-h-0 flex-1">
         <Suspense fallback={null}>
-          <OrthoView view={open} />
+          {mode === 'drawing'
+            ? <ViewDrawing view={open.kind === 'elevation' ? { kind: 'elevation', id: open.dir } : { kind: 'section', id: open.id }} />
+            : <OrthoView view={open} />}
         </Suspense>
       </div>
     </div>

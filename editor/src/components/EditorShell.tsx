@@ -4,8 +4,9 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { getProcessedLayers, getProcessedLayersFromDocument, getComputedViewBox, getLayerGroups, getSelectedElementData } from '../state/selectors.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
-import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, persistTypes, stampSpatialZMarker, removeLevelFiles, restoreLevelFiles, persistSections } from '../utils/persist.ts';
+import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, persistTypes, stampSpatialZMarker, removeLevelFiles, restoreLevelFiles, persistSections, persistSheets, persistMetadataFields } from '../utils/persist.ts';
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
+import { csvHeadersForTable } from '../model/tableRegistry.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import LeftPanel from './LeftPanel.tsx';
@@ -23,9 +24,12 @@ import OnboardingTour from './OnboardingTour.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
 import SchedulePanel, { SCHEDULE_TOGGLE_EVENT } from './SchedulePanel.tsx';
-import { setAnnotationUnits } from '../annotation/geometry.ts';
+import { setAnnotationUnits, setAnnotationScale } from '../annotation/geometry.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import ViewPane from '../views/ViewPane.tsx';
+import { SHEETS_TOGGLE_EVENT } from '../sheets/events.ts';
+
+const SheetsPanel = lazy(() => import('../sheets/SheetsPanel.tsx'));
 import { UnderlayProvider } from '../underlay/UnderlayContext.tsx';
 import { UnderlayHint, CalibrateDialog } from '../underlay/UnderlayDialogs.tsx';
 
@@ -52,9 +56,24 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     return () => window.removeEventListener(SCHEDULE_TOGGLE_EVENT, toggle);
   }, []);
 
-  // Dimension text / annotation sizes follow the project's units
+  // Sheets view: toggled from the top bar or by the host app (window event)
+  const [showSheets, setShowSheets] = useState(false);
+  // Sheets draw from project.floors: bring the open level's edits in first
+  useEffect(() => { if (showSheets) syncDocumentToProject.current(); }, [showSheets]);
+  useEffect(() => {
+    const toggle = (e: Event) => {
+      const open = (e as CustomEvent<{ open?: boolean }>).detail?.open;
+      setShowSheets(v => (typeof open === 'boolean' ? open : !v));
+    };
+    window.addEventListener(SHEETS_TOGGLE_EVENT, toggle);
+    return () => window.removeEventListener(SHEETS_TOGGLE_EVENT, toggle);
+  }, []);
+
+  // Dimension text / annotation sizes follow the project's units and the
+  // plan's view scale (they are paper sizes)
   const projectUnit = getProjectUnits(state);
   setAnnotationUnits(projectUnit);
+  setAnnotationScale(state.views.planScale);
 
   const stateRef = useRef(state);
   stateRef.current = state;
@@ -266,6 +285,32 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     persistSections(stateRef.current.project?.sections ?? [], ds).catch(err => console.error('Persist sections failed:', err));
   }, [sectionsSaveSeq, ds]);
 
+  // Sheets, section / elevation annotations and title-block fields after a user edit
+  const sheetsSaveSeq = state.views.sheetsSaveSeq;
+  useEffect(() => {
+    const sheets = stateRef.current.project?.sheets;
+    if (sheetsSaveSeq === 0 || stateRef.current.readonly || !sheets) return;
+    persistSheets(sheets, ds).catch(err => console.error('Persist sheets failed:', err));
+  }, [sheetsSaveSeq, ds]);
+  const viewAnnotationsSaveSeq = state.views.viewAnnotationsSaveSeq;
+  useEffect(() => {
+    if (viewAnnotationsSaveSeq === 0 || stateRef.current.readonly) return;
+    for (const layer of stateRef.current.project?.viewAnnotations ?? []) {
+      // An emptied table is removed (or left header-only when the source can't delete)
+      const save = layer.csvRows.size > 0 ? persistGlobalLayer(layer, ds)
+        : ds.deleteFile ? ds.deleteFile(`global/${layer.tableName}.csv`)
+        : ds.saveFile(`global/${layer.tableName}.csv`, ['id', ...csvHeadersForTable(layer.tableName)].join(',') + '\n');
+      save.catch(err => console.error('Persist view annotations failed:', err));
+    }
+  }, [viewAnnotationsSaveSeq, ds]);
+  const metadataSaveSeq = state.views.metadataSaveSeq;
+  useEffect(() => {
+    const meta = stateRef.current.project?.metadata;
+    if (metadataSaveSeq === 0 || stateRef.current.readonly || !meta) return;
+    const { project_name = '', project_number = '', client = '', address = '' } = meta;
+    persistMetadataFields({ project_name, project_number, client, address }, ds).catch(err => console.error('Persist metadata failed:', err));
+  }, [metadataSaveSeq, ds]);
+
   // Use document model for rendering when available
   const processedLayers = useMemo(
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
@@ -390,6 +435,11 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
           />
         )}
         {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
+        {showSheets && (
+          <Suspense fallback={null}>
+            <SheetsPanel onClose={() => setShowSheets(false)} />
+          </Suspense>
+        )}
         <DrawingHints />
         <UnderlayHint />
         <CalibrateDialog />
