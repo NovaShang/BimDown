@@ -31,3 +31,4 @@ import './text_note.tsx';
 import './tag.tsx';
 import './furniture.tsx';
 import './circuit.tsx';
+import './model_group.tsx';

@@ -19,6 +19,7 @@ import { formatElevation, getProjectUnits } from '../utils/units.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import { persistMepSystems } from '../utils/persist.ts';
 import UnderlayPanel from '../underlay/UnderlayPanel.tsx';
+import { openDialog, showNotice } from '../state/modifyUi.ts';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -29,10 +30,10 @@ interface LeftPanelProps {
 
 /** Inline context menu for level items */
 function LevelContextMenu({
-  x, y, onRename, onDelete, onClose,
+  x, y, onRename, onDuplicate, onCopyHere, onDelete, onClose,
 }: {
   x: number; y: number;
-  onRename: () => void; onDelete: () => void; onClose: () => void;
+  onRename: () => void; onDuplicate: () => void; onCopyHere?: () => void; onDelete: () => void; onClose: () => void;
 }) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
@@ -55,8 +56,24 @@ function LevelContextMenu({
         className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
         onClick={() => { onRename(); onClose(); }}
       >
-        {t('panel.rename')}
+        {t('levels.edit')}…
       </button>
+      <button
+        className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
+        data-testid="level-duplicate"
+        onClick={() => { onDuplicate(); onClose(); }}
+      >
+        {t('levels.duplicate')}…
+      </button>
+      {onCopyHere && (
+        <button
+          className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
+          data-testid="level-copy-here"
+          onClick={() => { onCopyHere(); onClose(); }}
+        >
+          {t('levels.copySelectionHere')}
+        </button>
+      )}
       <button
         className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-accent"
         onClick={() => { onDelete(); onClose(); }}
@@ -160,7 +177,6 @@ export default function LeftPanel({
   const [showAddLevel, setShowAddLevel] = useState(false);
   const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
-  const [renameTarget, setRenameTarget] = useState<Level | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Level | null>(null);
   /** When non-null, opens the MEP system dialog. `null` slot is the add path;
    *  passing an existing SystemDef opens it in edit mode. */
@@ -425,22 +441,6 @@ export default function LeftPanel({
         defaultElevation={levels.length > 0 ? Math.max(...levels.map(l => l.elevation)) + 3 : 0}
       />
 
-      {/* Rename Level Dialog (reuse AddLevelDialog) */}
-      {renameTarget && (
-        <AddLevelDialog
-          open={true}
-          onClose={() => setRenameTarget(null)}
-          onConfirm={(name, elevation) => {
-            dispatch({ type: 'RENAME_LEVEL', levelId: renameTarget.id, name, elevation });
-            setRenameTarget(null);
-          }}
-          defaultName={renameTarget.name}
-          defaultElevation={renameTarget.elevation}
-          title={t('dialog.renameLevel')}
-          confirmLabel={t('dialog.save')}
-        />
-      )}
-
       {deleteTarget && (
         <ConfirmDialog
           title={t('dialog.deleteLevel')}
@@ -457,7 +457,11 @@ export default function LeftPanel({
         <LevelContextMenu
           x={contextMenu.x}
           y={contextMenu.y}
-          onRename={() => setRenameTarget(contextMenu.level)}
+          onRename={() => openDialog({ kind: 'editLevel', levelId: contextMenu.level.id })}
+          onDuplicate={() => openDialog({ kind: 'duplicateLevel', levelId: contextMenu.level.id })}
+          onCopyHere={selectedIds.size > 0 && contextMenu.level.id !== currentLevel
+            ? () => { dispatch({ type: 'COPY_TO_LEVELS', ids: [...selectedIds], levelIds: [contextMenu.level.id] }); showNotice('notice.copiedToLevels', { count: 1 }); }
+            : undefined}
           onDelete={() => setDeleteTarget(contextMenu.level)}
           onClose={() => setContextMenu(null)}
         />

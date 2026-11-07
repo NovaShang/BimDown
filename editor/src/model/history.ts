@@ -23,6 +23,10 @@ export interface EditCommand {
   mergeKey?: string;
   /** Set when the command edited the project's element types (undo restores `before`). */
   types?: { before: TypeCatalog; after: TypeCatalog };
+  /** Edits on several levels (copy to levels, duplicate level, elevation
+   *  changes, propagated group edits): per-level element patches and the
+   *  level list; the element maps above are then empty. Survives level switches. */
+  multi?: import('../state/levelEdits.ts').MultiLevelEdit;
 }
 
 export interface HistoryState {

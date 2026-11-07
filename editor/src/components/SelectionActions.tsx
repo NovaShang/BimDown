@@ -1,6 +1,10 @@
 import { useTranslation } from 'react-i18next';
 import { useEditorDispatch, useCoreEditorState } from '../state/EditorContext.tsx';
-import { Move, Copy, Trash2, FlipHorizontal, FlipVertical, RotateCw, ArrowLeftRight } from 'lucide-react';
+import { Move, Copy, Trash2, FlipHorizontal, FlipVertical, RotateCw, ArrowLeftRight, FlipHorizontal2, Grid3x3, Layers, Pin, PinOff, Group, Ungroup, PencilRuler, Filter } from 'lucide-react';
+import { enterModifyToolFor } from '../tools/modifyTools.ts';
+import { allPinned, createGroup, selectedGroup, setPinned, ungroup } from '../state/selectionOps.ts';
+import { openDialog } from '../state/modifyUi.ts';
+import type { EditorState } from '../state/editorTypes.ts';
 import { toElementId } from '../model/ids.ts';
 import { isHostedTable, type Point } from '../model/elements.ts';
 import { canFlipWalls, flipWalls } from '../state/typeEdits.ts';
@@ -25,7 +29,10 @@ export default function SelectionActions() {
   const el = singleId && doc ? doc.elements.get(toElementId(singleId)) : null;
   const isHosted = el ? isHostedTable(el.tableName) : false;
   const isDoor = el?.tableName === 'door';
-  const isPoint = el?.geometry === 'point';
+  const full = state as EditorState;
+  const pinned = allPinned(full);
+  const group = selectedGroup(full);
+  const levelsCount = state.project?.levels.length ?? 0;
   const selectedEls = doc ? [...selectedIds].map(id => doc.elements.get(toElementId(id))) : [];
   const flippable = canFlipWalls(selectedEls);
 
@@ -155,20 +162,74 @@ export default function SelectionActions() {
         </>
       )}
 
-      {/* Point element rotation */}
-      {isPoint && singleId && (
+      {/* Modify any selection: rotate, mirror, array, copy to levels */}
+      {!state.readonly && state.viewMode === '2d' && (
         <>
           <div className="mx-0.5 h-4 w-px bg-[var(--panel-border)]" />
-          <button className={btnClass} title={t('ctx.rotate', 'Rotate')}
+          <button className={btnClass} title={`${t('modify.rotate')} (RO)`} data-testid="sel-rotate"
             onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              dispatch({ type: 'SET_TOOL', tool: 'rotate' });
-              dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
-            }}
+            onClick={(e) => { e.stopPropagation(); enterModifyToolFor(dispatch, state, 'rotate'); }}
           >
             <RotateCw size={14} />
           </button>
+          <button className={btnClass} title={`${t('modify.mirror')} (MM)`} data-testid="sel-mirror"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); enterModifyToolFor(dispatch, state, 'mirror'); }}
+          >
+            <FlipHorizontal2 size={14} />
+          </button>
+          <button className={btnClass} title={`${t('modify.array')} (AR)`} data-testid="sel-array"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); enterModifyToolFor(dispatch, state, 'array'); }}
+          >
+            <Grid3x3 size={14} />
+          </button>
+          {levelsCount > 1 && (
+            <button className={btnClass} title={t('levels.copyTo')} data-testid="sel-copy-levels"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); openDialog({ kind: 'levels', mode: 'copy' }); }}
+            >
+              <Layers size={14} />
+            </button>
+          )}
+          <div className="mx-0.5 h-4 w-px bg-[var(--panel-border)]" />
+          <button className={btnClass} title={`${t(pinned ? 'ctx.unpin' : 'ctx.pin')} (${pinned ? 'UP' : 'PN'})`} data-testid="sel-pin"
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setPinned(full, dispatch, !pinned); }}
+          >
+            {pinned ? <PinOff size={14} /> : <Pin size={14} />}
+          </button>
+          {group ? (
+            <>
+              <button className={btnClass} title={`${t('ctx.editGroup')} (EG)`} data-testid="sel-edit-group"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); dispatch({ type: 'START_GROUP_EDIT', groupId: group.id }); }}
+              >
+                <PencilRuler size={14} />
+              </button>
+              <button className={btnClass} title={`${t('ctx.ungroup')} (UG)`} data-testid="sel-ungroup"
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => { e.stopPropagation(); ungroup(full, dispatch); }}
+              >
+                <Ungroup size={14} />
+              </button>
+            </>
+          ) : !state.groupEdit && (
+            <button className={btnClass} title={`${t('ctx.createGroup')} (GP)`} data-testid="sel-group"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); createGroup(full, dispatch); }}
+            >
+              <Group size={14} />
+            </button>
+          )}
+          {selectedIds.size > 1 && (
+            <button className={btnClass} title={`${t('ctx.selectionFilter')} (SF)`} data-testid="sel-filter"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); openDialog({ kind: 'filter' }); }}
+            >
+              <Filter size={14} />
+            </button>
+          )}
         </>
       )}
     </div>

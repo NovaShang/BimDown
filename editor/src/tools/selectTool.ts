@@ -46,8 +46,44 @@ const gesture = {
   },
 };
 
+/** Last pointer position over the canvas (Tab cycles what lies under it). */
+const lastPointer = { x: NaN, y: NaN };
+const tabCycle = { key: '', index: -1 };
+
+/**
+ * Tab / Shift+Tab: select, one at a time, the elements stacked under the
+ * pointer (a wall under a room, a door in a wall, a member of a group).
+ */
+function cycleUnderPointer(ctx: ToolContext, back: boolean): boolean {
+  if (!Number.isFinite(lastPointer.x) || typeof document === 'undefined') return false;
+  const state = ctx.getState();
+  const ids: string[] = [];
+  for (const node of document.elementsFromPoint(lastPointer.x, lastPointer.y)) {
+    const sid = ctx.findElementId(node);
+    if (!sid || ids.includes(sid)) continue;
+    const el = state.document?.elements.get(toElementId(sid));
+    if (!el || el.tableName === 'connector' || el.tableName === 'model_group') continue;
+    ids.push(sid);
+  }
+  if (ids.length === 0) return false;
+  const key = ids.join('|');
+  if (tabCycle.key !== key) { tabCycle.key = key; tabCycle.index = -1; }
+  tabCycle.index = (tabCycle.index + (back ? -1 : 1) + ids.length) % ids.length;
+  const pick = ids[tabCycle.index];
+  ctx.dispatch({ type: 'SET_HOVER', id: pick });
+  ctx.dispatch({ type: 'SELECT', ids: [pick], exact: true });
+  return true;
+}
+
 export const selectTool: ToolHandler = {
   cursor: 'default',
+
+  onKeyDown(ctx: ToolContext, e: KeyboardEvent) {
+    if (e.key !== 'Tab' || e.ctrlKey || e.metaKey || e.altKey) return false;
+    if (!cycleUnderPointer(ctx, e.shiftKey)) return false;
+    e.preventDefault();
+    return true;
+  },
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
@@ -126,6 +162,8 @@ export const selectTool: ToolHandler = {
       updatePortDrag(ctx, e);
       return;
     }
+    lastPointer.x = e.clientX;
+    lastPointer.y = e.clientY;
     if (!gesture.isDragging) {
       // Hover detection
       // TODO: hover temporarily disabled for performance testing

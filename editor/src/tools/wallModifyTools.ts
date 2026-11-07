@@ -15,6 +15,7 @@ import type { Point } from '../model/elements.ts';
 import { computePixelSize, nearestPointOnSegment, snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { isJoinable } from '../geometry/wallJoins.ts';
+import { isPinned } from '../model/pins.ts';
 import { nearestPointOnArc } from '../geometry/arc.ts';
 import {
   refLineOfElement, splitWall, straightWall, trimExtendToCorner, trimExtendToReference, type RefLine,
@@ -41,7 +42,7 @@ export function wallAt(ctx: ToolContext, state: ToolStateSnapshot, p: Point, str
   const tol = computePixelSize(ctx.screenToSvg) * 6;
   let best: string | null = null, bestD = Infinity;
   for (const el of state.document?.elements.values() ?? []) {
-    if (!isJoinable(el) || (straightOnly && el.arc)) continue;
+    if (!isJoinable(el) || (straightOnly && el.arc) || isPinned(el)) continue;
     const q = el.arc ? nearestPointOnArc(p, el.start, el.end, el.arc).point : nearestPointOnSegment(p, el.start, el.end);
     const d = Math.hypot(q.x - p.x, q.y - p.y) - el.strokeWidth / 2;
     if (d <= tol && d < bestD) { bestD = d; best = el.id; }

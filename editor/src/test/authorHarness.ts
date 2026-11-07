@@ -12,6 +12,7 @@ import type { ToolContext, ToolHandler } from '../tools/types.ts';
 import { getElementTool } from '../tools/archetypes/index.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { createDocument } from '../model/document.ts';
+import { parseFloorLayers } from '../model/parse.ts';
 import { persistDocument, persistGrids, persistLevels } from '../utils/persist.ts';
 import { memoryDataSource } from './memoryDataSource.ts';
 import type { Level } from '../types.ts';
@@ -88,6 +89,25 @@ export async function saveHarness(h: Harness): Promise<Record<string, string>> {
   await persistGrids([], ds);
   await persistDocument(s.document!, ds, undefined, level.elevation);
   // persistDocument writes empty strings for layers that became empty
+  for (const [k, v] of Object.entries(ds.files)) if (v === '') delete ds.files[k];
+  return ds.files;
+}
+
+/** Save every level (the open one from its document, the others from
+ *  project.floors, as EditorShell does after multi-level edits). */
+export async function saveHarnessAll(h: Harness): Promise<Record<string, string>> {
+  const ds = memoryDataSource({
+    'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }, null, 2) + '\n',
+  });
+  const s = h.state;
+  await persistLevels(s.project!.levels, ds);
+  await persistGrids([], ds);
+  for (const level of s.project!.levels) {
+    const doc = s.document!.levelId === level.id
+      ? s.document!
+      : createDocument(level.id, parseFloorLayers(s.project!.floors.get(level.id)?.layers ?? []));
+    await persistDocument(doc, ds, undefined, level.elevation, s.project!.types);
+  }
   for (const [k, v] of Object.entries(ds.files)) if (v === '') delete ds.files[k];
   return ds.files;
 }

@@ -7,7 +7,7 @@ import { stripTypeAttrs, type TypeCatalog } from './types/catalog.ts';
 import { ANNOTATION_TABLES } from '../annotation/model.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector', 'circuit', ...ANNOTATION_TABLES]);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector', 'circuit', 'model_group', ...ANNOTATION_TABLES]);
 
 /**
  * Group elements by discipline/tableName key.

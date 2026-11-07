@@ -10,7 +10,7 @@ import { drawGridTool } from './drawGridTool.ts';
 import { drawHostedTool } from './drawHostedTool.ts';
 import { relocateTool } from './relocateTool.ts';
 import { relocateHostedTool } from './relocateHostedTool.ts';
-import { rotateTool } from './rotateTool.ts';
+import { rotateTool, mirrorTool, arrayTool, alignTool, offsetTool, pasteTool } from './modifyTools.ts';
 import { drawTool } from './drawTool.ts';
 import { trimCornerTool, trimSingleTool, splitTool } from './wallModifyTools.ts';
 import { drawRegionTool } from './drawRegionTool.ts';
@@ -33,6 +33,11 @@ const toolRegistry: Record<string, ToolHandler> = {
   relocate: relocateTool,
   relocate_hosted: relocateHostedTool,
   rotate: rotateTool,
+  mirror: mirrorTool,
+  array: arrayTool,
+  align: alignTool,
+  offset: offsetTool,
+  paste: pasteTool,
 
   // Wall modify tools (trim / extend / split)
   trim_corner: trimCornerTool,

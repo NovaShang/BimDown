@@ -4,6 +4,12 @@ import type { DocumentState } from '../model/document.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { LAYER_STYLES } from '../types.ts';
+import { useEditorState } from '../state/EditorContext.tsx';
+import { copySelection, cutSelection, pasteAligned, pasteAtCursor, readClipboard, type PasteAligned } from '../state/clipboardCommands.ts';
+import {
+  allPinned, createGroup, selectAllInstances, selectBySystem, selectedGroup, selectionHasSystem, setPinned, ungroup,
+} from '../state/selectionOps.ts';
+import { openDialog, showNotice } from '../state/modifyUi.ts';
 interface ContextMenuState {
   x: number;
   y: number;
@@ -28,6 +34,11 @@ function getTableName(id: string): string | null {
 
 function getDisplayName(tableName: string): string {
   return LAYER_STYLES[tableName]?.displayName ?? tableName;
+}
+
+/** Small heading inside the menu */
+function Heading({ label }: { label: string }) {
+  return <div className="px-3 pb-0.5 pt-1 text-[9px] font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>;
 }
 
 /** Separator line between menu groups */
@@ -57,6 +68,7 @@ export default function CanvasContextMenu({
 }: CanvasContextMenuProps) {
   const { t } = useTranslation();
   const ref = useRef<HTMLDivElement>(null);
+  const full = useEditorState();
 
   // Click-outside + Esc to close
   useEffect(() => {
@@ -76,11 +88,41 @@ export default function CanvasContextMenu({
 
   // Clamp position to viewport
   const menuWidth = 180;
-  const menuHeight = 220;
+  const menuHeight = 520;
   const x = Math.min(menu.x, window.innerWidth - menuWidth - 8);
-  const y = Math.min(menu.y, window.innerHeight - menuHeight - 8);
+  const y = Math.max(8, Math.min(menu.y, window.innerHeight - menuHeight - 8));
 
   const act = (fn: () => void) => () => { fn(); onClose(); };
+
+  const paste = (where: PasteAligned | 'cursor') => async () => {
+    onClose();
+    const p = await readClipboard();
+    if (!p) { showNotice('notice.clipboardEmpty'); return; }
+    const err = where === 'cursor' ? pasteAtCursor(full, dispatch, p) : pasteAligned(full, dispatch, p, where);
+    if (err) showNotice(err);
+  };
+  const pasteItems = !readonly && (
+    <>
+      <Item label={t('ctx.paste')} shortcut={'\u2318V'} onClick={paste('cursor')} />
+      <Heading label={t('ctx.pasteAligned')} />
+      <Item label={t('ctx.pasteSamePlace')} onClick={paste('same')} />
+      <Item label={t('ctx.pasteCurrentLevel')} onClick={paste('current')} />
+      {(full.project?.levels.length ?? 0) > 1 && <Item label={t('ctx.pasteSelectedLevels')} onClick={act(() => openDialog({ kind: 'levels', mode: 'paste' }))} />}
+    </>
+  );
+  const sets = full.selectionSets ?? [];
+  const setItems = sets.length > 0 && (
+    <>
+      <Sep />
+      <Heading label={t('selectionSet.title')} />
+      {sets.map(set => (
+        <Item key={set.name} label={set.name} shortcut={String(set.ids.length)} onClick={act(() => {
+          if (set.levelId !== full.currentLevel) dispatch({ type: 'SET_LEVEL', levelId: set.levelId });
+          dispatch({ type: 'SELECT', ids: set.ids, exact: true });
+        })} />
+      ))}
+    </>
+  );
 
   const hasSelection = selectedIds.size > 0;
   const isMulti = selectedIds.size > 1;
@@ -89,7 +131,7 @@ export default function CanvasContextMenu({
   const getSelectedLayerKeys = (): Set<string> => {
     const keys = new Set<string>();
     for (const id of selectedIds) {
-      const el = document.elements.get(id);
+      const el = document.elements.get(id) ?? document.elements.get(id.slice(id.indexOf(':') + 1));
       if (el) keys.add(`${el.discipline}/${el.tableName}`);
     }
     return keys;
@@ -147,7 +189,7 @@ export default function CanvasContextMenu({
     return (
       <div
         ref={ref}
-        className="glass-panel fixed z-50 min-w-[160px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100"
+        className="glass-panel fixed z-50 max-h-[85vh] min-w-[180px] overflow-y-auto rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100"
         style={{ left: x, top: y }}
         onPointerDown={e => e.stopPropagation()}
       >
@@ -161,12 +203,35 @@ export default function CanvasContextMenu({
         )}
         {!readonly && (
           <>
+            <Item label={`${t('ctx.copyClipboard')}${label}`} shortcut={'\u2318C'} onClick={act(() => { if (copySelection(full)) showNotice('notice.copied', { count: selectedIds.size }); })} />
+            <Item label={`${t('ctx.cut')}${label}`} shortcut={'\u2318X'} onClick={act(() => cutSelection(full, dispatch))} />
+            {pasteItems}
+            <Sep />
             <Item label={`${t('ctx.delete')}${label}`} shortcut="Del" danger onClick={act(() => dispatch({ type: 'DELETE_ELEMENTS', ids: [...selectedIds] }))} />
             <Item label={`${t('ctx.duplicate')}${label}`} onClick={act(() => dispatch({ type: 'DUPLICATE_ELEMENTS', ids: [...selectedIds], offset: { dx: 0.5, dy: 0.5 } }))} />
+            {(full.project?.levels.length ?? 0) > 1 && <Item label={t('levels.copyTo')} onClick={act(() => openDialog({ kind: 'levels', mode: 'copy' }))} />}
+            <Item label={t(allPinned(full) ? 'ctx.unpin' : 'ctx.pin')} shortcut={allPinned(full) ? 'UP' : 'PN'} onClick={act(() => setPinned(full, dispatch, !allPinned(full)))} />
+            {selectedGroup(full) ? (
+              <>
+                <Item label={t('ctx.editGroup')} shortcut="EG" onClick={act(() => dispatch({ type: 'START_GROUP_EDIT', groupId: selectedGroup(full)!.id }))} />
+                <Item label={t('ctx.ungroup')} shortcut="UG" onClick={act(() => ungroup(full, dispatch))} />
+              </>
+            ) : !full.groupEdit && (
+              <Item label={t('ctx.createGroup')} shortcut="GP" onClick={act(() => createGroup(full, dispatch))} />
+            )}
             <Sep />
           </>
         )}
         <Item label={t('ctx.selectSimilar')} onClick={act(selectSimilar)} />
+        <Heading label={t('ctx.selectAllInstances')} />
+        <Item label={t('ctx.selectAllInView')} shortcut="SA" onClick={act(() => selectAllInstances(full, dispatch, 'view'))} />
+        <Item label={t('ctx.selectAllInProject')} onClick={act(() => {
+          const r = selectAllInstances(full, dispatch, 'project');
+          if (r.elsewhere > 0) showNotice('notice.alsoOnOtherLevels', { count: r.elsewhere });
+        })} />
+        {selectionHasSystem(full) && <Item label={t('ctx.selectBySystem')} onClick={act(() => selectBySystem(full, dispatch))} />}
+        {isMulti && <Item label={t('ctx.selectionFilter')} shortcut="SF" onClick={act(() => openDialog({ kind: 'filter' }))} />}
+        <Item label={t('selectionSet.save')} onClick={act(() => openDialog({ kind: 'saveSet' }))} />
         <Item label={t('ctx.hideLayer')} onClick={act(() => {
           const keys = getSelectedLayerKeys();
           for (const key of keys) {
@@ -180,6 +245,7 @@ export default function CanvasContextMenu({
             dispatch({ type: 'SET_VISIBLE_LAYERS', keys });
           })} />
         )}
+        {setItems}
         {isMulti && (
           <>
             <Sep />
@@ -194,12 +260,15 @@ export default function CanvasContextMenu({
   return (
     <div
       ref={ref}
-      className="glass-panel fixed z-50 min-w-[160px] rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100"
+      className="glass-panel fixed z-50 max-h-[85vh] min-w-[180px] overflow-y-auto rounded-md border border-border py-1 shadow-xl animate-in fade-in duration-100"
       style={{ left: x, top: y }}
       onPointerDown={e => e.stopPropagation()}
     >
+      {pasteItems}
+      {pasteItems && <Sep />}
       <Item label={t('ctx.selectAll')} shortcut={'\u2318A'} onClick={act(selectAll)} />
       <Item label={t('ctx.showAllLayers')} onClick={act(showAllLayers)} />
+      {setItems}
       <Sep />
       <Item label={t('ctx.zoomToFit')} shortcut={'\u23180'} onClick={act(() => canvasDispatch({ type: 'ZOOM_TO_FIT' }))} />
       <Item label={t('ctx.zoom100')} shortcut={'\u23181'} onClick={act(() => canvasDispatch({ type: 'ZOOM_TO_PERCENT', percent: 100 }))} />

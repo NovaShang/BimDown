@@ -21,7 +21,7 @@ import { drawPolygonTool } from '../drawPolygonTool.ts';
 import { drawHostedTool } from '../drawHostedTool.ts';
 import { relocateTool } from '../relocateTool.ts';
 import { relocateHostedTool } from '../relocateHostedTool.ts';
-import { rotateTool } from '../rotateTool.ts';
+import { rotateTool } from '../modifyTools.ts';
 
 export type ArchetypeOperation = 'place' | 'move' | 'edit';
 
