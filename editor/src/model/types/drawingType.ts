@@ -5,11 +5,25 @@
  */
 import { findType, retypeAttrs, typesForInstanceTable, type TypeCatalog } from './catalog.ts';
 
-const lastUsed = new Map<string, string>();
+const STORE_KEY = 'bimdown:lastTypes';
+let lastUsed: Map<string, string> | null = null;
 
-/** Remember the type picked for a table's placement tool (session only). */
+/** Last type per category, kept across sessions (localStorage; memory only where unavailable). */
+function store(): Map<string, string> {
+  if (lastUsed) return lastUsed;
+  lastUsed = new Map();
+  try {
+    const raw = globalThis.localStorage?.getItem(STORE_KEY);
+    if (raw) for (const [k, v] of Object.entries(JSON.parse(raw) as Record<string, string>)) if (typeof v === 'string') lastUsed.set(k, v);
+  } catch { /* unavailable or corrupt: start empty */ }
+  return lastUsed;
+}
+
+/** Remember the type last used for a category: picked for its placement tool or given to an element. */
 export function rememberDrawingType(instanceTable: string, typeId: string): void {
-  lastUsed.set(instanceTable, typeId);
+  const m = store();
+  m.set(instanceTable, typeId);
+  try { globalThis.localStorage?.setItem(STORE_KEY, JSON.stringify(Object.fromEntries(m))); } catch { /* quota / private mode */ }
 }
 
 /** Drawing attrs for `typeId`: type_id plus the type's parameter values. */
@@ -34,7 +48,7 @@ export function withDefaultDrawingType(
 ): Record<string, string> {
   const candidates = typesForInstanceTable(catalog, instanceTable);
   if (candidates.length === 0) return attrs;
-  const remembered = lastUsed.get(instanceTable);
+  const remembered = store().get(instanceTable);
   if (remembered === '') return attrs; // the user chose "no type" for this tool
   const t = (remembered && findType(catalog, remembered)) || (catalog?.saved ? candidates[0] : undefined);
   return t ? drawingAttrsForType(instanceTable, attrs, t.id, catalog) : attrs;

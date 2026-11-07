@@ -23,6 +23,7 @@ import LineLengthRow from './LineLengthRow.tsx';
 import { TypeSelect } from './TypeSelect.tsx';
 import EditTypeDialog from './EditTypeDialog.tsx';
 import { findType, isTypedTable, typeParamState, typeValues } from '../model/types/catalog.ts';
+import { rememberDrawingType } from '../model/types/drawingType.ts';
 import QuantitiesSection from './QuantitiesSection.tsx';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
 import { ElementWarnings } from './WarningsPanel.tsx';
@@ -179,7 +180,11 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
             instanceTable={firstData.tableName}
             value={typeId}
             mixed={selectedTypeIds.size > 1}
-            onChange={id => dispatch({ type: 'SET_ELEMENT_TYPE', ids: [...selectedData.keys()], typeId: id })}
+            onChange={id => {
+              dispatch({ type: 'SET_ELEMENT_TYPE', ids: [...selectedData.keys()], typeId: id });
+              // Revit: the next placement of this category starts with the type last used
+              rememberDrawingType(firstData.tableName, id);
+            }}
             triggerClassName={cn(FIELD_SELECT, 'text-left')}
             disabled={readonly}
           />
