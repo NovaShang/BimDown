@@ -99,10 +99,10 @@ export async function saveHarness(h: Harness): Promise<Record<string, string>> {
 export function authorHouse(): Harness {
   const h = createHarness();
   h.pick('wall');
-  for (const [a, b] of [[[0, 0], [10, 0]], [[10, 0], [10, 8]], [[10, 8], [0, 8]], [[0, 8], [0, 0]], [[6, 0], [6, 8]]]) {
-    h.click(a[0], a[1]); h.click(b[0], b[1]);
-  }
+  // The wall tool chains: one closed outline, then the partition on its own.
+  for (const [x, y] of [[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]) h.click(x, y);
   h.done();
+  h.pick('wall'); h.click(6, 0); h.click(6, 8); h.done();
   h.pick('door'); h.click(6, 4); h.done();
   h.pick('window'); h.click(8, 0); h.done();
   h.pick('space'); h.click(3, 4); h.click(8, 4); h.done();
