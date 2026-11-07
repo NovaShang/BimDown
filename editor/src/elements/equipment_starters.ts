@@ -209,6 +209,8 @@ export function materializeStarter(
   existingIds: Set<string>,
   /** Optional explicit rotation override. Default: starter.default_rotation ?? 0. */
   rotationDegOverride?: number,
+  /** Height above the level (the toolbar's Base Offset); default from the table. */
+  baseOffset?: string,
 ): CanonicalElement[] {
   const out: CanonicalElement[] = [];
 
@@ -227,6 +229,11 @@ export function materializeStarter(
     rotation: String(rotationDeg),
     // Strip any sentinel/UI-only keys that callers may have leaked through.
   };
+  if (baseOffset !== undefined && baseOffset !== '' && isFinite(parseFloat(baseOffset))) hostAttrs.base_offset = baseOffset;
+  // A host whose ports are all on one system joins it (a supply diffuser is
+  // on SA), so it is coloured and filtered with that system.
+  const roles = new Set(starter.ports.map(p => p.system_role));
+  if (!hostAttrs.system_type && roles.size === 1) hostAttrs.system_type = resolveSystemTag([...roles][0]);
   // Drop the __starter_key sentinel from the persisted attrs.
   delete hostAttrs.__starter_key;
 

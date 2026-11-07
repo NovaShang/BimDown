@@ -2,6 +2,7 @@ import type { LayerData, CsvRow } from '../types.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point, ArcParams } from './elements.ts';
 import { geometryTypeForTable, isHostedTable } from './elements.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
+import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 
 /** Tables that are CSV-only (no geometry file). */
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'mesh', 'connector']);
@@ -235,7 +236,7 @@ function buildLine(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): L
     tableName: layer.tableName, discipline: layer.discipline,
     start: { x: a[0], y: a[1] },
     end: { x: b[0], y: b[1] },
-    strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
+    strokeWidth: lineStrokeWidth(layer.tableName, csv),
     attrs: csvToAttrs(csv, id),
   };
   const arc = feat.properties?.arc;
@@ -261,12 +262,21 @@ function buildSpatialLine(id: string, feat: Feature, layer: LayerData, csv?: Csv
     start: { x: a[0], y: a[1] },
     end: { x: b[0], y: b[1] },
     startZ, endZ,
-    strokeWidth: parseFloat(csv?.thickness ?? '0.1'),
+    strokeWidth: lineStrokeWidth(layer.tableName, csv),
     attrs,
   };
   const arc = feat.properties?.arc;
   if (arc) el.arc = normalizeArc(arc);
   return el;
+}
+
+/** Plan width of a line element: wall thickness, or a duct / pipe / beam
+ *  section's size_x (diameter for round), same rule as the draw tools. */
+function lineStrokeWidth(tableName: string, csv?: CsvRow): number {
+  const fromAttrs = csv ? resolveLineStrokeWidth(tableName, csv) : null;
+  if (fromAttrs != null) return fromAttrs;
+  const t = parseFloat(csv?.thickness ?? '');
+  return t > 0 ? t : 0.1;
 }
 
 function buildPoint(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): PointElement {

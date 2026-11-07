@@ -23,6 +23,7 @@ import { getProjectUnits } from '../utils/units.ts';
 import { findPipeBodyHit, type PipeBodyHit } from '../utils/pipeBodyHit.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
+import { splitCurveAt } from '../model/mepSplit.ts';
 
 interface PortDragState {
   /** True while the gesture is in flight. */
@@ -262,6 +263,7 @@ export function finishPortDrag(ctx: ToolContext): void {
           tableName: state.pipeTable,
           discipline: 'mep',
           z: state.z,
+          endZ: patch.z,
           fromRef: state.fromRef,
           toRef: patch.newNodeId,
           systemType: state.systemType,
@@ -290,6 +292,7 @@ export function finishPortDrag(ctx: ToolContext): void {
 
   let polyline: Point[] | null = null;
   let toRef: string | null = null;
+  let targetZ: number | undefined;
 
   if (state.targetRef && elements) {
     // Determine target outward dir for orthoRoute hint.
@@ -310,6 +313,7 @@ export function finishPortDrag(ctx: ToolContext): void {
       }
     }
     toRef = state.targetRef;
+    targetZ = targetCp?.z;
   } else {
     // Cursor on empty space: create an open-ended pipe to where the user
     // released. Any drag at all (>= 1 mm) qualifies — the gesture itself
@@ -334,6 +338,7 @@ export function finishPortDrag(ctx: ToolContext): void {
     tableName: state.pipeTable,
     discipline: 'mep',
     z: state.z,
+    endZ: targetZ,
     fromRef: state.fromRef,
     toRef,
     systemType: state.systemType,
@@ -363,6 +368,8 @@ interface TJunctionPatch {
   newDownstream: MepCurveElement;
   newNodeId: string;
   newNode: PointElement;
+  /** Height of the tee (the run's height there). */
+  z: number;
 }
 
 function buildTJunctionPatch(
@@ -378,29 +385,9 @@ function buildTJunctionPatch(
   const splitPoint = hit.point;
 
   // Upstream half retains the original id (so external references survive
-  // the undo/redo round-trip cleanly). Its `to` is rewired to the new node.
-  const isSpatial = original.geometry === 'spatial_line';
-  const spatial = original as unknown as { startZ?: number; endZ?: number };
-  const updatedOriginal: MepCurveElement = {
-    ...original,
-    end: { x: splitPoint.x, y: splitPoint.y },
-    ...(isSpatial ? { endZ: spatial.startZ ?? 0 } : {}),
-    attrs: { ...original.attrs, to: newNodeId },
-  } as MepCurveElement;
-
-  // Downstream half: brand-new pipe carrying the original's tail.
-  const newDownstream: MepCurveElement = {
-    ...original,
-    id: newPipeId,
-    start: { x: splitPoint.x, y: splitPoint.y },
-    ...(isSpatial ? { startZ: spatial.endZ ?? 0 } : {}),
-    attrs: {
-      ...original.attrs,
-      id: newPipeId,
-      from: newNodeId,
-      to: original.attrs.to ?? '',
-    },
-  } as MepCurveElement;
+  // the undo/redo round-trip cleanly); the downstream half is a new row.
+  // Both keep the run's slope (split height interpolated).
+  const { upstream: updatedOriginal, downstream: newDownstream, z } = splitCurveAt(original, splitPoint, newNodeId, newPipeId);
 
   const baseNodeAttrs = defaultAttrs('mep_node', /* level inferred from pipe row */ '');
   const newNode: PointElement = {
@@ -416,6 +403,7 @@ function buildTJunctionPatch(
       id: newNodeId,
       system_type: original.attrs.system_type ?? '',
       kind: '',
+      base_offset: String(z),
     },
   };
 
@@ -426,6 +414,7 @@ function buildTJunctionPatch(
     newDownstream,
     newNodeId,
     newNode,
+    z,
   };
 }
 

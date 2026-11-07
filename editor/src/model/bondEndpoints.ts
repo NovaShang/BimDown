@@ -24,6 +24,7 @@ import { generateId } from './ids.ts';
 import { isMepLineTable } from './mepTopology.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { findPipeBodyHit } from '../utils/pipeBodyHit.ts';
+import { endZ, isVertical, splitCurveAt, zAt } from './mepSplit.ts';
 
 const DEFAULT_TOLERANCE = 0.01; // 1 cm in meters
 
@@ -124,12 +125,12 @@ export function bondEndpoints(
   }
 
   // Index existing mep_node positions for fast lookup when reusing.
-  const meps: { id: string; pos: { x: number; y: number }; sysType: string }[] = [];
+  const meps: { id: string; pos: { x: number; y: number }; z: number; sysType: string }[] = [];
   if (reuseExisting) {
     for (const el of elements.values()) {
       if (el.tableName !== 'mep_node' || el.geometry !== 'point') continue;
       const p = el as PointElement;
-      meps.push({ id: p.id, pos: p.position, sysType: p.attrs.system_type ?? '' });
+      meps.push({ id: p.id, pos: p.position, z: parseFloat(p.attrs.base_offset ?? '') || 0, sysType: p.attrs.system_type ?? '' });
     }
   }
 
@@ -138,14 +139,14 @@ export function bondEndpoints(
   const cellSize = Math.max(tol * 4, 0.05);
   const bucketKey = (pos: { x: number; y: number }) =>
     `${Math.round(pos.x / cellSize)}|${Math.round(pos.y / cellSize)}`;
-  type EndpointEntry = { id: string; side: 'start' | 'end'; sysType: string; pos: { x: number; y: number } };
+  type EndpointEntry = { id: string; side: 'start' | 'end'; table: string; sysType: string; pos: { x: number; y: number }; z: number };
   const buckets = new Map<string, EndpointEntry[]>();
   for (const el of elements.values()) {
     if (!isMepCurve(el)) continue;
     const sys = el.attrs.system_type ?? '';
     for (const side of ['start', 'end'] as const) {
       const pos = side === 'start' ? el.start : el.end;
-      const entry: EndpointEntry = { id: el.id, side, sysType: sys, pos };
+      const entry: EndpointEntry = { id: el.id, side, table: el.tableName, sysType: sys, pos, z: endZ(el, side) };
       const key = bucketKey(pos);
       const list = buckets.get(key) ?? [];
       list.push(entry);
@@ -170,6 +171,7 @@ export function bondEndpoints(
       if (!live) continue;
       if (live.attrs[refKey]) continue;
       const endpoint = side === 'start' ? live.start : live.end;
+      const z = endZ(live, side);
       const sysType = live.attrs.system_type ?? '';
 
       // Scan neighbours for coincident endpoints (skip self-same side).
@@ -179,9 +181,12 @@ export function bondEndpoints(
         const list = buckets.get(key);
         if (!list) continue;
         for (const entry of list) {
-          if (entry.id === candidateId && entry.side === side) continue;
+          // Endpoints meet in 3D: a riser's two ends share a plan position
+          // but never bond to each other, nor a duct to a pipe.
+          if (entry.id === candidateId) continue;
+          if (entry.table !== live.tableName) continue;
           if (entry.sysType !== sysType) continue;
-          if (distSq(entry.pos, endpoint) > tolSq) continue;
+          if (distSq(entry.pos, endpoint) > tolSq || Math.abs(entry.z - z) > tol) continue;
           matches.push({ id: entry.id, side: entry.side });
         }
       }
@@ -190,7 +195,7 @@ export function bondEndpoints(
       if (reuseExisting) {
         for (const m of meps) {
           if (m.sysType && sysType && m.sysType !== sysType) continue;
-          if (distSq(m.pos, endpoint) <= tolSq) {
+          if (distSq(m.pos, endpoint) <= tolSq && Math.abs(m.z - z) <= tol) {
             existingNodeId = m.id;
             break;
           }
@@ -218,8 +223,12 @@ export function bondEndpoints(
           systemType: sysType || undefined,
           excludeIds,
         });
-        if (bodyHit) {
-          const target = bodyHit.pipe as MepCurve;
+        const target = bodyHit?.pipe as MepCurve | undefined;
+        // A riser only tees into a run it actually reaches in height; a
+        // branch drawn in plan takes the run's height at the tee.
+        const reaches = !!bodyHit && !!target && (target.tableName === live.tableName)
+          && (!isVertical(live) || Math.abs(zAt(target, bodyHit.point) - z) <= tol);
+        if (bodyHit && target && reaches) {
           const splitPoint = bodyHit.point;
           // Allocate the tee node + downstream-half pipe id.
           const tNodeId = generateId('mep_node', usedIds);
@@ -227,32 +236,10 @@ export function bondEndpoints(
           const newDownstreamId = generateId(target.tableName, usedIds);
           usedIds.add(newDownstreamId);
 
-          const isSpatial = target.geometry === 'spatial_line';
-          const spatial = target as unknown as { startZ?: number; endZ?: number };
-
-          // Upstream half (existing id, new end + new attrs.to).
-          const updatedTarget: MepCurve = {
-            ...target,
-            end: { x: splitPoint.x, y: splitPoint.y },
-            ...(isSpatial ? { endZ: spatial.startZ ?? 0 } : {}),
-            attrs: { ...target.attrs, to: tNodeId },
-          } as MepCurve;
-          updates.set(target.id, updatedTarget);
-
-          // Downstream half (brand-new row carrying the original tail).
-          const newDownstream: MepCurve = {
-            ...target,
-            id: newDownstreamId,
-            start: { x: splitPoint.x, y: splitPoint.y },
-            ...(isSpatial ? { startZ: spatial.endZ ?? 0 } : {}),
-            attrs: {
-              ...target.attrs,
-              id: newDownstreamId,
-              from: tNodeId,
-              to: target.attrs.to ?? '',
-            },
-          } as MepCurve;
-          newElements.push(newDownstream);
+          // Upstream half keeps the id; the slope is kept on both halves.
+          const split = splitCurveAt(target, splitPoint, tNodeId, newDownstreamId);
+          updates.set(target.id, split.upstream);
+          newElements.push(split.downstream);
 
           // New passive mep_node at the T.
           const tNode: PointElement = {
@@ -268,6 +255,7 @@ export function bondEndpoints(
               number: '',
               system_type: sysType,
               kind: '',
+              base_offset: String(split.z),
             },
           };
           newElements.push(tNode);
@@ -275,11 +263,12 @@ export function bondEndpoints(
           // Snap the candidate's own endpoint to splitPoint and wire its ref.
           const selfCurve = liveCurve(candidateId);
           if (selfCurve) {
+            const spatialSelf = selfCurve.geometry === 'spatial_line';
             const snapped: MepCurve = {
               ...selfCurve,
               ...(side === 'start'
-                ? { start: { x: splitPoint.x, y: splitPoint.y } }
-                : { end:   { x: splitPoint.x, y: splitPoint.y } }),
+                ? { start: { x: splitPoint.x, y: splitPoint.y }, ...(spatialSelf ? { startZ: split.z } : {}) }
+                : { end:   { x: splitPoint.x, y: splitPoint.y }, ...(spatialSelf ? { endZ: split.z } : {}) }),
               attrs: { ...selfCurve.attrs, [refKey]: tNodeId },
             } as MepCurve;
             updates.set(candidateId, snapped);
@@ -322,6 +311,7 @@ export function bondEndpoints(
             number: '',
             system_type: sysType,
             kind: '',
+            base_offset: String(z),
           },
         };
         newElements.push(node);

@@ -54,6 +54,8 @@ export interface ConnectorSnapPoint {
   /** Full port reference string "host_id:port_name". Falls back to bare
    *  host_id if the connector has no `name` attribute. */
   portRef: string;
+  /** Port height above the level (host base_offset + offset_z). */
+  z?: number;
 }
 
 // ── Grid spacing ──

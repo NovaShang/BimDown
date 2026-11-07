@@ -37,7 +37,7 @@ export const drawPointTool: ToolHandler = {
         ? parseFloat(da.rotation) || 0
         : undefined;
       const levelId = resolveNextLevelId(state);
-      const elements = materializeStarter(starter, pt, levelId, existing, rotationOverride);
+      const elements = materializeStarter(starter, pt, levelId, existing, rotationOverride, da.base_offset);
       ctx.dispatch({
         type: 'CREATE_ELEMENTS',
         elements,

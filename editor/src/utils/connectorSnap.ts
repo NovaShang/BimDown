@@ -29,7 +29,7 @@ function rotate2D(x: number, y: number, deg: number): { x: number; y: number } {
 function resolveHost(
   hostId: string,
   elements: ReadonlyMap<string, CanonicalElement>,
-): { pos: Point; rotationDeg: number } | null {
+): { pos: Point; rotationDeg: number; baseOffset: number } | null {
   if (!hostId) return null;
   // Direct lookup first; fall back to scanning by unprefixed id since
   // host_id in CSV may carry either form (level-scoped IDs are stored both
@@ -46,7 +46,7 @@ function resolveHost(
   if (host.geometry !== 'point') return null;
   const p = host as PointElement;
   const rotationDeg = parseFloat(p.attrs.rotation || '0') || 0;
-  return { pos: p.position, rotationDeg };
+  return { pos: p.position, rotationDeg, baseOffset: parseFloat(p.attrs.base_offset || '0') || 0 };
 }
 
 /**
@@ -96,7 +96,8 @@ export function gatherConnectorSnapPoints(
     const portName = (p.attrs.name || '').trim();
     const portRef = portName ? `${hostId}:${portName}` : hostId;
 
-    out.push({ pos, dir, hostId, portRef });
+    const z = host.baseOffset + (parseFloat(p.attrs.offset_z || '0') || 0);
+    out.push({ pos, dir, hostId, portRef, z });
   }
   return out;
 }

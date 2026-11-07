@@ -94,6 +94,9 @@ export interface MaterialiseOpts {
   extraAttrs?: Record<string, string>;
   /** Level id for default-attrs lookup. */
   levelId: string;
+  /** Height of what the route connects to at its end. When it differs from
+   *  `z` the route ends with a vertical segment, so it really meets it. */
+  endZ?: number;
 }
 
 /** Convert a polyline into N pipe rows + (N-1) passive mep_node rows.
@@ -108,8 +111,13 @@ export function materialiseRoute(
 ): CanonicalElement[] {
   if (polyline.length < 2) return [];
 
+  const pts = polyline.map(p => ({ x: p.x, y: p.y, z: opts.z }));
+  if (opts.endZ !== undefined && Math.abs(opts.endZ - opts.z) > 1e-3) {
+    const last = pts[pts.length - 1];
+    pts.push({ x: last.x, y: last.y, z: opts.endZ });
+  }
   const out: CanonicalElement[] = [];
-  const segments = polyline.length - 1;
+  const segments = pts.length - 1;
 
   // Pre-allocate intermediate mep_node ids so each pipe knows its endpoint
   // refs before any rows are pushed.
@@ -124,8 +132,8 @@ export function materialiseRoute(
   const baseNodeAttrs = defaultAttrs('mep_node', opts.levelId);
 
   for (let i = 0; i < segments; i++) {
-    const start = polyline[i];
-    const end = polyline[i + 1];
+    const start = pts[i];
+    const end = pts[i + 1];
 
     const pipeId = generateId(opts.tableName, existingIds);
     existingIds.add(pipeId);
@@ -141,8 +149,8 @@ export function materialiseRoute(
       shape: opts.shape,
       size_x: opts.sizeX,
       size_y: opts.sizeY,
-      start_z: String(opts.z),
-      end_z: String(opts.z),
+      start_z: String(start.z),
+      end_z: String(end.z),
     };
     if (fromRef) attrs.from = fromRef;
     if (toRef) attrs.to = toRef;
@@ -154,8 +162,8 @@ export function materialiseRoute(
       geometry: 'spatial_line',
       start: { x: start.x, y: start.y },
       end: { x: end.x, y: end.y },
-      startZ: opts.z,
-      endZ: opts.z,
+      startZ: start.z,
+      endZ: end.z,
       strokeWidth: parseFloat(opts.sizeX) || 0.05,
       attrs,
     };
@@ -165,10 +173,11 @@ export function materialiseRoute(
     // an interior point.
     if (i < segments - 1) {
       const jointId = jointIds[i];
-      const point = polyline[i + 1];
+      const point = pts[i + 1];
       const nodeAttrs: Record<string, string> = {
         ...baseNodeAttrs,
         id: jointId,
+        base_offset: String(point.z),
         system_type: opts.systemType,
         // kind stays empty — runtime derives elbow / tee / cross / etc. from
         // the connected-pipe geometry.
