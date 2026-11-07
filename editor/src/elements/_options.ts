@@ -135,6 +135,7 @@ export const BOUNDARY_FACE_OPTIONS: DrawingField['options'] = [
   { value: 'interior', label: 'Interior face' },
   { value: 'core', label: 'Core face' },
   { value: 'centerline', label: 'Centre line' },
+  { value: 'core_exterior', label: 'Core outer face' },
   { value: 'exterior', label: 'Exterior face' },
 ];
 
