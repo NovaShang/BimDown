@@ -3,7 +3,7 @@ import type { ElementModule, GeometryContext, SelectionHandle } from './archetyp
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, PointElement, PolygonElement, Point } from '../model/elements.ts';
 import { BASE_OFFSET_FIELD } from './_options.ts';
-import { deriveSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
+import { getSpaceFaceGraph, findSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
 // Pull the i18next singleton directly. Importing `../i18n/i18n.ts` instead
 // would drag the editor's bootstrap `.init()` call into any host that
 // imports this module — and the host (e.g. the BimClaw web app) has its
@@ -66,21 +66,21 @@ export const spaceModule: ElementModule<SpaceFacts> = {
     const name = el.attrs.name || '';
     if (el.geometry === 'point') {
       const pt = el as PointElement;
-      // Try to derive a boundary polygon from surrounding walls. Shared once
-      // per render pass across all space elements via ctx.memo (keyed on the
-      // boundary-table contents) so the half-edge structure is built only
-      // once per pass even when many seeds live on the same level.
-      const walls = ctx.memo<LineElement[]>('space-boundary:walls', () => {
-        const collected: LineElement[] = [];
+      // Try to derive a boundary polygon from surrounding walls. The face
+      // graph is built once per wall set (cached across passes on the wall
+      // geometry, see getSpaceFaceGraph) and fetched once per pass via
+      // ctx.memo; each seed then only looks up its enclosing face.
+      const graph = ctx.memo('space-boundary:graph', () => {
+        const walls: LineElement[] = [];
         for (const table of BOUNDARY_TABLES) {
           for (const e of ctx.elementsByTable(table)) {
-            if (e.geometry === 'line') collected.push(e as LineElement);
+            if (e.geometry === 'line') walls.push(e as LineElement);
           }
         }
-        return collected;
+        return getSpaceFaceGraph(walls);
       });
       const derived = ctx.memo<Point[] | null>(`space-boundary:${el.id}`, () =>
-        deriveSpaceBoundary(pt.position, walls),
+        findSpaceBoundary(graph, pt.position),
       );
       if (derived && derived.length >= 3) {
         // CSV row remains a point seed; facts upgrade to polygon so draw2D
