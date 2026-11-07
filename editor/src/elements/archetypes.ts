@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../model/tableRegistry.ts';
 import type { PropertyField } from './_propertyFields.ts';
@@ -311,6 +311,21 @@ export interface ElementModule<TFacts = unknown> {
    * axes and structural braces.
    */
   supportsArc?: boolean;
+
+  /**
+   * Optional element-specific editor shown in the properties panel below the
+   * generic fields when exactly one element is selected (roof edge slopes,
+   * curtain wall grid, stair calculator, ...). Receives the live document
+   * element; edits go through the editor dispatch like any other panel row.
+   */
+  propertyPanel?: ComponentType<PropertyPanelProps>;
+}
+
+/** Props of `ElementModule.propertyPanel`. */
+export interface PropertyPanelProps {
+  element: CanonicalElement;
+  /** False when the element is read-only (another level, viewer mode). */
+  editable: boolean;
 }
 
 /** Type-erased module for the registry. */
