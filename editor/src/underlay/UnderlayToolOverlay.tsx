@@ -3,6 +3,7 @@ import type { Point } from '../model/elements.ts';
 import { useUnderlaySnapshot, useUnderlayStore } from './UnderlayContext.tsx';
 import { assetKey, localBounds } from './store.ts';
 import { localToWorld } from './transform.ts';
+import { TypedBadge } from '../components/WallDrawPreview.tsx';
 
 const ACCENT = '#f97316';
 
@@ -65,6 +66,9 @@ export default function UnderlayToolOverlay({ scale }: { scale: number }) {
           <circle cx={p.x} cy={p.y} r={r * 0.35} fill={ACCENT} />
         </g>
       ))}
+      {mode?.kind === 'move' && mode.base && cursor && snap.typed && (
+        <g transform="scale(1,-1)"><TypedBadge at={cursor} typed={snap.typed} scale={scale} labels={['L', '∠']} /></g>
+      )}
     </g>
   );
 }

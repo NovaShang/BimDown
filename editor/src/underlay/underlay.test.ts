@@ -206,9 +206,18 @@ describe('underlay store', () => {
     let cur = store.getSnapshot().underlays[0];
     expect(cur.scale).toBeCloseTo(0.002);
 
-    // Move by (+1, +2)
+    // Move by (+1, +2). The base point snaps to the moved underlay itself (a
+    // DXF) only; once picked, the underlay no longer snaps onto itself.
     store.startMode('move', u.id);
+    expect(store.pickingMoveBase).toBe(true);
+    expect(store.assetKind(u.id)).toBe('dxf');
+    const c2 = localToWorld(cur, { x: 1000, y: 0 });
+    expect(store.snapTargets({ x: c2.x + 0.001, y: c2.y }, 0.05).length).toBeGreaterThan(0);
+    store.setTyped({ length: '3', angle: '', field: 'length' });
     store.click({ x: 0, y: 0 });
+    expect(store.pickingMoveBase).toBe(false);
+    expect(store.getSnapshot().typed).toBeUndefined();
+    expect(store.snapTargets({ x: c2.x + 0.001, y: c2.y }, 0.05)).toHaveLength(0);
     store.pointerMove({ x: 1, y: 2 });
     expect(store.displayed(cur).x).toBeCloseTo(cur.x + 1);
     store.click({ x: 1, y: 2 });
