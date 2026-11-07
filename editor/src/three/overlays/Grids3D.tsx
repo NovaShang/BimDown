@@ -1,7 +1,43 @@
-import { Html, Line } from '@react-three/drei';
+import { useEffect, useMemo } from 'react';
+import { CanvasTexture, SRGBColorSpace } from 'three';
+import { Line } from '@react-three/drei';
 import { useEditorState } from '../../state/EditorContext.tsx';
 
 const GRID_COLOR = '#ef476f';
+
+/** Grid bubble as a screen-sized sprite (a DOM <Html> label per bubble broke
+ *  unmounting the 3D view: React then removed nodes drei had moved). */
+function GridBubble({ position, label }: { position: [number, number, number]; label: string }) {
+  const texture = useMemo(() => {
+    const size = 64;
+    const canvas = document.createElement('canvas');
+    canvas.width = canvas.height = size;
+    const ctx = canvas.getContext('2d');
+    if (ctx) {
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2 - 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffffff';
+      ctx.fill();
+      ctx.lineWidth = 5;
+      ctx.strokeStyle = GRID_COLOR;
+      ctx.stroke();
+      ctx.fillStyle = GRID_COLOR;
+      ctx.font = `700 ${label.length > 2 ? 22 : 30}px Inter, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(label, size / 2, size / 2 + 1);
+    }
+    const t = new CanvasTexture(canvas);
+    t.colorSpace = SRGBColorSpace;
+    return t;
+  }, [label]);
+  useEffect(() => () => texture.dispose(), [texture]);
+  return (
+    <sprite position={position} scale={[0.026, 0.026, 1]} renderOrder={10} raycast={() => null}>
+      <spriteMaterial map={texture} sizeAttenuation={false} depthTest={false} transparent />
+    </sprite>
+  );
+}
 
 /**
  * Grid axes in the 3D view (view option `showGrids3D`): dash-dot lines at the
@@ -24,17 +60,7 @@ export default function Grids3D() {
           <group key={g.id}>
             <Line points={[a, b]} color={GRID_COLOR} lineWidth={1.2}
               dashed dashSize={0.8} gapSize={0.25} transparent opacity={0.85} raycast={() => null} />
-            {ends.map((p, i) => (
-              <Html key={i} position={p} center zIndexRange={[10, 0]} style={{ pointerEvents: 'none' }}>
-                <div style={{
-                  width: 22, height: 22, borderRadius: 11, border: `2px solid ${GRID_COLOR}`,
-                  background: '#fff', color: GRID_COLOR, font: '700 11px Inter, sans-serif',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', userSelect: 'none',
-                }}>
-                  {g.number || g.id}
-                </div>
-              </Html>
-            ))}
+            {ends.map((p, i) => <GridBubble key={i} position={p} label={g.number || g.id} />)}
           </group>
         );
       })}
