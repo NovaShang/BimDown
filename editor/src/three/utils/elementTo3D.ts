@@ -146,7 +146,7 @@ function pointToBox(
     sx: el.width,
     sy: height,
     sz: el.height,
-    rotY: -(parseFloat(el.attrs.rotation || '0') * Math.PI / 180),
+    rotY: parseFloat(el.attrs.rotation || '0') * Math.PI / 180, // CCW, as in the spec
   };
 }
 

@@ -3,6 +3,8 @@ import { ShapeUtils } from 'three';
 import type { ExtrudeParams } from './elementTo3D.ts';
 import { createExtrudeGeometry } from './extrudePolygon.ts';
 
+type P2 = { x: number; y: number };
+
 interface OBB {
   ridgeAlongX: boolean;
   span: number;
@@ -14,7 +16,7 @@ interface OBB {
 }
 
 /** Compute AABB-based oriented bounding box. Ridge runs along the longer axis. */
-function computeOBB(vertices: { x: number; y: number }[]): OBB {
+function computeOBB(vertices: P2[]): OBB {
   let minX = Infinity, maxX = -Infinity;
   let minY = Infinity, maxY = -Infinity;
   for (const v of vertices) {
@@ -37,234 +39,193 @@ function computeOBB(vertices: { x: number; y: number }[]): OBB {
   };
 }
 
-/** Get the span-direction coordinate of a vertex. */
-function spanCoord(v: { x: number; y: number }, obb: OBB): number {
-  return obb.ridgeAlongX ? v.y : v.x;
-}
+/** Roof plane: rise above the eave level = a·x + b·y + c. */
+interface Plane { a: number; b: number; c: number }
+
+const rise = (p: Plane, v: P2) => p.a * v.x + p.b * v.y + p.c;
 
 /**
- * Insert new vertices where polygon edges cross given span-direction cut lines.
- * This ensures the triangulation has vertices at ridge/break lines.
+ * The roof's slope planes. The top surface is their lower envelope
+ * (min over planes), which is exactly how a roof of equal slopes behaves:
+ *   shed    — one plane rising across the span
+ *   gable   — two planes meeting at the ridge on the mid-span line
+ *   hip     — gable + two end planes; hips run 45° from the corners
+ *   mansard — steep lower band on both eaves, flat deck in the middle
  */
-function insertCutVertices(
-  vertices: { x: number; y: number }[],
-  obb: OBB,
-  cutPositions: number[], // absolute span-direction coordinates to cut at
-): { x: number; y: number }[] {
-  const result: { x: number; y: number }[] = [];
-  const n = vertices.length;
-
-  for (let i = 0; i < n; i++) {
-    const a = vertices[i];
-    const b = vertices[(i + 1) % n];
-    result.push(a);
-
-    const aS = spanCoord(a, obb);
-    const bS = spanCoord(b, obb);
-    const lo = Math.min(aS, bS);
-    const hi = Math.max(aS, bS);
-
-    // Collect all cuts that cross this edge, sorted by parameter t
-    const cuts: { t: number }[] = [];
-    for (const cutPos of cutPositions) {
-      if (cutPos > lo + 0.0001 && cutPos < hi - 0.0001) {
-        const t = (cutPos - aS) / (bS - aS);
-        cuts.push({ t });
-      }
-    }
-    // Sort by t so insertions are in order along the edge
-    cuts.sort((a, b) => a.t - b.t);
-
-    for (const { t } of cuts) {
-      result.push({
-        x: a.x + t * (b.x - a.x),
-        y: a.y + t * (b.y - a.y),
-      });
-    }
-  }
-
-  return result;
-}
-
-/** Triangulate a 2D polygon using ShapeUtils (requires Vector2). */
-function triangulate(vertices: { x: number; y: number }[]): number[] {
-  const contour = vertices.map(v => new Vector2(v.x, v.y));
-  const faces = ShapeUtils.triangulateShape(contour, []);
-  const indices: number[] = [];
-  for (const [a, b, c] of faces) indices.push(a, b, c);
-  return indices;
-}
-
-/** Compute normalized span position (0..1) for a vertex. */
-function spanT(v: { x: number; y: number }, obb: OBB): number {
-  const val = spanCoord(v, obb);
-  return obb.span > 0.001 ? (val - obb.spanMin) / obb.span : 0.5;
-}
-
-/** Compute normalized ridge position (0..1) for a vertex. */
-function ridgeT(v: { x: number; y: number }, obb: OBB): number {
-  const val = obb.ridgeAlongX ? v.x : v.y;
-  return obb.ridgeLen > 0.001 ? (val - obb.ridgeMin) / obb.ridgeLen : 0.5;
-}
-
-/**
- * Compute top-surface elevation above baseY for a vertex, based on roof type.
- */
-function roofElevation(
-  sT: number, rT: number,
-  thickness: number, slopeDeg: number,
-  span: number, ridgeLen: number,
-  roofType: string,
-): number {
-  const tanSlope = Math.tan((slopeDeg * Math.PI) / 180);
-  const halfSpan = span / 2;
-
+function roofPlanes(obb: OBB, roofType: string, slopeDeg: number): Plane[] {
+  const tan = Math.tan((slopeDeg * Math.PI) / 180);
+  // Distance-to-a-bbox-side planes, expressed in plan x / y.
+  const fromSpanMin = (k: number): Plane => obb.ridgeAlongX
+    ? { a: 0, b: k, c: -k * obb.spanMin } : { a: k, b: 0, c: -k * obb.spanMin };
+  const fromSpanMax = (k: number): Plane => obb.ridgeAlongX
+    ? { a: 0, b: -k, c: k * obb.spanMax } : { a: -k, b: 0, c: k * obb.spanMax };
+  const fromRidgeMin = (k: number): Plane => obb.ridgeAlongX
+    ? { a: k, b: 0, c: -k * obb.ridgeMin } : { a: 0, b: k, c: -k * obb.ridgeMin };
+  const fromRidgeMax = (k: number): Plane => obb.ridgeAlongX
+    ? { a: -k, b: 0, c: k * obb.ridgeMax } : { a: 0, b: -k, c: k * obb.ridgeMax };
   switch (roofType) {
     case 'shed':
-      return thickness + sT * span * tanSlope;
-
-    case 'gable': {
-      const distFromCenter = Math.abs(sT - 0.5) * 2; // 0 at ridge, 1 at eaves
-      return thickness + (1 - distFromCenter) * halfSpan * tanSlope;
-    }
-
-    case 'hip': {
-      const spanRise = (1 - Math.abs(sT - 0.5) * 2) * halfSpan * tanSlope;
-      // Taper at ridge ends: hip lines from corners meet ridge
-      const hipInset = Math.min(halfSpan / ridgeLen, 0.5); // normalized inset
-      let rFactor = 1;
-      if (rT < hipInset) rFactor = rT / hipInset;
-      else if (rT > 1 - hipInset) rFactor = (1 - rT) / hipInset;
-      return thickness + spanRise * rFactor;
-    }
-
-    case 'mansard': {
-      const mansardBand = 0.3;
-      const steepTan = Math.tan((Math.min(slopeDeg + 20, 70) * Math.PI) / 180);
-      const bandWidth = halfSpan * mansardBand;
-      const distFromEdge = Math.min(sT, 1 - sT) * span;
-      if (distFromEdge < bandWidth) {
-        return thickness + distFromEdge * steepTan;
-      }
-      return thickness + bandWidth * steepTan;
-    }
-
-    default:
-      return thickness;
-  }
-}
-
-/**
- * Determine which span-direction cut lines are needed for a roof type.
- * Returns absolute span coordinates where edges should be split.
- */
-function getCutPositions(obb: OBB, roofType: string): number[] {
-  const mid = (obb.spanMin + obb.spanMax) / 2;
-  switch (roofType) {
+      return [fromSpanMin(tan)];
     case 'gable':
+      return [fromSpanMin(tan), fromSpanMax(tan)];
     case 'hip':
-      return [mid];
+      return [fromSpanMin(tan), fromSpanMax(tan), fromRidgeMin(tan), fromRidgeMax(tan)];
     case 'mansard': {
-      const band = 0.3;
-      const lo = obb.spanMin + obb.span * band;
-      const hi = obb.spanMax - obb.span * band;
-      return [lo, mid, hi];
+      const steep = Math.tan((Math.min(slopeDeg + 20, 70) * Math.PI) / 180);
+      const band = (obb.span / 2) * 0.3;
+      return [fromSpanMin(steep), fromSpanMax(steep), { a: 0, b: 0, c: band * steep }];
     }
     default:
       return [];
   }
 }
 
+function envelope(planes: Plane[], v: P2): number {
+  let z = Infinity;
+  for (const p of planes) z = Math.min(z, rise(p, v));
+  return Math.max(0, z);
+}
+
+/** Add a vertex wherever an edge crosses a line where two planes are equal (a possible fold). */
+function insertFoldVertices(vertices: P2[], planes: Plane[]): P2[] {
+  const out: P2[] = [];
+  const n = vertices.length;
+  for (let i = 0; i < n; i++) {
+    const a = vertices[i], b = vertices[(i + 1) % n];
+    out.push(a);
+    const ts: number[] = [];
+    for (let p = 0; p < planes.length; p++) {
+      for (let q = p + 1; q < planes.length; q++) {
+        const da = rise(planes[p], a) - rise(planes[q], a);
+        const db = rise(planes[p], b) - rise(planes[q], b);
+        if ((da < 0 && db > 0) || (da > 0 && db < 0)) {
+          const t = da / (da - db);
+          if (t > 1e-6 && t < 1 - 1e-6) ts.push(t);
+        }
+      }
+    }
+    ts.sort((x, y) => x - y);
+    for (const t of ts) out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+  }
+  return out;
+}
+
+/** Sutherland–Hodgman: keep the part of `poly` where f(v) ≤ 0 (f linear). */
+function clipHalfPlane(poly: P2[], f: (v: P2) => number): P2[] {
+  const out: P2[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const fa = f(a), fb = f(b);
+    if (fa <= 1e-9) out.push(a);
+    if ((fa < -1e-9 && fb > 1e-9) || (fa > 1e-9 && fb < -1e-9)) {
+      const t = fa / (fa - fb);
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  return out;
+}
+
+/** Facet polygons: the part of the footprint where each plane is the lowest. */
+function facetRegions(vertices: P2[], planes: Plane[]): P2[][] {
+  if (planes.length <= 1) return [vertices];
+  const regions: P2[][] = [];
+  for (let i = 0; i < planes.length; i++) {
+    let poly = vertices;
+    for (let j = 0; j < planes.length && poly.length >= 3; j++) {
+      if (j === i) continue;
+      poly = clipHalfPlane(poly, v => rise(planes[i], v) - rise(planes[j], v));
+    }
+    if (poly.length >= 3 && Math.abs(signedArea(poly)) > 1e-9) regions.push(poly);
+  }
+  return regions;
+}
+
+function signedArea(poly: P2[]): number {
+  let a = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    a += p.x * q.y - q.x * p.y;
+  }
+  return a / 2;
+}
+
+/** Triangulate a 2D polygon using ShapeUtils (requires Vector2); every triangle CCW. */
+function triangulate(vertices: P2[]): number[] {
+  const contour = vertices.map(v => new Vector2(v.x, v.y));
+  const faces = ShapeUtils.triangulateShape(contour, []);
+  const indices: number[] = [];
+  for (const [a, b, c] of faces) {
+    const p = vertices[a], q = vertices[b], r = vertices[c];
+    const ccw = (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x) >= 0;
+    if (ccw) indices.push(a, b, c); else indices.push(a, c, b);
+  }
+  return indices;
+}
+
 /**
  * Create a 3D roof geometry from polygon footprint + roof parameters.
- * Flat/zero-slope → simple extrusion. Sloped → custom mesh with ridge vertices.
+ * Flat/zero-slope → simple extrusion. Sloped → closed mesh: flat soffit at
+ * baseY, sloped top (one planar facet per roof plane, so ridges and hips are
+ * real edges), and vertical eave / gable sides.
  */
 export function createRoofGeometry(params: ExtrudeParams): BufferGeometry | null {
-  const { vertices, baseY, height, roofType = 'flat', slopeDeg = 0 } = params;
-  if (vertices.length < 3) return null;
+  const { baseY, height, roofType = 'flat', slopeDeg = 0 } = params;
+  if (params.vertices.length < 3) return null;
 
   // Flat roof or zero slope → simple extrusion (same as slab)
   if (roofType === 'flat' || slopeDeg === 0) {
     return createExtrudeGeometry(params);
   }
 
+  // Work counter-clockwise so every face below winds outward.
+  let vertices = params.vertices.map(v => ({ x: v.x, y: v.y }));
+  if (signedArea(vertices) < 0) vertices = vertices.reverse();
+
   const obb = computeOBB(vertices);
-
-  // Insert ridge/break-line vertices so triangulation captures the peak
-  const cutPositions = getCutPositions(obb, roofType);
-  const augmented = cutPositions.length > 0
-    ? insertCutVertices(vertices, obb, cutPositions)
-    : vertices;
-  const n = augmented.length;
-
-  // Compute top elevation for each augmented vertex
-  const topElevs: number[] = [];
-  for (const v of augmented) {
-    topElevs.push(
-      roofElevation(spanT(v, obb), ridgeT(v, obb), height, slopeDeg, obb.span, obb.ridgeLen, roofType),
-    );
-  }
-
-  // Triangulate the 2D polygon
-  const triIndices = triangulate(augmented);
-  if (triIndices.length === 0) return null;
+  const planes = roofPlanes(obb, roofType, slopeDeg);
+  if (planes.length === 0) return createExtrudeGeometry(params);
+  const outline = insertFoldVertices(vertices, planes);
+  const top = (v: P2) => baseY + height + envelope(planes, v);
 
   const positions: number[] = [];
   const normals: number[] = [];
-
-  // --- Bottom face (flat at baseY, normal down) ---
-  for (let i = triIndices.length - 3; i >= 0; i -= 3) {
-    const i0 = triIndices[i], i1 = triIndices[i + 1], i2 = triIndices[i + 2];
-    for (const idx of [i2, i1, i0]) {
-      positions.push(augmented[idx].x, baseY, -augmented[idx].y);
-      normals.push(0, -1, 0);
-    }
-  }
-
-  // --- Top face (sloped, per-face normals) ---
-  for (let i = 0; i < triIndices.length; i += 3) {
-    const i0 = triIndices[i], i1 = triIndices[i + 1], i2 = triIndices[i + 2];
-    const v = [i0, i1, i2].map(idx => ({
-      x: augmented[idx].x,
-      y: baseY + topElevs[idx],
-      z: -augmented[idx].y,
-    }));
-
-    // Face normal via cross product
-    const ax = v[1].x - v[0].x, ay = v[1].y - v[0].y, az = v[1].z - v[0].z;
-    const bx = v[2].x - v[0].x, by = v[2].y - v[0].y, bz = v[2].z - v[0].z;
-    let nx = ay * bz - az * by;
-    let ny = az * bx - ax * bz;
-    let nz = ax * by - ay * bx;
-    const len = Math.sqrt(nx * nx + ny * ny + nz * nz) || 1;
+  const tri = (a: [number, number, number], b: [number, number, number], c: [number, number, number]) => {
+    const ux = b[0] - a[0], uy = b[1] - a[1], uz = b[2] - a[2];
+    const vx = c[0] - a[0], vy = c[1] - a[1], vz = c[2] - a[2];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    const len = Math.sqrt(nx * nx + ny * ny + nz * nz);
+    if (len < 1e-12) return;
     nx /= len; ny /= len; nz /= len;
-    if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
+    positions.push(...a, ...b, ...c);
+    normals.push(nx, ny, nz, nx, ny, nz, nx, ny, nz);
+  };
+  // Plan (x, y) at elevation h → three.js world (x, h, −y).
+  const w = (v: P2, h: number): [number, number, number] => [v.x, h, -v.y];
 
-    for (const p of v) {
-      positions.push(p.x, p.y, p.z);
-      normals.push(nx, ny, nz);
+  // --- Bottom face (flat at baseY, facing down) ---
+  const bottom = triangulate(outline);
+  if (bottom.length === 0) return null;
+  for (let i = 0; i < bottom.length; i += 3) {
+    tri(w(outline[bottom[i + 2]], baseY), w(outline[bottom[i + 1]], baseY), w(outline[bottom[i]], baseY));
+  }
+
+  // --- Top faces: each facet triangulated on its own plane ---
+  for (const region of facetRegions(outline, planes)) {
+    const r = signedArea(region) < 0 ? region.slice().reverse() : region;
+    const idx = triangulate(r);
+    for (let i = 0; i < idx.length; i += 3) {
+      const [a, b, c] = [r[idx[i]], r[idx[i + 1]], r[idx[i + 2]]];
+      tri(w(a, top(a)), w(b, top(b)), w(c, top(c)));
     }
   }
 
-  // --- Side faces (quads connecting bottom edge to top edge) ---
+  // --- Side faces (quads from the soffit edge up to the roof edge) ---
+  const n = outline.length;
   for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    const b0x = augmented[i].x, b0z = -augmented[i].y;
-    const b1x = augmented[j].x, b1z = -augmented[j].y;
-    const t0y = baseY + topElevs[i];
-    const t1y = baseY + topElevs[j];
-
-    // Outward normal (perpendicular to edge in XZ plane)
-    const edx = b1x - b0x, edz = b1z - b0z;
-    const el = Math.sqrt(edx * edx + edz * edz) || 1;
-    const snx = -edz / el, snz = edx / el;
-
-    // Tri 1: bot-i, bot-j, top-j
-    positions.push(b0x, baseY, b0z, b1x, baseY, b1z, b1x, t1y, b1z);
-    normals.push(snx, 0, snz, snx, 0, snz, snx, 0, snz);
-    // Tri 2: bot-i, top-j, top-i
-    positions.push(b0x, baseY, b0z, b1x, t1y, b1z, b0x, t0y, b0z);
-    normals.push(snx, 0, snz, snx, 0, snz, snx, 0, snz);
+    const a = outline[i], b = outline[(i + 1) % n];
+    const ta = top(a), tb = top(b);
+    tri(w(a, baseY), w(b, baseY), w(b, tb));
+    tri(w(a, baseY), w(b, tb), w(a, ta));
   }
 
   const geo = new BufferGeometry();

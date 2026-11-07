@@ -88,6 +88,12 @@ export function resolveBimMaterial(materialStr: string | undefined, tableName: s
   return TABLE_DEFAULTS[tableName] ?? 'default';
 }
 
+/** Base colour + opacity of a BimMaterial (exports reuse the 3D view's palette). */
+export function bimMaterialAppearance(bimMat: BimMaterial): { color: string; opacity: number } {
+  const def = MATERIAL_DEFS[bimMat] ?? MATERIAL_DEFS.default;
+  return { color: def.color, opacity: def.opacity };
+}
+
 // Cached material instances
 const materialCache = new Map<string, MeshPhysicalMaterial>();
 const ghostCache = new Map<string, MeshPhysicalMaterial>();

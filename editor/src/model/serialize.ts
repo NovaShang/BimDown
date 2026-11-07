@@ -120,7 +120,7 @@ function r(n: number): string {
 // ─── GeoJSON output (storage format) ──────────────────────
 
 const SPATIAL_3D_TABLES = new Set([
-  'stair', 'ramp', 'railing',
+  'stair', 'stair_run', 'ramp', 'railing',
   'beam', 'brace',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
