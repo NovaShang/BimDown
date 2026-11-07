@@ -67,3 +67,18 @@ export {
   type ResolvedLayer,
   type ElementLayers,
 } from './catalog/index.js';
+
+// IFC → BimDown import (pass an initialised web-ifc IfcAPI; no file system)
+export {
+  importIfc,
+  formatReport,
+  sniffIfc,
+  IfcImportError,
+  type ImportIfcOptions,
+  type ImportResult,
+  type ImportReport,
+  type ImportProgress,
+  type ImportPhase,
+  type ClassReport,
+  type ImportErrorCode,
+} from './ifc-import/index.js';
