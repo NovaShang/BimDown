@@ -17,3 +17,16 @@ fields:
     type: reference
     reference: slab_type
     description: Optional slab_type id. Empty type parameters (thickness, material) inherit the type's value; a set value overrides it for this element.
+
+  - name: material_grade
+    type: string
+    description: Strength grade, e.g. C30 (concrete), Q355 / S355 (steel), GL24h (timber).
+
+  - name: span_direction
+    type: float
+    description: Main span direction of a one-way slab or deck, degrees CCW from +X. Empty = two-way / not set.
+
+  - name: volume
+    type: float
+    computed: true
+    description: Material volume (section × length / height, area × thickness), hydrated at query time.

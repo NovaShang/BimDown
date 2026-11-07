@@ -126,7 +126,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | Scalar attributes, enum values, FKs | **CSV** | `material`, `thickness`, `size_x`, `size_y`, `shape`, `function`, `operation`, `host_id`, `position`, `base_level_id`, `top_level_id` |
 | Geometry coordinates | **GeoJSON `geometry`** | LineString points, Polygon rings, Point coord; 2D for level-anchored, 3D for spatial |
 | Numeric geometry hints | **GeoJSON `properties`** | `base_offset`, `top_offset`, `arc`, `rotation` |
-| Derived spatial data | **Computed (DuckDB hydrate)** | `length`, `area`, `height`, `volume`, `start_x/y/z`, `end_x/y/z`, `x`, `y`, `points`, `bbox_*`, `level_id` |
+| Derived spatial data | **Computed (DuckDB hydrate)** | `length`, `area`, `height`, `volume` (structural tables), `start_x/y/z`, `end_x/y/z`, `x`, `y`, `points`, `bbox_*`, `level_id` |
 
 YAML schemas use the following markers:
 
@@ -249,7 +249,18 @@ Some elements have no geometry file:
 
 ### Unified Foundation Type
 
-Rather than separate types for isolated/strip/raft foundations, a single `foundation` table covers all forms. The geometry type (`Point`/`LineString`/`Polygon`) is determined by the GeoJSON geometry. This reduces table count while the geometry naturally disambiguates the form.
+Rather than separate types for isolated/strip/raft foundations, a single `foundation` table covers all forms. The GeoJSON geometry gives the footprint and the optional `kind` names the type (empty = the geometry's default):
+
+| Geometry | `kind` | Plan size |
+|---|---|---|
+| `Point` | `pad` (default) | `width` (X) × `length` (Y, empty = square), turned by `rotation` |
+| `Point` | `pile` | round, diameter `width` (rectangular `width` × `length` when `length` is set) |
+| `LineString` | `strip` (default) | `width` across the centre line |
+| `Polygon` | `raft` (default), `pile_cap`, `pad` | the real footprint (inner rings = holes) |
+
+The top face is level + `base_offset`; the body hangs down by `thickness` (a pile's length).
+
+Structural tables also carry an optional `material_grade` (C30, Q355, GL24h…) next to `material`, and `structure_slab.span_direction` (degrees CCW from +X) marks a one-way slab or deck. `volume` is computed at query time for structural tables.
 
 ### Opening: Wall and Slab Voids
 
