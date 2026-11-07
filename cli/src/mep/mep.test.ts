@@ -20,7 +20,7 @@ function office(opts: { branchOnBody?: boolean; offPort?: boolean } = {}) {
   put('lv-1/terminal.csv', 'id,number,system_type,terminal_type,flow\ntm-1,,SA,supply_air_diffuser,100\ntm-2,,SA,supply_air_diffuser,100\n');
   put('lv-1/terminal.geojson', fc([point('tm-1', [-5, 4, 2.7]), point('tm-2', [-9, 4, 2.7])]));
   put('lv-1/connector.csv', 'id,host_id,name,offset_x,offset_y,offset_z,dir_x,dir_y,dir_z,shape,size_w,size_h,system_type,flow_dir,domain\n'
-    + 'cn-1,eq-1,sa,-1,0,1,-1,0,0,rect,0.5,0.3,SA,out,hvac\n'
+    + 'cn-1,eq-1,sa,-1,0,1,-1,0,0,rect,0.4,0.3,SA,out,hvac\n'
     + 'cn-2,tm-1,inlet,0,0,0.05,0,0,1,rect,0.3,0.3,SA,in,hvac\n'
     + 'cn-3,tm-2,inlet,0,0,0.05,0,0,1,rect,0.3,0.3,SA,in,hvac\n');
   const start = opts.offPort ? [-1.3, 0, 1] : [-1, 0, 1];
@@ -116,6 +116,42 @@ describe('MEP connectivity', () => {
       circuits: [{ id: 'ci-1', hostId: 'eq-1', number: '1', voltage: 230, rating: 16 }],
     });
     expect(m.map(p => p.code).sort()).toEqual(['circuit_overload', 'dangling_ref']);
+  });
+
+  it('flags duplicate / overlapping segments (a back-and-forth riser), in build too', () => {
+    const v = (x: number, y: number, z: number) => [x, y, z] as [number, number, number];
+    const m = checkMep({
+      curves: [
+        { id: 'pi-18', table: 'pipe', a: v(21.3, 10, 3.628), b: v(21.3, 10, 0), from: 'mn-30', to: 'mn-31', system: 'SAN' },
+        { id: 'pi-19', table: 'pipe', a: v(21.3, 10, 0), b: v(21.3, 10, 3.628), from: 'mn-31', to: 'mn-30', system: 'SAN' },
+        { id: 'pi-20', table: 'pipe', a: v(0, 0, 0), b: v(5, 0, 0), from: '', to: '', system: 'DCW' },
+        { id: 'pi-21', table: 'pipe', a: v(4, 0, 0), b: v(9, 0, 0), from: '', to: '', system: 'DCW' },
+        { id: 'pi-22', table: 'pipe', a: v(5, 0, 0), b: v(9, 0, 0.2), from: '', to: '', system: 'DCW' },
+        { id: 'du-1', table: 'duct', a: v(0, 0, 0), b: v(5, 0, 0), from: '', to: '', system: 'SA' },
+      ],
+      hosts: [], ports: [],
+    }).filter(p => p.code === 'duplicate_segment');
+    expect(m.map(p => `${p.id}~${p.other}`).sort()).toEqual(['pi-19~pi-18', 'pi-21~pi-20']);
+    office({ branchOnBody: true });
+    put('lv-1/duct.csv', readFileSync(join(dir, 'lv-1/duct.csv'), 'utf-8') + 'du-9,rect,0.4,0.3,SA,,\n');
+    const geo = JSON.parse(readFileSync(join(dir, 'lv-1/duct.geojson'), 'utf-8'));
+    geo.features.push(line('du-9', [-3, 0, 3], [-8, 0, 3]));
+    put('lv-1/duct.geojson', JSON.stringify(geo));
+    expect(build(dir).warnings.some(w => w.includes('du-9: [duplicate_segment]'))).toBe(true);
+  });
+
+  it('flags port size mismatches (equipment: warning, terminal neck: info) and supply flow balance', () => {
+    office({ branchOnBody: true });
+    put('lv-1/connector.csv', readFileSync(join(dir, 'lv-1/connector.csv'), 'utf-8').replace('rect,0.4,0.3,SA,out', 'rect,0.8,0.5,SA,out'));
+    put('lv-1/equipment.csv', 'id,number,system_type,equipment_type,flow\neq-1,AHU-1,SA,ahu,1500\n');
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    resolveTopology(dir);
+    vi.restoreAllMocks();
+    const r = mepReport(dir);
+    const sev = (code: string) => r.problems.filter(p => p.code === code).map(p => `${p.severity}:${p.id}`).sort();
+    expect(sev('size_mismatch')).toEqual(['info:du-5', 'info:du-7', 'warning:du-1']);
+    expect(sev('flow_balance')).toEqual(['warning:eq-1']);
+    expect(r.problems.find(p => p.code === 'flow_balance')!.message).toContain('take 200 L/s');
   });
 
   it('render draws ducts at their size in system colours, fittings, terminal symbols and tags', () => {
