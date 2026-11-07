@@ -19,6 +19,7 @@ import type { CanonicalElement, SpatialLineElement, PointElement, Point } from '
 import type { ToolContext, ToolStateSnapshot } from '../tools/types.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
 import { generateId } from '../model/ids.ts';
+import { reservedIds } from './reservedIds.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
@@ -133,7 +134,7 @@ class Builder {
   private state: RouteState;
   constructor(state: RouteState) {
     this.state = state;
-    this.ids = new Set(state.document?.elements.keys() ?? []);
+    this.ids = reservedIds(state.document?.elements);
   }
   segment(a: Point, za: number, b: Point, zb: number, refs: { from?: string; to?: string } = {}): MepCurve | null {
     if (Math.hypot(b.x - a.x, b.y - a.y) < 1e-4 && Math.abs(zb - za) < EPS_Z) return null;

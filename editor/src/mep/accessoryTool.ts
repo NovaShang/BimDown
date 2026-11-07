@@ -7,6 +7,7 @@
 import type { CanonicalElement, LineElement, PointElement, SpatialLineElement } from '../model/elements.ts';
 import type { ToolContext } from '../tools/types.ts';
 import { generateId } from '../model/ids.ts';
+import { reservedIds } from './reservedIds.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { findPipeBodyHit } from '../utils/pipeBodyHit.ts';
 import { resolveNextLevelId } from '../tools/levelUtil.ts';
@@ -104,7 +105,7 @@ export function accessoryPointerDown(ctx: ToolContext, e: React.PointerEvent): v
   const kind = state.drawingAttrs.kind || 'gate_valve';
   const hit = findPipeBodyHit(pt, elements, { tolerance: 0.2, pickPadding: 0.15, endZoneRatio: 0.02 });
   if (!hit || !accessoryFits(kind, hit.pipe.tableName)) return;
-  const ids = new Set(elements.keys());
+  const ids = reservedIds(elements);
   const els = insertAccessory(hit.pipe, hit.point, kind, ids, resolveNextLevelId(state));
   if (!els) return;
   const patches = new Map<string, CanonicalElement | null>(els.map(el => [el.id, el]));

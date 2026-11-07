@@ -11,6 +11,7 @@ import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { resolveNextLevelId } from '../tools/levelUtil.ts';
 import { generateId } from '../model/ids.ts';
+import { reservedIds } from './reservedIds.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { getStarter, materializeStarter, starterBaseOffset, type EquipmentStarter } from '../elements/equipment_starters.ts';
 
@@ -98,7 +99,7 @@ export function arrayPointerDown(ctx: ToolContext, e: React.PointerEvent): void 
   if (!starter) return;
   const spacing = parseFloat(da[SPACING_KEY] || '3') || 3;
   const layout = arrayLayout(points[0].x, points[0].y, pt.x, pt.y, spacing);
-  const ids = new Set(state.document?.elements.keys() ?? []);
+  const ids = reservedIds(state.document?.elements);
   const isSprinkler = starter.type_enum === 'sprinkler_head';
   const withPipe = isSprinkler && da[ARRAY_PIPE_KEY] !== 'false';
   const elements = buildArray(layout, {

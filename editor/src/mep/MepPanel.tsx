@@ -19,6 +19,7 @@ import { computeRunFlows, runHydraulics, sizeDuct, sizePipe, sizeSystem } from '
 import { circuitsIn, isPanel, newCircuit } from './circuits.ts';
 import type { MepProblem } from './mepCheck.ts';
 import { cn } from '../lib/utils.ts';
+import { reservedIds } from './reservedIds.ts';
 
 type Tab = 'systems' | 'check' | 'circuits';
 type MepCurve = LineElement | SpatialLineElement;
@@ -279,7 +280,7 @@ function capOpenEnd(el: CanonicalElement, elements: ReadonlyMap<string, Canonica
   const side = !(c.attrs.from || '').trim() ? 'from' : !(c.attrs.to || '').trim() ? 'to' : null;
   if (!side) return null;
   const at = side === 'from' ? c.start : c.end;
-  const ids = new Set(elements.keys());
+  const ids = reservedIds(elements);
   const id = generateId('mep_node', ids);
   const node: PointElement = {
     id, tableName: 'mep_node', discipline: 'mep', geometry: 'point', position: { ...at }, width: 0, height: 0,

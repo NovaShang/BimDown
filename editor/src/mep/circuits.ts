@@ -5,6 +5,7 @@
  */
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
+import { reservedIds } from './reservedIds.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 
 type P = { x: number; y: number };
@@ -74,7 +75,7 @@ export function circuitsIn(elements: ReadonlyMap<string, CanonicalElement>): Cir
 
 /** A new circuit on `panelId` with the next free number. */
 export function newCircuit(panelId: string, elements: ReadonlyMap<string, CanonicalElement>, levelId: string): CanonicalElement {
-  const ids = new Set(elements.keys());
+  const ids = reservedIds(elements);
   const id = generateId('circuit', ids);
   let n = 1;
   const used = new Set([...elements.values()].filter(e => e.tableName === 'circuit' && (e.hostId || e.attrs.host_id) === panelId).map(e => e.attrs.number));
