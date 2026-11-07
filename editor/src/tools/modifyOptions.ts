@@ -20,6 +20,8 @@ export interface ModifyOptions {
   arrayGroup: boolean;
   offsetDistance: number;
   offsetCopy: boolean;
+  /** Copied rooms and doors take the next free numbers (copy / array / paste / duplicate). */
+  renumberCopies: boolean;
 }
 
 const KEY = 'bimdown-modify-options';
@@ -35,6 +37,7 @@ const DEFAULTS: ModifyOptions = {
   arrayGroup: false,
   offsetDistance: 1,
   offsetCopy: true,
+  renumberCopies: true,
 };
 
 function load(): ModifyOptions {

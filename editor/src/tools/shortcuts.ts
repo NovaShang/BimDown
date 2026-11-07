@@ -22,12 +22,24 @@ export interface ShortcutApi { state: EditorState; dispatch: Dispatch }
 
 export type ShortcutGroup = 'draw' | 'annotate' | 'modify' | 'select' | 'view';
 
+/** Where a single key acts: everywhere (unset), in a discipline's plan, while placing library furniture, in 3D. */
+export type ShortcutContext = 'arch' | 'mep' | 'placing' | '3d';
+
 export interface Shortcut {
   keys: string;
   labelKey: string;
   group: ShortcutGroup;
+  context?: ShortcutContext;
   run?: (api: ShortcutApi) => void;
 }
+
+/** Letters the active place tool handles itself (module `placeKeys`): no two-letter sequence on them. */
+export function claimedKeys(state: Pick<EditorState, 'activeTool' | 'drawingTarget'>): ReadonlySet<string> {
+  if (state.activeTool !== 'draw_point' || !state.drawingTarget) return NONE;
+  const keys = getElementModule(state.drawingTarget.tableName)?.placeKeys;
+  return keys?.length ? new Set(keys.map(k => k.toUpperCase())) : NONE;
+}
+const NONE: ReadonlySet<string> = new Set();
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
   hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
@@ -138,20 +150,26 @@ export const SINGLE_KEYS: Shortcut[] = [
   { keys: '⌘Z', labelKey: 'tool.undo', group: 'modify' },
   { keys: '⇧⌘Z', labelKey: 'tool.redo', group: 'modify' },
   { keys: 'Del', labelKey: 'ctx.delete', group: 'modify' },
-  { keys: 'J', labelKey: 'tool.trimCornerTip', group: 'modify' },
-  { keys: 'E', labelKey: 'tool.trimSingleTip', group: 'modify' },
-  { keys: 'K', labelKey: 'tool.splitTip', group: 'modify' },
-  { keys: 'W', labelKey: 'layer.wall', group: 'draw' },
-  { keys: 'D', labelKey: 'layer.door', group: 'draw' },
-  { keys: 'N', labelKey: 'layer.window', group: 'draw' },
-  { keys: 'C', labelKey: 'layer.column', group: 'draw' },
-  { keys: 'R', labelKey: 'layer.space', group: 'draw' },
-  { keys: 'F', labelKey: 'layer.slab', group: 'draw' },
-  { keys: 'T', labelKey: 'layer.stair', group: 'draw' },
+  { keys: 'J', labelKey: 'tool.trimCornerTip', group: 'modify', context: 'arch' },
+  { keys: 'E', labelKey: 'tool.trimSingleTip', group: 'modify', context: 'arch' },
+  { keys: 'K', labelKey: 'tool.splitTip', group: 'modify', context: 'arch' },
+  { keys: 'W', labelKey: 'layer.wall', group: 'draw', context: 'arch' },
+  { keys: 'D', labelKey: 'layer.door', group: 'draw', context: 'arch' },
+  { keys: 'N', labelKey: 'layer.window', group: 'draw', context: 'arch' },
+  { keys: 'C', labelKey: 'layer.column', group: 'draw', context: 'arch' },
+  { keys: 'R', labelKey: 'layer.space', group: 'draw', context: 'arch' },
+  { keys: 'F', labelKey: 'layer.slab', group: 'draw', context: 'arch' },
+  { keys: 'T', labelKey: 'layer.stair', group: 'draw', context: 'arch' },
+  { keys: 'E', labelKey: 'layer.equipment', group: 'draw', context: 'mep' },
+  { keys: 'P', labelKey: 'layer.pipe', group: 'draw', context: 'mep' },
+  { keys: 'U', labelKey: 'layer.duct', group: 'draw', context: 'mep' },
+  { keys: 'R', labelKey: 'shortcut.placeRotate', group: 'draw', context: 'placing' },
+  { keys: 'M', labelKey: 'shortcut.placeMirror', group: 'draw', context: 'placing' },
   { keys: 'G', labelKey: 'layer.grid', group: 'draw' },
   { keys: 'M', labelKey: 'annot.dimension', group: 'annotate' },
   { keys: 'X', labelKey: 'annot.text', group: 'annotate' },
   { keys: 'H', labelKey: 'tool.pan', group: 'view' },
+  { keys: 'O', labelKey: 'tool.orbit', group: 'view', context: '3d' },
   { keys: 'Z', labelKey: 'shortcut.zoom', group: 'view' },
   { keys: '⌘0', labelKey: 'ctx.zoomToFit', group: 'view' },
   { keys: '?', labelKey: 'shortcut.title', group: 'view' },
@@ -172,7 +190,7 @@ export function createSequence() {
   return {
     onKey(key: string, state: EditorState, now = Date.now()): { shortcut: Shortcut; before: { tool: Tool; selection: Set<string> } } | null {
       const k = key.toUpperCase();
-      if (!/^[A-Z]$/.test(k)) { first = null; return null; }
+      if (!/^[A-Z]$/.test(k) || claimedKeys(state).has(k)) { first = null; return null; }
       if (first && now - first.at <= WINDOW_MS) {
         const hit = BY_KEYS.get(first.key + k);
         if (hit) {

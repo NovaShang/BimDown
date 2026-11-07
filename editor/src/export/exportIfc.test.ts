@@ -502,6 +502,21 @@ describe('IFC export of the building', () => {
     expect([tags(grid[0].args[7]), tags(grid[0].args[8])]).toEqual([['1', '2'], ['A']]);
   });
 
+  it('writes model groups as IfcGroup with their members (IFC2X3 and IFC4)', async () => {
+    const files = sampleProject();
+    files['lv-2/wall.csv'] = 'id,number,thickness,material,group_id\nw-1,,0.2,brick,mg-1\n';
+    files['lv-2/beam.csv'] = 'id,number,shape,size_x,size_y,material,group_id\nbm-1,,rect,0.3,0.6,concrete,mg-1\n';
+    files['lv-2/model_group.csv'] = 'id,name,x,y,rotation,mirrored\nmg-1,Bay A,0,0,0,false\n';
+    for (const schema of ['IFC2X3', 'IFC4'] as const) {
+      const { ents, keys } = await exportFiles(files, schema);
+      const groups = [...ents.values()].filter(e => e.type === 'IFCGROUP');
+      expect(groups).toHaveLength(1);
+      expect(str(groups[0].args[2])).toBe('Bay A');
+      const rel = [...ents.values()].find(e => e.type === 'IFCRELASSIGNSTOGROUP' && ref(e.args[6]) === groups[0].id)!;
+      expect(refs(rel.args[4]).map(id => keys.get(id)).sort()).toEqual(['beam:bm-1', 'wall:w-1']);
+    }
+  });
+
   it('keeps GlobalIds stable across exports', async () => {
     const a = await exportFiles(room);
     const b = await exportFiles(room);

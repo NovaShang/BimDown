@@ -39,6 +39,45 @@ export function groupMembers(elements: ReadonlyMap<string, CanonicalElement>, gr
   return out;
 }
 
+/** Curves referencing `nodeId` through from / to: copied ones and all. */
+function mepNodeTravels(elements: ReadonlyMap<string, CanonicalElement>, set: ReadonlySet<string>, nodeId: string): boolean {
+  let copied = 0, all = 0;
+  for (const c of elements.values()) {
+    if (!MEP_CURVES.has(c.tableName)) continue;
+    const n = (parsePortRef(c.attrs.from)?.hostId === nodeId ? 1 : 0) + (parsePortRef(c.attrs.to)?.hostId === nodeId ? 1 : 0);
+    if (!n) continue;
+    all += n;
+    if (set.has(c.id)) copied += n;
+  }
+  return copied >= 2 || (copied >= 1 && copied === all);
+}
+
+/** Tables whose copies take the next free number (rooms, doors). */
+export const RENUMBER_TABLES = new Set(['space', 'door']);
+
+/** Numbers in use per table (RENUMBER_TABLES only). */
+export type NumberPool = Map<string, Set<string>>;
+
+export function addNumbers(pool: NumberPool, rows: Iterable<{ tableName: string; number?: string }>): NumberPool {
+  for (const r of rows) {
+    const n = (r.number ?? '').trim();
+    if (!n || !RENUMBER_TABLES.has(r.tableName)) continue;
+    let set = pool.get(r.tableName);
+    if (!set) pool.set(r.tableName, set = new Set());
+    set.add(n);
+  }
+  return pool;
+}
+
+/** The next number after `n` not in `used`: the last digit run counts up, keeping its width (D01 → D02, 101 → 102); without digits "-2", "-3"… */
+export function nextFreeNumber(n: string, used: ReadonlySet<string>): string {
+  const m = /^(.*?)(\d+)(\D*)$/.exec(n);
+  for (let i = m ? parseInt(m[2], 10) + 1 : 2; ; i++) {
+    const c = m ? `${m[1]}${String(i).padStart(m[2].length, '0')}${m[3]}` : `${n}-${i}`;
+    if (!used.has(c)) return c;
+  }
+}
+
 /** The selection plus everything that has to travel with it (raw ids). */
 export function expandCopySet(elements: ReadonlyMap<string, CanonicalElement>, ids: Iterable<string>): Set<string> {
   const set = new Set<string>();
@@ -51,20 +90,16 @@ export function expandCopySet(elements: ReadonlyMap<string, CanonicalElement>, i
   while (grew) {
     grew = false;
     for (const el of elements.values()) {
-      if (set.has(el.id)) continue;
+      // Section / elevation annotations belong to their view, not to the plan selection
+      if (set.has(el.id) || el.attrs.view_id) continue;
       let take = false;
       if (el.tableName === 'dimension') {
         const refs = dimensionRefs(el);
         take = refs.length > 0 && refs.every(r => set.has(r));
       } else if (el.tableName === 'mep_node') {
-        // A passive fitting joining copied curves
-        let n = 0;
-        for (const id of set) {
-          const c = elements.get(id)!;
-          if (!MEP_CURVES.has(c.tableName)) continue;
-          if (parsePortRef(c.attrs.from)?.hostId === el.id || parsePortRef(c.attrs.to)?.hostId === el.id) n++;
-        }
-        take = n >= 2 && !(el.attrs.kind ?? '').trim();
+        // A fitting or inline accessory (valve, damper…) joining copied curves,
+        // or one whose every curve is copied (cap, end accessory)
+        take = mepNodeTravels(elements, set, el.id);
       } else {
         const deps = dependsOn(el);
         take = deps.length > 0 && deps.some(d => set.has(d));
@@ -82,6 +117,8 @@ export interface CloneOptions {
   keepOutsideRefs?: boolean;
   /** Ids to give particular copies (source id → id); the rest are generated. */
   preset?: ReadonlyMap<string, string>;
+  /** Numbers in use: copied rooms and doors take the next free one (and add it). */
+  numbers?: NumberPool;
 }
 
 /**
@@ -119,6 +156,14 @@ export function cloneElements(
       attrs.host_id = map(attrs.host_id) ?? '';
     }
     if (attrs.group_id) attrs.group_id = idMap.get(attrs.group_id) ?? '';
+    // Devices follow a copied circuit; otherwise same-level copies stay on theirs
+    if (attrs.circuit_id) attrs.circuit_id = map(attrs.circuit_id) ?? '';
+    if (opts.numbers && RENUMBER_TABLES.has(el.tableName) && attrs.number?.trim()) {
+      let used = opts.numbers.get(el.tableName);
+      if (!used) opts.numbers.set(el.tableName, used = new Set());
+      attrs.number = nextFreeNumber(attrs.number.trim(), used);
+      used.add(attrs.number);
+    }
     if (el.tableName === 'dimension') {
       for (const side of ['start_ref', 'end_ref'] as const) {
         const { id, anchor } = parseRef(attrs[side]);

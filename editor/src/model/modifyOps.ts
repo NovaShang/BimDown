@@ -14,7 +14,7 @@
 import type { CanonicalElement, LineElement, Point, SpatialLineElement } from './elements.ts';
 
 type AnyLine = LineElement | SpatialLineElement;
-import { expandCopySet, cloneElements } from './copySet.ts';
+import { expandCopySet, cloneElements, type NumberPool } from './copySet.ts';
 import { isPinned } from './pins.ts';
 import { applyXform, isMirror, rotationAbout, transformElements, translation, type Xform, elementsBounds, boundsCenter } from './transform.ts';
 import { applyReshapeJoins, findWallJoins, isJoinable, wallFrame } from '../geometry/wallJoins.ts';
@@ -84,6 +84,7 @@ export function transformPatch(
   ids: Iterable<string>,
   T: Xform,
   copy: boolean,
+  numbers?: NumberPool,
 ): { patch: Patch; select: string[] } {
   const selected = [...ids].filter(id => elements.has(id));
   if (!copy) {
@@ -108,7 +109,7 @@ export function transformPatch(
   }
   const set = expandCopySet(elements, selected);
   const taken = new Set(elements.keys());
-  const { clones, idMap } = cloneElements(elements, set, { taken, keepOutsideRefs: true });
+  const { clones, idMap } = cloneElements(elements, set, { taken, keepOutsideRefs: true, numbers });
   // A door copied without its wall can't follow a rotation: leave it out
   for (const [src, nid] of idMap) {
     const el = elements.get(src)!;
@@ -131,6 +132,7 @@ export function arrayPatch(
   ids: Iterable<string>,
   transforms: readonly Xform[],
   group?: { name: string },
+  numbers?: NumberPool,
 ): { patch: Patch; select: string[] } {
   let source: Map<string, CanonicalElement> = new Map(elements);
   const patch: Patch = new Map();
@@ -147,7 +149,8 @@ export function arrayPatch(
   const taken = new Set(source.keys());
   const select: string[] = [];
   for (const T of transforms) {
-    const { clones, idMap } = cloneElements(source, set, { taken, keepOutsideRefs: true });
+    // Instances of one group stay identical: no renumbering there
+    const { clones, idMap } = cloneElements(source, set, { taken, keepOutsideRefs: true, numbers: group ? undefined : numbers });
     for (const [src, nid] of idMap) {
       const el = source.get(src)!;
       if (el.hostId && !set.has(el.hostId) && el.tableName !== 'connector') { clones.delete(nid); idMap.delete(src); }

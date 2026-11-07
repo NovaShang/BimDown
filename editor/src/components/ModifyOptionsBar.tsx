@@ -54,6 +54,7 @@ export default function ModifyOptionsBar() {
             {typed ? `${typed}°` : ds?.modify?.angle !== undefined ? `${ds.modify.angle}°` : '—'}
           </span>
           <Toggle checked={o.rotateCopy} onChange={v => setModifyOptions({ rotateCopy: v })} label={t('modify.copy')} testId="rotate-copy" />
+          {o.rotateCopy && <Toggle checked={o.renumberCopies} onChange={v => setModifyOptions({ renumberCopies: v })} label={t('modify.renumber')} testId="renumber-copies" />}
         </>
       )}
       {tool === 'mirror' && (
@@ -67,6 +68,7 @@ export default function ModifyOptionsBar() {
             {t('modify.drawAxis')}
           </button>
           <Toggle checked={o.mirrorCopy} onChange={v => setModifyOptions({ mirrorCopy: v })} label={t('modify.copy')} testId="mirror-copy" />
+          {o.mirrorCopy && <Toggle checked={o.renumberCopies} onChange={v => setModifyOptions({ renumberCopies: v })} label={t('modify.renumber')} testId="renumber-copies" />}
         </>
       )}
       {tool === 'array' && (
@@ -95,6 +97,7 @@ export default function ModifyOptionsBar() {
             </>
           )}
           <Toggle checked={o.arrayGroup} onChange={v => setModifyOptions({ arrayGroup: v })} label={t('modify.groupCopies')} testId="array-group" />
+          {!o.arrayGroup && <Toggle checked={o.renumberCopies} onChange={v => setModifyOptions({ renumberCopies: v })} label={t('modify.renumber')} testId="renumber-copies" />}
           {typed && <span className="rounded-md border border-border px-2 py-1 text-[11px] tabular-nums text-foreground" data-testid="array-typed">{t('modify.distance')} {typed}</span>}
         </>
       )}
@@ -109,6 +112,7 @@ export default function ModifyOptionsBar() {
       {(tool === 'align' || tool === 'paste') && (
         <span className="text-[11px] text-muted-foreground">{t(tool === 'align' ? (ds?.pick ? 'hint.align2' : 'hint.align') : 'hint.paste')}</span>
       )}
+      {tool === 'paste' && <Toggle checked={o.renumberCopies} onChange={v => setModifyOptions({ renumberCopies: v })} label={t('modify.renumber')} testId="renumber-copies" />}
     </div>
   );
 }

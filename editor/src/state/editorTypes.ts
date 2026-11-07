@@ -54,6 +54,10 @@ export interface EditorState {
   spaceHeld: boolean;
 
   selectedIds: Set<string>;
+  /** "Select all instances in project": the matching elements on the other
+   *  levels (raw ids per level). Delete / Change type / property edits of the
+   *  selection apply to them too; any selection change drops it. */
+  projectSelection?: Map<string, string[]>;
   hoveredId: string | null;
 
   marquee: { x1: number; y1: number; x2: number; y2: number } | null;
@@ -206,6 +210,7 @@ export type EditorAction =
   | { type: 'DUPLICATE_LEVEL'; levelId: string; level: Level }
   /** Copy selected elements (raw or selection ids on the open level) to other levels, same plan place. */
   | { type: 'COPY_TO_LEVELS'; ids: string[]; levelIds: string[] }
+  | { type: 'SET_PROJECT_SELECTION'; levels: Map<string, string[]> | null }
   /** Per-level element patches (and optionally the new level list) as one undo step. */
   | { type: 'APPLY_LEVEL_EDITS'; description: string; patches: LevelPatches; levels?: Level[]; select?: string[] }
   | { type: 'START_GROUP_EDIT'; groupId: string }

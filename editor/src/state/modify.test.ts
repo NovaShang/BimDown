@@ -345,3 +345,35 @@ describe('duplicate', () => {
     expect(translation(0, 0)).toBeTruthy();
   });
 });
+
+describe('select all instances in project', () => {
+  it('holds the other levels’ instances: delete and change type reach them, in one undo step', async () => {
+    const { selectAllInstances } = await import('./selectionOps.ts');
+    const h = room();
+    h.dispatch({ type: 'COPY_TO_LEVELS', ids: ['lv-1:w-1', 'lv-1:w-2', 'lv-1:d-1'], levelIds: ['lv-2'] });
+    const walls = (lv: string) => [...levelElements(h.state, lv).values()].filter(e => e.tableName === 'wall');
+    expect(walls('lv-2')).toHaveLength(2);
+    h.dispatch({ type: 'SELECT', ids: ['lv-1:w-1'], exact: true });
+    const r = selectAllInstances(h.state, h.dispatch, 'project');
+    expect(r).toEqual({ selected: 4, elsewhere: 2 });
+    expect(h.state.projectSelection?.get('lv-2')).toHaveLength(2);
+
+    h.dispatch({ type: 'UPDATE_ATTRS_MANY', ids: [...h.state.selectedIds], attrs: { material: 'brick' } });
+    expect(walls('lv-2').every(w => w.attrs.material === 'brick')).toBe(true);
+    expect(walls('lv-1').every(w => w.attrs.material === 'brick')).toBe(true);
+
+    h.dispatch({ type: 'DELETE_ELEMENTS', ids: [...h.state.selectedIds] });
+    expect(walls('lv-1')).toHaveLength(0);
+    expect(walls('lv-2')).toHaveLength(0);
+    expect([...levelElements(h.state, 'lv-2').values()].some(e => e.tableName === 'door')).toBe(false); // hosted door went with its wall
+    h.dispatch({ type: 'UNDO' });
+    expect(walls('lv-1')).toHaveLength(4);
+    expect(walls('lv-2')).toHaveLength(2);
+
+    // A plain selection change drops the other levels
+    h.dispatch({ type: 'SELECT', ids: ['lv-1:w-1'], exact: true });
+    expect(h.state.projectSelection).toBeUndefined();
+    h.dispatch({ type: 'DELETE_ELEMENTS', ids: ['lv-1:w-1'] });
+    expect(walls('lv-2')).toHaveLength(2);
+  });
+});

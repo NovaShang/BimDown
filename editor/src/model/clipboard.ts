@@ -9,7 +9,7 @@
 import type { CanonicalElement, Point } from './elements.ts';
 import type { Level, ProjectUnit } from '../types.ts';
 import type { TypeCatalog } from './types/catalog.ts';
-import { expandCopySet, cloneElements, retargetLevelAttrs } from './copySet.ts';
+import { expandCopySet, cloneElements, retargetLevelAttrs, type NumberPool } from './copySet.ts';
 import { elementsBounds, boundsCenter, transformElements, translation } from './transform.ts';
 
 export const CLIPBOARD_MARKER = 'bimdown/elements';
@@ -75,9 +75,10 @@ export function pasteElements(
   taken: Set<string>,
   offset: Point,
   types?: TypeCatalog,
+  numbers?: NumberPool,
 ): { elements: CanonicalElement[]; selected: string[] } {
   const source = new Map(p.elements.map(e => [e.id, e]));
-  const { clones, idMap } = cloneElements(source, source.keys(), { taken });
+  const { clones, idMap } = cloneElements(source, source.keys(), { taken, numbers });
   const placed = transformElements(clones, clones.keys(), translation(offset.x, offset.y));
   const typeIds = new Set((types?.types ?? []).map(t => t.id));
   const sameLevels = p.levels.every(l => levels.some(m => m.id === l.id));

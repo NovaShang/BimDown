@@ -31,9 +31,10 @@ import { expandCopySet, cloneElements } from '../model/copySet.ts';
 import { transformElements, translation } from '../model/transform.ts';
 import { cleanupGroups, GROUP_TABLE, instanceElements, isGroupable, propagateGroupEdit } from '../model/groups.ts';
 import {
-  applyLevelPatches, beforeOf, copyToLevelsPatches, duplicateLevelPatches, levelElements, multiLevelCommand,
+  applyLevelPatches, beforeOf, copyToLevelsPatches, duplicateLevelPatches, levelElements, multiLevelCommand, projectNumbers,
   redoMulti, takenIds, undoMulti, type LevelPatches,
 } from './levelEdits.ts';
+import { getModifyOptions } from '../tools/modifyOptions.ts';
 import { isPinned } from '../model/pins.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
@@ -244,7 +245,61 @@ const MUTATION_ACTIONS: Set<string> = new Set([
 /** Tools allowed in readonly mode — everything else is blocked. */
 const READONLY_TOOLS: Set<string> = new Set(['select', 'orbit', 'pan', 'zoom']);
 
+/** Actions on the selection that also reach a project-wide selection's other levels. */
+const PROJECT_SELECTION_ACTIONS = new Set<EditorAction['type']>(['DELETE_ELEMENTS', 'SET_ELEMENT_TYPE', 'UPDATE_ATTRS_MANY']);
+
 export function editorReducer(state: EditorState, action: EditorAction): EditorState {
+  if (action.type === 'SET_PROJECT_SELECTION') {
+    return { ...state, projectSelection: action.levels && action.levels.size > 0 ? action.levels : undefined };
+  }
+  if (state.projectSelection && PROJECT_SELECTION_ACTIONS.has(action.type) && !state.readonly) {
+    const r = withProjectSelection(state, action as Extract<EditorAction, { ids: string[] }>);
+    if (r) return r;
+  }
+  const next = coreReducer(state, action);
+  // Any selection change ends a project-wide selection
+  return next.projectSelection && next.selectedIds !== state.selectedIds ? { ...next, projectSelection: undefined } : next;
+}
+
+/** Element changes between two maps of one level. */
+function diffElements(a: ReadonlyMap<string, CanonicalElement>, b: ReadonlyMap<string, CanonicalElement>): Map<string, CanonicalElement | null> {
+  const patch = new Map<string, CanonicalElement | null>();
+  for (const [id, el] of b) if (a.get(id) !== el) patch.set(id, el);
+  for (const id of a.keys()) if (!b.has(id)) patch.set(id, null);
+  return patch;
+}
+
+/**
+ * Run a selection action on the open level and on every level of the
+ * project-wide selection (each as if it were open), as one undo step.
+ * Null when the action is not about the current selection.
+ */
+function withProjectSelection(state: EditorState, action: Extract<EditorAction, { ids: string[] }>): EditorState | null {
+  const doc = state.document;
+  if (!doc || !state.project) return null;
+  const sel = new Set([...state.selectedIds].map(toElementId));
+  const ids = new Set(action.ids.map(toElementId));
+  if (ids.size !== sel.size || [...ids].some(id => !sel.has(id))) return null;
+  const plain = { ...state, projectSelection: undefined };
+  const local = coreReducer(plain, action);
+  const patches: LevelPatches = new Map();
+  if (local.document) patches.set(doc.levelId, diffElements(doc.elements, local.document.elements));
+  for (const [levelId, raw] of state.projectSelection!) {
+    if (levelId === doc.levelId || !state.project.levels.some(l => l.id === levelId)) continue;
+    const elements = levelElements(state, levelId);
+    const there: EditorState = {
+      ...plain, document: { levelId, elements }, history: { undoStack: [], redoStack: [] },
+      selectedIds: new Set(raw.map(id => toSelectionId(levelId, id))),
+    };
+    const out = coreReducer(there, { ...action, ids: raw.map(id => toSelectionId(levelId, id)) } as EditorAction);
+    if (out.document) patches.set(levelId, diffElements(elements, out.document.elements));
+  }
+  const description = local.history.undoStack.at(-1)?.description ?? action.type;
+  const next = pushMultiLevel({ ...plain, project: local.project ? { ...state.project, types: local.project.types } : state.project }, description, patches);
+  return action.type === 'DELETE_ELEMENTS' ? { ...next, selectedIds: new Set() } : { ...next, projectSelection: state.projectSelection };
+}
+
+function coreReducer(state: EditorState, action: EditorAction): EditorState {
   // Readonly guard: silently reject all mutation actions
   if (state.readonly && MUTATION_ACTIONS.has(action.type)) return state;
 
@@ -862,7 +917,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (selected.size === 0) return state;
       const set = expandCopySet(elements, selected);
       const taken = new Set(elements.keys());
-      const { clones, idMap } = cloneElements(elements, set, { taken, keepOutsideRefs: true });
+      const numbers = getModifyOptions().renumberCopies ? projectNumbers(state) : undefined;
+      const { clones, idMap } = cloneElements(elements, set, { taken, keepOutsideRefs: true, numbers });
       const moved = transformElements(clones, clones.keys(), translation(offset.dx, offset.dy));
       const next = new Map(elements);
       const before = new Map<string, CanonicalElement | null>();
@@ -1359,7 +1415,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       if (!state.document || !state.project) return state;
       const targets = action.levelIds.filter(id => id !== state.document!.levelId && state.project!.levels.some(l => l.id === id));
       if (targets.length === 0) return state;
-      const patches = copyToLevelsPatches(state, state.document.elements, action.ids.map(toElementId), state.document.levelId, targets);
+      const numbers = getModifyOptions().renumberCopies ? projectNumbers(state) : undefined;
+      const patches = copyToLevelsPatches(state, state.document.elements, action.ids.map(toElementId), state.document.levelId, targets, undefined, numbers);
       return pushMultiLevel(state, 'Copy to levels', patches);
     }
 

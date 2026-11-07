@@ -11,7 +11,8 @@ import {
   buildClipboard, parseClipboard, pasteElements, pasteNeedsTypesSaved, rememberClipboard, rememberedClipboard, serializeClipboard, type ClipboardPayload,
 } from '../model/clipboard.ts';
 import { startPaste } from '../tools/modifyTools.ts';
-import { takenIds, type LevelPatches } from './levelEdits.ts';
+import { projectNumbers, takenIds, type LevelPatches } from './levelEdits.ts';
+import { getModifyOptions } from '../tools/modifyOptions.ts';
 
 type Dispatch = (a: EditorAction) => void;
 
@@ -81,9 +82,10 @@ export function pasteAligned(state: EditorState, dispatch: Dispatch, p: Clipboar
     : where === 'same' && sameProject && project.levels.some(l => l.id === p.levelId) ? [p.levelId] : [state.currentLevel];
   const patches: LevelPatches = new Map();
   let select: string[] | undefined;
+  const numbers = getModifyOptions().renumberCopies ? projectNumbers(state) : undefined;
   for (const levelId of levels) {
     if (!project.levels.some(l => l.id === levelId)) continue;
-    const { elements, selected } = pasteElements(p, levelId, project.levels, takenIds(state, levelId), { x: 0, y: 0 }, project.types);
+    const { elements, selected } = pasteElements(p, levelId, project.levels, takenIds(state, levelId), { x: 0, y: 0 }, project.types, numbers);
     patches.set(levelId, new Map(elements.map(el => [el.id, el])));
     if (levelId === state.currentLevel) select = selected.map(id => toSelectionId(levelId, id));
   }

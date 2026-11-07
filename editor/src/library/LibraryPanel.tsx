@@ -9,6 +9,7 @@ import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
+import { getElementModule } from '../elements/registry.ts';
 import { Tooltip, TooltipContent, TooltipTrigger } from '../components/ui/tooltip';
 import { Icon } from '../components/Icons.tsx';
 import { cn } from '../lib/utils';
@@ -51,7 +52,7 @@ function usePlacementKeys(active: boolean) {
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
       const k = e.key.toLowerCase();
-      if (k !== 'r' && k !== 'm') return;
+      if (!getElementModule(TABLE)?.placeKeys?.includes(k.toUpperCase())) return;
       e.preventDefault();
       e.stopImmediatePropagation();
       const a = attrs;

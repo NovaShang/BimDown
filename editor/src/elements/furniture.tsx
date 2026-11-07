@@ -185,6 +185,7 @@ export const furnitureModule: ElementModule<FurnitureFacts> = {
   hiddenFromToolbar: true,
   renderZIndex: 35,
   placeTool: placeFurnitureTool,
+  placeKeys: ['R', 'M'],
   placementPreview: FurniturePlacementPreview,
   attrChangeRules: furnitureAttrRules,
 

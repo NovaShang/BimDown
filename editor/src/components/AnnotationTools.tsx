@@ -11,7 +11,7 @@ import { cn } from '../lib/utils';
 
 const ANNOTATION_COLOR = '#1d3557';
 
-const ENTRIES: { tool: Tool; table: string; labelKey: string; tipKey: string; shortcut?: string }[] = [
+export const ANNOTATION_ENTRIES: { tool: Tool; table: string; labelKey: string; tipKey: string; shortcut?: string }[] = [
   { tool: 'draw_dimension', table: 'dimension', labelKey: 'annot.dimension', tipKey: 'annot.dimensionTip', shortcut: 'M' },
   { tool: 'draw_text', table: 'text_note', labelKey: 'annot.text', tipKey: 'annot.textTip', shortcut: 'X' },
   { tool: 'draw_tag', table: 'tag', labelKey: 'annot.tag', tipKey: 'annot.tagTip' },
@@ -42,7 +42,7 @@ export default function AnnotationTools() {
     const onKey = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || e.ctrlKey || e.metaKey || e.altKey) return;
-      const entry = ENTRIES.find(x => x.shortcut === e.key.toUpperCase());
+      const entry = ANNOTATION_ENTRIES.find(x => x.shortcut === e.key.toUpperCase());
       if (entry) activate(entry.tool, entry.table);
     };
     window.addEventListener('keydown', onKey);
@@ -55,7 +55,7 @@ export default function AnnotationTools() {
     <>
       <Separator orientation="vertical" className="mx-1 self-stretch" />
       <div className="flex items-center gap-0.5" data-tour="annotate">
-        {ENTRIES.map(entry => {
+        {ANNOTATION_ENTRIES.map(entry => {
           const active = state.activeTool === entry.tool;
           return (
             <Tooltip key={entry.tool}>

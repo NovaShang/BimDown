@@ -331,6 +331,9 @@ export interface ElementModule<TFacts = unknown> {
   /** Replaces the archetype's place tool (e.g. library components that snap
    *  their back to a wall). Driven through the archetype's tool name. */
   placeTool?: ToolHandler;
+  /** Letters `placeTool` handles itself while active (e.g. R rotate, M mirror):
+   *  two-letter shortcuts skip them. Single source for tools/shortcuts.ts. */
+  placeKeys?: string[];
   /** Ghost drawn under the cursor while `placeTool` is active. */
   placementPreview?: ComponentType<PlacementPreviewProps>;
   /** Extra attrs to apply when `changes` are edited (UPDATE_ATTRS and the

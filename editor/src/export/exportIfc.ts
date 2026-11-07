@@ -302,6 +302,7 @@ class Exporter {
     for (const scope of this.scopes) this.exportSpaces(scope);
     this.exportMep();
     this.writeSystems();
+    this.writeGroups();
     this.writeRelationships();
   }
 
@@ -1496,6 +1497,30 @@ class Exporter {
       assigned.add(d.system_type);
       if (members.length > 0) {
         w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, members, null, handle);
+      }
+    }
+  }
+
+  /** Model groups (model_group rows) as IfcGroup with their exported members. */
+  private writeGroups(): void {
+    const { w } = this;
+    for (const scope of this.scopes) {
+      for (const g of scope.elements) {
+        if (g.tableName !== 'model_group') continue;
+        const members: H[] = [];
+        for (const el of scope.elements) {
+          if (el.attrs.group_id !== g.id || el.tableName === 'model_group') continue;
+          const rec = this.findRec(scope, el.id);
+          if (rec) members.push(rec.handle);
+        }
+        const handle = w.add('IfcGroup', w.guid(`group:${scope.id}/${g.id}`), w.ownerHistory,
+          w.label(g.attrs.name || g.id), null, w.label('model_group'));
+        if (members.length > 0) w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, members, null, handle);
+        const ps = w.propertySet(`group:${scope.id}/${g.id}#pset`, 'BimDown', {
+          Id: w.ident(g.id), Table: w.label('model_group'),
+          Mirrored: g.attrs.mirrored === 'true' ? w.bool(true) : null,
+        });
+        if (ps) w.add('IfcRelDefinesByProperties', w.guid(this.relKey('props')), w.ownerHistory, null, null, [handle], ps);
       }
     }
   }

@@ -40,8 +40,8 @@ function isVisible(state: EditorState, el: CanonicalElement): boolean {
 
 /**
  * Select every element of the selected elements' types: visible in the view,
- * or on the whole level (hidden layers too). Returns how many more there are
- * on other levels (the plan edits one level at a time).
+ * or in the whole project (hidden layers and every level; the other levels'
+ * instances are held as the project selection). Returns how many are on other levels.
  */
 export function selectAllInstances(state: EditorState, dispatch: Dispatch, scope: 'view' | 'project'): { selected: number; elsewhere: number } {
   const doc = state.document;
@@ -55,13 +55,18 @@ export function selectAllInstances(state: EditorState, dispatch: Dispatch, scope
     ids.push(el.id);
   }
   let elsewhere = 0;
+  const others = new Map<string, string[]>();
   if (scope === 'project') {
     for (const level of state.project?.levels ?? []) {
       if (level.id === doc.levelId) continue;
-      for (const el of levelElements(state, level.id).values()) if (keys.has(instanceKey(el))) elsewhere++;
+      const found: string[] = [];
+      for (const el of levelElements(state, level.id).values()) if (keys.has(instanceKey(el))) found.push(el.id);
+      if (found.length) { others.set(level.id, found); elsewhere += found.length; }
     }
   }
   dispatch({ type: 'SELECT', ids: sel(state, ids), exact: true });
+  // The other levels' instances join the selection for Delete / Change type / properties
+  if (others.size) dispatch({ type: 'SET_PROJECT_SELECTION', levels: others });
   return { selected: ids.length, elsewhere };
 }
 

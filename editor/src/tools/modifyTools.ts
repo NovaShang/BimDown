@@ -24,6 +24,7 @@ import { toElementId, toSelectionId } from '../model/ids.ts';
 import { typedKey, resolveTypedPoint } from './typedInput.ts';
 import { getModifyOptions, setModifyOptions } from './modifyOptions.ts';
 import { expandCopySet } from '../model/copySet.ts';
+import { projectNumbers } from '../state/levelEdits.ts';
 import { mirrorAcross, rotationAbout, transformElements, translation, type Xform } from '../model/transform.ts';
 import {
   alignDelta, arrayPatch, canOffset, linearArrayTransforms, nearestAlignLine, offsetElement, offsetPatch, offsetSide,
@@ -132,11 +133,14 @@ function snapAngle(a: number): number {
 
 // ─── Rotate ──────────────────────────────────────────────────────────────────
 
+/** Room / door numbers in use when copies are renumbered (modify option), else undefined. */
+const copyNumbers = (s: ToolStateSnapshot) => (getModifyOptions().renumberCopies ? projectNumbers(s) : undefined);
+
 function rotateBy(ctx: ToolContext, angle: number) {
   const s = ctx.getState();
   const c = s.drawingState?.modify?.center;
   if (!s.document || !c || Math.abs(angle) < 1e-9) return;
-  commit(ctx, 'Rotate', transformPatch(s.document.elements, selRaw(s), rotationAbout(c, angle), getModifyOptions().rotateCopy));
+  commit(ctx, 'Rotate', transformPatch(s.document.elements, selRaw(s), rotationAbout(c, angle), getModifyOptions().rotateCopy, copyNumbers(s)));
 }
 
 export const rotateTool: ToolHandler = {
@@ -212,7 +216,7 @@ function mirrorBy(ctx: ToolContext, axis: { start: Point; end: Point }) {
   const s = ctx.getState();
   if (!s.document) return;
   if (Math.hypot(axis.end.x - axis.start.x, axis.end.y - axis.start.y) < 1e-6) return;
-  commit(ctx, 'Mirror', transformPatch(s.document.elements, selRaw(s), mirrorOf(axis), getModifyOptions().mirrorCopy));
+  commit(ctx, 'Mirror', transformPatch(s.document.elements, selRaw(s), mirrorOf(axis), getModifyOptions().mirrorCopy, copyNumbers(s)));
 }
 
 export const mirrorTool: ToolHandler = {
@@ -275,7 +279,7 @@ function arrayAt(ctx: ToolContext, p: Point) {
   if (Ts.length === 0) return;
   const o = getModifyOptions();
   const group = o.arrayGroup ? { name: nextGroupName(s.document.elements.values(), 'Array') } : undefined;
-  commit(ctx, 'Array', arrayPatch(s.document.elements, selRaw(s), Ts, group));
+  commit(ctx, 'Array', arrayPatch(s.document.elements, selRaw(s), Ts, group, copyNumbers(s)));
 }
 
 export const arrayTool: ToolHandler = {
@@ -475,7 +479,7 @@ export const pasteTool: ToolHandler = {
     const s = ctx.getState();
     const at = snapped(ctx, e, undefined, new Set());
     if (!p || !at || !s.document || !s.project) return;
-    const { elements, selected } = pasteElements(p, s.currentLevel, s.project.levels, takenIdsFor(s), { x: at.x - p.base.x, y: at.y - p.base.y }, s.project.types);
+    const { elements, selected } = pasteElements(p, s.currentLevel, s.project.levels, takenIdsFor(s), { x: at.x - p.base.x, y: at.y - p.base.y }, s.project.types, copyNumbers(s));
     if (pasteNeedsTypesSaved(p, s.project.types)) ctx.dispatch({ type: 'SET_TYPES', types: { ...s.project.types!, saved: true, fromDisk: false } });
     commit(ctx, 'Paste', { patch: new Map(elements.map(el => [el.id, el])), select: selected });
     pasting.payload = null;
