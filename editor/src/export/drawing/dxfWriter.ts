@@ -242,7 +242,10 @@ export class DxfWriter {
     }
     b('0', 'ENDSEC');
 
-    b('0', 'SECTION', '2', 'ENTITIES', ...this.entities, '0', 'ENDSEC');
+    // Entities may be millions of group codes: no spread (call stack limit)
+    b('0', 'SECTION', '2', 'ENTITIES');
+    for (const g of this.entities) body.push(g);
+    b('0', 'ENDSEC');
 
     const root = this.h(), groups = this.h();
     b('0', 'SECTION', '2', 'OBJECTS',
@@ -265,7 +268,7 @@ export class DxfWriter {
       '9', '$EXTMIN', '10', num(ext.minX), '20', num(ext.minY), '30', '0.0',
       '9', '$EXTMAX', '10', num(ext.maxX), '20', num(ext.maxY), '30', '0.0',
       '0', 'ENDSEC');
-    out.push(...body);
+    for (const g of body) out.push(g);
     return out.join('\n') + '\n';
   }
 }
