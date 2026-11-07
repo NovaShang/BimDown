@@ -4,12 +4,11 @@
  * horizontal grid line lists (add, remove, move) and the mullion parameters.
  * Every edit is one UPDATE_ATTRS (one undo step).
  */
-import { useMemo, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Plus, X } from 'lucide-react';
 import type { PropertyPanelProps } from './archetypes.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
-import { NumberInput } from '../components/NumberInput.tsx';
 import { Select, SelectTrigger, SelectContent, SelectItem } from '../components/ui/select';
 import { MATERIAL_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
 import { cn } from '../lib/utils';
@@ -31,6 +30,37 @@ const BTN = 'inline-flex h-[22px] items-center gap-1 rounded-md border border-bo
 const SECTION = 'mt-2 mb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground';
 
 type Cell = { col: number; row: number };
+
+/**
+ * Number field that commits on Enter / blur (Esc reverts): typing "2.4" no
+ * longer moves the line to 2, then 2.4, each keystroke clamped between its
+ * neighbours. An empty value commits as '' when `allowEmpty` (type default).
+ */
+function CommitInput({ value, onCommit, disabled, placeholder, allowEmpty, testId }: {
+  value: string; onCommit: (v: string) => void; disabled?: boolean; placeholder?: string; allowEmpty?: boolean; testId?: string;
+}) {
+  const [draft, setDraft] = useState<string | null>(null);
+  const draftRef = useRef<string | null>(null);
+  const set = (v: string | null) => { draftRef.current = v; setDraft(v); };
+  const commit = () => {
+    const d = draftRef.current;
+    set(null);
+    if (d === null || d.trim() === value) return;
+    if (d.trim() === '') { if (allowEmpty) onCommit(''); return; }
+    const n = Number(d.replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) onCommit(String(n));
+  };
+  return (
+    <input className={INPUT} type="text" inputMode="decimal" value={draft ?? value} placeholder={placeholder} disabled={disabled}
+      data-testid={testId}
+      onChange={e => set(e.target.value)} onBlur={commit}
+      onKeyDown={e => {
+        e.stopPropagation();
+        if (e.key === 'Enter') { commit(); e.currentTarget.blur(); }
+        if (e.key === 'Escape') { set(null); e.currentTarget.blur(); }
+      }} />
+  );
+}
 
 export default function CurtainWallPanel({ element, editable }: PropertyPanelProps) {
   const { t } = useTranslation();
@@ -97,8 +127,8 @@ export default function CurtainWallPanel({ element, editable }: PropertyPanelPro
         <div className="flex flex-wrap gap-1">
           {lines.map((v, i) => (
             <div key={`${axis}${i}`} className="flex items-center">
-              <NumberInput className={INPUT} value={String(Math.round(v * 1000) / 1000)} step={0.01} min={0}
-                onChange={val => { const n = parseFloat(val); if (Number.isFinite(n)) apply(moveGridLine(grid, axis, i, n)); }} />
+              <CommitInput value={String(Math.round(v * 1000) / 1000)} disabled={!editable} testId={`cw-${axis}-line-${i}`}
+                onCommit={val => apply(moveGridLine(grid, axis, i, parseFloat(val)))} />
               <button type="button" className="inline-flex size-4 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
                 title={t('cw.remove')} aria-label={t('cw.remove')} disabled={!editable}
                 onClick={() => { apply(removeGridLine(grid, axis, i)); setSelected([]); }} data-testid={`cw-remove-${axis}-${i}`}>
@@ -168,11 +198,11 @@ export default function CurtainWallPanel({ element, editable }: PropertyPanelPro
       <div className={SECTION}>{t('cw.mullions')}</div>
       <div className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
         <span>{t('cw.mullionWidth')}</span>
-        <NumberInput className={INPUT} value={attrs.mullion_width ?? ''} placeholder={String(DEFAULT_MULLION)} step={0.005} min={0.005}
-          onChange={v => apply({ mullion_width: v })} />
+        <CommitInput value={attrs.mullion_width ?? ''} placeholder={String(DEFAULT_MULLION)} allowEmpty disabled={!editable}
+          onCommit={v => apply({ mullion_width: v })} />
         <span>{t('cw.mullionDepth')}</span>
-        <NumberInput className={INPUT} value={attrs.mullion_depth ?? ''} placeholder={String(DEFAULT_MULLION)} step={0.005} min={0.005}
-          onChange={v => apply({ mullion_depth: v })} />
+        <CommitInput value={attrs.mullion_depth ?? ''} placeholder={String(DEFAULT_MULLION)} allowEmpty disabled={!editable}
+          onCommit={v => apply({ mullion_depth: v })} />
         <span>{t('cw.mullionProfile')}</span>
         <Select value={attrs.mullion_profile || 'rect'} onValueChange={v => { if (v) apply({ mullion_profile: v }); }} disabled={!editable}>
           <SelectTrigger size="sm" className={cn(INPUT, 'w-[88px] justify-between')} data-testid="cw-profile">
