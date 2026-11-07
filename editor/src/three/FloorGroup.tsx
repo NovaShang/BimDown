@@ -1,4 +1,4 @@
-import { memo, useMemo, useLayoutEffect, useRef, Suspense } from 'react';
+import { memo, useMemo, useLayoutEffect, useRef, useState, Suspense } from 'react';
 import { Group } from 'three';
 import { createPortal } from '@react-three/fiber';
 import { useEditorState, useSelectionState } from '../state/EditorContext.tsx';
@@ -35,7 +35,8 @@ interface FloorCacheEntry {
 function useAllFloorsElements(): FloorRenderData[] {
   const state = useEditorState();
   const { project, visibleLayers, document: doc, documentVersion, currentLevel } = state;
-  const cache = useRef(new Map<string, FloorCacheEntry>());
+  // Mutable per-component cache (a stable Map, not React state).
+  const [cache] = useState(() => new Map<string, FloorCacheEntry>());
 
   return useMemo(() => {
     if (!project) return [];
@@ -47,7 +48,7 @@ function useAllFloorsElements(): FloorRenderData[] {
 
     const floorData = (levelId: string, elevation: number, source: unknown, parse: () => CanonicalElement[]) => {
       seen.add(levelId);
-      const hit = cache.current.get(levelId);
+      const hit = cache.get(levelId);
       if (hit && hit.source === source && hit.visibleLayers === visibleLayers && hit.elevation === elevation
         && hit.discipline === state.activeDiscipline && hit.archContext === state.showArchContext) {
         return hit.data;
@@ -56,7 +57,7 @@ function useAllFloorsElements(): FloorRenderData[] {
       const data = filtered.length > 0
         ? { levelId, elevation, elements: filtered.map(el => ({ ...el, id: `${levelId === '__global__' ? 'global' : levelId}:${el.id}` })) }
         : null;
-      cache.current.set(levelId, {
+      cache.set(levelId, {
         source, visibleLayers, elevation, data,
         discipline: state.activeDiscipline, archContext: state.showArchContext,
       });
@@ -87,7 +88,7 @@ function useAllFloorsElements(): FloorRenderData[] {
       const data = floorData('__global__', 0, project.globalLayers, () => parseFloorLayers(project.globalLayers));
       if (data) result.push(data);
     }
-    for (const id of cache.current.keys()) if (!seen.has(id)) cache.current.delete(id);
+    for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
 
     return result;
   // state includes activeDiscipline + showArchContext used by isDisciplineVisible
