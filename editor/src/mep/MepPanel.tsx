@@ -21,6 +21,8 @@ import type { MepProblem } from './mepCheck.ts';
 import { cn } from '../lib/utils.ts';
 import { reservedIds } from './reservedIds.ts';
 import { transitionAtPort } from './transitions.ts';
+import { panelLabel } from '../schedule/mepSchedules.ts';
+import { drawingLang } from '../export/drawing/labels.ts';
 
 type Tab = 'systems' | 'check' | 'circuits';
 type MepCurve = LineElement | SpatialLineElement;
@@ -247,7 +249,7 @@ function CircuitsTab({ elements, selectedIds, readonly, level, onCreate, onAssig
         return (
           <div key={c.id} className="flex items-center gap-1.5 rounded px-1.5 py-[2px] text-[10px] text-muted-foreground hover:bg-accent"
             onMouseEnter={() => setMepView({ circuit: c.id })} onMouseLeave={() => setMepView({ circuit: null })}>
-            <span className="w-16 shrink-0 truncate font-semibold text-foreground" title={panelEl ? panelLabel(panelEl) : c.panelId}>{panelEl ? panelLabel(panelEl) : c.panelId}-{c.number}</span>
+            <span className="w-16 shrink-0 truncate font-semibold text-foreground" title={panelLabel(panelEl, c.panelId, drawingLang())}>{panelLabel(panelEl, c.panelId, drawingLang())}-{c.number}</span>
             <span className={cn('flex-1 tabular-nums', over && 'text-red-500')}>
               {t('mep.circuits.summary', { devices: c.devices.length, load: Math.round(c.load) })}{c.rating ? ` / ${c.rating} A` : ''}
             </span>
@@ -306,11 +308,6 @@ function SelectedRun({ elements, selectedIds, readonly, onApply }: {
 /** A problem's message in the UI language (the check writes English). */
 function problemText(t: (k: string, o?: Record<string, unknown>) => string, p: MepProblem): string {
   return p.key ? t(`mep.msg.${p.key}`, { ...p.vars, defaultValue: p.message }) : p.message;
-}
-
-/** Panel name for circuit labels: its number / tag, else its name, else the id. */
-export function panelLabel(panel: CanonicalElement): string {
-  return (panel.attrs.number || '').trim() || (panel.attrs.name || '').trim() || panel.id;
 }
 
 /** A cap node for the first open end of a run. */
