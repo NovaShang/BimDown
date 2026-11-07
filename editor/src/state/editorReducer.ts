@@ -26,6 +26,7 @@ import { withDefaultDrawingType } from '../model/types/drawingType.ts';
 import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
 import { followColumnMoves } from '../model/framingCascade.ts';
 import { followColumnMovesAbove } from '../model/framingLevels.ts';
+import { autoNumberCreated } from './numbering.ts';
 import { initialViewsState } from '../views/viewTypes.ts';
 import { applyStairConsistency, stairsTouchedBy } from '../model/stairElements.ts';
 import { isViewsAction, viewsReducer } from '../views/viewsReducer.ts';
@@ -758,7 +759,8 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
 
     case 'CREATE_ELEMENT': {
       if (!state.document) return state;
-      const element = joinEditedGroup(state, action.element);
+      // New columns, beams, foundations, equipment, doors … take the next mark (model/autoNumber.ts).
+      const element = joinEditedGroup(state, autoNumberCreated(state, [action.element])[0]);
       const before = new Map<string, CanonicalElement | null>([[element.id, null]]);
       const after = new Map<string, CanonicalElement | null>([[element.id, element]]);
       let next = new Map(state.document.elements);
@@ -843,7 +845,7 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
       const after = new Map<string, CanonicalElement | null>();
       const visibleLayers = new Set(state.visibleLayers);
       const candidatePipeIds: string[] = [];
-      for (const raw of action.elements) {
+      for (const raw of autoNumberCreated(state, action.elements)) {
         const el = joinEditedGroup(state, raw);
         before.set(el.id, null);
         after.set(el.id, el);

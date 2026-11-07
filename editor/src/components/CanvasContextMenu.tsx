@@ -231,6 +231,7 @@ export default function CanvasContextMenu({
         })} />
         {selectionHasSystem(full) && <Item label={t('ctx.selectBySystem')} onClick={act(() => selectBySystem(full, dispatch))} />}
         {isMulti && <Item label={t('ctx.selectionFilter')} shortcut="SF" onClick={act(() => openDialog({ kind: 'filter' }))} />}
+        {!readonly && <Item label={t('renumber.title')} onClick={act(() => openDialog({ kind: 'renumber' }))} />}
         <Item label={t('selectionSet.save')} onClick={act(() => openDialog({ kind: 'saveSet' }))} />
         <Item label={t('ctx.hideLayer')} onClick={act(() => {
           const keys = getSelectedLayerKeys();
@@ -267,6 +268,7 @@ export default function CanvasContextMenu({
       {pasteItems}
       {pasteItems && <Sep />}
       <Item label={t('ctx.selectAll')} shortcut={'\u2318A'} onClick={act(selectAll)} />
+      {!readonly && <Item label={t('renumber.title')} onClick={act(() => openDialog({ kind: 'renumber' }))} />}
       <Item label={t('ctx.showAllLayers')} onClick={act(showAllLayers)} />
       {setItems}
       <Sep />

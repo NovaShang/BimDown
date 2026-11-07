@@ -41,6 +41,8 @@ export interface ProjectMetadata {
   source?: string;
   /** `'absolute'` when the project declares spec-absolute spatial Z (see loader). */
   spatial_z?: string;
+  /** Auto-numbering prefixes: table or table.kind → prefix (model/autoNumber.ts). */
+  numbering?: Record<string, string>;
 }
 
 /** One row of the project-level `global/mep_system.csv` lookup table. Lets users

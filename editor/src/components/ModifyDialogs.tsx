@@ -14,6 +14,7 @@ import { LAYER_STYLES } from '../types.ts';
 import { formatElevation, getProjectUnits } from '../utils/units.ts';
 import { SINGLE_KEYS, TWO_LETTER, type Shortcut, type ShortcutGroup } from '../tools/shortcuts.ts';
 import { Input } from './ui/input';
+import RenumberDialog from './RenumberDialog.tsx';
 import { cn } from '../lib/utils';
 
 const primary = 'cursor-pointer rounded border-none bg-[var(--color-accent)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-40';
@@ -268,5 +269,6 @@ export default function ModifyDialogs() {
     case 'filter': return <FilterDialog onClose={close} />;
     case 'saveSet': return <SaveSetDialog onClose={close} />;
     case 'shortcuts': return <ShortcutsPanel onClose={close} />;
+    case 'renumber': return <RenumberDialog onClose={close} />;
   }
 }

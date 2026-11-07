@@ -10,6 +10,7 @@ export type ModifyDialog =
   | { kind: 'editLevel'; levelId: string }
   | { kind: 'filter' }
   | { kind: 'saveSet' }
+  | { kind: 'renumber' }
   | { kind: 'shortcuts' };
 
 interface UiState {
