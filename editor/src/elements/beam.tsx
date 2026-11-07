@@ -57,7 +57,14 @@ export function framingDraw2D(
   const stroke = selected ? '#3a7bff' : (hovered ? '#06b6d4' : '#6d4c41');
   const [a, b, c, d] = facts.footprint2D;
   const angle = Math.atan2(facts.end.y - facts.start.y, facts.end.x - facts.start.x) * 180 / Math.PI;
-  const mid = { x: (a.x + b.x + c.x + d.x) / 4, y: (a.y + b.y + c.y + d.y) / 4 };
+  // Tag beside the beam (offset off its centre line, which often lies on a grid line).
+  const half = Math.hypot(a.x - d.x, a.y - d.y) / 2 + 0.18;
+  const len = Math.hypot(facts.end.x - facts.start.x, facts.end.y - facts.start.y) || 1;
+  const nx = -(facts.end.y - facts.start.y) / len, ny = (facts.end.x - facts.start.x) / len;
+  const mid = {
+    x: (a.x + b.x + c.x + d.x) / 4 + nx * half * (nx < -1e-9 || (Math.abs(nx) < 1e-9 && ny < 0) ? -1 : 1),
+    y: (a.y + b.y + c.y + d.y) / 4 + ny * half * (nx < -1e-9 || (Math.abs(nx) < 1e-9 && ny < 0) ? -1 : 1),
+  };
   const dash = '0.18 0.09';
   return (
     <g data-id={facts.id}>

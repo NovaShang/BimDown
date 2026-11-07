@@ -227,7 +227,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Auto-switch between select ↔ orbit when toggling 2D/3D
       if (action.mode === '3d' && tool === 'select') tool = 'orbit';
       if (action.mode === '2d' && tool === 'orbit') tool = 'select';
-      return { ...state, viewMode: action.mode, activeTool: tool };
+      // Entering 3D all-floors after a 2D level switch (which keeps only that
+      // level's layers): show every floor's layers again, e.g. the columns and
+      // foundations of the levels below.
+      let visibleLayers = state.visibleLayers;
+      if (action.mode === '3d' && state.floor3DMode === 'all' && state.project) {
+        visibleLayers = new Set(visibleLayers);
+        addAllFloorLayers(visibleLayers, state.project.floors);
+      }
+      return { ...state, viewMode: action.mode, activeTool: tool, visibleLayers };
     }
 
     case 'SET_FLOOR_3D_MODE': {

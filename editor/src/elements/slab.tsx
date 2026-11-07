@@ -56,7 +56,8 @@ function makeSlabModule(opts: {
       if (!structural) return body;
       const span = spanSymbol2D(facts, stroke);
       const tag = drawCtx.showNumbers && facts.number ? (
-        <PlanTag x={facts.labelAt.x} y={facts.labelAt.y - (span ? 0.45 : 0)} text={facts.number} color={stroke} />
+        // Beside the centroid: grid layouts often put a column right on it.
+        <PlanTag x={facts.labelAt.x + 0.9} y={facts.labelAt.y - 0.6} text={facts.number} color={stroke} />
       ) : null;
       if (!span && !tag) return body;
       return <g data-id={facts.id}>{body}{span}{tag}</g>;

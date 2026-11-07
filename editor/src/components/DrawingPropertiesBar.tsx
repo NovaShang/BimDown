@@ -55,6 +55,7 @@ export default function DrawingPropertiesBar() {
 
   // Vertical-pipe toggle: only for MEP topo-line tables (duct / pipe / conduit / cable_tray).
   const elMod = getElementModule(target.tableName);
+  const variant = target.variantId ? elMod?.toolbarVariants?.find(v => v.id === target.variantId) : undefined;
   const supportsVertical = elMod?.archetype === 'topo-line';
   const verticalOn = attrs[VERTICAL_MODE_KEY] === 'true';
   const toggleVertical = () => {
@@ -72,7 +73,7 @@ export default function DrawingPropertiesBar() {
       style={{ '--dp-color': disciplineColor } as React.CSSProperties}
     >
       <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold select-none" style={{ color: disciplineColor }}>
-        <Icon name={target.tableName} width={20} height={20} /> {style ? t(`display.${style.displayName}`) : target.tableName}
+        <Icon name={variant?.iconName ?? target.tableName} width={20} height={20} /> {variant ? t(variant.label) : style ? t(`display.${style.displayName}`) : target.tableName}
       </span>
       <Separator orientation="vertical" className="h-4" />
       {fields.map(f => (

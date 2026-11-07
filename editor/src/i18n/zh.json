@@ -366,7 +366,7 @@
   "hint.region.between_columns": "框选柱（或点击一个轴网开间），在相邻柱之间布梁",
   "hint.region.beam_system": "点击一个轴网开间（或框选范围），按间距布置平行次梁",
   "layer.beam_system": "梁系统",
-  "layer.beams_between_columns": "柱间布梁",
+  "layer.beams_between_columns": "柱间梁",
   "layer.columns_at_grids": "轴网布柱",
   "layer.pile_cap_foundation": "承台",
   "layer.pile_foundation": "桩",

@@ -149,6 +149,9 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     // Inject grid elements from global state
     const gridElements = gridsToElements(state.grids);
     const doc = createDocument(state.currentLevel, [...elements, ...gridElements]);
+    // The new document counts versions from 0 again: forget the old level's
+    // last version, or its first edits here would be skipped and never saved.
+    lastProcessedVersion.current = 0;
     dispatch({ type: 'INIT_DOCUMENT', document: doc });
   }, [state.project, state.currentLevel, dispatch]);
 
