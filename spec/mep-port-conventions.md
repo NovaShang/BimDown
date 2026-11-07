@@ -145,7 +145,8 @@ classifies it from the incident pipes:
 | 2 | collinear, unequal size | `reducer` |
 | 2 | collinear, equal size + different shape | `transition` |
 | 2 | non-collinear | `elbow` (any angle other than 0° / 180°) |
-| 3 | — | `tee` |
+| 3 | branch square to the main | `tee` |
+| 3 | branch at an angle to the main (45° drainage branch) | `wye` |
 | 4 | two pairs of collinear | `cross` |
 | ≥ 5 | — | `manifold` or `custom` (warn) |
 
@@ -155,6 +156,14 @@ main, no tee body). `mep_node.fitting` overrides the derived kind where
 geometry can't tell: `tap` / `tee`, `cap` (intentional closed end — a node
 with one curve is kept), `open` (deliberate open end: outfall, vent through
 the roof, future connection).
+
+A plumbing vent (`V` / `VENT`) may share a fitting with the one drainage
+system it ventilates (`SAN`, `W`, …); any other mix of systems at a fitting
+is a `system_mismatch`. The check also reports `duplicate_segment` (two
+runs on top of each other), `size_mismatch` (a run ending on a device port
+of another size: put a short port-size stub before the port, which derives
+a transition / reducer) and `flow_balance` (equipment `flow` more than 10 %
+off the sum of the air terminals its supply port reaches).
 
 Geometric tolerances:
 
