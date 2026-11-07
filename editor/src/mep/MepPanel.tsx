@@ -307,7 +307,10 @@ function SelectedRun({ elements, selectedIds, readonly, onApply }: {
 
 /** A problem's message in the UI language (the check writes English). */
 function problemText(t: (k: string, o?: Record<string, unknown>) => string, p: MepProblem): string {
-  return p.key ? t(`mep.msg.${p.key}`, { ...p.vars, defaultValue: p.message }) : p.message;
+  if (!p.key) return p.message;
+  const vars: Record<string, unknown> = { ...p.vars };
+  if (typeof vars.table === 'string') vars.table = t(`mep.table.${vars.table}`, { defaultValue: vars.table });
+  return t(`mep.msg.${p.key}`, { ...vars, defaultValue: p.message });
 }
 
 /** A cap node for the first open end of a run. */

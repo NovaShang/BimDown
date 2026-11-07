@@ -39,6 +39,18 @@ describe('vertical risers (offset change, same point)', () => {
     expect(codes(h.state)).not.toContain('duplicate_segment');
   });
 
+  it('a click where the last click was is the current point, even if snaps moved that one', () => {
+    const h = createHarness();
+    h.pick('pipe', { start_z: '1', system_type: 'DCW' });
+    h.click(0, 0); h.click(5.04, 0.03); // snapped to the axis (and maybe a round length)
+    setAttrs(h, { start_z: '3' });
+    h.click(5.06, 0.02); // the same spot on screen
+    const ps = pipes(h.state);
+    expect(ps).toHaveLength(2);
+    expect(ps[1].start).toEqual(ps[0].end);
+    expect(ps[1].end).toEqual(ps[0].end);
+  });
+
   it('ignore a second click on the current point when nothing changed', () => {
     const h = createHarness();
     h.pick('duct', { start_z: '3', system_type: 'SA' });
@@ -120,6 +132,23 @@ describe('ortho routing', () => {
     const d = ducts(h.state)[0];
     expect(d.end.y).toBeCloseTo(0, 9);
     expect(d.end.x).toBeCloseTo(-5, 9);
+  });
+});
+
+describe('rise out of a side port', () => {
+  it('leaves the port level and rises where clicked', () => {
+    const h = createHarness();
+    h.pick('equipment', { [STARTER_KEY_ATTR]: 'ahu_chw_2pipe' });
+    h.click(0, 0);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'SA' });
+    h.click(-1.2, 0);
+    setAttrs(h, { start_z: '3' });
+    h.click(-2.2, 0);
+    const [a, b] = ducts(h.state);
+    expect([a.start.x, a.end.x, a.startZ, a.endZ]).toEqual([-1.2, -2.2, 1.05, 1.05]);
+    expect([b.start.x, b.end.x, b.startZ, b.endZ]).toEqual([-2.2, -2.2, 1.05, 3]);
+    expect(h.state.drawingState?.points).toHaveLength(1);
   });
 });
 

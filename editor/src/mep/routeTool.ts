@@ -87,9 +87,11 @@ interface Chain {
   pending: { ref: string; z: number } | null;
   /** Segments of this run (never a tee / join target for its own clicks). */
   ids: Set<string>;
+  /** Where the cursor really was at the last click (before snapping). */
+  lastRaw: Point | null;
 }
 
-const chain: Chain = { z: NaN, typed: '', dir: null, portDir: null, pending: null, ids: new Set() };
+const chain: Chain = { z: NaN, typed: '', dir: null, portDir: null, pending: null, ids: new Set(), lastRaw: null };
 /** The last run ended by itself (on a port / run): the next Esc only acknowledges it. */
 let endedByItself = false;
 const listeners = new Set<() => void>();
@@ -169,6 +171,7 @@ function resetChain(z: number): void {
   chain.portDir = null;
   chain.pending = null;
   chain.ids = new Set();
+  chain.lastRaw = null;
 }
 
 function num(v: string | undefined, fallback = 0): number {
@@ -306,6 +309,8 @@ class Builder {
       end_z: String(round(zb)),
     };
     for (const k of Object.keys(attrs)) if (k.startsWith('__')) delete attrs[k];
+    // Round sections carry one size (no stale size_y).
+    if (target.tableName === 'pipe' || target.tableName === 'conduit' || attrs.shape === 'round') attrs.size_y = attrs.size_x;
     delete attrs.from; delete attrs.to;
     if (refs.from) attrs.from = refs.from;
     if (refs.to) attrs.to = refs.to;
@@ -555,6 +560,14 @@ export function continueRoute(api: RouteApi, pt: Point, portRef: string | undefi
     const pi = portInfo(pending.ref, elements);
     if (pi && b.out[0]) b.fitPort(b.out[b.out.length - 1], 'start', pi);
     z = wanted;
+  } else if (Math.abs(wanted - z) > EPS_Z && startPort && Math.abs(startPort.dir.z) <= 0.7 && !port
+    && !findPipeBodyHit(pt, elements, { tolerance: 0.05, pickPadding: 0.05, excludeIds: exclude }) && !runEndAt(pt, table, elements, exclude)) {
+    // Out of a side port at another height: leave the port level, rise / drop where clicked.
+    seg(from, z, pt, z);
+    seg(pt, z, pt, wanted);
+    const d = unit({ x: pt.x - from.x, y: pt.y - from.y });
+    if (d) { chain.dir = d; chain.portDir = null; }
+    return finish(api, b, da, wanted, false, pt, table);
   } else if (Math.abs(wanted - z) > EPS_Z) {
     seg(from, z, from, wanted);
     z = wanted;
@@ -763,6 +776,15 @@ function snapAt(ctx: ToolContext, e: React.PointerEvent): SnapResult | null {
   const anchor = state.drawingState?.points[0] ?? undefined;
   const connectors = gatherConnectorSnapPoints(state.document?.elements);
   const run = (p: Point) => snapPoint(p, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, connectors, getProjectUnits(state), state.disabledSnapTypes);
+  // Clicking where the last click was (e.g. after changing the Offset) means
+  // the run's current point, whatever the snaps would make of it now.
+  if (anchor && chain.lastRaw) {
+    const px = ctx.screenToSvg(e.clientX + SAME_POINT_PX, e.clientY);
+    const tol = px ? Math.hypot(px.x - svgPt.x, px.y - svgPt.y) : 0;
+    if (Math.hypot(svgPt.x - chain.lastRaw.x, svgPt.y - chain.lastRaw.y) <= tol) {
+      return { point: { ...anchor }, snapX: null, snapY: null, guides: [] };
+    }
+  }
   const raw = run(svgPt);
   if (!anchor || raw.connectorHit || !orthoActive(state.drawingAttrs, !!e.shiftKey)) return raw;
   const { point, axis } = constrainOrtho(anchor, svgPt);
@@ -780,9 +802,14 @@ export function routePointerDown(ctx: ToolContext, e: React.PointerEvent): void 
   ctx.setSnap(snap);
   const api: RouteApi = { dispatch: ctx.dispatch as (a: EditorAction) => void, getState: ctx.getState };
   const points = ctx.getState().drawingState?.points ?? [];
+  const raw = ctx.screenToSvg(e.clientX, e.clientY);
   if (points.length === 0) startRoute(api, snap.point, snap.connectorHit?.portRef);
   else continueRoute(api, snap.point, snap.connectorHit?.portRef, { ortho: orthoActive(ctx.getState().drawingAttrs, !!e.shiftKey) });
+  chain.lastRaw = (ctx.getState().drawingState?.points.length ?? 0) > 0 && raw ? raw : null;
 }
+
+/** A click within this many screen pixels of the last one is "the same point". */
+const SAME_POINT_PX = 6;
 
 export function routePointerMove(ctx: ToolContext, e: React.PointerEvent): void {
   const snap = snapAt(ctx, e);
