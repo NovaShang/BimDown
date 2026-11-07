@@ -72,6 +72,7 @@ export const TYPE_TABLE_DEFS: TypeTableDef[] = [
   { table: 'curtain_wall_type', prefix: 'cwt', instances: ['curtain_wall'], layered: false, columns: ['material', 'u_spacing', 'v_spacing', 'panel_material', 'u_value', 'shgc', 'vt'] },
   { table: 'column_type', prefix: 'colt', instances: ['column', 'structure_column'], layered: false, columns: ['material', ...SECTION] },
   { table: 'beam_type', prefix: 'bmt', instances: ['beam', 'brace'], layered: false, columns: ['material', ...SECTION] },
+  { table: 'furniture_type', prefix: 'fut', instances: ['furniture'], layered: false, columns: ['family', 'variant', 'size_x', 'size_y', 'height'] },
 ];
 
 export const TYPE_LAYER_TABLE = 'type_layer';

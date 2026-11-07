@@ -455,6 +455,7 @@
   "type.category.curtain_wall_type": "Curtain wall type",
   "type.category.column_type": "Column type",
   "type.category.beam_type": "Beam type",
+  "type.category.furniture_type": "Furniture type",
 
   "type.usage_one": "Used by 1 element",
   "ctx.flipWall": "Flip exterior side",

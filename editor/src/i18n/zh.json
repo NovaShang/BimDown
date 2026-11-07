@@ -455,6 +455,7 @@
   "type.category.curtain_wall_type": "幕墙类型",
   "type.category.column_type": "柱类型",
   "type.category.beam_type": "梁类型",
+  "type.category.furniture_type": "家具类型",
 
   "type.usage_one": "1 个构件使用此类型",
   "ctx.flipWall": "翻转内外侧",

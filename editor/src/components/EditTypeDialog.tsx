@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
+import { getElementModule } from '../elements/registry.ts';
 import { ArrowDown, ArrowUp, Copy, Plus, Trash2, X } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import {
@@ -84,7 +85,7 @@ interface EditTypeDialogProps {
  * as one undoable edit; every element following the type updates.
  */
 export default function EditTypeDialog({ open, instanceTable, typeId, onClose, onApplied }: EditTypeDialogProps) {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const def = typeTableFor(instanceTable);
@@ -135,7 +136,15 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
     onClose();
   };
 
-  const setValue = (key: string, value: string) => sel && update({ ...sel, values: { ...sel.values, [key]: value } });
+  const mod = getElementModule(instanceTable);
+  // The instance module's dependent-value rules apply to the type too (e.g. a
+  // furniture family change moves the variant and default sizes along).
+  const setValue = (key: string, value: string) => {
+    if (!sel || !def) return;
+    const extra = mod?.attrChangeRules?.(sel.values, { [key]: value }) ?? {};
+    const kept = Object.fromEntries(Object.entries(extra).filter(([k]) => def.columns.includes(k)));
+    update({ ...sel, values: { ...sel.values, ...kept, [key]: value } });
+  };
   const setLayer = (i: number, patch: Partial<TypeLayer>) =>
     sel && update({ ...sel, layers: sel.layers.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
   const moveLayer = (i: number, dir: -1 | 1) => {
@@ -168,7 +177,11 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
 
   const renderParam = (key: string) => {
     if (!sel) return null;
-    const m = paramMeta(def.table, key);
+    // Row-dependent options from the instance module (furniture family / variant)
+    const dyn = mod?.propertyFields.find(f => f.key === key)?.optionsFor;
+    const m: ParamMeta = dyn
+      ? { label: `field.${mod!.propertyFields.find(f => f.key === key)!.label}`, kind: 'select', options: dyn(sel.values, i18n.language) }
+      : paramMeta(def.table, key);
     const value = sel.values[key] ?? '';
     const shownUnit = m.kind === 'length' ? unit : m.unit;
     return (

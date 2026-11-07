@@ -31,6 +31,18 @@ dt-double-1800,Double 1800 x 2100,Pair of flush timber leaves,wood,1.8,2.1,doubl
 dt-ext-1000,Exterior insulated 1000 x 2200,Insulated entrance door,aluminum,1.0,2.2,single_swing,0.07,1.3,,
 dt-sliding-glass-2400,Sliding glass 2400 x 2100,Double-glazed aluminium patio door,aluminum,2.4,2.1,sliding,0.07,1.6,0.45,0.6
 `,
+  'global/furniture_type.csv': `id,name,description,family,variant,size_x,size_y,height
+fut-desk-1600,Desk 1600 x 800,Office desk,desk,standard,1.6,0.8,0.75
+fut-desk-1400,Desk 1400 x 700,Compact office desk,desk,standard,1.4,0.7,0.75
+fut-office-chair,Office chair,Swivel task chair,office_chair,,,,
+fut-meeting-table-8,Meeting table 8 seats,Rectangular meeting table,meeting_table,rect,2.4,1.2,0.75
+fut-bed-double,Bed double 1600,Double bed,bed,double,1.6,2,
+fut-bed-single,Bed single 900,Single bed,bed,single,0.9,2,
+fut-sofa-3,Sofa 3-seat,Three-seat sofa,sofa,3_seat,,,
+fut-wardrobe-1200,Wardrobe 1200,Hinged-door wardrobe,wardrobe,hinged,1.2,0.6,2.2
+fut-base-cabinet-600,Base cabinet 600,Kitchen base cabinet,base_cabinet,doors,0.6,0.6,0.9
+fut-refrigerator,Refrigerator,Single-door refrigerator,refrigerator,single,,,
+`,
   'global/roof_type.csv': `id,name,description,material,thickness
 rot-flat-insulated,Flat roof - Membrane + PIR 150 on concrete 200,Warm flat roof: waterproofing on PIR insulation on a concrete deck with plaster soffit,concrete,0.37
 rot-pitched-tile,Pitched roof - Tiles on insulated rafters,Clay tiles on battens over timber rafters filled with mineral wool,wood,0.25

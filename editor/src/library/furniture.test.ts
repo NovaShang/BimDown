@@ -164,3 +164,17 @@ describe('3D and library panel', () => {
     expect(filterFamilies('', 'planting').map(f => f.id)).toEqual(['tree', 'plant']);
   });
 });
+
+describe('furniture types', () => {
+  it('a furniture_type supplies family, variant and size; files keep them empty', async () => {
+    const { starterCatalog } = await import('../model/types/starter.ts');
+    const { retypeAttrs, stripTypeAttrs, typeParamKeys, typesForInstanceTable } = await import('../model/types/catalog.ts');
+    const catalog = { ...starterCatalog(), saved: true };
+    expect(typeParamKeys('furniture')).toEqual(['family', 'variant', 'size_x', 'size_y', 'height']);
+    expect(typesForInstanceTable(catalog, 'furniture').map(t => t.id)).toContain('fut-bed-double');
+    const attrs = retypeAttrs('furniture', furniturePlacementAttrs('desk'), 'fut-bed-double', catalog);
+    expect(attrs).toMatchObject({ type_id: 'fut-bed-double', family: 'bed', variant: 'double', size_x: '1.6', size_y: '2' });
+    const stored = stripTypeAttrs('furniture', attrs, catalog);
+    expect([stored.family, stored.variant, stored.size_x]).toEqual(['', '', '']);
+  });
+});
