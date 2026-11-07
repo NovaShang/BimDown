@@ -111,4 +111,22 @@ describe('section and elevation drawings', () => {
     expect(dxf).toContain('HATCH');
     expect(dxf.trim().endsWith('EOF')).toBe(true);
   });
+
+  it('shows ducts cut by the section and furniture beyond it', async () => {
+    const files = building();
+    // A duct crossing the section line (cut) and a wardrobe against the north wall (beyond)
+    files['lv-1/duct.csv'] = 'id,number,shape,size_x,size_y,system_type\ndu-1,,rect,0.4,0.3,SA\n';
+    files['lv-1/duct.geojson'] = fc([{ type: 'Feature', properties: { id: 'du-1' }, geometry: { type: 'LineString', coordinates: [[3, 0.5, 2.6], [3, 3.5, 2.6]] } }]);
+    files['lv-1/furniture.csv'] = 'id,number,family,variant,size_x,size_y,height,mirror\nfu-1,,wardrobe,hinged,1.2,0.6,2.2,\n';
+    files['lv-1/furniture.geojson'] = fc([{ type: 'Feature', properties: { id: 'fu-1' }, geometry: { type: 'Point', coordinates: [1.5, 3.6] } }]);
+    const { project, grids } = await open(files);
+    const d = buildViewDrawing({ project, grids }, { kind: 'section', id: 'vw-1' }, 100)!;
+    // The duct section: a 0.4 × 0.3 cut outline around x 3, z 2.6
+    const cuts = paths(on(d.items, 'A-SECT-MCUT')).map(p => itemsBounds([p])!);
+    expect(cuts.some(b => Math.abs(b.maxX - b.minX - 0.4) < 1e-3 && Math.abs(b.maxY - b.minY - 0.3) < 1e-3)).toBe(true);
+    // The wardrobe beyond: lines on A-SECT-FURN up to its 2.2 m top
+    const furn = paths(on(d.items, 'A-SECT-FURN'));
+    expect(furn.length).toBeGreaterThan(2);
+    expect(Math.max(...furn.flatMap(p => p.pts.map(q => q.y)))).toBeCloseTo(2.2, 3);
+  });
 });

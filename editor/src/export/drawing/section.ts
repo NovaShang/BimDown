@@ -44,6 +44,8 @@ export const VIEW_LAYERS = {
   ground:   L('A-SECT-GRND', '#000000', 7, 0.7,  'solid',  'Ground line'),
   level:    L('A-ANNO-LEVL', '#333333', 7, 0.13, 'center', 'Level lines'),
   levelId:  L('A-ANNO-LEVL-IDEN', '#1a1a1a', 7, 0.25, 'solid', 'Level heads'),
+  mep:      L('M-SECT-MBND', '#2b4d73', 5, 0.13, 'solid',  'Section / elevation: ducts, pipes, fittings and accessories'),
+  furniture: L('A-SECT-FURN', '#5b6470', 8, 0.09, 'solid', 'Section / elevation: furniture and components'),
 } satisfies Record<string, DrawingLayer>;
 
 /** Poché per cut class; undefined = outline only. */
@@ -64,6 +66,7 @@ const CUT_FILL: Partial<Record<PartClass, { layer: DrawingLayer; color: string }
 /** Cut outline pen (paper mm) per class. */
 const CUT_WEIGHT: Partial<Record<PartClass, number>> = {
   door: 0.25, window: 0.25, glass: 0.13, railing: 0.25, curtain: 0.25, equipment: 0.25, ceiling: 0.25,
+  mep: 0.25, furniture: 0.18,
 };
 
 /** Classes whose cut pieces merge into one outline (a wall run reads as one poché). */
@@ -525,6 +528,7 @@ export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: V
   const tol = 1e-5 * upm, depthEps = 2e-3 * upm;
   const beyondLayer = out.layer(ref.kind === 'section' ? VIEW_LAYERS.beyond : VIEW_LAYERS.elev);
   const glassLayer = out.layer(VIEW_LAYERS.glass);
+  const mepLayer = out.layer(VIEW_LAYERS.mep), furnLayer = out.layer(VIEW_LAYERS.furniture);
   const hiddenLayer = opts.hidden ? out.layer(VIEW_LAYERS.hidden) : '';
   const seen = new Set<string>();
   const dk = 1e4 / upm;
@@ -545,7 +549,7 @@ export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: V
     const merged = mergeIntervals(hidden);
     const pt = (t: number): Point => ({ x: p.u + (q.u - p.u) * t, y: p.v + (q.v - p.v) * t });
     let cursor = 0;
-    const layer = part.cls === 'glass' ? glassLayer : beyondLayer;
+    const layer = part.cls === 'glass' ? glassLayer : part.cls === 'mep' ? mepLayer : part.cls === 'furniture' ? furnLayer : beyondLayer;
     const minT = 1e-4;
     for (const [h0, h1] of merged) {
       if (h0 - cursor > minT) out.back.push({ kind: 'path', layer, pts: [pt(cursor), pt(h0)], closed: false });

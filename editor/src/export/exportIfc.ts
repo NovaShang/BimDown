@@ -39,12 +39,10 @@ import type { CurtainWallFacts } from '../elements/curtain_wall.tsx';
 import type { EquipmentFacts } from '../elements/equipment.tsx';
 import type { SpaceFacts } from '../elements/space.tsx';
 import type { FurnitureFacts } from '../elements/furniture.tsx';
-import { furnitureMass, MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
-import { furniturePartGeometry } from '../library/furniture3D.ts';
+import { MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
 import { effectiveMepLine } from '../model/mepFittingRender.ts';
 import type { MepNodeFacts } from '../elements/mep_node.tsx';
-import { accessoryBasis, accessoryGeometry, fittingGeometry } from '../mep/FittingView.tsx';
-import { Matrix4 } from 'three';
+import { furnitureSolids, mepNodeSolids } from './ifc/componentSolids.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
 import { triggerDownload } from './download.ts';
@@ -824,28 +822,11 @@ class Exporter {
   private exportFurniture(scope: Scope, el: CanonicalElement, f: FurnitureFacts): void {
     const { w, S } = this;
     const r = f.resolved;
-    const th = (f.rotationDeg * Math.PI) / 180;
-    const c = Math.cos(th), s = Math.sin(th);
-    const toWorld = (x: number, y: number): V2 => ({ x: f.position.x + x * c - y * s, y: f.position.y + x * s + y * c });
     const solids: Solid[] = [];
     const styles: H[] = [];
-    for (const m of furnitureMass(r)) {
-      let solid: Solid | null = null;
-      if (m.k === 'box') {
-        solid = box(toWorld(m.x, m.y), f.baseY + m.z, m.w, m.d, m.h, th);
-      } else if (m.k === 'cyl' && m.rx === m.ry && (m.top ?? 1) === 1) {
-        const p = toWorld(m.x, m.y);
-        solid = { kind: 'extrude', profile: { kind: 'circle', r: m.rx }, frame: planFrame(v3(p.x, p.y, f.baseY + m.z), th), depth: m.h };
-      } else {
-        const g = furniturePartGeometry(m);
-        g.rotateY(th);
-        g.translate(f.position.x, f.baseY, -f.position.y);
-        solid = brepFromBuffer(g);
-        g.dispose();
-      }
-      if (!solid || !(m.k === 'sph' || m.h > 1e-6)) continue;
+    for (const { solid, color } of furnitureSolids(f)) {
       solids.push(solid);
-      styles.push(w.surfaceStyle(`furniture-${m.c}`, MASS_COLORS[m.c], 0));
+      styles.push(w.surfaceStyle(`furniture-${color}`, MASS_COLORS[color], 0));
     }
     const [entity4, predefined] = r.family.ifc.split('.');
     let type: string, tail: any[];
@@ -1291,23 +1272,13 @@ class Exporter {
     const facts = getElementModule('mep_node')?.geometry(el, ctx) as MepNodeFacts | null;
     if (!kind && (facts?.fitting || legs.length > 0)) {
       const info = facts?.fitting ?? null;
-      const body = info ? this.threeSolids(fittingGeometry(info, facts!.levelY, facts!.riserRight)) : [];
+      const body = info ? mepNodeSolids(facts) : [];
       geom = { solids: body.length > 0 ? body : fittingStubs(center, legs) };
       objectType = info?.kind ?? fittingKind(legs);
       const segTable = info?.legs[0]?.table ?? legs[0]?.seg.el.tableName ?? 'duct';
       if (w.ifc4) { type = (SEGMENT_4[segTable] ?? SEGMENT_4.duct)[2]; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
     } else {
-      const look = facts?.accessory ?? null;
-      let solids: Solid[] = [];
-      if (look) {
-        const m = new Matrix4().makeTranslation(look.at.x, facts!.levelY + look.z, -look.at.y).multiply(accessoryBasis(look));
-        for (const g of accessoryGeometry(look)) {
-          g.applyMatrix4(m);
-          const solid = brepFromBuffer(g.index ? g.toNonIndexed() : g);
-          g.dispose();
-          if (solid) solids.push(solid);
-        }
-      }
+      let solids: Solid[] = facts?.accessory ? mepNodeSolids(facts) : [];
       if (solids.length === 0) {
         let size = num(el.attrs.size_w);
         if (!size) for (const l of legs) size = Math.max(size, l.sizeX, l.sizeY);
@@ -1336,16 +1307,6 @@ class Exporter {
     }
     this.bimdownPset(rec);
     return rec;
-  }
-
-  /** A three.js world-frame geometry (fitting / accessory body) as faceted breps. */
-  private threeSolids(geo: import('three').BufferGeometry | null): Solid[] {
-    if (!geo) return [];
-    const flat = geo.index ? geo.toNonIndexed() : geo;
-    const solid = brepFromBuffer(flat);
-    if (flat !== geo) flat.dispose();
-    geo.dispose();
-    return solid ? [solid] : [];
   }
 
   /** Design data of a device (flow L/s, load W, circuit) as a property set. */

@@ -39,6 +39,9 @@ import type { Frame, Profile, Solid, V2, V3 } from '../ifc/frame.ts';
 import { cross, frameY, planFrame, v3 } from '../ifc/frame.ts';
 import { getProjectUnits } from '../../utils/units.ts';
 import { unitsPerMetre } from './plan.ts';
+import { furnitureSolids, mepNodeSolids, mepRunSolid } from '../ifc/componentSolids.ts';
+import type { FurnitureFacts } from '../../elements/furniture.tsx';
+import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import {
   box, brepFromBuffer, curtainWallParts, extrudePlan, hangFromTop, openingPartSolids, railingGeom, rampGeom,
   sectionProfile, stairFlightGeom, sweep, wallOpeningFrame,
@@ -47,7 +50,8 @@ import {
 /** Drawing class of a part: decides poché, pen and layer. */
 export type PartClass =
   | 'wall' | 'swall' | 'slab' | 'sslab' | 'roof' | 'ceiling' | 'column' | 'scolumn' | 'beam'
-  | 'foundation' | 'stair' | 'railing' | 'curtain' | 'door' | 'window' | 'glass' | 'equipment';
+  | 'foundation' | 'stair' | 'railing' | 'curtain' | 'door' | 'window' | 'glass' | 'equipment'
+  | 'mep' | 'furniture';
 
 /** Edge between two facets of a curved surface: drawn only where the surface turns away from the viewer. */
 export interface SmoothEdge { a: V3; b: V3; n1: V3; n2: V3 }
@@ -430,6 +434,15 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
       push(solidsPart(id, t, 'glass', parts.filter(p => p.kind === 'panel').map(p => p.solid)));
       break;
     }
+    case 'duct': case 'pipe': case 'cable_tray': case 'conduit':
+      push(solidsPart(id, t, 'mep', [mepRunSolid(el, ctx)]));
+      break;
+    case 'mep_node':
+      push(solidsPart(id, t, 'mep', mepNodeSolids(facts as MepNodeFacts)));
+      break;
+    case 'furniture':
+      push(solidsPart(id, t, 'furniture', furnitureSolids(facts as FurnitureFacts).map(x => x.solid)));
+      break;
     case 'equipment': case 'terminal': {
       const f = facts as EquipmentFacts;
       push(solidsPart(id, t, 'equipment', [box(f.position, f.baseY, f.width, f.depth, f.height, (f.rotationDeg * Math.PI) / 180)]));
@@ -443,6 +456,7 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
 const VIEW_TABLES = new Set([
   'wall', 'structure_wall', 'slab', 'structure_slab', 'ceiling', 'roof', 'foundation', 'column', 'structure_column',
   'beam', 'brace', 'stair', 'stair_run', 'stair_landing', 'railing', 'ramp', 'curtain_wall', 'equipment', 'terminal',
+  'duct', 'pipe', 'cable_tray', 'conduit', 'mep_node', 'furniture',
 ]);
 
 export interface ViewModelInput {
