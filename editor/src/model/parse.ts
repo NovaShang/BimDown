@@ -16,7 +16,7 @@ const MIXED_GEOMETRY_TABLES = new Set(['foundation']);
  * Tables that support dual mode: some elements are CSV-only (wall-hosted),
  * others have GeoJSON geometry (slab-hosted). Parsed per-element based on geometry presence.
  */
-const DUAL_MODE_TABLES = new Set(['opening']);
+const DUAL_MODE_TABLES = new Set(['opening', 'railing']);
 
 /** Tables whose elements live in 3D space (LineString coordinates carry Z). */
 const SPATIAL_3D_TABLES = new Set([
@@ -139,8 +139,9 @@ function parseMixedGeometryLayer(layer: LayerData): CanonicalElement[] {
 }
 
 /**
- * Parse a dual-mode layer (opening): features in GeoJSON are slab openings (Polygon),
- * CSV rows without a Feature are wall openings (hosted lines).
+ * Parse a dual-mode layer: features in GeoJSON are slab openings (Polygon) /
+ * sketched railings (LineString); CSV rows without a Feature are wall
+ * openings / stair railings (hosted, geometry derived from the host).
  */
 function parseDualModeLayer(layer: LayerData): CanonicalElement[] {
   const csvRows = validateCsvRows(layer.csvRows, layer.tableName);
@@ -149,12 +150,13 @@ function parseDualModeLayer(layer: LayerData): CanonicalElement[] {
 
   const fc = parseFeatureCollection(layer.geojsonContent);
   if (fc) {
+    const lines = layer.tableName === 'railing';
     for (const feat of fc.features) {
       const id = feat.properties?.id;
-      if (!id || feat.geometry.type !== 'Polygon') continue;
+      if (!id || feat.geometry.type !== (lines ? 'LineString' : 'Polygon')) continue;
       seen.add(id);
       const csv = csvRows.get(id);
-      const el = buildPolygon(id, feat, layer, csv);
+      const el = lines ? buildSpatialLine(id, feat, layer, csv) : buildPolygon(id, feat, layer, csv);
       if (csv?.host_id) el.hostId = csv.host_id;
       elements.push(el);
     }
@@ -433,6 +435,15 @@ export function parseFloorLayers(layers: LayerData[]): CanonicalElement[] {
     const resolved = resolveHostedGeometry(hostWall, position, width);
     line.start = resolved.start;
     line.end = resolved.end;
+  }
+
+  // Stair railings (CSV only): seat them on their stair's line so bounds /
+  // fit-view see them where they are (the path itself is derived at render).
+  const stairs = new Map(elements.filter(e => e.tableName === 'stair' && e.geometry === 'spatial_line').map(e => [e.id, e as SpatialLineElement]));
+  for (const el of elements) {
+    if (el.tableName !== 'railing' || el.geometry !== 'line' || !el.hostId) continue;
+    const st = stairs.get(el.hostId);
+    if (st) { (el as LineElement).start = { ...st.start }; (el as LineElement).end = { ...st.end }; }
   }
 
   return elements;

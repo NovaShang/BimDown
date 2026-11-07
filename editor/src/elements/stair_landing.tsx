@@ -1,29 +1,34 @@
 /**
  * Stair landing — polygon platform hosted on a `stair` row. Multiple landings
- * can share the same host_id (U / W / switchback stairs).
+ * can share the same host_id (U / W / switchback stairs). `base_offset` is the
+ * landing top; the editor keeps it at the top of the run arriving on it.
  *
- * 2D: dashed-edge filled polygon at the landing fill color.
- * 3D: extruded slab at base_offset elevation.
- *
- * This is the lightweight first piece of the FAMILY_VISION-aligned Revit
- * Component Stair model — full stair-with-runs decomposition will follow.
+ * 2D: filled polygon, outline dashed when the landing is above the plan cut.
+ * 3D: slab hanging `thickness` below its top, repeated with the parent's
+ *     multi-storey repetitions.
  */
 import type { ReactNode } from 'react';
-import { Shape, ExtrudeGeometry } from 'three';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
-import type { CanonicalElement, PolygonElement, Point } from '../model/elements.ts';
+import type { CanonicalElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
-
-const DEFAULT_THICKNESS = 0.15;
+import {
+  findStair, hostRefOf, landingOf, stairRepetitionsIn, STAIR_CUT_HEIGHT, LANDING_DEFAULT_THICKNESS,
+  type StairLanding, type StairRepetition,
+} from '../geometry/stair.ts';
+import { landingMesh } from './_stair3D.tsx';
 
 export interface StairLandingFacts {
   id: string;
   vertices: Point[];
+  /** World elevation of the landing top. */
   baseY: number;
   thickness: number;
   material: string;
+  levelY: number;
+  landing: StairLanding;
+  reps: StairRepetition[];
 }
 
 export const stairLandingModule: ElementModule<StairLandingFacts> = {
@@ -35,7 +40,7 @@ export const stairLandingModule: ElementModule<StairLandingFacts> = {
   hostTables: ['stair'],
   csvHeaders: ['number', 'host_id', 'base_offset', 'thickness', 'material'],
   defaults: {
-    host_id: '', base_offset: '0', thickness: `${DEFAULT_THICKNESS}`, material: 'concrete',
+    host_id: '', base_offset: '0', thickness: `${LANDING_DEFAULT_THICKNESS}`, material: 'concrete',
   },
   drawingFields: [
     { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
@@ -47,62 +52,41 @@ export const stairLandingModule: ElementModule<StairLandingFacts> = {
   renderZIndex: 29,
 
   geometry(el: CanonicalElement, ctx: GeometryContext): StairLandingFacts | null {
-    if (el.geometry !== 'polygon') return null;
-    const p = el as PolygonElement;
-    if (p.vertices.length < 3) return null;
-    const baseOffset = parseFloat(p.attrs.base_offset || '0') || 0;
-    const thickness = parseFloat(p.attrs.thickness || `${DEFAULT_THICKNESS}`) || DEFAULT_THICKNESS;
+    const landing = landingOf(el);
+    if (!landing) return null;
+    const host = findStair(ctx, hostRefOf(el), el.id);
     return {
-      id: p.id,
-      vertices: p.vertices,
-      baseY: ctx.levelElevation + baseOffset,
-      thickness,
-      material: p.attrs.material || 'concrete',
+      id: el.id,
+      vertices: landing.vertices,
+      baseY: ctx.levelElevation + landing.top,
+      thickness: landing.thickness,
+      material: el.attrs.material || host?.attrs.material || 'concrete',
+      levelY: ctx.levelElevation,
+      landing,
+      reps: host ? stairRepetitionsIn(host, ctx) : [{ index: 0, levelId: ctx.level.id, dz: 0, scale: 1 }],
     };
   },
 
   draw2D(facts, drawCtx): ReactNode {
     const stroke = drawCtx.selected ? '#3a7bff' : '#7b68ee';
-    const fill = 'rgba(123,104,238,0.18)';
+    const above = facts.landing.top > STAIR_CUT_HEIGHT;
     const points = facts.vertices.map(v => `${v.x},${v.y}`).join(' ');
     return (
       <polygon
         points={points}
-        fill={fill}
+        fill="rgba(123,104,238,0.14)"
         stroke={stroke}
         strokeWidth={0.025}
-        strokeDasharray="0.18 0.08"
+        strokeDasharray={above ? '0.08 0.05' : undefined}
         data-id={facts.id}
       />
     );
   },
 
   draw3D(facts, drawCtx): ReactNode {
-    const shape = new Shape();
-    shape.moveTo(facts.vertices[0].x, facts.vertices[0].y);
-    for (let i = 1; i < facts.vertices.length; i++) {
-      shape.lineTo(facts.vertices[i].x, facts.vertices[i].y);
-    }
-    shape.closePath();
-    const geo = new ExtrudeGeometry(shape, { depth: facts.thickness, bevelEnabled: false });
-    geo.rotateX(-Math.PI / 2);
-    geo.translate(0, facts.baseY, 0);
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'stair_landing'));
     const isHL = drawCtx.selected || drawCtx.hovered;
-    return (
-      <mesh
-        geometry={geo}
-        material={isHL ? undefined : material}
-        castShadow
-        receiveShadow
-        userData={{ elementId: facts.id }}
-      >
-        {isHL && (
-          <meshStandardMaterial attach="material" color="#06b6d4"
-            transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-        )}
-      </mesh>
-    );
+    return <group>{facts.reps.map(rep => landingMesh(`l${rep.index}`, facts.landing, facts.levelY, rep, material, isHL, facts.id))}</group>;
   },
 
   bbox(facts) {

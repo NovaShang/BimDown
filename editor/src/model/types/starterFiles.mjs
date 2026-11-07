@@ -43,6 +43,12 @@ fut-wardrobe-1200,Wardrobe 1200,Hinged-door wardrobe,wardrobe,hinged,1.2,0.6,2.2
 fut-base-cabinet-600,Base cabinet 600,Kitchen base cabinet,base_cabinet,doors,0.6,0.6,0.9
 fut-refrigerator,Refrigerator,Single-door refrigerator,refrigerator,single,,,
 `,
+  'global/railing_type.csv': `id,name,description,material,height,top_rail_shape,top_rail_size,infill,baluster_spacing,baluster_size
+rlt-steel-1000,Steel balusters 1000,Round steel top rail on square balusters,steel,1.0,round,0.05,balusters,0.12,0.025
+rlt-steel-1100,Steel guard 1100,Guard for landings and slab edges,steel,1.1,rect,0.06,balusters,0.11,0.025
+rlt-glass-1000,Glass 1000,Glass panels under a steel top rail,steel,1.0,round,0.05,glass,1.0,0.03
+rlt-timber-900,Timber handrail 900,Timber rail on timber balusters,wood,0.9,rect,0.06,balusters,0.12,0.04
+`,
   'global/roof_type.csv': `id,name,description,material,thickness
 rot-flat-insulated,Flat roof - Membrane + PIR 150 on concrete 200,Warm flat roof: waterproofing on PIR insulation on a concrete deck with plaster soffit,concrete,0.37
 rot-pitched-tile,Pitched roof - Tiles on insulated rafters,Clay tiles on battens over timber rafters filled with mineral wool,wood,0.25

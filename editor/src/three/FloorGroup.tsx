@@ -145,8 +145,8 @@ export default function FloorGroup({ allFloors: forceAll = false }: { allFloors?
 
   // Keyed on content, so a new floors array with the same elevations keeps
   // every floor's geometry context (and its batch) intact.
-  // Every project level counts (a wall's top level may have no elements of its own,
-  // so it is not among the floors), then the floors' own elevations.
+  // Every project level counts (a wall's top level or a multi-storey stair's
+  // repeats may have no elements of their own, so not among the floors), then the floors' own elevations.
   const levels = project?.levels;
   const elevationsKey = [...(levels ?? []).map(l => `${l.id}:${l.elevation}`), ...allFloors.map(f => `${f.levelId}:${f.elevation}`)].join('|');
   const levelElevations = useMemo(() => {

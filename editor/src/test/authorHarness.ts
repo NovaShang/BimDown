@@ -132,7 +132,7 @@ export function authorHouse(): Harness {
   h.pick('roof');
   for (const [x, y] of [[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]) h.click(x, y);
   h.done();
-  h.pick('stair'); h.click(1, 1); h.click(1, 5); h.done();
+  h.pick('stair'); h.click(1, 1); h.click(1, 6.04); h.done(); // 18 × 167 mm risers, 280 mm going
   h.pick('column'); h.click(3, 7.5); h.done();
   // MEP, connected end to end (bimdown build reports open ends): an FCU
   // feeding a diffuser (duct out of its SA port, elbow, drop onto the

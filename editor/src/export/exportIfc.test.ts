@@ -489,6 +489,37 @@ describe('IFC export of the building', () => {
     expect(stair.args[8]).toBe('.HALF_TURN_STAIR.');
   });
 
+  it('repeats a multi-storey L stair per storey, with its derived railings', async () => {
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3\nlv-3,3,L3,6.5\n',
+      'global/railing_type.csv': 'id,name,description,material,height,top_rail_shape,top_rail_size,infill,baluster_spacing,baluster_size\nrlt-1,Glass,,steel,1.1,round,0.05,glass,1,0.03\n',
+      'lv-1/stair.csv': 'id,number,width,step_count,stair_type,top_level_id,multistory_top_level_id\nst-1,S1,1.0,9,quarter_turn,lv-2,lv-3\n',
+      'lv-1/stair.geojson': fc([{ type: 'Feature', properties: { id: 'st-1' }, geometry: { type: 'LineString', coordinates: [[0, 0, 0], [3.5, 0, 1.5]] } }]),
+      'lv-1/stair_run.csv': 'id,number,host_id,width,step_count\nsr-1,,st-1,1.0,9\n',
+      'lv-1/stair_run.geojson': fc([{ type: 'Feature', properties: { id: 'sr-1' }, geometry: { type: 'LineString', coordinates: [[4, 0.5, 1.5], [4, 4, 3]] } }]),
+      'lv-1/stair_landing.csv': 'id,number,base_offset,host_id,thickness\nsl_land-1,,1.5,st-1,0.2\n',
+      'lv-1/stair_landing.geojson': fc([{ type: 'Feature', properties: { id: 'sl_land-1' }, geometry: { type: 'Polygon', coordinates: [[[3.5, -0.5], [4.5, -0.5], [4.5, 0.5], [3.5, 0.5], [3.5, -0.5]]] } }]),
+      'lv-1/railing.csv': 'id,number,host_id,side,type_id,height\nrl-1,,st-1,left,,\nrl-2,,st-1,right,rlt-1,\n',
+    };
+    const { data, ents, keys } = await exportFiles(files);
+    const types = countTypes(ents);
+    expect(types.IFCSTAIR).toBe(2);
+    expect(types.IFCSTAIRFLIGHT).toBe(4);
+    expect(types.IFCRAILING).toBe(4);
+    const landings = [...ents.values()].filter(e => e.type === 'IFCSLAB' && e.args[8] === '.LANDING.');
+    expect(landings).toHaveLength(2);
+    // Repetitions share the row's BimDown id (one read-back key: the base storey's copy).
+    const got = await readBack(data, keys);
+    expect(got.get('stair_landing:sl_land-1')!.max[2]).toBeCloseTo(1.5, 4);
+    expect(got.get('railing:rl-2')!.max[2]).toBeCloseTo(3 + 1.1, 2); // type height on the top tread
+    // Each repetition is contained in its own storey
+    const storeyNames = [...ents.values()].filter(e => e.type === 'IFCRELCONTAINEDINSPATIALSTRUCTURE')
+      .filter(rel => refs(rel.args[4]).some(id => ents.get(id)?.type === 'IFCSTAIR'))
+      .map(rel => str(ents.get(ref(rel.args[5]))!.args[2])).sort();
+    expect(storeyNames).toEqual(['L1', 'L2']);
+  });
+
   it('writes the structural grid as an IfcGrid with two axis families', async () => {
     const project = await loadProject(memoryDataSource({ ...room }));
     const grids = [

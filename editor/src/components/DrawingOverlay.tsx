@@ -3,6 +3,7 @@ import type { CanonicalElement, Point } from '../model/elements.ts';
 import type { ProjectUnit } from '../types.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
+import { layoutStair } from '../geometry/stair.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { formatLength } from '../utils/units.ts';
 import { isWallDrawTable } from '../tools/wallDrawTool.ts';
@@ -128,51 +129,27 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
         bandLine = { from: points[points.length - 1], to: cursor };
       }
 
-      // Tentative landing footprint preview at the 2nd-click position
-      // (corner of an L stair).
-      let landingRect: string | null = null;
-      if (drawingAttrs.stair_type === 'quarter_turn' && points.length === 2 && cursor) {
-        // a = corner, runStart = first click, runEnd = cursor
-        const a = points[1];
-        const inDx = a.x - points[0].x, inDy = a.y - points[0].y;
-        const outDx = cursor.x - a.x, outDy = cursor.y - a.y;
-        const inLen = Math.hypot(inDx, inDy) || 1;
-        const outLen = Math.hypot(outDx, outDy) || 1;
-        const ix = inDx / inLen, iy = inDy / inLen;
-        const ox = outDx / outLen, oy = outDy / outLen;
-        let bx = ix + ox, by = iy + oy;
-        let blen = Math.hypot(bx, by);
-        if (blen < 1e-6) { bx = ix; by = iy; blen = 1; }
-        bx /= blen; by /= blen;
-        const nx = -by, ny = bx;
-        const verts = [
-          { x: a.x + bx * hw + nx * hw, y: a.y + by * hw + ny * hw },
-          { x: a.x + bx * hw - nx * hw, y: a.y + by * hw - ny * hw },
-          { x: a.x - bx * hw - nx * hw, y: a.y - by * hw - ny * hw },
-          { x: a.x - bx * hw + nx * hw, y: a.y - by * hw + ny * hw },
-        ];
-        landingRect = verts.map(v => `${v.x},${v.y}`).join(' ');
-      }
-      // Tentative landing footprint for the U stair — spans points[1] → points[2].
-      if (drawingAttrs.stair_type === 'half_turn' && points.length >= 2) {
-        const a = points[1];
-        const b = points.length >= 3 ? points[2] : cursor;
-        if (b) {
-          const dx = b.x - a.x, dy = b.y - a.y;
-          const span = Math.hypot(dx, dy);
-          if (span > 1e-6) {
-            const ux = dx / span, uy = dy / span;
-            const nx = -uy, ny = ux;
-            const verts = [
-              { x: a.x + nx * hw, y: a.y + ny * hw },
-              { x: b.x + nx * hw, y: b.y + ny * hw },
-              { x: b.x - nx * hw, y: b.y - ny * hw },
-              { x: a.x - nx * hw, y: a.y - ny * hw },
-            ];
-            landingRect = verts.map(v => `${v.x},${v.y}`).join(' ');
-          }
+      // Tentative runs + landing from the clicks so far and the cursor (a U
+      // stair's last run mirrors the first until it is clicked).
+      let previewPts: Point[] | null = null;
+      if (cursor) {
+        const pts = [...points, cursor];
+        if (pts.length === need) previewPts = pts;
+        else if (drawingAttrs.stair_type === 'half_turn' && pts.length === 3) {
+          previewPts = [...pts, { x: pts[2].x + pts[0].x - pts[1].x, y: pts[2].y + pts[0].y - pts[1].y }];
         }
       }
+      const layout = previewPts ? layoutStair(previewPts, width, parseFloat(drawingAttrs.step_count || '18') || 18, 0, 3) : null;
+      if (layout) bandLine = null;
+      const runRects = (layout?.runs ?? []).map(r => {
+        const l = Math.hypot(r.end.x - r.start.x, r.end.y - r.start.y) || 1;
+        const nx = -(r.end.y - r.start.y) / l * hw, ny = (r.end.x - r.start.x) / l * hw;
+        return [
+          { x: r.start.x + nx, y: r.start.y + ny }, { x: r.end.x + nx, y: r.end.y + ny },
+          { x: r.end.x - nx, y: r.end.y - ny }, { x: r.start.x - nx, y: r.start.y - ny },
+        ].map(v => `${v.x},${v.y}`).join(' ');
+      });
+      const landingRect = layout?.landings[0] ? layout.landings[0].vertices.map(v => `${v.x},${v.y}`).join(' ') : null;
 
       return wrap(
         <g className="drawing-overlay" transform="scale(1,-1)">
@@ -184,6 +161,9 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
               strokeDasharray={`${0.3 / scale},${0.15 / scale}`}
             />
           )}
+          {runRects.map((pts, i) => (
+            <polygon key={`run-${i}`} points={pts} fill="rgba(79,195,247,0.18)" stroke="#4fc3f7" strokeWidth={0.05 / scale} />
+          ))}
           {bandLine && (
             <line
               x1={bandLine.from.x} y1={bandLine.from.y}

@@ -73,6 +73,7 @@ export const TYPE_TABLE_DEFS: TypeTableDef[] = [
   { table: 'column_type', prefix: 'colt', instances: ['column', 'structure_column'], layered: false, columns: ['material', ...SECTION] },
   { table: 'beam_type', prefix: 'bmt', instances: ['beam', 'brace'], layered: false, columns: ['material', ...SECTION] },
   { table: 'furniture_type', prefix: 'fut', instances: ['furniture'], layered: false, columns: ['family', 'variant', 'size_x', 'size_y', 'height'] },
+  { table: 'railing_type', prefix: 'rlt', instances: ['railing'], layered: false, columns: ['material', 'height', 'top_rail_shape', 'top_rail_size', 'infill', 'baluster_spacing', 'baluster_size'] },
 ];
 
 export const TYPE_LAYER_TABLE = 'type_layer';

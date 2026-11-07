@@ -35,7 +35,12 @@ export function isCsvOnlyTable(tableName: string): boolean {
 }
 
 /** Tables that support dual mode (some elements have SVG, some don't). */
-const DUAL_MODE_TABLES = new Set(['opening']);
+const DUAL_MODE_TABLES = new Set(['opening', 'railing']);
+
+/** Dual-mode elements that have geometry: slab openings (polygons), sketched railings (3D lines). */
+function hasOwnGeometry(el: CanonicalElement): boolean {
+  return el.tableName === 'railing' ? el.geometry === 'spatial_line' : el.geometry === 'polygon';
+}
 
 /**
  * Serialize elements of one layer to canonical SVG string.
@@ -50,7 +55,7 @@ export function serializeToSvg(elements: CanonicalElement[]): string {
 
   // Dual-mode tables: only serialize SVG for polygon elements (slab openings)
   if (DUAL_MODE_TABLES.has(tableName)) {
-    const svgElements = elements.filter(el => el.geometry === 'polygon');
+    const svgElements = elements.filter(hasOwnGeometry);
     if (svgElements.length === 0) return '';
     // Recurse with only polygon elements to generate their SVG
     elements = svgElements;
@@ -150,7 +155,7 @@ export function serializeToGeoJson(elements: CanonicalElement[], elevation = 0):
   const tableName = elements[0].tableName;
   if (CSV_ONLY_TABLES.has(tableName)) return '';
   if (DUAL_MODE_TABLES.has(tableName)) {
-    elements = elements.filter(el => el.geometry === 'polygon');
+    elements = elements.filter(hasOwnGeometry);
     if (elements.length === 0) return '';
   }
 

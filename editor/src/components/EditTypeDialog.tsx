@@ -62,6 +62,12 @@ function paramMeta(typeTable: string, key: string): ParamMeta {
     case 'size_y': return { label: 'field.Depth', kind: 'length', step: 0.01, min: 0.01 };
     case 'flange': return { label: 'field.Flange Thk', kind: 'length', step: 0.001, min: 0 };
     case 'web': return { label: 'field.Web Thk', kind: 'length', step: 0.001, min: 0 };
+    // Railing types
+    case 'top_rail_shape': return { label: 'railing.topRailShape', kind: 'select', options: [{ value: 'round', label: 'Round' }, { value: 'rect', label: 'Rectangle' }] };
+    case 'top_rail_size': return { label: 'railing.topRailSize', kind: 'length', step: 0.005, min: 0.01 };
+    case 'infill': return { label: 'railing.infill', kind: 'select', options: [{ value: 'balusters', label: 'Balusters' }, { value: 'glass', label: 'Glass' }, { value: 'none', label: 'None' }] };
+    case 'baluster_spacing': return { label: 'railing.balusterSpacing', kind: 'length', step: 0.01, min: 0.05 };
+    case 'baluster_size': return { label: 'railing.balusterSize', kind: 'length', step: 0.005, min: 0.005 };
     default: return { label: key, kind: 'text' };
   }
 }

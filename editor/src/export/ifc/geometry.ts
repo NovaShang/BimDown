@@ -9,6 +9,7 @@ import { createProfile } from '../../three/primitives/profiles.ts';
 import { pointOnArc, arcLength, type ArcParams } from '../../geometry/arc.ts';
 import type { OpeningPart } from '../../elements/_opening3D.tsx';
 import { curtainWallPieces, type CurtainLayoutInput, type CwPiece } from '../../elements/curtainWallLayout.ts';
+import { flightProfile, railBalusters, type RailSegment } from '../../geometry/stair.ts';
 import {
   type Frame, type Profile, type Solid, type V2, type V3,
   UP, add, cross, frameAt, frameY, memberFrame, normalize, planFrame, scale, sub, toWorld, v3,
@@ -221,7 +222,7 @@ const STAIR_WAIST = 0.15;
 
 export interface RunLike { start: Point; end: Point; startZ: number; endZ: number; width: number; baseY: number }
 
-/** A flight as a solid stepped profile (risers, treads and a sloped soffit), not floating treads. */
+/** A flight as a solid stepped profile (risers, treads and a sloped soffit), not floating treads — the 3D view's profile. */
 export function stairFlightGeom(r: RunLike & { stepCount: number }): ProductGeom | null {
   // Build the profile ascending: swap ends for a descending run.
   const up = r.endZ >= r.startZ;
@@ -231,21 +232,7 @@ export function stairFlightGeom(r: RunLike & { stepCount: number }): ProductGeom
   if (len < 0.001) return null;
   const dir = { x: (hi.x - lo.x) / len, y: (hi.y - lo.y) / len };
   const o = v3(lo.x, lo.y, r.baseY + z0);
-  const n = Math.max(1, r.stepCount);
-  if (rise < 0.01) {
-    return { solids: [sideProfileSolid(o, dir, r.width, [{ x: 0, y: -STAIR_WAIST }, { x: len, y: -STAIR_WAIST }, { x: len, y: 0 }, { x: 0, y: 0 }])] };
-  }
-  const d = len / n, h = rise / n;
-  const outer: V2[] = [{ x: 0, y: 0 }];
-  for (let i = 0; i < n; i++) {
-    outer.push({ x: i * d, y: (i + 1) * h });
-    outer.push({ x: (i + 1) * d, y: (i + 1) * h });
-  }
-  // Soffit: the pitch line dropped by the vertical waist, meeting the floor at u0.
-  const waistV = Math.min(STAIR_WAIST * Math.hypot(d, h) / d, rise * 0.6);
-  outer.push({ x: len, y: rise - waistV });
-  outer.push({ x: (waistV * len) / rise, y: 0 });
-  return { solids: [sideProfileSolid(o, dir, r.width, outer)] };
+  return { solids: [sideProfileSolid(o, dir, r.width, flightProfile(len, rise, r.stepCount, STAIR_WAIST))] };
 }
 
 /** Ramp: a sloped slab of `thickness` following the run line (the 3D view approximates it flat). */
@@ -258,23 +245,41 @@ export function rampGeom(r: RunLike, thickness: number): ProductGeom | null {
   return { solids: [sideProfileSolid(v3(r.start.x, r.start.y, r.baseY + r.startZ), dir, r.width, outer)] };
 }
 
-export interface RailingLike { start: Point; end: Point; startZ: number; endZ: number; height: number; baseY: number; horLen: number }
+export interface RailingStyleLike {
+  height: number;
+  railShape: 'round' | 'rect';
+  railSize: number;
+  infill: 'balusters' | 'glass' | 'none';
+  balusterSpacing: number;
+  balusterSize: number;
+}
 
-/** Railing: handrail swept along the (possibly sloped) top line + balusters spaced like the 3D view. */
-export function railingGeom(r: RailingLike, opts = { spacing: 0.12, baluster: 0.025, handrail: 0.04 }): ProductGeom | null {
-  if (r.horLen < 0.001) return null;
-  const s = v3(r.start.x, r.start.y, r.baseY + r.startZ + r.height);
-  const e = v3(r.end.x, r.end.y, r.baseY + r.endZ + r.height);
+/**
+ * Railing along a path (level-relative Z + `baseY`): top rail swept per
+ * segment, balusters on the treads / floor (posts at the corners for glass /
+ * no infill) and glass panels — as the 3D view.
+ */
+export function railingGeom(segs: readonly RailSegment[], baseY: number, style: RailingStyleLike): ProductGeom | null {
+  if (segs.length === 0) return null;
   const solids: Solid[] = [];
-  const rail = sweep(s, e, { kind: 'rect', w: opts.handrail, d: opts.handrail });
-  if (rail) solids.push(rail);
-  const count = Math.max(2, Math.floor(r.horLen / opts.spacing) + 1);
-  const angle = Math.atan2(r.end.y - r.start.y, r.end.x - r.start.x);
-  for (let i = 0; i < count; i++) {
-    const t = i / (count - 1);
-    const c = { x: r.start.x + (r.end.x - r.start.x) * t, y: r.start.y + (r.end.y - r.start.y) * t };
-    const z = r.baseY + r.startZ + (r.endZ - r.startZ) * t;
-    solids.push(box(c, z, opts.baluster, opts.baluster, r.height, angle));
+  const railZ = style.height - style.railSize / 2;
+  const profile: Profile = style.railShape === 'round' ? { kind: 'circle', r: style.railSize / 2 } : { kind: 'rect', w: style.railSize, d: style.railSize };
+  for (const s of segs) {
+    const rail = sweep(v3(s.a.x, s.a.y, baseY + s.a.z + railZ), v3(s.b.x, s.b.y, baseY + s.b.z + railZ), profile);
+    if (rail) solids.push(rail);
+    if (style.infill === 'glass') {
+      const l = Math.hypot(s.b.x - s.a.x, s.b.y - s.a.y);
+      if (l < 1e-6) continue;
+      const dir = { x: (s.b.x - s.a.x) / l, y: (s.b.y - s.a.y) / l };
+      const top = style.height - style.railSize - 0.04, dz = s.b.z - s.a.z;
+      solids.push(sideProfileSolid(v3(s.a.x, s.a.y, baseY + s.a.z), dir, 0.012,
+        [{ x: 0, y: 0.05 }, { x: l, y: dz + 0.05 }, { x: l, y: dz + top }, { x: 0, y: top }]));
+    }
+  }
+  const spacing = style.infill === 'balusters' ? style.balusterSpacing : 1e9;
+  for (const b of railBalusters(segs, spacing, railZ)) {
+    const h = b.z1 - b.z0;
+    if (h > 1e-3) solids.push(box({ x: b.x, y: b.y }, baseY + b.z0, style.balusterSize, style.balusterSize, h));
   }
   return { solids };
 }

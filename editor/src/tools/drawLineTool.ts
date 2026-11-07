@@ -8,18 +8,17 @@ import { getProjectUnits } from '../utils/units.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { getElementModule } from '../elements/registry.ts';
-import { drawStairTool, isMultiClickStair } from './drawStairTool.ts';
+import { drawStairTool } from './drawStairTool.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { wallDrawTool, isWallDrawTable } from './wallDrawTool.ts';
 import { routePointerDown, routePointerMove } from '../mep/routeTool.ts';
+import { railingSegmentHost } from './railingPlacement.ts';
 
-/** When true, the multi-click stair placement tool handles this event instead
- *  of the regular line-creation flow. Straight stairs and every other table
- *  still go through the line path unchanged. */
+/** Stairs (straight / L / U) use the stair placement tool: it lays down the
+ *  stair with its runs, landings and railings in one step. */
 function shouldDelegateToStairTool(state: { drawingTarget: { tableName: string } | null; drawingAttrs: Record<string, string> }): boolean {
-  return state.drawingTarget?.tableName === 'stair'
-    && isMultiClickStair(state.drawingAttrs.stair_type);
+  return state.drawingTarget?.tableName === 'stair';
 }
 
 /** Reserved drawingAttrs key (double underscore prefix to avoid CSV-field collision)
@@ -156,11 +155,19 @@ export const drawLineTool: ToolHandler = {
       const geo = geometryTypeForTable(target.tableName);
       // Vertical-span tables (stair) carry their rise in base_offset/top_offset,
       // not start_z/end_z; derive the Z span from those so they aren't flat.
-      const span = resolveVerticalSpanZ(mergedAttrs, target.tableName, state);
+      let span = resolveVerticalSpanZ(mergedAttrs, target.tableName, state);
       if (span) {
         // Keep the persisted CSV start_z/end_z in sync with the derived span.
         mergedAttrs.start_z = String(span.startZ);
         mergedAttrs.end_z = String(span.endZ);
+      }
+      // Railings: a segment on / along a slab edge is hosted on the slab and
+      // stands on its top.
+      const railHost = target.tableName === 'railing' ? railingSegmentHost(state.document?.elements.values(), start, end) : null;
+      if (railHost) {
+        span = { startZ: railHost.z, endZ: railHost.z };
+        mergedAttrs.host_id = railHost.hostId;
+        mergedAttrs.start_z = mergedAttrs.end_z = String(railHost.z);
       }
       const element: CanonicalElement = geo === 'spatial_line'
         ? {
@@ -186,9 +193,16 @@ export const drawLineTool: ToolHandler = {
             attrs: mergedAttrs,
           } satisfies LineElement;
 
+      if (railHost) element.hostId = railHost.hostId;
+
       ctx.dispatch({ type: 'CREATE_ELEMENT', element });
-      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
-      ctx.setSnap(null);
+      if (target.tableName === 'railing') {
+        // Railings chain: the next segment starts here (Enter / Esc stops).
+        ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [end], cursor: end } });
+      } else {
+        ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+        ctx.setSnap(null);
+      }
     }
   },
 
@@ -235,6 +249,12 @@ export const drawLineTool: ToolHandler = {
   onKeyDown(ctx: ToolContext, e: KeyboardEvent) {
     if (isWallDrawTable(ctx.getState().drawingTarget?.tableName)) {
       return wallDrawTool.onKeyDown?.(ctx, e) ?? false;
+    }
+    // End a railing chain
+    if (e.key === 'Enter' && ctx.getState().drawingTarget?.tableName === 'railing' && ctx.getState().drawingState?.points.length) {
+      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+      ctx.setSnap(null);
+      return true;
     }
     return false;
   },
