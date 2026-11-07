@@ -18,7 +18,8 @@ export default function MarqueeSelection({ marquee }: MarqueeSelectionProps) {
         top: y,
         width: w,
         height: h,
-        border: '1px solid var(--color-accent, #0891b2)',
+        // Solid = window (dragged left → right), dashed = crossing (right → left)
+        border: `1px ${marquee.x2 < marquee.x1 ? 'dashed' : 'solid'} var(--color-accent, #0891b2)`,
         background: 'var(--accent-dim, rgba(8,145,178,0.12))',
         pointerEvents: 'none',
       }}

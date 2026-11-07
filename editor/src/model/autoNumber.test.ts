@@ -20,7 +20,7 @@ const col = (id: string, x: number, y: number, attrs: Record<string, string> = {
 const beam = (id: string, a: [number, number], b: [number, number], attrs: Record<string, string> = {}): LineElement => ({
   id, tableName: 'beam', discipline: 'structure', geometry: 'spatial_line', start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] },
   startZ: 0, endZ: 0, strokeWidth: 0.3, attrs: { id, shape: 'rect', size_x: '0.3', size_y: '0.6', ...attrs },
-} as LineElement);
+} as unknown as LineElement);
 const eq = (id: string, kind: string): PointElement => ({
   id, tableName: 'equipment', discipline: 'mep', geometry: 'point', position: { x: 0, y: 0 }, width: 1, height: 1, attrs: { id, equipment_type: kind },
 });

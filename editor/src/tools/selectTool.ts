@@ -410,6 +410,29 @@ function getElementAnchor(snapshot: Map<string, CanonicalElement | null> | null)
   return null;
 }
 
+export interface ScreenRect { x: number; y: number; w: number; h: number }
+
+/**
+ * Marquee rule (Revit / AutoCAD): dragged left → right is a window — only
+ * elements entirely inside are taken; right → left is crossing — anything
+ * the box touches. `pts` are the element's extreme points on screen.
+ */
+export function marqueeHits(window: boolean, pts: readonly { x: number; y: number }[], rect: ScreenRect): boolean {
+  if (pts.length === 0) return false;
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(...ys), y1 = Math.max(...ys);
+  if (window) return x0 >= rect.x && x1 <= rect.x + rect.w && y0 >= rect.y && y1 <= rect.y + rect.h;
+  return x0 < rect.x + rect.w && x1 > rect.x && y0 < rect.y + rect.h && y1 > rect.y;
+}
+
+/** Model-space extreme points of an element (outline, line ends, point footprint). */
+function modelExtent(el: import('../model/elements.ts').CanonicalElement): { x: number; y: number }[] {
+  if (el.geometry === 'polygon') return el.vertices;
+  if (el.geometry === 'line' || el.geometry === 'spatial_line') return [el.start, el.end];
+  const hw = (el.width || 0) / 2, hh = (el.height || el.width || 0) / 2;
+  return [{ x: el.position.x - hw, y: el.position.y - hh }, { x: el.position.x + hw, y: el.position.y + hh }];
+}
+
 function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   const container = ctx.containerRef.current;
   if (!container) return;
@@ -423,6 +446,8 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   };
 
   if (marqueeRect.w < 5 && marqueeRect.h < 5) return;
+  // Left → right: window (entirely inside); right → left: crossing.
+  const windowMode = _e.clientX - containerRect.left >= gesture.startScreen.x;
 
   // 3D mode: use resolveMarquee callback
   if (ctx.resolveMarquee) {
@@ -458,23 +483,22 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
       pt2.y = bbox.y + bbox.height;
       const screenPt2 = pt2.matrixTransform(ctm);
 
-      const elRect = {
-        x: Math.min(screenPt1.x, screenPt2.x) - containerRect.left,
-        y: Math.min(screenPt1.y, screenPt2.y) - containerRect.top,
-        w: Math.abs(screenPt2.x - screenPt1.x),
-        h: Math.abs(screenPt2.y - screenPt1.y),
+      const rawId = el.getAttribute('data-id');
+      if (!rawId) continue;
+      const elemId = toElementId(rawId);
+      const canonical = docElements?.get(elemId);
+      // Window mode tests the element's own geometry (its tag text may stick out of the box).
+      const toScreen = (p: { x: number; y: number }) => {
+        const q = svg.createSVGPoint();
+        q.x = p.x; q.y = p.y;
+        const s = q.matrixTransform(ctm);
+        return { x: s.x - containerRect.left, y: s.y - containerRect.top };
       };
+      const pts = windowMode && canonical
+        ? modelExtent(canonical).map(toScreen)
+        : [{ x: screenPt1.x - containerRect.left, y: screenPt1.y - containerRect.top }, { x: screenPt2.x - containerRect.left, y: screenPt2.y - containerRect.top }];
 
-      if (
-        elRect.x < marqueeRect.x + marqueeRect.w &&
-        elRect.x + elRect.w > marqueeRect.x &&
-        elRect.y < marqueeRect.y + marqueeRect.h &&
-        elRect.y + elRect.h > marqueeRect.y
-      ) {
-        const rawId = el.getAttribute('data-id');
-        if (!rawId) continue;
-        const elemId = toElementId(rawId);
-        const canonical = docElements?.get(elemId);
+      if (marqueeHits(windowMode, pts, marqueeRect)) {
         if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline, canonical.tableName)) continue;
         // Connectors are pure derivatives of their host — not selectable.
         if (canonical?.tableName === 'connector') continue;

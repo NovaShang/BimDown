@@ -8,6 +8,7 @@ import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSna
 import { formatLength } from '../utils/units.ts';
 import { isWallDrawTable } from '../tools/wallDrawTool.ts';
 import WallDrawPreview, { TypedBadge } from './WallDrawPreview.tsx';
+import { typedOffsetPoint } from '../tools/drawPointTool.ts';
 import { pointSizeAttrsForTable } from '../model/tableRegistry.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { mepDrawingPreview } from '../mep/MepDrawingPreview.tsx';
@@ -380,10 +381,22 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     const mepPreview = mepDrawingPreview({ activeTool, tableName, points, cursor, drawingAttrs, scale });
     if (mepPreview) return mepPreview;
     const Preview = tableName ? getElementModule(tableName)?.placementPreview : undefined;
-    if (cursor && Preview) {
-      return <Preview cursor={cursor} rotation={drawingState.rotation} attrs={drawingAttrs} scale={scale} />;
+    // Typed offset from a reference point: preview at the offset, reference marked.
+    const typed = drawingState.typed;
+    const ref = typed ? points[0] : undefined;
+    const at = ref && typed ? typedOffsetPoint(ref, typed, projectUnit ?? 'm') : cursor;
+    const typedLayer = ref && typed && cursor ? (
+      <g className="drawing-overlay" transform="scale(1,-1)">
+        <line x1={ref.x} y1={ref.y} x2={at!.x} y2={at!.y} stroke="#ffa726" strokeWidth={0.06 / scale} strokeDasharray={`${0.4 / scale},${0.2 / scale}`} />
+        <circle cx={ref.x} cy={ref.y} r={0.3 / scale} fill="#ffa726" />
+        <g transform="scale(1,-1)"><TypedBadge at={ref} typed={typed} scale={scale} labels={['ΔX', 'ΔY']} /></g>
+      </g>
+    ) : null;
+    if (at && Preview) {
+      return <>{typedLayer}<Preview cursor={at} rotation={drawingState.rotation} attrs={drawingAttrs} scale={scale} /></>;
     }
-    if (cursor) {
+    if (at) {
+      const cursor = at;
       // Plan size attrs: size_x/size_y, foundation width/length.
       const [sxKey, syKey] = tableName ? pointSizeAttrsForTable(tableName) : ['size_x', 'size_y'];
       const w = parseFloat(drawingAttrs[sxKey] || '0.3') || 0.3;
@@ -400,6 +413,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           />
           <line x1={cursor.x - hw - (0.3 / scale)} y1={cursor.y} x2={cursor.x + hw + (0.3 / scale)} y2={cursor.y} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
           <line x1={cursor.x} y1={cursor.y - hh - (0.3 / scale)} x2={cursor.x} y2={cursor.y + hh + (0.3 / scale)} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
+          {typedLayer && <g transform="scale(1,-1)">{typedLayer}</g>}
         </g>
       );
     }
