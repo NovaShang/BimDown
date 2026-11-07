@@ -40,17 +40,21 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
     if (csvFiles.length === 0) continue;
 
     const allRows: Record<string, string>[] = [];
-    let headers: string[] = [];
+    const headerSet = new Set<string>();
     for (const { dir: dirName, fullPath } of csvFiles) {
       const data = readCsv(fullPath);
-      if (headers.length === 0) headers = data.headers;
+      if (data.duplicateHeaders) {
+        console.warn(`warning: ${dirName}/${tableName}.csv repeats column(s) ${data.duplicateHeaders.map((h) => `"${h}"`).join(', ')}; merged`);
+      }
+      // Union of headers: per-level files may carry different optional columns.
+      for (const h of data.headers) headerSet.add(h);
       for (const row of data.rows) {
         allRows.push({ ...row, _partition: dirName });
       }
     }
     if (allRows.length === 0) continue;
 
-    const cols = [...headers, '_partition'];
+    const cols = [...headerSet, '_partition'];
     const colDefs = cols.map((c) => `"${c}" VARCHAR`).join(', ');
     await runQuery(conn, `CREATE TABLE "${tableName}" (${colDefs})`);
 

@@ -34,3 +34,11 @@ fields:
       - round
       - arch
     description: Opening shape. Only for wall openings.
+
+  # Wall openings have no GeoJSON feature, so their sill height lives in the
+  # CSV (same as door/window). Slab openings leave it empty.
+  - name: base_offset
+    type: float
+    default: 0
+    storage: csv
+    description: Sill height of a wall opening above the host's base level, meters. Only for wall openings.

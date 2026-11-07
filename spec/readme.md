@@ -247,7 +247,7 @@ Rather than separate types for isolated/strip/raft foundations, a single `founda
 ### Opening: Wall and Slab Voids
 
 `opening` supports two modes via the same table:
-- **Wall opening**: `host_id` → wall, with `position`, `width`, `height`. No GeoJSON.
+- **Wall opening**: `host_id` → wall, with `position`, `width`, `height`, and an optional sill `base_offset` (CSV, like door/window). No GeoJSON.
 - **Slab opening**: `host_id` → slab, with GeoJSON `Polygon` geometry.
 
 For multi-story shaft openings: export one `opening` per level, each hosted on its respective slab.

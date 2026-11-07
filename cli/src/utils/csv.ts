@@ -3,6 +3,8 @@ import { readFileSync, writeFileSync } from 'node:fs';
 export interface CsvData {
   headers: string[];
   rows: Record<string, string>[];
+  /** Header names repeated in the file; merged into a single column. */
+  duplicateHeaders?: string[];
 }
 
 export function readCsv(filePath: string): CsvData {
@@ -13,17 +15,22 @@ export function readCsv(filePath: string): CsvData {
   const lines = text.split(/\r?\n/).filter((l) => l.trim() !== '');
   if (lines.length === 0) return { headers: [], rows: [] };
 
-  const headers = parseCsvLine(lines[0]);
+  // A repeated header (e.g. two `id` columns written by older editors) is
+  // merged into one column, first non-empty value winning, so callers always
+  // see unique headers and DuckDB can create the table.
+  const rawHeaders = parseCsvLine(lines[0]);
+  const headers = [...new Set(rawHeaders)];
+  const duplicateHeaders = headers.filter((h) => rawHeaders.indexOf(h) !== rawHeaders.lastIndexOf(h));
   const rows = lines.slice(1).map((line) => {
     const values = parseCsvLine(line);
     const row: Record<string, string> = {};
-    for (let i = 0; i < headers.length; i++) {
-      row[headers[i]] = values[i] ?? '';
+    for (let i = 0; i < rawHeaders.length; i++) {
+      if (!row[rawHeaders[i]]) row[rawHeaders[i]] = values[i] ?? '';
     }
     return row;
   });
 
-  return { headers, rows };
+  return duplicateHeaders.length > 0 ? { headers, rows, duplicateHeaders } : { headers, rows };
 }
 
 function parseCsvLine(line: string): string[] {
