@@ -3,6 +3,7 @@ import { useCoreEditorState, useEditorState } from '../state/EditorContext.tsx';
 import type { Tool } from '../state/editorTypes.ts';
 import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
 import { isWallDrawTable, wallDrawOptions } from '../tools/wallDrawTool.ts';
+import { useModifyOptions } from '../tools/modifyOptions.ts';
 
 const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_line:    'hint.line',
@@ -15,6 +16,11 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
+  mirror:       'hint.mirror',
+  array:        'hint.array',
+  align:        'hint.align',
+  offset:       'hint.offset',
+  paste:        'hint.paste',
   trim_corner:  'hint.trimCorner',
   trim_single:  'hint.trimSingle',
   split:        'hint.split',
@@ -28,8 +34,17 @@ export default function DrawingHints() {
   const { activeTool, drawingState } = useCoreEditorState();
   const { drawingAttrs, drawingTarget } = useEditorState();
 
+  const modifyOpts = useModifyOptions();
   const hintKey = HINT_KEYS[activeTool];
   if (!hintKey) return null;
+  const m = drawingState?.modify;
+  const modifyHint = activeTool === 'rotate'
+    ? (m?.pickCenter ? 'hint.rotateCenter' : m?.ref ? 'hint.rotate2' : 'hint.rotate')
+    : activeTool === 'mirror'
+      ? (modifyOpts.mirrorMode === 'draw' ? (m?.ref ? 'hint.mirrorDraw2' : 'hint.mirrorDraw') : 'hint.mirror')
+      : activeTool === 'array'
+        ? (modifyOpts.arrayMode === 'radial' ? 'hint.arrayRadial' : m?.ref ? 'hint.array2' : 'hint.array')
+        : activeTool === 'align' && drawingState?.pick ? 'hint.align2' : null;
 
   // Vertical mode short-circuits the line hint with a single-click prompt.
   const isVerticalLine =
@@ -47,7 +62,9 @@ export default function DrawingHints() {
   const wallMode = activeTool === 'draw_line' && isWallDrawTable(drawingTarget?.tableName)
     ? wallDrawOptions(drawingAttrs).mode : null;
   const isWallRun = activeTool === 'draw_dimension' && drawingAttrs.dim_mode === 'wall_run';
-  const text = isWallRun
+  const text = modifyHint
+    ? t(modifyHint)
+    : isWallRun
     ? t('hint.dimensionWallRun')
     : regionHint
       ? t(regionHint)

@@ -20,6 +20,7 @@ import RightPanel from './RightPanel.tsx';
 import DrawingHints from './DrawingHints.tsx';
 import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
+import ModifyHost from './ModifyHost.tsx';
 import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
 import SchedulePanel, { SCHEDULE_TOGGLE_EVENT } from './SchedulePanel.tsx';
@@ -31,6 +32,9 @@ import { UnderlayHint, CalibrateDialog } from '../underlay/UnderlayDialogs.tsx';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
+
+/** Tools that hide the selection bar while they run. */
+const MODIFY_TOOLS = new Set(['rotate', 'mirror', 'array', 'align', 'offset', 'paste']);
 
 export default function EditorShell({ paddingRight = 0 }: { paddingRight?: number }) {
   const { t } = useTranslation();
@@ -246,6 +250,35 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     }
   }, [state.project?.levels, ds]);
 
+  // Layers of other levels changed by a multi-level edit (copy to levels,
+  // duplicate level, elevation change, group edit): write them after the
+  // level list (a new level's folder), in order.
+  const floorWritesSeen = useRef(state.floorWrites?.seq ?? 0);
+  const floorWriteOps = useRef<Promise<void>>(Promise.resolve());
+  useEffect(() => {
+    const fw = state.floorWrites;
+    if (!fw || fw.seq <= floorWritesSeen.current || state.readonly) return;
+    const pending = fw.writes.filter(w => w.seq > floorWritesSeen.current);
+    floorWritesSeen.current = fw.seq;
+    const byLevel = new Map<string, Set<string>>();
+    for (const w of pending) {
+      const s = byLevel.get(w.levelId) ?? new Set<string>();
+      w.keys.forEach(k => s.add(k));
+      byLevel.set(w.levelId, s);
+    }
+    floorWriteOps.current = floorWriteOps.current.then(async () => {
+      const s = stateRef.current;
+      for (const [levelId, keys] of byLevel) {
+        const level = s.project?.levels.find(l => l.id === levelId);
+        // The open level saves through its document; a removed level has no folder.
+        if (!level || s.document?.levelId === levelId) continue;
+        const floor = s.project?.floors.get(levelId);
+        const doc = createDocument(levelId, floor ? parseFloorLayers(floor.layers) : []);
+        await persistDocument(doc, dsRef.current, keys, level.elevation, s.project?.types);
+      }
+    }).catch(err => console.error('Persist levels\' layers failed:', err));
+  }, [state.floorWrites, state.readonly]);
+
   // Persist element types (global/*_type.csv + type_layer.csv) when the
   // catalog changes — type edits, undo/redo of them, first use of a starter
   // type. Neither an unsaved starter catalog nor one just read from disk is written.
@@ -288,7 +321,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   const activeDiscipline = state.activeDiscipline;
 
   // Overlay items for selection action bar
-  const showSelectionActions = state.selectedIds.size > 0 && !state.readonly && !state.activeTool.startsWith('relocate') && state.activeTool !== 'rotate';
+  const showSelectionActions = state.selectedIds.size > 0 && !state.readonly && !state.activeTool.startsWith('relocate') && !MODIFY_TOOLS.has(state.activeTool);
   const selectionContent = showSelectionActions ? <SelectionActions /> : null;
   const overlayItems = useOverlayItems(state.selectedIds, state.document, selectionContent);
 
@@ -391,6 +424,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         )}
         {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
         <DrawingHints />
+        <ModifyHost />
         <UnderlayHint />
         <CalibrateDialog />
         {/* The tour teaches editing tools: not for read-only / shared views */}

@@ -12,6 +12,8 @@ import SVGLayers from './SVGLayers.tsx';
 import SelectionOverlay from './SelectionOverlay.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
+import ModifyOverlay from './ModifyOverlay.tsx';
+import { isPinned } from '../model/pins.ts';
 import { previewRegion } from '../tools/drawRegionTool.ts';
 import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
@@ -247,6 +249,13 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
     findElementId,
     setSnap: setActiveSnap,
   }), [dispatch, screenToSvg, findElementId, transformRef]);
+
+  // Zoom to fit from the ZF shortcut
+  useEffect(() => {
+    const onFit = () => applyZoomToFit();
+    window.addEventListener('bimdown:zoom-fit', onFit);
+    return () => window.removeEventListener('bimdown:zoom-fit', onFit);
+  }, [applyZoomToFit]);
 
   // Zoom requests from outside the canvas (schedule rows)
   useEffect(() => {
@@ -547,7 +556,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           const handles = [];
           for (const sid of selectedIds) {
             const el = findCanonicalElement(sid, state.document, state.project);
-            if (!el) continue;
+            // Pinned elements show no drag handles
+            if (!el || isPinned(el)) continue;
             if (el.geometry === 'point' || selectedIds.size === 1) {
               handles.push(<ResizeHandles key={sid} element={el} svgRef={svgRef} scale={scale} onSnap={setActiveSnap} />);
             }
@@ -569,6 +579,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
             regionPreview={activeTool === 'draw_region' && state.drawingState?.points.length === 1 && state.drawingState.cursor
               ? previewRegion(toolCtx.getState(), state.drawingState.points[0], state.drawingState.cursor) : null} />
         )}
+        {state.drawingState?.modify && <ModifyOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} />}
       </svg>
 
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}

@@ -1,20 +1,23 @@
 /**
- * Wall modify tools in the floating toolbar: Trim/Extend to corner, Trim/Extend
- * to reference, Split. Shown in 2D for disciplines that draw walls.
+ * Modify tools in the floating toolbar: Trim/Extend to corner, Trim/Extend
+ * to reference, Split, Align, Offset. Shown in 2D for disciplines that draw walls.
  */
 import { useTranslation } from 'react-i18next';
-import { CornerDownRight, ArrowRightToLine, Scissors } from 'lucide-react';
+import { CornerDownRight, ArrowRightToLine, Scissors, AlignHorizontalJustifyStart, CopyPlus } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import type { Tool } from '../state/editorTypes.ts';
 import { Tooltip, TooltipTrigger, TooltipContent } from './ui/tooltip';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 import { enterModifyTool } from '../tools/wallModifyTools.ts';
+import { enterModifyToolFor } from '../tools/modifyTools.ts';
 
 const TOOLS: { tool: Tool; icon: typeof Scissors; label: string; tip: string; key: string }[] = [
   { tool: 'trim_corner', icon: CornerDownRight, label: 'tool.trimCorner', tip: 'tool.trimCornerTip', key: 'J' },
   { tool: 'trim_single', icon: ArrowRightToLine, label: 'tool.trimSingle', tip: 'tool.trimSingleTip', key: 'E' },
   { tool: 'split', icon: Scissors, label: 'tool.split', tip: 'tool.splitTip', key: 'K' },
+  { tool: 'align', icon: AlignHorizontalJustifyStart, label: 'tool.align', tip: 'tool.alignTip', key: 'AL' },
+  { tool: 'offset', icon: CopyPlus, label: 'tool.offset', tip: 'tool.offsetTip', key: 'OF' },
 ];
 
 export default function ModifyToolsGroup() {
@@ -41,6 +44,8 @@ export default function ModifyToolsGroup() {
                   if (active) {
                     dispatch({ type: 'SET_TOOL', tool: 'select' });
                     dispatch({ type: 'SET_DRAWING_STATE', state: null });
+                  } else if (tool === 'align' || tool === 'offset') {
+                    enterModifyToolFor(dispatch, state, tool);
                   } else {
                     enterModifyTool(dispatch, tool);
                   }
