@@ -1,0 +1,4 @@
+id,name,description,material,thickness
+slt-concrete-200,Concrete 200,Plain concrete slab,concrete,0.2
+slt-floor-tile,Floor - Tile + screed on concrete 200,Ceramic tile on cement screed on a concrete slab,concrete,0.26
+slt-ground-insulated,Ground floor - Screed + XPS 100 on concrete 200,Screed on XPS insulation and damp-proof membrane on a concrete slab,concrete,0.362

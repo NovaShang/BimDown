@@ -1,0 +1,6 @@
+name: wall_type
+bases:
+  - layered_type
+type_of: [wall, structure_wall]
+
+fields: []

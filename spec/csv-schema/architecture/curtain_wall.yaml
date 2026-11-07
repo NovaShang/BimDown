@@ -29,3 +29,8 @@ fields:
   - name: panel_material
     type: string
     description: Dominant panel material name
+
+  - name: type_id
+    type: reference
+    reference: curtain_wall_type
+    description: Optional curtain_wall_type id. Empty type parameters (u_spacing, v_spacing, panel_material, material) inherit the type's value; a set value overrides it for this element.

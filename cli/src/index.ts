@@ -4,6 +4,7 @@ import { build } from './build/index.js';
 import { buildRegistry, getSpecDir } from './schema/registry.js';
 import { discoverLayout, listFiles } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
+import { typeParamFields } from './catalog/index.js';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -271,10 +272,17 @@ program
       if (resolved.hostType) {
         console.log(`  host_type: ${resolved.hostType}`);
       }
+      if (resolved.typeOf) {
+        console.log(`  type of: ${resolved.typeOf.join(', ')} (global/ only; instances inherit shared fields they leave empty)`);
+      }
+      if (resolved.typeTable) {
+        console.log(`  type_id → ${resolved.typeTable}: empty shared fields inherit the type's values`);
+      }
+      const typeParams = new Set(resolved.typeTable ? typeParamFields(t) : []);
       console.log('  CSV fields:');
       for (const f of resolved.csvFields) {
         const tags: string[] = [];
-        if (f.required) tags.push('required');
+        if (f.required) tags.push(typeParams.has(f.name) ? 'required unless type_id gives it' : 'required');
         if (f.type === 'reference') tags.push(`ref:${f.reference}`);
         if (f.type === 'enum') tags.push(`enum:[${f.values?.join('|')}]`);
         const tagStr = tags.length > 0 ? `  (${tags.join(', ')})` : '';

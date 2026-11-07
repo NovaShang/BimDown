@@ -1,8 +1,9 @@
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import { discoverLayout } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
+import { effectiveRows } from '../catalog/index.js';
 import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
 
 const TOLERANCE = 0.01; // 1cm
@@ -84,7 +85,7 @@ function validateLineConnectivity(levelDir: { name: string; path: string }): str
     const m = new Map<string, Record<string, string>>();
     const p = join(levelDir.path, `${table}.csv`);
     if (!existsSync(p)) return m;
-    try { for (const r of readCsv(p).rows) if (r.id) m.set(r.id, r); } catch { /* skip */ }
+    try { for (const r of effectiveRows(dirname(levelDir.path), table, readCsv(p).rows)) if (r.id) m.set(r.id, r); } catch { /* skip */ }
     return m;
   };
 
@@ -187,9 +188,9 @@ function validateHostedBounds(
     const csvPath = join(levelDir.path, `${tableName}.csv`);
     if (!existsSync(csvPath)) continue;
 
-    const csv = readCsv(csvPath);
-    for (let i = 0; i < csv.rows.length; i++) {
-      const row = csv.rows[i];
+    const rows = effectiveRows(dirname(levelDir.path), tableName, readCsv(csvPath).rows);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
       const hostId = row.host_id;
       const position = parseFloat(row.position ?? '');
       const width = parseFloat(row.width ?? '');
@@ -236,9 +237,9 @@ function validateHostedOverlap(levelDir: { name: string; path: string }): string
     const csvPath = join(levelDir.path, `${tableName}.csv`);
     if (!existsSync(csvPath)) continue;
 
-    const csv = readCsv(csvPath);
-    for (let i = 0; i < csv.rows.length; i++) {
-      const row = csv.rows[i];
+    const rows = effectiveRows(dirname(levelDir.path), tableName, readCsv(csvPath).rows);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
       const hostId = row.host_id;
       const position = parseFloat(row.position ?? '');
       const width = parseFloat(row.width ?? '');

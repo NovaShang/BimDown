@@ -1,0 +1,17 @@
+name: curtain_wall_type
+bases:
+  - element_type
+  - materialized
+  - fenestration
+type_of: [curtain_wall]
+description: "`material` is the mullion material."
+
+fields:
+  - name: u_spacing
+    type: float
+
+  - name: v_spacing
+    type: float
+
+  - name: panel_material
+    type: string

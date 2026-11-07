@@ -1,0 +1,3 @@
+id,name,description,material,thickness
+rot-flat-insulated,Flat roof - Membrane + PIR 150 on concrete 200,Warm flat roof: waterproofing on PIR insulation on a concrete deck with plaster soffit,concrete,0.37
+rot-pitched-tile,Pitched roof - Tiles on insulated rafters,Clay tiles on battens over timber rafters filled with mineral wool,wood,0.25

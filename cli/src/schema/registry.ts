@@ -16,10 +16,25 @@ export const ID_PREFIXES: Record<string, string> = {
   connector: 'cn',
   mep_system: 'sys',
   mesh: 'ms',
+  // Element types (global/ only) and the layers of layered types
+  wall_type: 'wt', slab_type: 'slt', roof_type: 'rot', ceiling_type: 'clt',
+  door_type: 'dt', window_type: 'wnt', curtain_wall_type: 'cwt',
+  column_type: 'colt', beam_type: 'bmt',
+  type_layer: 'tl',
 };
 
+/** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
+export const TYPE_TABLES = new Set([
+  'wall_type', 'slab_type', 'roof_type', 'ceiling_type',
+  'door_type', 'window_type', 'curtain_wall_type',
+  'column_type', 'beam_type',
+]);
+
+/** Type tables whose build-up is a stack of type_layer rows. */
+export const LAYERED_TYPE_TABLES = new Set(['wall_type', 'slab_type', 'roof_type', 'ceiling_type']);
+
 // Tables whose CSV lives only in global/ (not per-level)
-export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system']);
+export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', ...TYPE_TABLES, 'type_layer']);
 
 // Tables that can appear in global/ (cross-floor elements)
 export const GLOBAL_ALLOWED_TABLES = new Set([
@@ -34,7 +49,10 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 // Tables without a geometry file (level/grid use CSV inline; door/window are hosted; mesh is GLB;
 // mep_system is a project-wide lookup table with no geometry; connector is a CSV-only port
 // on its host equipment / terminal / mep_node, position is derived from host + offsets)
-const TABLES_WITHOUT_GEOMETRY = new Set(['level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector']);
+const TABLES_WITHOUT_GEOMETRY = new Set([
+  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector',
+  ...TYPE_TABLES, 'type_layer',
+]);
 
 // GeoJSON file name mapping: table name -> geojson file name (without extension)
 // GeoJSON files use the same name as the CSV (both singular): wall.csv + wall.geojson
@@ -77,11 +95,14 @@ export function buildRegistry(specDir: string): Map<string, ResolvedTable> {
     const geojsonPropertyFields = allFields.filter((f) => !f.computed && f.storage === 'geojson_property');
     const computedFields = allFields.filter((f) => f.computed);
 
+    const typeRef = allFields.find((f) => f.name === 'type_id' && f.type === 'reference')?.reference;
     registry.set(name, {
       name,
       prefix,
       description: schema.description,
       hostType: schema.host_type,
+      typeTable: typeRef && TYPE_TABLES.has(typeRef) ? typeRef : undefined,
+      typeOf: schema.type_of,
       allFields,
       csvFields,
       geojsonPropertyFields,

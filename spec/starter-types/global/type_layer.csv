@@ -1,0 +1,40 @@
+id,type_id,seq,function,material,thickness,conductivity,name
+tl-1,wt-concrete-200,1,core,concrete,0.2,2.3,Reinforced concrete
+tl-2,wt-ext-concrete-eps,1,finish,composite,0.01,0.7,Exterior render
+tl-3,wt-ext-concrete-eps,2,insulation,insulation,0.1,0.035,EPS 100
+tl-4,wt-ext-concrete-eps,3,core,concrete,0.2,2.3,Reinforced concrete
+tl-5,wt-ext-concrete-eps,4,finish,gypsum,0.015,0.4,Gypsum plaster
+tl-6,wt-ext-brick-cavity,1,finish,brick,0.1,0.77,Facing brick
+tl-7,wt-ext-brick-cavity,2,air_gap,,0.04,,Ventilated cavity
+tl-8,wt-ext-brick-cavity,3,insulation,insulation,0.05,0.035,Mineral wool
+tl-9,wt-ext-brick-cavity,4,core,brick,0.1,0.77,Brick inner leaf
+tl-10,wt-ext-brick-cavity,5,finish,gypsum,0.01,0.4,Gypsum plaster
+tl-11,wt-ext-timber-frame,1,finish,fiber_cement,0.015,0.35,Fibre-cement cladding
+tl-12,wt-ext-timber-frame,2,air_gap,,0.025,,Battens and ventilation
+tl-13,wt-ext-timber-frame,3,core,wood,0.145,0.045,Timber studs with mineral wool
+tl-14,wt-ext-timber-frame,4,finish,gypsum,0.015,0.25,Gypsum board
+tl-15,wt-int-stud-100,1,finish,gypsum,0.0125,0.25,Gypsum board
+tl-16,wt-int-stud-100,2,core,insulation,0.075,0.04,Steel studs with mineral wool
+tl-17,wt-int-stud-100,3,finish,gypsum,0.0125,0.25,Gypsum board
+tl-18,wt-int-masonry-150,1,finish,gypsum,0.015,0.4,Gypsum plaster
+tl-19,wt-int-masonry-150,2,core,brick,0.12,0.6,Brick
+tl-20,wt-int-masonry-150,3,finish,gypsum,0.015,0.4,Gypsum plaster
+tl-21,wt-concrete-300,1,core,concrete,0.3,2.3,Reinforced concrete
+tl-22,slt-concrete-200,1,core,concrete,0.2,2.3,Reinforced concrete
+tl-23,slt-floor-tile,1,finish,ceramic,0.01,1.3,Ceramic tile
+tl-24,slt-floor-tile,2,substrate,concrete,0.05,1.4,Cement screed
+tl-25,slt-floor-tile,3,core,concrete,0.2,2.3,Reinforced concrete
+tl-26,slt-ground-insulated,1,substrate,concrete,0.06,1.4,Cement screed
+tl-27,slt-ground-insulated,2,insulation,insulation,0.1,0.034,XPS
+tl-28,slt-ground-insulated,3,membrane,pvc,0.002,0.17,Damp-proof membrane
+tl-29,slt-ground-insulated,4,core,concrete,0.2,2.3,Reinforced concrete
+tl-30,rot-flat-insulated,1,membrane,pvc,0.005,0.17,Waterproofing membrane
+tl-31,rot-flat-insulated,2,insulation,insulation,0.15,0.022,PIR
+tl-32,rot-flat-insulated,3,core,concrete,0.2,2.3,Reinforced concrete
+tl-33,rot-flat-insulated,4,finish,gypsum,0.015,0.4,Gypsum plaster
+tl-34,rot-pitched-tile,1,finish,ceramic,0.025,1,Clay tiles
+tl-35,rot-pitched-tile,2,air_gap,,0.025,,Battens and ventilation
+tl-36,rot-pitched-tile,3,core,wood,0.18,0.045,Rafters with mineral wool
+tl-37,rot-pitched-tile,4,finish,gypsum,0.02,0.25,Gypsum board
+tl-38,clt-gypsum-board,1,finish,gypsum,0.0125,0.25,Gypsum board
+tl-39,clt-acoustic-tile,1,finish,composite,0.02,0.05,Mineral fibre tile

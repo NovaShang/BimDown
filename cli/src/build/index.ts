@@ -6,6 +6,7 @@ import { computeSpaceBoundaries, type RoomIssue } from './space-boundary.js';
 import { validateGeometry } from './geometry-warnings.js';
 import { resolveHostedCoords } from './resolve-hosted-coords.js';
 import { snapEndpoints, type SnapRecord } from './snap-endpoints.js';
+import { typeWarnings } from '../catalog/index.js';
 
 export type { RoomIssue };
 
@@ -30,7 +31,7 @@ export function build(dir: string): BuildResult {
   const issues = [...resolveIssues, ...validate(dir)];
 
   // 2. Geometry warnings (connectivity, hosted bounds, overlap)
-  const warnings = validateGeometry(dir);
+  const warnings = [...validateGeometry(dir), ...typeWarnings(dir)];
 
   // 3. Compute space boundaries per level → write space.geojson
   const artifacts: string[] = [];

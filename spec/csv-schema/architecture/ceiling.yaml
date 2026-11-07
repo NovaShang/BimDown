@@ -8,3 +8,8 @@ fields:
     type: float
     storage: geojson_property
     description: Offset below level elevation (e.g. -0.3 for 30cm dropped ceiling). Stored in GeoJSON Feature properties.
+
+  - name: type_id
+    type: reference
+    reference: ceiling_type
+    description: Optional ceiling_type id. Empty type parameters (material) inherit the type's value; a set value overrides it for this element.

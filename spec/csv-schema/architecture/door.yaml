@@ -33,3 +33,8 @@ fields:
     values:
       - left
       - right
+
+  - name: type_id
+    type: reference
+    reference: door_type
+    description: Optional door_type id. Empty type parameters (width, height, operation, material) inherit the type's value; a set value overrides it for this element.

@@ -1,0 +1,21 @@
+name: element_type
+abstract: true
+description: >
+  A reusable element type (Revit "family type"): named defaults shared by every
+  instance whose `type_id` points at it. Type tables live in global/ only.
+  A type parameter is any field a type table shares by name with the instance
+  table (e.g. wall_type.thickness ↔ wall.thickness): an instance leaves it empty
+  to inherit the type's value, or sets it to override that one instance.
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: name
+    type: string
+    required: true
+    description: Display name, e.g. "Exterior - Concrete 200 + EPS 100".
+
+  - name: description
+    type: string

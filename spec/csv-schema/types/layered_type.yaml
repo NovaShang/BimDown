@@ -1,0 +1,13 @@
+name: layered_type
+bases:
+  - element_type
+  - materialized
+abstract: true
+description: >
+  A type built from ordered layers (rows of type_layer.csv carrying this type's
+  id). `material` is the primary (core) material.
+
+fields:
+  - name: thickness
+    type: float
+    description: Total thickness, meters. With layers it must equal their sum; leave it empty to derive it from the layers.

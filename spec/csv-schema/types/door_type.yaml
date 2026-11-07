@@ -1,0 +1,27 @@
+name: door_type
+bases:
+  - element_type
+  - materialized
+  - fenestration
+type_of: [door]
+
+fields:
+  - name: width
+    type: float
+    required: true
+
+  - name: height
+    type: float
+
+  - name: operation
+    type: enum
+    values:
+      - single_swing
+      - double_swing
+      - sliding
+      - folding
+      - revolving
+
+  - name: frame_width
+    type: float
+    description: Visible frame (jamb and head) width, meters.

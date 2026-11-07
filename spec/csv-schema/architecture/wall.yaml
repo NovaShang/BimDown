@@ -8,4 +8,9 @@ fields:
   - name: thickness
     type: float
     required: true
-    description: Wall thickness in meters. CSV is the source of truth.
+    description: Wall thickness in meters. CSV is the source of truth. May be empty when type_id is set (the type's thickness = sum of its layers).
+
+  - name: type_id
+    type: reference
+    reference: wall_type
+    description: Optional wall_type id. Empty type parameters (thickness, material) inherit the type's value; a set value overrides it for this element.

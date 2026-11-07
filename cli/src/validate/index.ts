@@ -11,6 +11,7 @@ import { validateReferences } from './references.js';
 import { validateRanges } from './ranges.js';
 import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
+import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -60,10 +61,15 @@ export function validate(dir: string): string[] {
     }
   }
 
-  // 2-3. CSV header and required field validation
+  // 2-3. CSV header and required field validation (a typed row may leave the
+  // fields its type supplies empty)
+  const catalog = catalogFromEntries(csvEntries);
   for (const entry of csvEntries) {
-    issues.push(...validateCsvHeaders(entry.path, entry.table, entry.data));
-    issues.push(...validateCsvRequired(entry.path, entry.table, entry.data));
+    const supplied = entry.table.typeTable
+      ? (row: Record<string, string>) => typeSuppliedFields(entry.table, row, catalog)
+      : undefined;
+    issues.push(...validateCsvHeaders(entry.path, entry.table, entry.data, supplied));
+    issues.push(...validateCsvRequired(entry.path, entry.table, entry.data, supplied));
   }
 
   // 4. ID format validation
@@ -87,6 +93,9 @@ export function validate(dir: string): string[] {
   for (const entry of csvEntries) {
     issues.push(...validateReferences(entry.path, entry.table, entry.data, idRegistry));
   }
+
+  // 7b. Element types: layers, thermal values, type_id targets, enum values supplied by types
+  issues.push(...validateTypes(csvEntries, catalog, idRegistry));
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);

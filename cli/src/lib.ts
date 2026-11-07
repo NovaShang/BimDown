@@ -49,3 +49,21 @@ export {
   type PointGeometry,
   type PolygonGeometry,
 } from './utils/geojson.js';
+
+// Element types: load a project's catalog, resolve effective params and layers
+export {
+  loadCatalog,
+  catalogFromRows,
+  effectiveRow,
+  effectiveRows,
+  resolvedLayers,
+  projectElementLayers,
+  typeValues,
+  typeParamFields,
+  layerTotal,
+  type TypeCatalog,
+  type ElementType,
+  type TypeLayer,
+  type ResolvedLayer,
+  type ElementLayers,
+} from './catalog/index.js';

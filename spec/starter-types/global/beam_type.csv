@@ -1,0 +1,5 @@
+id,name,description,material,shape,size_x,size_y,flange,web,thickness
+bmt-concrete-250x500,Concrete 250 x 500,,concrete,rect,0.25,0.5,,,
+bmt-concrete-300x600,Concrete 300 x 600,,concrete,rect,0.3,0.6,,,
+bmt-steel-ipe-300,Steel IPE 300,European I-beam,steel,i_shape,0.15,0.3,0.0107,0.0071,
+bmt-glulam-200x400,Glulam 200 x 400,Glued laminated timber,wood,rect,0.2,0.4,,,
