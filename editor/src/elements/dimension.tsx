@@ -4,7 +4,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import { ANNOTATION_DISCIPLINE, DIMENSION_HEADERS, fmtCoord } from '../annotation/model.ts';
 import {
-  resolveDimension, formatDimension, readableAngle, metre, add, sub, mul, mid, dot, len,
+  resolveDimension, formatDimension, readableAngle, draft, add, sub, mul, mid, dot, len,
 } from '../annotation/geometry.ts';
 
 export interface DimensionFacts {
@@ -70,7 +70,7 @@ export const dimensionModule: ElementModule<DimensionFacts> = {
   geometry(el: CanonicalElement, ctx: GeometryContext): DimensionFacts | null {
     const g = resolveDimension(el, id => ctx.elementById(id));
     if (!g) return null;
-    const m = metre();
+    const m = draft();
     const angle = readableAngle(g.u);
     const a = angle * Math.PI / 180;
     const up = { x: -Math.sin(a), y: Math.cos(a) };
@@ -86,7 +86,7 @@ export const dimensionModule: ElementModule<DimensionFacts> = {
   },
 
   draw2D(f, ctx): ReactNode {
-    const m = metre();
+    const m = draft();
     const ink = ctx.selected ? SELECTED : DIM_INK;
     const sw = 0.02 * m;
     const tick = mul(add(f.u, f.n), 0.12 * m / Math.SQRT2);

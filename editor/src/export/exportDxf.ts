@@ -19,7 +19,7 @@ import { trueColor, nearestAci } from './drawing/color.ts';
 import { needsUnicodeFont } from './drawing/pdfFont.ts';
 import { DxfWriter, type DxfEntityStyle } from './drawing/dxfWriter.ts';
 import type { LineDash } from './drawing/layers.ts';
-import type { PlanDrawing } from './drawing/types.ts';
+import type { ScaledDrawing } from './drawing/types.ts';
 
 /** Paper-mm dash patterns (scaled to model units per drawing). */
 const LINETYPES: Record<Exclude<LineDash, 'solid'>, { name: string; description: string; mm: number[] }> = {
@@ -30,8 +30,8 @@ const LINETYPES: Record<Exclude<LineDash, 'solid'>, { name: string; description:
 
 const linetypeName = (dash: LineDash) => (dash === 'solid' ? 'Continuous' : LINETYPES[dash].name);
 
-/** One level's plan as DXF text. */
-export function planToDxf(d: PlanDrawing): string {
+/** One drawing (a level's plan, a section, a whole sheet in paper mm) as DXF text. */
+export function planToDxf(d: Pick<ScaledDrawing, 'unit' | 'pm' | 'items' | 'layers'>): string {
   const texts = d.items.flatMap(i => (i.kind === 'text' ? [i.text] : []));
   const dxf = new DxfWriter(d.unit, needsUnicodeFont(texts) ? 'msyh.ttc' : 'arial.ttf');
   for (const lt of Object.values(LINETYPES)) {

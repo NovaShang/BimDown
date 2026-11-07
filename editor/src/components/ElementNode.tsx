@@ -7,6 +7,7 @@ import type { Draw2DContext } from '../elements/archetypes.ts';
 import { isMepLineTable } from '../utils/connectorSnap.ts';
 import { classifyRange, rangeDisplay, type RangeDisplay } from '../views/viewRange.ts';
 import { DEFAULT_CUT_HEIGHT } from '../views/viewTypes.ts';
+import { isAnnotationTable } from '../annotation/model.ts';
 
 // Kept for compatibility with callers that still invoke pruneCache (Canvas).
 // The old per-element SVG HTML cache is gone — V2 module rendering doesn't
@@ -29,6 +30,8 @@ interface ElementNodeBodyProps {
   showNumbers: boolean;
   gridBubblesBothEnds: boolean;
   display: RangeDisplay;
+  /** Plan view scale for annotations (their text and ticks are paper-sized); 0 for other elements. */
+  annotationScale: number;
 }
 
 /** Renders one canonical element through its registered ElementModule.
@@ -61,10 +64,12 @@ export function ElementNode({ element }: ElementNodeProps) {
       showNumbers={core.viewOptions?.showElementNumbers ?? false}
       gridBubblesBothEnds={core.viewOptions?.gridBubblesBothEnds ?? false}
       display={display}
+      annotationScale={isAnnotationTable(element.tableName) ? core.views.planScale : 0}
     />
   );
 }
 
+// annotationScale is only a memo key: annotation modules read the scale set by the shell
 const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, hostHovered, mepToolActive, showNumbers, gridBubblesBothEnds, display }: ElementNodeBodyProps) {
   const ctx = useGeometryContext();
   if (display === 'hidden' && !selected) return null;

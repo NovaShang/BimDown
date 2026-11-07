@@ -1,3 +1,4 @@
+import { SHEETS_TOGGLE_EVENT } from '../sheets/events.ts';
 import { useTranslation } from 'react-i18next';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { DISCIPLINES } from '../model/tableRegistry.ts';
@@ -106,6 +107,19 @@ export default function TopBar() {
       >
         <Icon name="schedule" width={15} height={15} />
         <span className="max-md:hidden">{t('schedule.short')}</span>
+      </button>
+
+      {/* Sheets (title block + placed views, PDF / DXF sheet sets) */}
+      <button
+        className="flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+        onClick={() => window.dispatchEvent(new CustomEvent(SHEETS_TOGGLE_EVENT))}
+        title={t('sheets.open')}
+        data-testid="open-sheets"
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+          <rect x="1.5" y="3" width="13" height="10" rx="1" /><path d="M10.5 3v10M10.5 9.5h4M3.5 5.5h5v4h-5z" />
+        </svg>
+        <span className="max-md:hidden">{t('sheets.short')}</span>
       </button>
     </div>
   );

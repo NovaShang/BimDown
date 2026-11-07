@@ -37,6 +37,28 @@ export interface ViewsState {
   rcp: boolean;
   /** Bumped by user edits of the saved sections; EditorShell writes view.csv on change. */
   sectionsSaveSeq: number;
+  /** Plan view scale (denominator): annotation text / tags / dimensions are drawn at it. */
+  planScale: number;
+  /** Bumped by user edits; EditorShell writes the files on change. */
+  sheetsSaveSeq: number;
+  viewAnnotationsSaveSeq: number;
+  metadataSaveSeq: number;
+}
+
+export const PLAN_SCALES = [20, 50, 100, 200, 500] as const;
+const PLAN_SCALE_KEY = 'bimdown:planScale';
+
+function storedPlanScale(): number {
+  if (typeof window === 'undefined') return 100;
+  try {
+    const v = parseInt(window.localStorage.getItem(PLAN_SCALE_KEY) ?? '', 10);
+    return Number.isFinite(v) && v > 0 ? v : 100;
+  } catch { return 100; }
+}
+
+/** Remember the plan scale across sessions (UI preference, not project data). */
+export function storePlanScale(scale: number): void {
+  try { window.localStorage.setItem(PLAN_SCALE_KEY, String(scale)); } catch { /* private mode */ }
 }
 
 export const DEFAULT_CUT_HEIGHT = 1.2;
@@ -49,6 +71,10 @@ export const initialViewsState: ViewsState = {
   aboveCut: 'dashed',
   rcp: false,
   sectionsSaveSeq: 0,
+  planScale: storedPlanScale(),
+  sheetsSaveSeq: 0,
+  viewAnnotationsSaveSeq: 0,
+  metadataSaveSeq: 0,
 };
 
 export type ViewsAction =
@@ -59,4 +85,9 @@ export type ViewsAction =
   | { type: 'SET_ABOVE_CUT_STYLE'; style: AboveCutStyle }
   | { type: 'TOGGLE_RCP' }
   /** `persist`: a user edit to write back to global/view.csv (not a file reload). */
-  | { type: 'UPDATE_SECTIONS'; sections: SectionDef[]; persist?: boolean };
+  | { type: 'UPDATE_SECTIONS'; sections: SectionDef[]; persist?: boolean }
+  | { type: 'SET_PLAN_SCALE'; scale: number }
+  | { type: 'UPDATE_SHEETS'; sheets: import('../sheets/sheetTypes.ts').SheetSet; persist?: boolean }
+  | { type: 'UPDATE_VIEW_ANNOTATIONS'; layers: import('../types.ts').LayerData[]; persist?: boolean }
+  /** Title-block fields of project_metadata.json. */
+  | { type: 'UPDATE_METADATA'; fields: Partial<Record<'project_name' | 'project_number' | 'client' | 'address', string>>; persist?: boolean };

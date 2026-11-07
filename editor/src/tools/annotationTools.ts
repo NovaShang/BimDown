@@ -11,7 +11,7 @@ import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { ANNOTATION_DISCIPLINE, isAnnotationTable } from '../annotation/model.ts';
 import { pickReference, chainDirection, chainRows, wallRunPicks, dimensionElements, type PickedRef, type DimMode } from '../annotation/pick.ts';
-import { thicknessOf, sub, mul, dot, len, add, metre } from '../annotation/geometry.ts';
+import { thicknessOf, sub, mul, dot, len, add, draft } from '../annotation/geometry.ts';
 
 export const annotationToolState = {
   /** Dimension tool: references picked so far. */
@@ -87,7 +87,7 @@ function wallRun(ctx: ToolContext, p: Point, tol: number): void {
   const n = { x: -u.y, y: u.x };
   const side = dot(sub(p, ln.start), n) >= 0 ? 1 : -1;
   // Dimension line 0.8 m off the face on the clicked side
-  const cursor = add(ln.start, mul(n, side * (thicknessOf(ln, lookup) / 2 + 0.8 * metre())));
+  const cursor = add(ln.start, mul(n, side * (thicknessOf(ln, lookup) / 2 + 0.8 * draft())));
   const picks = wallRunPicks(ln, elements.values(), lookup);
   const rows = chainRows(picks, cursor, Math.atan2(u.y, u.x) * 180 / Math.PI);
   if (rows.length === 0) return;

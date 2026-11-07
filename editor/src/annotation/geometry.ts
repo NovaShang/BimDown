@@ -26,8 +26,32 @@ const UNIT_TO_M: Record<ProjectUnit, number> = { m: 1, ft: 0.3048, in: 0.0254, m
 let currentUnit: ProjectUnit = 'm';
 export function setAnnotationUnits(unit: ProjectUnit): void { currentUnit = unit; }
 export function annotationUnits(): ProjectUnit { return currentUnit; }
-/** One metre in project units — drafting sizes (text, ticks) are given in metres. */
+/** One metre in project units. */
 export function metre(unit: ProjectUnit = currentUnit): number { return 1 / UNIT_TO_M[unit]; }
+
+// ─── Annotation scale (set by the shell from the plan's view scale) ─────────
+
+/**
+ * Drafting rule: annotation sizes (text, ticks, tag boxes, offsets of labels)
+ * are paper millimetres; on the model they are `mm × scale / 1000` metres, so
+ * a 2.5 mm note is 0.25 m at 1:100 and 0.5 m at 1:200 — the same on every
+ * printed sheet. The editor draws at its plan view scale, sheets at each
+ * viewport's scale.
+ */
+export const DEFAULT_ANNOTATION_SCALE = 100;
+let currentScale = DEFAULT_ANNOTATION_SCALE;
+export function setAnnotationScale(scale: number): void {
+  currentScale = Number.isFinite(scale) && scale > 0 ? scale : DEFAULT_ANNOTATION_SCALE;
+}
+export function annotationScale(): number { return currentScale; }
+/** `mm` paper millimetres in model units at 1:`scale`. */
+export function paper(mm: number, unit: ProjectUnit = currentUnit, scale: number = currentScale): number {
+  return (mm * scale / 1000) * metre(unit);
+}
+/** Drafting unit: 10 mm on paper (one metre at 1:100); sizes read `k × draft()` = 10·k mm. */
+export function draft(unit: ProjectUnit = currentUnit, scale: number = currentScale): number {
+  return paper(10, unit, scale);
+}
 
 // ─── Vectors ────────────────────────────────────────────────────────────────
 
@@ -275,22 +299,21 @@ export function tagLines(host: CanonicalElement, content: string | undefined, ro
 }
 
 /** Default (unpinned) tag spot: room seed; beside a door/window; element centre. */
-export function tagDefaultPosition(host: CanonicalElement, lookup: Lookup, unit: ProjectUnit = currentUnit): Point {
+export function tagDefaultPosition(host: CanonicalElement, lookup: Lookup, unit: ProjectUnit = currentUnit, scale: number = currentScale): Point {
   if (isHostedOpening(host) && host.geometry === 'line') {
     const d = sub(host.end, host.start);
     const l = len(d) || 1;
     const n = { x: -d.y / l, y: d.x / l };
-    return add(mid(host.start, host.end), mul(n, thicknessOf(host, lookup) / 2 + 0.35 * metre(unit)));
+    return add(mid(host.start, host.end), mul(n, thicknessOf(host, lookup) / 2 + paper(3.5, unit, scale)));
   }
   return elementAnchor(host);
 }
 
 /** Tag size estimate (model units) for hit boxes and the PDF. */
-export function tagBox(lines: string[], room: boolean, unit: ProjectUnit = currentUnit): { w: number; h: number; size: number } {
-  const m = metre(unit);
-  const size = (room ? 0.24 : 0.2) * m;
-  const w = Math.max(...lines.map(l => textWidth(l, size))) + 0.16 * m;
-  const h = lines.length * size * 1.25 + 0.08 * m;
+export function tagBox(lines: string[], room: boolean, unit: ProjectUnit = currentUnit, scale: number = currentScale): { w: number; h: number; size: number } {
+  const size = paper(room ? 2.4 : 2.0, unit, scale);
+  const w = Math.max(...lines.map(l => textWidth(l, size))) + paper(1.6, unit, scale);
+  const h = lines.length * size * 1.25 + paper(0.8, unit, scale);
   return { w, h, size };
 }
 

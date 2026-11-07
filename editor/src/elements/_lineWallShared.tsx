@@ -480,6 +480,11 @@ function wallLayers3D(facts: LineWallFacts): ReactNode {
  * solid as extrude + CSG, ~100× faster); everything else goes through CSG.
  */
 function wallSolid(facts: LineWallFacts, footprint: Point[]): BufferGeometry {
+  return wallSolidGeometry(facts, footprint);
+}
+
+/** The wall's solid with its door / window / opening voids (also used by section drawings). */
+export function wallSolidGeometry(facts: LineWallFacts, footprint: Point[] = facts.footprint): BufferGeometry {
   const direct = facts.centerline.arc ? null : buildStraightWallSolid({
     start: facts.centerline.start, end: facts.centerline.end, footprint,
     thickness: facts.thickness, height: facts.height, baseY: facts.baseY, openings: facts.openings,

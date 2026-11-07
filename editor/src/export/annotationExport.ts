@@ -8,16 +8,17 @@
  */
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import type { ProjectUnit } from '../types.ts';
-import { isAnnotationTable, isTagPinned } from '../annotation/model.ts';
+import { isAnnotationTable, isTagPinned, isViewAnnotation, textNoteSize } from '../annotation/model.ts';
 import {
   resolveDimension, formatDimension, readableAngle, tagLines, tagDefaultPosition, tagBox, elementAnchor,
-  metre, add, sub, mul, mid, len, type Lookup,
+  metre, draft, add, sub, mul, mid, len, type Lookup,
 } from '../annotation/geometry.ts';
 import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { roomAreas } from '../geometry/roomArea.ts';
 import { textNoteLines } from '../elements/text_note.tsx';
 import { registerPlanAnnotator, type PlanAnnotator } from './drawing/annotations.ts';
-import { LAYERS } from './drawing/layers.ts';
+import { LAYERS, type DrawingLayer } from './drawing/layers.ts';
+import type { DrawItem } from './drawing/types.ts';
 
 /** `dim`: part of a dimension (G-ANNO-DIMS); otherwise text / tag (G-ANNO-TEXT). */
 export interface AnnotationLine { a: Point; b: Point; width: number; dim?: boolean }
@@ -29,12 +30,15 @@ export interface AnnotationPrimitives {
   boxes: AnnotationBox[];
 }
 
-/** Dimension, text and tag primitives for one level's elements (the level's own elements, not global/). */
-export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit): AnnotationPrimitives {
+/**
+ * Dimension, text and tag primitives for one level's (or view's) elements at
+ * 1:`scale`: drafting sizes are paper sizes (see annotation/geometry.ts).
+ */
+export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit, scale = 100): AnnotationPrimitives {
   const out: AnnotationPrimitives = { lines: [], texts: [], boxes: [] };
   const byId = new Map(elements.map(e => [e.id, e]));
   const lookup: Lookup = id => byId.get(id);
-  const m = metre(unit);
+  const m = draft(unit, scale);
   const walls = boundaryWalls(elements);
   const sw = 0.02 * m;
 
@@ -63,7 +67,7 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit)
     } else if (el.tableName === 'text_note' && el.geometry === 'point') {
       const lines = textNoteLines(el.attrs.text);
       if (lines.every(l => !l.trim())) continue;
-      const size = parseFloat(el.attrs.size ?? '') || 0.25 * m;
+      const size = textNoteSize(el.attrs, unit, scale);
       const rot = parseFloat(el.attrs.rotation ?? '') || 0;
       const r = rot * Math.PI / 180;
       lines.forEach((text, i) => {
@@ -75,9 +79,9 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit)
       if (!host) continue;
       const room = host.tableName === 'space';
       const poly = room ? roomPolygon(host, walls) : null;
-      const lines = tagLines(host, el.attrs.content, poly ? roomAreas(poly, walls, m).area : null, unit);
-      const pos = isTagPinned(el) ? el.position : tagDefaultPosition(host, lookup, unit);
-      const box = tagBox(lines, room, unit);
+      const lines = tagLines(host, el.attrs.content, poly ? roomAreas(poly, walls, metre(unit)).area : null, unit);
+      const pos = isTagPinned(el) ? el.position : tagDefaultPosition(host, lookup, unit, scale);
+      const box = tagBox(lines, room, unit, scale);
       const anchor = elementAnchor(host);
       if (isTagPinned(el) && len(sub(anchor, pos)) > 0.6 * m) out.lines.push({ a: anchor, b: pos, width: 0.015 * m });
       if (!room) out.boxes.push({ center: pos, w: box.w, h: box.h, width: 0.015 * m });
@@ -99,29 +103,37 @@ export function taggedRoomIds(elements: CanonicalElement[]): Set<string> {
 const CAP = 0.72;
 
 /**
- * Plan drawing items for a level's dimensions, text notes and tags. Sizes are
- * the editor's (model units), so a sheet shows them as on screen; dimension
- * ticks and tag leaders keep their heavier pen. Tag boxes get a white mask
- * (PDF only) so they read over the walls they sit on.
+ * Drawing items for annotations at 1:`scale` (sizes on paper match the editor
+ * at the same view scale); dimension ticks and tag leaders keep their heavier
+ * pen. Tag boxes get a white mask (PDF only) so they read over the walls.
  */
-export const planAnnotator: PlanAnnotator = ctx => {
-  if (!ctx.elements.some(e => isAnnotationTable(e.tableName))) return;
-  const p = drawAnnotations(ctx.elements, ctx.unit);
-  const dims = ctx.layer(LAYERS.annoDims), text = ctx.layer(LAYERS.annoText);
-  const m = metre(ctx.unit);
+export function annotationItems(elements: CanonicalElement[], unit: ProjectUnit, scale: number, layer: (def: DrawingLayer) => string): DrawItem[] {
+  const out: DrawItem[] = [];
+  const p = drawAnnotations(elements, unit, scale);
+  const dims = layer(LAYERS.annoDims), text = layer(LAYERS.annoText);
+  const m = draft(unit, scale);
   for (const l of p.lines) {
-    ctx.add({ kind: 'path', layer: l.dim ? dims : text, pts: [l.a, l.b], closed: false, ...(l.width > 0.03 * m ? { weight: 0.35 } : {}) });
+    out.push({ kind: 'path', layer: l.dim ? dims : text, pts: [l.a, l.b], closed: false, ...(l.width > 0.03 * m ? { weight: 0.35 } : {}) });
   }
   for (const b of p.boxes) {
     const x0 = b.center.x - b.w / 2, x1 = b.center.x + b.w / 2, y0 = b.center.y - b.h / 2, y1 = b.center.y + b.h / 2;
-    ctx.add({ kind: 'path', layer: text, pts: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], closed: true, fill: '#ffffff' });
+    out.push({ kind: 'path', layer: text, pts: [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }], closed: true, fill: '#ffffff' });
   }
   for (const t of p.texts) {
-    ctx.add({
+    out.push({
       kind: 'text', layer: t.dim ? dims : text, at: t.at, text: t.text, height: t.size * CAP,
       align: 'center', valign: 'middle', rotation: (t.angle * Math.PI) / 180, bold: t.bold,
     });
   }
+  return out;
+}
+
+/** Plan drawing items for a level's dimensions, text notes and tags (not the ones drawn on sections / elevations). */
+export const planAnnotator: PlanAnnotator = ctx => {
+  const own = ctx.elements.filter(e => isAnnotationTable(e.tableName) && !isViewAnnotation(e));
+  if (!own.length) return;
+  const context = ctx.elements.filter(e => !isAnnotationTable(e.tableName));
+  for (const it of annotationItems([...context, ...own], ctx.unit, ctx.scale, def => ctx.layer(def))) ctx.add(it);
 };
 
 registerPlanAnnotator(planAnnotator);

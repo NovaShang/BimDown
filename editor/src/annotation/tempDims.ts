@@ -8,7 +8,7 @@
  */
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
-import { formatRef, thicknessOf, isHostedOpening, sub, add, mul, dot, len, metre, type Lookup } from './geometry.ts';
+import { formatRef, thicknessOf, isHostedOpening, sub, add, mul, dot, len, draft, type Lookup } from './geometry.ts';
 import type { DimRowDraft } from './pick.ts';
 import { isAnnotationTable } from './model.ts';
 
@@ -130,7 +130,7 @@ export function openingTempDims(opening: CanonicalElement, elements: Iterable<Ca
   const after = stops.filter(s => s.t >= tB - 1e-4).sort((x, y) => x.t - y.t)[0];
   const position = parseFloat(opening.attrs.position ?? '');
   const sid = opening.id;
-  const offset = -(hostHalf + 0.45 * metre());
+  const offset = -(hostHalf + 0.45 * draft());
   const edgeA = add(host.start, mul(u, tA)), edgeB = add(host.start, mul(u, tB));
   const refA = formatRef(opening.id, startIsA ? 'start' : 'end');
   const refB = formatRef(opening.id, startIsA ? 'end' : 'start');

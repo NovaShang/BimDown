@@ -9,7 +9,7 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { Tooltip, TooltipTrigger, TooltipContent } from '../components/ui/tooltip';
 import { Separator } from '../components/ui/separator';
 import { cn } from '../lib/utils';
-import { DEFAULT_CUT_HEIGHT, type ElevationDir } from './viewTypes.ts';
+import { DEFAULT_CUT_HEIGHT, PLAN_SCALES, storePlanScale, type ElevationDir } from './viewTypes.ts';
 
 const ICON_BTN = 'flex size-8 cursor-pointer items-center justify-center rounded-lg border-none transition-all';
 const idle = 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground';
@@ -131,6 +131,21 @@ function ViewRangePopover() {
     >
       {() => (
         <div className="flex flex-col gap-1.5 p-1">
+          <label className="flex items-center justify-between gap-2 text-[11px]" title={t('views.planScaleTitle')}>
+            <span>{t('views.planScale')}</span>
+            <select
+              data-testid="plan-scale"
+              className="h-6 rounded-md border border-border bg-[var(--bg-input)] px-1 text-[11px] tabular-nums"
+              value={views.planScale}
+              onChange={e => {
+                const scale = parseInt(e.target.value, 10);
+                storePlanScale(scale);
+                dispatch({ type: 'SET_PLAN_SCALE', scale });
+              }}
+            >
+              {[...new Set([...PLAN_SCALES, views.planScale])].sort((a, b) => a - b).map(s => <option key={s} value={s}>1:{s}</option>)}
+            </select>
+          </label>
           <label className="flex items-center justify-between gap-2 text-[11px]">
             <span>{t('views.cutHeight')}</span>
             <input

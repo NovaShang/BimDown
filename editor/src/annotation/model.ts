@@ -13,12 +13,34 @@
  *                 position − tagBase (see annotation/sync.ts).
  */
 import type { CanonicalElement, LineElement, PointElement, Point } from '../model/elements.ts';
+import type { ProjectUnit } from '../types.ts';
+import { paper } from './geometry.ts';
 
 export const ANNOTATION_TABLES: ReadonlySet<string> = new Set(['dimension', 'text_note', 'tag']);
 export const ANNOTATION_DISCIPLINE = 'annotation';
 
 export const DIMENSION_HEADERS = ['start_x', 'start_y', 'end_x', 'end_y', 'start_ref', 'end_ref', 'direction', 'offset', 'text'];
-export const TEXT_NOTE_HEADERS = ['x', 'y', 'text', 'size', 'rotation'];
+export const TEXT_NOTE_HEADERS = ['x', 'y', 'text', 'paper_size', 'rotation'];
+
+/** Default note height on paper (mm). */
+export const TEXT_NOTE_PAPER_SIZE = 2.5;
+
+/**
+ * Text note height in model units: `paper_size` mm at the view scale, else the
+ * legacy fixed `size` (project units), else 2.5 mm on paper.
+ */
+export function textNoteSize(attrs: Record<string, string>, unit?: ProjectUnit, scale?: number): number {
+  const mm = parseFloat(attrs.paper_size ?? '');
+  if (Number.isFinite(mm) && mm > 0) return paper(mm, unit, scale);
+  const legacy = parseFloat(attrs.size ?? '');
+  if (Number.isFinite(legacy) && legacy > 0) return legacy;
+  return paper(TEXT_NOTE_PAPER_SIZE, unit, scale);
+}
+
+/** Annotations on a section / elevation (global/, `view_id` set) are not part of any plan. */
+export function isViewAnnotation(el: CanonicalElement): boolean {
+  return isAnnotationTable(el.tableName) && !!el.attrs.view_id;
+}
 export const TAG_HEADERS = ['host_id', 'x', 'y', 'content'];
 
 /** Unpinned tags carry the last resolved default spot (not persisted). */

@@ -63,6 +63,25 @@ export interface Box { minX: number; minY: number; maxX: number; maxY: number }
 
 export interface LegendEntry { label: string; color: string }
 
+/** Anything a sheet viewport can show at a scale: model units, Y up. */
+export interface ScaledDrawing {
+  unit: ProjectUnit;
+  scale: number;
+  pm: number;
+  items: DrawItem[];
+  layers: Map<string, DrawingLayer>;
+  bounds: Box | null;
+  legend: LegendEntry[];
+}
+
+/** A section or elevation: x along the view (p·right), y = absolute elevation. */
+export interface ViewDrawing extends ScaledDrawing {
+  kind: 'section' | 'elevation';
+  /** Section id or elevation direction (the `view_id` of its annotations). */
+  viewId: string;
+  title: string;
+}
+
 /** One level's plan, ready for a PDF page or a DXF file. */
 export interface PlanDrawing {
   levelId: string;

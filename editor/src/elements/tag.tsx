@@ -4,7 +4,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import { ANNOTATION_DISCIPLINE, TAG_HEADERS, isTagPinned, type TagElement } from '../annotation/model.ts';
 import {
-  tagLines, tagDefaultPosition, tagBox, elementAnchor, metre, sub, len,
+  tagLines, tagDefaultPosition, tagBox, elementAnchor, draft, sub, len,
 } from '../annotation/geometry.ts';
 import { roomNetAreaFromCtx } from '../annotation/rooms.ts';
 import { DIM_INK } from './dimension.tsx';
@@ -82,13 +82,13 @@ export const tagModule: ElementModule<TagFacts> = {
     const box = tagBox(lines, room);
     return {
       id: el.id, position, anchor, lines, room,
-      leader: isTagPinned(el) && len(sub(anchor, position)) > 0.6 * metre(),
+      leader: isTagPinned(el) && len(sub(anchor, position)) > 0.6 * draft(),
       ...box,
     };
   },
 
   draw2D(f, ctx): ReactNode {
-    const m = metre();
+    const m = draft();
     const ink = ctx.selected ? '#3a7bff' : DIM_INK;
     const { x, y } = f.position;
     const lh = f.size * 1.25;

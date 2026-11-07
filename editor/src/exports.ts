@@ -9,7 +9,7 @@ export { EditorProvider, useEditorState, useSelectionState, useEditorDispatch } 
 export { DataSourceProvider, useDataSource } from './utils/DataSourceContext.tsx';
 export { createLocalDataSource } from './utils/dataSource.ts';
 export type { DataSource } from './utils/dataSource.ts';
-export { loadProject, loadGrids, loadLayer, loadProjectMetadata, loadMepSystems, loadSections } from './utils/loader.ts';
+export { loadProject, loadGrids, loadLayer, loadProjectMetadata, loadMepSystems, loadSections, loadSheets, loadViewAnnotations, drawingFileReload } from './utils/loader.ts';
 export { useLiveProject } from './hooks/useLiveProject.ts';
 export { parseLayer } from './model/parse.ts';
 export { elementQuantities, sectionArea } from './model/quantities.ts';
@@ -37,4 +37,9 @@ export type { DrawingDiscipline } from './export/drawing/types.ts';
 export type { PaperSize } from './export/drawing/sheet.ts';
 export { DRAWING_SCALES } from './export/drawing/sheet.ts';
 export { registerPlanAnnotator } from './export/drawing/annotations.ts';
+// Sheets: sheet set export (multi-page PDF, DXF per sheet) and the toggle event of the sheet editor
+export { exportSheetSetPdf, exportSheetSetDxf, buildSheetSetPdf, buildSheetDxfFiles } from './export/exportSheets.ts';
+export type { SheetExportOptions } from './export/exportSheets.ts';
+export { SHEETS_TOGGLE_EVENT } from './sheets/events.ts';
+export type { SheetDef, ViewportDef, SheetSet } from './sheets/sheetTypes.ts';
 export type { PlanAnnotator, PlanAnnotationContext } from './export/drawing/annotations.ts';
