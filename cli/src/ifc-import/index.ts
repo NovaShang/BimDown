@@ -24,7 +24,6 @@ import { Systems, convertEquipment, convertNode, convertSegment, convertTerminal
 import { convertFurniture, convertGrid } from './misc.js';
 import { addSeparators, checkRooms, danglingEnds, extendIntoBodies, joinEnds, roomLines, settleTees, snapEnds } from './postprocess.js';
 import { emitFiles } from './emit.js';
-import { BOUNDARY } from './lines.js';
 import { ID_PREFIXES } from '../schema/prefixes.js';
 import type { RoomIssue } from '../build/room-faces.js';
 
