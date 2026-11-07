@@ -12,6 +12,7 @@ import i18n from 'i18next';
 import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { pointInPolygon } from '../geometry/spaceBoundary.ts';
 import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
+import { circuitsIn, type CircuitSummary } from '../mep/circuits.ts';
 
 export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count';
 
@@ -33,6 +34,8 @@ export interface ScheduleCategory {
   columns: ScheduleColumn[];
   /** Initial group-by column ('' = none). */
   groupBy?: string;
+  /** Only rows this accepts (e.g. accessories among mep_node rows). */
+  filter?: (el: CanonicalElement) => boolean;
 }
 
 export interface ScheduleRow {
@@ -96,8 +99,23 @@ export const SCHEDULES: ScheduleCategory[] = [
   },
   {
     key: 'mep', label: 'schedule.mep', tables: ['duct', 'pipe', 'conduit', 'cable_tray'], groupBy: 'system_type',
-    columns: [CATEGORY, C('system_type', 'schedule.col.system', 'text'), C('size', 'schedule.col.size', 'text'), LEVEL,
+    columns: [CATEGORY, C('system_type', 'schedule.col.system', 'text'), C('size', 'schedule.col.size', 'text'),
+      C('insulation', 'schedule.col.insulation', 'length'), LEVEL,
       NUMBER, C('length', 'schedule.col.length', 'length', true, true), C('count', 'schedule.col.count', 'count', false, true)],
+  },
+  {
+    // Inline accessories (valves, dampers, strainers …); passive fittings are not listed
+    key: 'accessories', label: 'schedule.accessories', tables: ['mep_node'], groupBy: 'kind',
+    filter: el => !!(el.attrs.kind ?? '').trim(),
+    columns: [C('kind', 'schedule.col.kind', 'text'), C('system_type', 'schedule.col.system', 'text'), C('size', 'schedule.col.size', 'text'),
+      LEVEL, NUMBER, C('count', 'schedule.col.count', 'count', true, true)],
+  },
+  {
+    // Electrical circuits with their connected load (sum of the devices' load)
+    key: 'circuits', label: 'schedule.circuits', tables: ['circuit'], groupBy: 'panel',
+    columns: [C('panel', 'schedule.col.panel', 'text'), NUMBER, C('name', 'schedule.col.name', 'text'), LEVEL,
+      C('voltage', 'schedule.col.voltage', 'text'), C('rating', 'schedule.col.rating', 'text'),
+      C('devices', 'schedule.col.devices', 'count', true, true), C('load_w', 'schedule.col.loadW', 'count', true, true)],
   },
   {
     // Library components: count by family / variant, with the room they stand in
@@ -148,6 +166,8 @@ function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, uni
     size: sizeLabel(el, unit),
     system_type: a.system_type ?? '',
     type: a.equipment_type || a.terminal_type || a.type || a.family || '',
+    kind: a.kind ?? '',
+    insulation: num(a.insulation_thickness) || undefined,
     length: q.length,
     qheight: q.height,
     area: q.area,
@@ -173,6 +193,21 @@ function levelRooms(elements: CanonicalElement[], context: CanonicalElement[]): 
     out.push({ label: [el.attrs.number, el.attrs.name].filter(Boolean).join(' ') || el.id, poly, area: Math.abs(a) / 2 });
   }
   return out.sort((x, y) => x.area - y.area);
+}
+
+/** Circuit rows: panel tag, connected devices and load. */
+function circuitValues(el: CanonicalElement, circuits: Map<string, CircuitSummary>, context: CanonicalElement[]): Record<string, string | number> {
+  const c = circuits.get(el.id);
+  const panelId = c?.panelId ?? el.attrs.host_id ?? '';
+  const panel = context.find(e => e.id === panelId);
+  const load = c?.load ?? 0;
+  return {
+    panel: panel?.attrs.number || panelId,
+    voltage: el.attrs.voltage ? `${el.attrs.voltage} V` : '',
+    rating: el.attrs.rating ? `${el.attrs.rating} A` : '',
+    devices: c?.devices.length ?? 0,
+    load_w: Math.round(load),
+  };
 }
 
 /** Furniture rows: "Family · Variant" in the UI language, and the room it stands in. */
@@ -201,6 +236,12 @@ export function scheduleRows(
   const rows: ScheduleRow[] = [];
   const lowest = allLevels[0];
   const roomCache = new Map<string, LevelRoom[]>();
+  const circuitCache = new Map<string, Map<string, CircuitSummary>>();
+  const circuits = (levelId: string, context: CanonicalElement[]) => {
+    let c = circuitCache.get(levelId);
+    if (!c) circuitCache.set(levelId, c = new Map(circuitsIn(new Map(context.map(e => [e.id, e]))).map(x => [x.id, x])));
+    return c;
+  };
   const rooms = (levelId: string, elements: CanonicalElement[], context: CanonicalElement[]) => {
     let r = roomCache.get(levelId);
     if (!r) roomCache.set(levelId, r = levelRooms(elements, context));
@@ -212,7 +253,9 @@ export function scheduleRows(
       if (!tables.has(el.tableName)) continue;
       const q = elementQuantities(el, level, allLevels, context);
       const values = rowValues(el, level, q, unit, displayName);
+      if (cat.filter && !cat.filter(el)) continue;
       if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context)));
+      if (el.tableName === 'circuit') Object.assign(values, circuitValues(el, circuits(level.id, context), context));
       rows.push({ sid: `${level.id}:${el.id}`, id: el.id, levelId: level.id, table: el.tableName, values });
     }
   }

@@ -57,6 +57,31 @@ describe('schedules', () => {
     expect(groups.map(g => [g.key, g.totals.count])).toEqual([['Desk · Standard', 2], ['Office chair', 1], ['Tree · Deciduous', 1]]);
   });
 
+  it('circuits (connected load), accessories (not passive fittings) and MEP insulation', async () => {
+    const f = twoLevels();
+    f['lv-1/equipment.csv'] = 'id,number,equipment_type\neq-1,DB-1,panelboard\n';
+    f['lv-1/equipment.geojson'] = fc([{ type: 'Feature', properties: { id: 'eq-1' }, geometry: { type: 'Point', coordinates: [1, 1, 0] } }]);
+    f['lv-1/circuit.csv'] = 'id,number,host_id,name,voltage,poles,rating\nci-1,1,eq-1,Lighting,230,1,16\nci-2,2,eq-1,Spare,230,1,16\n';
+    f['lv-1/terminal.csv'] = 'id,number,terminal_type,load,circuit_id\ntm-1,,light_fixture,60,ci-1\ntm-2,,light_fixture,40,ci-1\n';
+    f['lv-1/terminal.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'tm-1' }, geometry: { type: 'Point', coordinates: [2, 2, 2.8] } },
+      { type: 'Feature', properties: { id: 'tm-2' }, geometry: { type: 'Point', coordinates: [4, 2, 2.8] } },
+    ]);
+    f['lv-1/mep_node.csv'] = 'id,system_type,kind\nmn-1,CHWS,\nmn-2,CHWS,gate_valve\n';
+    f['lv-1/mep_node.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'mn-1' }, geometry: { type: 'Point', coordinates: [1, 3, 2.8] } },
+      { type: 'Feature', properties: { id: 'mn-2' }, geometry: { type: 'Point', coordinates: [3, 3, 2.8] } },
+    ]);
+    f['lv-1/pipe.csv'] = 'id,number,shape,size_x,system_type,insulation_thickness\npi-1,,round,0.05,CHWS,0.025\n';
+    f['lv-1/pipe.geojson'] = fc([{ type: 'Feature', properties: { id: 'pi-1' }, geometry: { type: 'LineString', coordinates: [[1, 3, 2.8], [3, 3, 2.8]] } }]);
+    const { state } = await load(f);
+    const rows = (k: string) => scheduleRows(cat(k), state.project!, 'm', name, 'lv-1', state.document!.elements);
+    const circuits = rows('circuits');
+    expect(circuits.map(r => [r.id, r.values.panel, r.values.devices, r.values.load_w])).toEqual([['ci-1', 'DB-1', 2, 100], ['ci-2', 'DB-1', 0, 0]]);
+    expect(rows('accessories').map(r => [r.id, r.values.kind])).toEqual([['mn-2', 'gate_valve']]);
+    expect(rows('mep').find(r => r.id === 'pi-1')!.values.insulation).toBe(0.025);
+  });
+
   it('walls: length, height from levels, net area without openings, volume', async () => {
     const { state } = await load(twoLevels());
     const rows = scheduleRows(cat('walls'), state.project!, 'm', name, 'lv-1', state.document!.elements);
