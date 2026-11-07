@@ -13,6 +13,7 @@ import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 import { renderAnnotations } from './annotations.js';
 import { projectUnits } from './utils/units.js';
 import { renderFurniture } from './furniture/render.js';
+import { renderStairs } from './stair/render.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -82,6 +83,8 @@ const RENDER_ORDER = [
 ];
 
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space']);
+/** Drawn by renderStairs (runs, landings, walking line, derived railings). */
+const STAIR_TABLES = new Set(['stair', 'stair_run', 'stair_landing', 'railing']);
 
 interface RenderedElement {
   tableName: string;
@@ -135,7 +138,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
   const elements: RenderedElement[] = [];
 
   for (const tableName of RENDER_ORDER) {
-    if (CSV_ONLY_TABLES.has(tableName)) continue;
+    if (CSV_ONLY_TABLES.has(tableName) || STAIR_TABLES.has(tableName)) continue;
     const fileBase = GEOJSON_FILE_NAMES[tableName];
     if (!fileBase) continue;
 
@@ -155,6 +158,9 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
       }
     }
   }
+
+  // Stairs (runs, landings, walking line) and railings
+  elements.push(...renderStairs(projectDir, levelId));
 
   // Furniture / library components (plan symbols), under doors and rooms
   elements.push(...renderFurniture(levelDir.path));

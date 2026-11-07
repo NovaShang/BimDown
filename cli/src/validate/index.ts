@@ -15,6 +15,7 @@ import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.j
 import { validateAnnotations } from './annotations.js';
 import { validateFurnitureRows } from '../furniture/validate.js';
 import { effectiveRows } from '../catalog/index.js';
+import { validateStairs } from './stairs.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -113,6 +114,9 @@ export function validate(dir: string): string[] {
   for (const entry of csvEntries) {
     issues.push(...validateAnnotations(entry.path, entry.tableName, entry.data, idRegistry));
   }
+
+  // 7d. Stairs: parts / railings hosted on a stair (or slab), multi-storey top level
+  issues.push(...validateStairs(dir).issues);
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);
