@@ -24,6 +24,13 @@ describe('pick priority', () => {
       .toEqual(['fu-1', 'sp-1', 'sl-1']);
   });
 
+  it('an element hit only by its invisible pick area yields to what is drawn there', () => {
+    const wall = line('w-1', 'wall', [0, 0], [10, 0]);
+    const sofa = point('fu-1', 'furniture', 5, 0.3);
+    const r = rankPicks([{ sid: 'fu-1', el: sofa, pickAreaOnly: true }, { sid: 'w-1', el: wall }, { sid: 'sp-1', el: poly('sp-1', 'space', 0, 0, 10, 10) }], { x: 5, y: 0.05 }, 0.05);
+    expect(r.map(x => x.sid)).toEqual(['w-1', 'fu-1', 'sp-1']);
+  });
+
   it('inside a room the room comes before the slab; both are soft (a drag box-selects)', () => {
     const r = order([poly('sl-1', 'slab', 0, 0, 10, 10), poly('sp-1', 'space', 1, 1, 9, 9)]);
     expect(r.map(x => x.sid)).toEqual(['sp-1', 'sl-1']);

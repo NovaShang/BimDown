@@ -20,6 +20,9 @@ export interface PickCandidate {
   el: CanonicalElement;
   /** The pointer is on the element's label / marker (rooms: drag moves it). */
   onLabel?: boolean;
+  /** Only an invisible pick area is under the pointer (a furniture box, a
+   *  door bay): the element yields to anything drawn there, rooms aside. */
+  pickAreaOnly?: boolean;
 }
 
 export interface RankedPick extends PickCandidate {
@@ -69,9 +72,10 @@ function rankOf(c: PickCandidate, p: Point, tol: number): { rank: number; soft: 
     return edgeDistance(c.el, p) <= tol ? { rank: 4, soft: false } : { rank: 9, soft: true };
   }
   if (t === 'space') return c.onLabel ? { rank: 2, soft: false } : { rank: 8, soft: true };
-  if (t === 'curtain_wall') return { rank: 3, soft: false };
   // Datums run along façades and through walls: the model element wins
-  if (t === 'grid') return { rank: 6, soft: false };
+  if (t === 'grid') return { rank: c.pickAreaOnly ? 7.5 : 7.2, soft: false };
+  if (c.pickAreaOnly) return { rank: 7, soft: false };
+  if (t === 'curtain_wall') return { rank: 3, soft: false };
   if (c.el.geometry === 'point') return { rank: 2, soft: false };
   if (c.el.geometry === 'line' || c.el.geometry === 'spatial_line') return { rank: 4, soft: false };
   return { rank: 5, soft: false };

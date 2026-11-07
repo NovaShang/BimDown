@@ -58,6 +58,13 @@ const tabCycle = { key: '', index: -1 };
 /** Pixels around the pointer that count as on a floor / roof edge. */
 const EDGE_PX = 6;
 
+/** An invisible hit shape (no fill, no stroke): a pick area, not drawing. */
+function isPickArea(node: Element): boolean {
+  const clear = (v: string | null) => v === 'none' || v === 'transparent';
+  const fill = node.getAttribute('fill'), stroke = node.getAttribute('stroke');
+  return clear(fill) && (stroke == null || clear(stroke));
+}
+
 /** Elements under the pointer (2D plan), most specific first (pickPriority.ts). */
 function picksAt(ctx: ToolContext, clientX: number, clientY: number): RankedPick[] {
   if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return [];
@@ -72,9 +79,10 @@ function picksAt(ctx: ToolContext, clientX: number, clientY: number): RankedPick
     if (!el || el.tableName === 'connector' || el.tableName === 'model_group') continue;
     const tag = node.tagName.toLowerCase();
     const onLabel = tag === 'text' || (el.tableName === 'space' && tag === 'circle');
+    const pickArea = isPickArea(node);
     const had = byId.get(sid);
-    if (had) had.onLabel = had.onLabel || onLabel;
-    else byId.set(sid, { sid, el, onLabel });
+    if (had) { had.onLabel = had.onLabel || onLabel; had.pickAreaOnly = had.pickAreaOnly && pickArea; }
+    else byId.set(sid, { sid, el, onLabel, pickAreaOnly: pickArea });
   }
   return rankPicks([...byId.values()], p, EDGE_PX * computePixelSize(ctx.screenToSvg));
 }
