@@ -20,6 +20,7 @@ import { applyOpenings } from '../three/resolve/csg.ts';
 import type { SurfacePrimitive, ParametricOpening } from '../three/primitives/types.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
+import { buildStraightWallSolid } from '../three/utils/wallSolid.ts';
 
 const HOSTED_TABLES = new Set(['door', 'window', 'opening']);
 const DEFAULT_HEIGHT = 3.0;
@@ -384,6 +385,32 @@ export function wallDraw2D(
 
 export function wallDraw3D(facts: LineWallFacts, isHL: boolean): ReactNode {
   if (facts.footprint.length < 3) return null;
+  // Straight walls with plain rectangular openings: built directly (same
+  // solid as extrude + CSG below, ~100× faster). Everything else: CSG.
+  const direct = facts.centerline.arc ? null : buildStraightWallSolid({
+    start: facts.centerline.start, end: facts.centerline.end, footprint: facts.footprint,
+    thickness: facts.thickness, height: facts.height, baseY: facts.baseY, openings: facts.openings,
+  });
+  const geo = direct ?? extrudeWallWithCsg(facts);
+  const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
+  return (
+    <mesh
+      geometry={geo}
+      material={isHL ? undefined : material}
+      castShadow
+      receiveShadow
+      userData={{ elementId: facts.id }}
+    >
+      {isHL && (
+        <meshStandardMaterial attach="material" color="#06b6d4"
+          transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
+      )}
+    </mesh>
+  );
+}
+
+/** Extrude + CSG wall solid (arc walls, shaped or overlapping openings). */
+export function extrudeWallWithCsg(facts: LineWallFacts): BufferGeometry {
   const shape = new Shape();
   shape.moveTo(facts.footprint[0].x, facts.footprint[0].y);
   for (let i = 1; i < facts.footprint.length; i++) {
@@ -425,21 +452,7 @@ export function wallDraw3D(facts: LineWallFacts, isHL: boolean): ReactNode {
     if (cut !== geo) geo.dispose();
     geo = cut;
   }
-  const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
-  return (
-    <mesh
-      geometry={geo}
-      material={isHL ? undefined : material}
-      castShadow
-      receiveShadow
-      userData={{ elementId: facts.id }}
-    >
-      {isHL && (
-        <meshStandardMaterial attach="material" color="#06b6d4"
-          transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
-      )}
-    </mesh>
-  );
+  return geo;
 }
 
 export function wallFillFor(material: string): string {
