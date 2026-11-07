@@ -260,3 +260,38 @@ describe('wall-mounted devices', () => {
     expect(parseFloat(r2.attrs.rotation)).toBeCloseTo(0, 6);
   });
 });
+
+describe('port drag', () => {
+  it('routes through the router: drop into the target port, one undo step', async () => {
+    const { tryStartPortDrag, updatePortDrag, finishPortDrag } = await import('../tools/portDragTool.ts');
+    const h = createHarness();
+    h.pick('equipment', { [STARTER_KEY_ATTR]: 'fcu_chw_2pipe' });
+    h.click(0, 0);
+    h.done();
+    h.pick('terminal', { [STARTER_KEY_ATTR]: 'diffuser_supply' });
+    h.click(-4, 3);
+    h.done();
+    const PX = 100;
+    const ctx = {
+      dispatch: h.dispatch, svgRef: { current: null }, containerRef: { current: null },
+      getState: () => ({ ...h.state, transform: { x: 0, y: 0, scale: PX } }),
+      screenToSvg: (cx: number, cy: number) => ({ x: cx / PX, y: cy / PX }), findElementId: () => null, setSnap: () => {},
+    } as unknown as Parameters<typeof finishPortDrag>[0];
+    const fcu = els(h.state, 'equipment')[0];
+    const sa = els(h.state, 'connector').find(c => c.attrs.host_id === fcu.id && c.attrs.name === 'sa')!;
+    const ev = (x: number, y: number) => ({ clientX: x * PX, clientY: y * PX, pointerId: 1, target: {} }) as unknown as React.PointerEvent;
+    const undoBefore = h.state.history.undoStack.length;
+    expect(tryStartPortDrag(ctx, ev(-0.5, 0), sa.id)).toBe(true);
+    updatePortDrag(ctx, ev(-4, 3));
+    finishPortDrag(ctx);
+    const ds = ducts(h.state);
+    expect(ds.some(d => (d.attrs.from ?? '') === `${fcu.id}:sa`)).toBe(true);
+    const tm = els(h.state, 'terminal')[0];
+    const last = ds.find(d => (d.attrs.to ?? '') === `${tm.id}:inlet`)!;
+    expect(last).toBeTruthy();
+    expect(last.start).toEqual(last.end); // the drop into the neck
+    expect(last.endZ).toBeCloseTo(2.75, 6);
+    expect(h.state.history.undoStack.length - undoBefore).toBe(1);
+    expect(codes(h.state)).toEqual(['flow_balance']); // FCU 200 L/s, one 100 L/s diffuser
+  });
+});
