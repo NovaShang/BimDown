@@ -303,7 +303,7 @@ function withProjectSelection(state: EditorState, action: Extract<EditorAction, 
     const out = coreReducer(there, { ...action, ids: raw.map(id => toSelectionId(levelId, id)) } as EditorAction);
     if (out.document) patches.set(levelId, diffElements(elements, out.document.elements));
   }
-  const description = local.history.undoStack.at(-1)?.description ?? action.type;
+  const description = local.history.undoStack[local.history.undoStack.length - 1]?.description ?? action.type;
   const next = pushMultiLevel({ ...plain, project: local.project ? { ...state.project, types: local.project.types } : state.project }, description, patches);
   return action.type === 'DELETE_ELEMENTS' ? { ...next, selectedIds: new Set() } : { ...next, projectSelection: state.projectSelection };
 }
