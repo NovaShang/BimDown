@@ -249,9 +249,11 @@ function CircuitsTab({ elements, selectedIds, readonly, level, onCreate, onAssig
         return (
           <div key={c.id} className="flex items-center gap-1.5 rounded px-1.5 py-[2px] text-[10px] text-muted-foreground hover:bg-accent"
             onMouseEnter={() => setMepView({ circuit: c.id })} onMouseLeave={() => setMepView({ circuit: null })}>
-            <span className="w-16 shrink-0 truncate font-semibold text-foreground" title={panelLabel(panelEl, c.panelId, drawingLang())}>{panelLabel(panelEl, c.panelId, drawingLang())}-{c.number}</span>
-            <span className={cn('flex-1 tabular-nums', over && 'text-red-500')}>
-              {t('mep.circuits.summary', { devices: c.devices.length, load: Math.round(c.load) })}{c.rating ? ` / ${c.rating} A` : ''}
+            <span className="min-w-0 flex-1">
+              <span className="block truncate font-semibold text-foreground" title={panelLabel(panelEl, c.panelId, drawingLang())}>{panelLabel(panelEl, c.panelId, drawingLang())} · {c.number}</span>
+              <span className={cn('block truncate tabular-nums', over && 'text-red-500')}>
+                {t('mep.circuits.summary', { devices: c.devices.length, load: Math.round(c.load) })}{c.rating ? ` / ${c.rating} A` : ''}
+              </span>
             </span>
             {!readonly && (
               <button type="button" className={btn} disabled={devices.length === 0}

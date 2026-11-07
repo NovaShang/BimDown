@@ -786,7 +786,23 @@ function snapAt(ctx: ToolContext, e: React.PointerEvent): SnapResult | null {
     }
   }
   const raw = run(svgPt);
-  if (!anchor || raw.connectorHit || !orthoActive(state.drawingAttrs, !!e.shiftKey)) return raw;
+  if (raw.connectorHit) return raw;
+  const ortho = !!anchor && orthoActive(state.drawingAttrs, !!e.shiftKey);
+  // On a run's body (same table, and the run's system once drawing): the tee
+  // point wins over length / grid snaps that would stop short of the run.
+  const elements = state.document?.elements;
+  const table = state.drawingTarget?.tableName;
+  if (elements && table) {
+    const px = ctx.screenToSvg(e.clientX + 4, e.clientY);
+    const pad = px ? Math.hypot(px.x - svgPt.x, px.y - svgPt.y) : 0.05;
+    const hit = findPipeBodyHit(svgPt, elements, { tolerance: pad, pickPadding: pad, excludeIds: chain.ids,
+      systemType: anchor ? (state.drawingAttrs.system_type || undefined) : undefined });
+    if (hit && hit.pipe.tableName === table && !(anchor && Math.hypot(hit.point.x - anchor.x, hit.point.y - anchor.y) < JOIN_TOL)) {
+      const at = ortho ? axisMeetsRun(anchor!, constrainOrtho(anchor!, svgPt).point, hit.pipe as MepCurve) : hit.point;
+      if (at) return { point: at, snapX: null, snapY: null, guides: [{ type: 'point', x: at.x, y: at.y, snapType: 'edge' }], dominantType: 'edge' };
+    }
+  }
+  if (!anchor || !ortho) return raw;
   const { point, axis } = constrainOrtho(anchor, svgPt);
   const s = run(point);
   if (s.connectorHit) return s;
