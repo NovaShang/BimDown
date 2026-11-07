@@ -91,7 +91,9 @@ function useVisibleLevels(): Set<string> {
 export default function FloorGroup() {
   const allFloors = useAllFloorsElements();
   const visibleLevels = useVisibleLevels();
-  const mepSystems = useEditorState().project?.mepSystems;
+  const project = useEditorState().project;
+  const mepSystems = project?.mepSystems;
+  const types = project?.types;
 
   const levelElevations = useMemo(() => {
     const map = new Map<string, number>();
@@ -112,6 +114,7 @@ export default function FloorGroup() {
               levelElevation={elevation}
               levelElevations={levelElevations}
               mepSystems={mepSystems}
+              types={types}
             />
           </group>
         );
@@ -120,12 +123,13 @@ export default function FloorGroup() {
   );
 }
 
-function RenderElements({ elements, levelId, levelElevation, levelElevations, mepSystems, ghost }: {
+function RenderElements({ elements, levelId, levelElevation, levelElevations, mepSystems, types, ghost }: {
   elements: CanonicalElement[];
   levelId: string;
   levelElevation: number;
   levelElevations: Map<string, number>;
   mepSystems?: import('../types.ts').SystemDef[];
+  types?: import('../model/types/catalog.ts').TypeCatalog;
   ghost?: boolean;
 }) {
   const allElements = useMemo(() => {
@@ -140,8 +144,8 @@ function RenderElements({ elements, levelId, levelElevation, levelElevations, me
     const allLevels: Level[] = Array.from(levelElevations.entries()).map(
       ([id, elevation]) => ({ id, number: '', name: '', elevation }),
     );
-    return buildGeometryContext({ level, allLevels, allElements, mepSystems });
-  }, [levelId, levelElevation, levelElevations, allElements, mepSystems]);
+    return buildGeometryContext({ level, allLevels, allElements, mepSystems, types });
+  }, [levelId, levelElevation, levelElevations, allElements, mepSystems, types]);
 
   // mesh_file elements always go to MeshInstances (loads external .glb);
   // everything else goes through the V2 element-module path.

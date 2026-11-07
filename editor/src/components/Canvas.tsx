@@ -20,6 +20,7 @@ import { REVERSE_PREFIX_MAP, toSelectionId, toElementId } from '../model/ids.ts'
 import CanvasContextMenu from './CanvasContextMenu.tsx';
 import CanvasOverlay from './CanvasOverlay.tsx';
 import { SVGGeometryProvider } from '../adapters/svg/context.tsx';
+import { LayerHatchDefs } from '../elements/_layerHatch.tsx';
 import { getProjectUnits } from '../utils/units.ts';
 import { getContentBounds } from '../state/selectors.ts';
 
@@ -439,7 +440,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
   const t = transformRef.current;
 
   return (
-    <SVGGeometryProvider level={currentLevelData} allLevels={allLevels} allElements={allElements} mepSystems={state.project?.mepSystems}>
+    <SVGGeometryProvider level={currentLevelData} allLevels={allLevels} allElements={allElements} mepSystems={state.project?.mepSystems} types={state.project?.types}>
     <div
       ref={containerRef}
       className={`canvas ${cursorClass}`}
@@ -494,6 +495,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           transition: 'none',
         }}
       >
+        <LayerHatchDefs />
         {/* Heavy SVG content — React.memo, never re-renders during pan/zoom */}
         <SVGLayers layers={layers} activeFilter={activeFilter} activeDiscipline={activeDiscipline} />
 
