@@ -6,6 +6,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 import { getProjectUnits } from '../utils/units.ts';
+import { Icon } from './Icons.tsx';
 
 export default function TopBar() {
   const { t } = useTranslation();
@@ -77,6 +78,19 @@ export default function TopBar() {
           </button>
         ))}
       </div>
+
+      <Separator orientation="vertical" className="mx-0.5 self-stretch" />
+
+      {/* Schedules (quantities) */}
+      <button
+        className="flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+        onClick={() => window.dispatchEvent(new CustomEvent('bimdown:toggle-schedule'))}
+        title={t('schedule.open')}
+        data-testid="open-schedule"
+      >
+        <Icon name="schedule" width={15} height={15} />
+        <span className="max-md:hidden">{t('schedule.short')}</span>
+      </button>
     </div>
   );
 }

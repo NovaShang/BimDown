@@ -12,6 +12,9 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
+  draw_dimension: 'hint.dimension',
+  draw_text:    'hint.text',
+  draw_tag:     'hint.tag',
 };
 
 export default function DrawingHints() {
@@ -28,7 +31,10 @@ export default function DrawingHints() {
     && drawingAttrs[VERTICAL_MODE_KEY] === 'true';
   // For polygon, show a different hint once we have 3+ points
   const isPolygonClosable = activeTool === 'draw_polygon' && drawingState && drawingState.points.length >= 3;
-  const text = isVerticalLine
+  const isWallRun = activeTool === 'draw_dimension' && drawingAttrs.dim_mode === 'wall_run';
+  const text = isWallRun
+    ? t('hint.dimensionWallRun')
+    : isVerticalLine
     ? t('hint.vertical')
     : isPolygonClosable
       ? t('hint.polygonClose')

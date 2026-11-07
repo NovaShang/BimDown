@@ -18,6 +18,7 @@ import { LevelSelect } from './LevelSelect.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { ScrollArea } from './ui/scroll-area';
 import { cn } from '../lib/utils';
+import QuantitiesSection from './QuantitiesSection.tsx';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -182,6 +183,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
               </Collapsible>
             );
           })}
+          {isSingleSelection && <QuantitiesSection selectionId={firstId} />}
         </div>
       </ScrollArea>
     </>

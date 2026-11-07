@@ -2,9 +2,10 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, P
 import { computeBounds } from './elements.ts';
 import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
+import { ANNOTATION_TABLES } from '../annotation/model.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
-const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector']);
+const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector', ...ANNOTATION_TABLES]);
 
 /**
  * Group elements by discipline/tableName key.

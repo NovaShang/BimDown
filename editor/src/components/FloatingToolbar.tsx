@@ -13,6 +13,7 @@ import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
 import type { IconName } from './Icons.tsx';
 import { cn } from '../lib/utils';
+import AnnotationTools from './AnnotationTools.tsx';
 
 interface FloatingToolbarProps {
   activeDiscipline: string | null;
@@ -460,6 +461,9 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
           </Tooltip>
         ))}
       </div>
+
+      {/* Dimension / text / tag — every discipline */}
+      <AnnotationTools />
 
       {/* Grid tool — only in reference discipline */}
       {activeDiscipline === 'reference' && <>

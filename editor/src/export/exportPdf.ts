@@ -4,6 +4,9 @@ import { parseFloorLayers } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import { triggerDownload } from './download.ts';
 import { formatElevation, getProjectUnits } from '../utils/units.ts';
+import type { ProjectUnit } from '../types.ts';
+import { isAnnotationTable } from '../annotation/model.ts';
+import { drawAnnotations, annotationsToSvg, taggedRoomIds } from './annotationExport.ts';
 
 // Color palette matching cli/src/render.ts
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
@@ -60,8 +63,9 @@ interface RoomLabel { x: number; y: number; number: string; name: string }
 
 function roomLabels(elements: CanonicalElement[]): RoomLabel[] {
   const out: RoomLabel[] = [];
+  const tagged = taggedRoomIds(elements); // a room tag draws its own label
   for (const el of elements) {
-    if (el.tableName !== 'space') continue;
+    if (el.tableName !== 'space' || tagged.has(el.id)) continue;
     const number = (el.attrs.number ?? '').trim();
     const name = (el.attrs.name ?? '').trim();
     if (!number && !name) continue;
@@ -79,7 +83,7 @@ function latin1(text: string): string {
   return /^[\x20-\xff]*$/.test(text) ? text : '';
 }
 
-function buildFloorSvg(elements: CanonicalElement[]): { svg: string; x: number; y: number; width: number; height: number } | null {
+function buildFloorSvg(elements: CanonicalElement[], unit: ProjectUnit): { svg: string; x: number; y: number; width: number; height: number } | null {
   if (elements.length === 0) return null;
 
   // Group by table name
@@ -87,6 +91,7 @@ function buildFloorSvg(elements: CanonicalElement[]): { svg: string; x: number; 
   for (const el of elements) {
     // A room seed is drawn as its label instead (see roomLabels)
     if (el.tableName === 'space' && el.geometry === 'point') continue;
+    if (isAnnotationTable(el.tableName)) continue; // drawn by annotationsToSvg
     const list = byTable.get(el.tableName) ?? [];
     list.push(el);
     byTable.set(el.tableName, list);
@@ -128,6 +133,9 @@ function buildFloorSvg(elements: CanonicalElement[]): { svg: string; x: number; 
     parts.push('</g>');
   }
 
+  // Dimensions, text notes and tags on top
+  parts.push(annotationsToSvg(drawAnnotations(elements, unit)));
+
   parts.push('</svg>');
   return { svg: parts.join('\n'), x: vbX, y: vbY, width: vbW, height: vbH };
 }
@@ -154,7 +162,7 @@ export async function exportPdf(project: ProjectData, modelName: string): Promis
     if (!floor) continue;
 
     const elements = parseFloorLayers(floor.layers);
-    const result = buildFloorSvg(elements);
+    const result = buildFloorSvg(elements, projectUnit);
     if (!result) continue;
 
     if (!isFirstPage) pdf.addPage('a3', 'landscape');

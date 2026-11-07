@@ -101,7 +101,7 @@ import {
 } from './elements/registry.ts';
 import type { LayerStyle } from './model/tableRegistry.ts';
 
-const KNOWN_DISCIPLINES = ['architecture', 'structure', 'mep', 'reference'] as const;
+const KNOWN_DISCIPLINES = ['architecture', 'structure', 'mep', 'reference', 'annotation'] as const;
 
 function lazyTableRecord<V>(value: (mod: import('./elements/archetypes.ts').AnyElementModule) => V): Record<string, V> {
   return new Proxy({} as Record<string, V>, {

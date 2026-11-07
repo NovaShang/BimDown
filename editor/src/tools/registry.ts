@@ -12,6 +12,7 @@ import { relocateTool } from './relocateTool.ts';
 import { relocateHostedTool } from './relocateHostedTool.ts';
 import { rotateTool } from './rotateTool.ts';
 import { drawTool } from './drawTool.ts';
+import { drawDimensionTool, drawTextTool, drawTagTool } from './annotationTools.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -36,6 +37,11 @@ const toolRegistry: Record<string, ToolHandler> = {
   draw_polygon: drawPolygonTool,
   draw_grid: drawGridTool,
   draw_hosted: drawHostedTool,
+
+  // Annotation (dimension / text / tag)
+  draw_dimension: drawDimensionTool,
+  draw_text: drawTextTool,
+  draw_tag: drawTagTool,
 };
 
 export function getToolHandler(tool: Tool): ToolHandler {
