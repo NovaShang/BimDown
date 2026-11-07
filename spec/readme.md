@@ -36,6 +36,7 @@ BimDown uses **CSV for attributes** and a **geometry layer** that may be encoded
 │   └── ...
 ├── 2F/
 │   └── ...
+├── underlays/                       # optional: tracing references (png/jpg/webp/pdf/dxf), see global/underlay.csv
 ├── _IdMap.csv                       # UUID ↔ short ID mapping (Revit round-trip)
 └── LICENSE.txt                      # optional licence / attribution note (also README, NOTICE, CREDITS; .txt/.md)
 ```
@@ -128,6 +129,14 @@ Plan annotations, CSV only, in level directories only (never `global/`). They re
 | Table  | Geometry file | Description |
 |--------|---------------|-------------|
 | `mesh` | No (GLB)      | Generic 3D model for elements without parametric schema |
+
+### Underlays (reference drawings)
+
+| Table      | Geometry file | Description |
+|------------|---------------|-------------|
+| `underlay` | No (file in `underlays/`) | `global/underlay.csv`: an image, PDF page or DXF placed under one level for tracing |
+
+An underlay row places `file` (under `underlays/`) on `level_id`: plan = `(x, y)` + rotate(`rotation`°) · (`scale` · local), where local is image pixels (origin bottom-left), PDF points or DXF drawing units; `scale` is project units per local unit. `opacity`, `visible`, `locked`, `page` (PDF) and `hidden_layers` (DXF, `;`-separated) are display settings. Underlays are not building elements: `build`, `render`, `query` and the exports ignore them; `validate` checks only that the file exists.
 
 ---
 
@@ -225,6 +234,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `dimension` | `dm` | `dm-1` |
 | `text_note` | `tx` | `tx-1` |
 | `tag` | `tg` | `tg-1` |
+| `underlay` | `ul` | `ul-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
 

@@ -42,7 +42,7 @@ describe('validateStructure — project_metadata.json', () => {
     writeMeta({ format_version: '3.0' });
     for (const f of ['LICENSE.txt', 'README.md', 'NOTICE', 'notes.txt']) writeFileSync(join(testDir, f), 'x');
     expect(validateStructure(testDir)).toEqual([
-      'notes.txt  unexpected entry in project root — only global/, lv-{n}/, mesh/, _IdMap.csv, project_metadata.json and LICENSE/README notes are allowed',
+      'notes.txt  unexpected entry in project root — only global/, lv-{n}/, mesh/, underlays/, _IdMap.csv, project_metadata.json and LICENSE/README notes are allowed',
     ]);
   });
 

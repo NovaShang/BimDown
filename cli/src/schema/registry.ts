@@ -24,6 +24,8 @@ export const ID_PREFIXES: Record<string, string> = {
   type_layer: 'tl',
   // Annotations
   dimension: 'dm', text_note: 'tx', tag: 'tg',
+  // Tracing references
+  underlay: 'ul',
 };
 
 /** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
@@ -40,7 +42,7 @@ export const LAYERED_TYPE_TABLES = new Set(['wall_type', 'slab_type', 'roof_type
 export const ANNOTATION_TABLES = new Set(['dimension', 'text_note', 'tag']);
 
 // Tables whose CSV lives only in global/ (not per-level)
-export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', ...TYPE_TABLES, 'type_layer']);
+export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', 'underlay', ...TYPE_TABLES, 'type_layer']);
 
 // Tables that can appear in global/ (cross-floor elements)
 export const GLOBAL_ALLOWED_TABLES = new Set([
@@ -55,9 +57,10 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 // Tables without a geometry file (level/grid use CSV inline; door/window are hosted; mesh is GLB;
 // mep_system is a project-wide lookup table with no geometry; connector is a CSV-only port
 // on its host equipment / terminal / mep_node, position is derived from host + offsets;
-// view rows carry their plan line inline like grid)
+// view rows carry their plan line inline like grid; underlay is a tracing reference
+// whose source file lives in underlays/)
 const TABLES_WITHOUT_GEOMETRY = new Set([
-  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view',
+  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view', 'underlay',
   ...TYPE_TABLES, 'type_layer',
   ...ANNOTATION_TABLES,
 ]);

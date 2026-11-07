@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { join, extname } from 'node:path';
-import { discoverLayout, listFiles } from '../utils/fs.js';
+import { discoverLayout, listFiles, ASSET_DIRS } from '../utils/fs.js';
+import { readCsv } from '../utils/csv.js';
 import { ID_PREFIXES, GEOJSON_FILE_NAMES, GLOBAL_ONLY_TABLES, ANNOTATION_TABLES } from '../schema/registry.js';
 
 // Tables where the GeoJSON file is optional:
@@ -107,17 +108,19 @@ export function validateStructure(dir: string): string[] {
   }
 
   // Reject top-level entries other than global/, lv-{n}/, project_metadata.json,
-  // _IdMap.csv (UUID↔short-id map), mesh/ (GLB asset directory) and the licence /
-  // attribution notes a shared model must carry (LICENSE.txt, README.md, …).
+  // _IdMap.csv (UUID↔short-id map), mesh/ (GLB assets), underlays/ (tracing references)
+  // and the licence / attribution notes a shared model must carry (LICENSE.txt, README.md, …).
   const topEntries = readdirSync(dir);
   for (const f of topEntries) {
     if (f === 'global' || /^lv-.+$/.test(f)) continue;
     if (f === 'project_metadata.json') continue;
-    if (f === '_IdMap.csv' || f === 'mesh') continue;
+    if (f === '_IdMap.csv' || ASSET_DIRS.has(f)) continue;
     if (f.startsWith('.')) continue;
     if (ROOT_NOTE_FILE.test(f)) continue;
-    issues.push(`${f}  unexpected entry in project root — only global/, lv-{n}/, mesh/, _IdMap.csv, project_metadata.json and LICENSE/README notes are allowed`);
+    issues.push(`${f}  unexpected entry in project root — only global/, lv-{n}/, mesh/, underlays/, _IdMap.csv, project_metadata.json and LICENSE/README notes are allowed`);
   }
+
+  issues.push(...validateUnderlayFiles(dir));
 
   // Validate project_metadata.json
   const metadataPath = join(dir, 'project_metadata.json');
@@ -166,5 +169,41 @@ export function validateStructure(dir: string): string[] {
     }
   }
 
+  return issues;
+}
+
+/** File types an underlay can reference (underlay.file). */
+export const UNDERLAY_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.pdf', '.dxf']);
+
+/**
+ * Each global/underlay.csv row must point at an existing file under
+ * underlays/ with a supported extension. Files nobody references are fine.
+ */
+function validateUnderlayFiles(dir: string): string[] {
+  const csvPath = join(dir, 'global', 'underlay.csv');
+  if (!existsSync(csvPath)) return [];
+  let rows: Record<string, string>[];
+  try {
+    rows = readCsv(csvPath).rows;
+  } catch {
+    return []; // reported by the CSV pass
+  }
+  const issues: string[] = [];
+  rows.forEach((row, i) => {
+    const file = row.file;
+    if (!file) return; // required-field check reports it
+    const where = `global/underlay.csv:${i + 2}`;
+    if (!file.startsWith('underlays/') || file.includes('..')) {
+      issues.push(`${where}  file "${file}" must be a path under underlays/`);
+      return;
+    }
+    if (!UNDERLAY_EXTENSIONS.has(extname(file).toLowerCase())) {
+      issues.push(`${where}  file "${file}" is not a supported underlay type (${[...UNDERLAY_EXTENSIONS].join(', ')})`);
+      return;
+    }
+    if (!existsSync(join(dir, file))) {
+      issues.push(`${where}  file "${file}" not found`);
+    }
+  });
   return issues;
 }

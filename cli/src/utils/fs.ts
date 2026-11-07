@@ -1,6 +1,9 @@
 import { readdirSync, statSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
+/** Top-level asset directories: mesh/ (GLB, mesh.mesh_file) and underlays/ (underlay.file). */
+export const ASSET_DIRS = new Set(['mesh', 'underlays']);
+
 export interface ProjectLayout {
   root: string;
   globalDir: string;
@@ -13,8 +16,9 @@ export function discoverLayout(dir: string): ProjectLayout {
 
   if (existsSync(dir) && statSync(dir).isDirectory()) {
     for (const entry of readdirSync(dir)) {
-      // 'mesh' is the GLB asset directory (mesh.mesh_file paths), not a level.
-      if (entry === 'global' || entry === 'mesh' || entry.startsWith('.')) continue;
+      // 'mesh' (GLB assets) and 'underlays' (tracing references) are asset
+      // directories, not levels.
+      if (entry === 'global' || ASSET_DIRS.has(entry) || entry.startsWith('.')) continue;
       const full = join(dir, entry);
       if (statSync(full).isDirectory()) {
         levelDirs.push({ name: entry, path: full });
