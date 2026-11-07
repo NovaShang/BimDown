@@ -61,6 +61,8 @@ export interface ProjectData {
    *  Empty array when the file is absent — auto-coloring stays in effect. */
   mepSystems: SystemDef[];
   metadata: ProjectMetadata;
+  /** Saved section views from `global/view.csv` (absent/empty = none). */
+  sections?: import('./views/viewTypes.ts').SectionDef[];
   /** Editor may write `spatial_z: "absolute"` on save: the project lacks the
    *  marker but has no elevated spatial Z that could be legacy level-relative. */
   spatialZMarkable?: boolean;

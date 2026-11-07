@@ -5,6 +5,8 @@ import { useGeometryContext } from '../adapters/svg/context.tsx';
 import { useSelectionState, useCoreEditorState } from '../state/EditorContext.tsx';
 import type { Draw2DContext } from '../elements/archetypes.ts';
 import { isMepLineTable } from '../utils/connectorSnap.ts';
+import { classifyRange, rangeDisplay, type RangeDisplay } from '../views/viewRange.ts';
+import { DEFAULT_CUT_HEIGHT } from '../views/viewTypes.ts';
 
 // Kept for compatibility with callers that still invoke pruneCache (Canvas).
 // The old per-element SVG HTML cache is gone — V2 module rendering doesn't
@@ -23,6 +25,7 @@ interface ElementNodeBodyProps {
   hovered: boolean;
   hostSelected: boolean;
   mepToolActive: boolean;
+  display: RangeDisplay;
 }
 
 /** Renders one canonical element through its registered ElementModule.
@@ -38,6 +41,10 @@ export function ElementNode({ element }: ElementNodeProps) {
   // resolves into the current selection.
   const hostSelected = element.hostId ? selectedRawIds.has(element.hostId) : false;
   const mepToolActive = isMepLineTable(core.drawingTarget?.tableName);
+  // Plan view range: the cut plane decides normal / dashed overhead / hidden.
+  const { planCut, rcp, aboveCut } = core.views;
+  const cut = planCut[core.currentLevel] ?? DEFAULT_CUT_HEIGHT;
+  const display = rangeDisplay(classifyRange(element, cut), rcp, aboveCut);
   return (
     <ElementNodeBody
       element={element}
@@ -45,12 +52,14 @@ export function ElementNode({ element }: ElementNodeProps) {
       hovered={hovered}
       hostSelected={hostSelected}
       mepToolActive={mepToolActive}
+      display={display}
     />
   );
 }
 
-const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, mepToolActive }: ElementNodeBodyProps) {
+const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, mepToolActive, display }: ElementNodeBodyProps) {
   const ctx = useGeometryContext();
+  if (display === 'hidden' && !selected) return null;
   if (!ctx) return null;
   const mod = getElementModule(element.tableName);
   if (!mod) return null;
@@ -67,5 +76,5 @@ const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected,
   };
   const result = mod.draw2D(facts, drawCtx);
   if (result === null || result === undefined) return null;
-  return <g transform="scale(1,-1)">{result}</g>;
+  return <g transform="scale(1,-1)" className={display === 'overhead' ? 'vr-overhead' : undefined}>{result}</g>;
 });

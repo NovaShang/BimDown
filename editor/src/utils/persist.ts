@@ -2,6 +2,8 @@ import type { DocumentState } from '../model/document.ts';
 import type { Level, GridData, SystemDef } from '../types.ts';
 import { groupByLayer, serializeToGeoJson, serializeToCsv, isCsvOnlyTable } from '../model/serialize.ts';
 import type { DataSource } from './dataSource.ts';
+import { sectionsToCsv, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
+import type { SectionDef } from '../views/viewTypes.ts';
 
 /**
  * Persist document state via the data source.
@@ -95,6 +97,11 @@ export async function persistMepSystems(systems: SystemDef[], ds: DataSource): P
     s.discipline,
   ].join(','));
   await ds.saveFile('global/mep_system.csv', [header, ...rows].join('\n') + '\n');
+}
+
+/** Write the saved section views back to global/view.csv. */
+export async function persistSections(sections: SectionDef[], ds: DataSource): Promise<void> {
+  await ds.saveFile(VIEW_CSV_PATH, sectionsToCsv(sections));
 }
 
 function csvEscape(value: string): string {

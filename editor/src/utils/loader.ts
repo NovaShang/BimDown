@@ -1,6 +1,8 @@
 import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata, ProjectUnit, SystemDef } from '../types.ts';
 import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
 import type { DataSource } from './dataSource.ts';
+import { sectionsFromRows, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
+import type { SectionDef } from '../views/viewTypes.ts';
 
 const VALID_UNITS: ReadonlySet<ProjectUnit> = new Set(['m', 'ft', 'in', 'mm']);
 
@@ -293,13 +295,15 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   // no mep_system.csv) — auto-registered with a palette color so they show in
   // the systems panel and color 2D/3D consistently.
   const declared = parseMepSystems(await fetchIfPresent('global/mep_system.csv'));
+  const viewText = await fetchIfPresent(VIEW_CSV_PATH);
+  const sections = viewText ? sectionsFromRows(parseCsv(viewText)) : [];
   const derived = deriveMepSystems(declared, floors, globalLayers);
   const mepSystems = [...declared, ...derived];
 
   // Safe to stamp `spatial_z: absolute` on save unless the project is unmarked
   // and holds elevated spatial Z that might be legacy level-relative.
   const spatialZMarkable = metadata.spatial_z !== 'absolute' && !elevatedSpatialZ;
-  return { levels, floors, globalLayers, mepSystems, metadata, spatialZMarkable };
+  return { levels, floors, globalLayers, mepSystems, metadata, spatialZMarkable, sections };
 }
 
 /** MEP tables that carry a `system_type` tag. */
@@ -375,6 +379,12 @@ function parseMepSystems(text: string | null): SystemDef[] {
       color: r.color || '',
       discipline: r.discipline || '',
     }));
+}
+
+/** Load the saved section views from `global/view.csv` ([] when absent). */
+export async function loadSections(ds: DataSource): Promise<SectionDef[]> {
+  const text = await ds.fetchText(VIEW_CSV_PATH);
+  return text ? sectionsFromRows(parseCsv(text)) : [];
 }
 
 export async function loadGrids(ds: DataSource): Promise<GridData[]> {

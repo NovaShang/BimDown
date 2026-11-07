@@ -15,6 +15,8 @@ import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
 import { pickStartLevel } from './startLevel.ts';
+import { initialViewsState } from '../views/viewTypes.ts';
+import { isViewsAction, viewsReducer } from '../views/viewsReducer.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -84,6 +86,8 @@ export const initialState: EditorState = {
   drawingState: null,
   documentVersion: 0,
   lastMutation: null,
+
+  views: initialViewsState,
 };
 
 /** Collect discipline/tableName keys from element maps for lastMutation tracking */
@@ -218,6 +222,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
   // Readonly guard: only allow view/navigation tools
   if (state.readonly && action.type === 'SET_TOOL' && !READONLY_TOOLS.has(action.tool)) return state;
 
+  if (isViewsAction(action)) return viewsReducer(state, action);
+
   switch (action.type) {
     case 'SET_VIEW_MODE': {
       let tool = state.activeTool;
@@ -273,7 +279,8 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // In all-floors 3D mode, include layers from every floor
       if (state.floor3DMode === 'all') addAllFloorLayers(visibleLayers, project.floors);
 
-      return { ...state, modelName: model, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline };
+      const views = model === state.modelName ? state.views : initialViewsState;
+      return { ...state, modelName: model, project, grids, loading: false, currentLevel, visibleLayers, activeDiscipline, views };
     }
 
     case 'SET_LOADING':
