@@ -208,6 +208,8 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `window` | `wn` | `wn-1` |
 | `opening` | `op` | `op-1` |
 | `stair` | `st` | `st-1` |
+| `stair_run` | `sr` | `sr-1` |
+| `stair_landing` | `sl_land` | `sl_land-1` |
 | `ramp` | `rp` | `rp-1` |
 | `railing` | `rl` | `rl-1` |
 | `curtain_wall` | `cw` | `cw-1` |

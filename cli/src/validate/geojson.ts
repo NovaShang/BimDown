@@ -10,6 +10,7 @@ const EXPECTED_GEOMETRY: Record<string, Set<'Point' | 'LineString' | 'Polygon'>>
   curtain_wall: new Set(['LineString']),
   room_separator: new Set(['LineString']),
   stair: new Set(['LineString']),
+  stair_run: new Set(['LineString']),
   ramp: new Set(['LineString']),
   railing: new Set(['LineString']),
   beam: new Set(['LineString']),
@@ -30,6 +31,7 @@ const EXPECTED_GEOMETRY: Record<string, Set<'Point' | 'LineString' | 'Polygon'>>
   ceiling: new Set(['Polygon']),
   structure_slab: new Set(['Polygon']),
   space: new Set(['Polygon']),
+  stair_landing: new Set(['Polygon']),
   // Mixed
   foundation: new Set(['Point', 'LineString', 'Polygon']),
   opening: new Set(['Polygon']),

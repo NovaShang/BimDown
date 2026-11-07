@@ -7,6 +7,7 @@ import { loadAllSchemas, resolveFields } from './loader.js';
 export const ID_PREFIXES: Record<string, string> = {
   level: 'lv', grid: 'gr', wall: 'w', column: 'c', slab: 'sl',
   space: 'sp', door: 'd', window: 'wn', stair: 'st',
+  stair_run: 'sr', stair_landing: 'sl_land',
   ramp: 'rp', railing: 'rl', room_separator: 'rs',
   curtain_wall: 'cw', roof: 'ro', ceiling: 'cl', opening: 'op',
   structure_wall: 'sw', structure_column: 'sc', structure_slab: 'ss',
@@ -46,7 +47,7 @@ export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system'
 
 // Tables that can appear in global/ (cross-floor elements)
 export const GLOBAL_ALLOWED_TABLES = new Set([
-  'level', 'grid', 'view', 'stair',
+  'level', 'grid', 'view', 'stair', 'stair_run', 'stair_landing',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
   'connector',
@@ -79,7 +80,7 @@ export const TABLES_WITH_GEOMETRY = new Set(Object.keys(GEOJSON_FILE_NAMES));
 // Tables whose elements use 3D coordinates (spatial line elements).
 // Level-anchored tables (wall, slab, column, etc.) use 2D coordinates + Z properties.
 export const SPATIAL_3D_TABLES = new Set([
-  'stair', 'ramp', 'railing',
+  'stair', 'stair_run', 'ramp', 'railing',
   'beam', 'brace',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
