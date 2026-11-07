@@ -779,6 +779,11 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const rawId = toElementId(action.id);
       const el = state.document.elements.get(rawId);
       if (!el) return state;
+      // Module rules may add dependent attrs (e.g. furniture sizes follow a new family).
+      const ruled = getElementModule(el.tableName)?.attrChangeRules?.(el.attrs, action.attrs);
+      if (ruled && Object.keys(ruled).some(k => !(k in action.attrs))) {
+        return editorReducer(state, { ...action, attrs: { ...ruled, ...action.attrs } });
+      }
       const before = new Map<string, CanonicalElement | null>([[rawId, el]]);
       const updated = { ...el, attrs: { ...el.attrs, ...action.attrs } };
 

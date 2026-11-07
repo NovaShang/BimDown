@@ -1,8 +1,9 @@
-import type { ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { DrawingField, LayerStyle, GeometryType, PlacementType } from '../model/tableRegistry.ts';
 import type { PropertyField } from './_propertyFields.ts';
 import type { Level, SystemDef } from '../types.ts';
+import type { ToolHandler } from '../tools/types.ts';
 
 // ─── Archetype ───────────────────────────────────────────────────────────────
 
@@ -155,6 +156,15 @@ export interface PlacementContext {
   levelId: string;
 }
 
+/** Props of `ElementModule.placementPreview` (model coords, Y up). */
+export interface PlacementPreviewProps {
+  cursor: { x: number; y: number };
+  /** Live rotation the place tool computed (e.g. snapped to a wall). */
+  rotation?: number;
+  attrs: Record<string, string>;
+  scale: number;
+}
+
 export interface ElementModule<TFacts = unknown> {
   // ─── Identity ──────────────────────────────────────────────────────────────
   table: string;
@@ -288,6 +298,17 @@ export interface ElementModule<TFacts = unknown> {
    * axes and structural braces.
    */
   supportsArc?: boolean;
+
+  // ─── Custom placement (optional) ──────────────────────────────────────────
+
+  /** Replaces the archetype's place tool (e.g. library components that snap
+   *  their back to a wall). Driven through the archetype's tool name. */
+  placeTool?: ToolHandler;
+  /** Ghost drawn under the cursor while `placeTool` is active. */
+  placementPreview?: ComponentType<PlacementPreviewProps>;
+  /** Extra attrs to apply when `changes` are edited (UPDATE_ATTRS and the
+   *  drawing bar), e.g. sizes that follow a new family's defaults. */
+  attrChangeRules?(prev: Record<string, string>, changes: Record<string, string>): Record<string, string>;
 }
 
 /** Type-erased module for the registry. */

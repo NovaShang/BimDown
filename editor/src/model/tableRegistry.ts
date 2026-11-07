@@ -35,6 +35,9 @@ export interface DrawingField {
   min?: number;
   max?: number;
   step?: number;
+  /** Options that depend on the row (e.g. a family's variants) or the UI
+   *  language; overrides `options` where present. */
+  optionsFor?: (attrs: Record<string, string>, lang: string) => { value: string; label: string }[];
 }
 
 export interface LayerStyle {

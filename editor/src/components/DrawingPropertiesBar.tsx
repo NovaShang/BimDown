@@ -18,7 +18,7 @@ import { cn } from '../lib/utils.ts';
 const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
 
 export default function DrawingPropertiesBar() {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const state = useEditorState();
   const dispatch = useEditorDispatch();
 
@@ -36,7 +36,7 @@ export default function DrawingPropertiesBar() {
   const fields = getDrawingFields(target.tableName, levels).map(f =>
     f.key === 'system_type' && systemOptions.length > 0
       ? { ...f, options: systemOptions }
-      : f,
+      : f.optionsFor ? { ...f, options: f.optionsFor(state.drawingAttrs, i18n.language) } : f,
   );
   if (fields.length === 0) return null;
 
@@ -48,7 +48,8 @@ export default function DrawingPropertiesBar() {
   const attrs = state.drawingAttrs;
 
   const handleChange = (key: string, value: string) => {
-    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...attrs, [key]: value } });
+    const ruled = getElementModule(target.tableName)?.attrChangeRules?.(attrs, { [key]: value });
+    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...attrs, ...ruled, [key]: value } });
   };
 
   // Vertical-pipe toggle: only for MEP topo-line tables (duct / pipe / conduit / cable_tray).

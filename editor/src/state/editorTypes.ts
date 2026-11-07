@@ -65,6 +65,8 @@ export interface DrawingState {
    *  full port reference ("host_id:port_name" or bare host_id) so the
    *  finished line can wire `from` to it. */
   startPortRef?: string;
+  /** Live rotation of a module place tool's preview (degrees CCW). */
+  rotation?: number;
 }
 
 export type EditorAction =
