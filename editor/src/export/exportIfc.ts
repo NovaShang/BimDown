@@ -33,6 +33,8 @@ import type { BeamFacts } from '../elements/beam.tsx';
 import type { FoundationFacts } from '../elements/foundation.tsx';
 import type { StairFacts } from '../elements/stair.tsx';
 import type { StairRunFacts } from '../elements/stair_run.tsx';
+import type { StairLandingFacts } from '../elements/stair_landing.tsx';
+import { repZ, type StairRepetition } from '../geometry/stair.ts';
 import type { RailingFacts } from '../elements/railing.tsx';
 import type { RampFacts } from '../elements/ramp.tsx';
 import type { CurtainWallFacts } from '../elements/curtain_wall.tsx';
@@ -143,6 +145,14 @@ interface Storey {
   spaces: H[];
 }
 
+/** One storey's IfcStair of a (multi-storey) stair. */
+interface StairWhole { handle: H; storey: Storey; rep: StairRepetition }
+
+/** A run's facts moved into one multi-storey repetition. */
+function repRun<T extends { startZ: number; endZ: number }>(f: T, rep: StairRepetition): T {
+  return rep.index === 0 ? f : { ...f, startZ: repZ(rep, f.startZ), endZ: repZ(rep, f.endZ) };
+}
+
 interface Rec {
   key: string;
   el: CanonicalElement;
@@ -243,6 +253,8 @@ class Exporter {
   private layerSets = new Map<string, H>();
   private systemMembers = new Map<string, H[]>();     // system_type → members
   private aggregates: { whole: H; parts: H[] }[] = [];
+  /** IfcStair per repetition, by `${scope}/${stair id}` (hosts of runs, landings, railings). */
+  private stairWholes = new Map<string, StairWhole[]>();
   private scopes: Scope[] = [];
   private counter = 0;
 
@@ -504,7 +516,7 @@ class Exporter {
       case 'beam': case 'brace': this.exportMember(scope, el, facts as BeamFacts); break;
       case 'stair': this.exportStair(scope, el, facts as StairFacts); break;
       case 'stair_run': this.exportStairRun(scope, el, facts as StairRunFacts); break;
-      case 'stair_landing': this.exportLanding(scope, el, facts); break;
+      case 'stair_landing': this.exportLanding(scope, el, facts as StairLandingFacts); break;
       case 'railing': this.exportRailing(scope, el, facts as RailingFacts); break;
       case 'ramp': this.exportRamp(scope, el, facts as RampFacts, ctx); break;
     }
@@ -813,28 +825,50 @@ class Exporter {
 
   // ─── Circulation ───────────────────────────────────────────────────────────
 
+  /**
+   * IfcStair per storey the stair occupies (one, or one per repetition of a
+   * multi-storey stair), aggregating its flights and landings. Its own line
+   * is the first flight unless it is only the overall axis of its runs.
+   */
   private exportStair(scope: Scope, el: CanonicalElement, f: StairFacts): void {
     const { w } = this;
-    const rec = this.product({
-      scope, el, type: 'IfcStair', geom: { solids: [] }, objectType: el.attrs.stair_type || 'straight',
-      tail: [w.enumv('IfcStairTypeEnum', STAIR_SHAPE[el.attrs.stair_type] ?? 'STRAIGHT_RUN_STAIR')],
-    });
-    const parts: H[] = [];
-    const hosted = scope.ctx.hostedOf(el.id).filter(c => c.tableName === 'stair_run');
-    if (hosted.length === 0) {
-      const flight = this.writeFlight(scope, el, f, `${rec.key}#flight`, `${el.attrs.number || el.id}`);
-      if (flight) parts.push(flight);
+    const wholes: StairWhole[] = [];
+    const baseKey = this.recKey(scope, el);
+    for (const rep of f.reps) {
+      const storey = rep.index === 0 ? scope.storeyFor(el) : this.storeys.get(rep.levelId) ?? scope.storeyFor(el);
+      const key = rep.index === 0 ? baseKey : `${baseKey}#rep${rep.index}`;
+      const rec = this.product({
+        scope, el, key, storey, type: 'IfcStair', geom: { solids: [] }, objectType: el.attrs.stair_type || 'straight',
+        name: rep.index === 0 ? undefined : `${el.attrs.number || el.id} (${storey.level.name || storey.level.id})`,
+        tail: [w.enumv('IfcStairTypeEnum', STAIR_SHAPE[el.attrs.stair_type] ?? 'STRAIGHT_RUN_STAIR')],
+        register: rep.index === 0,
+      });
+      const parts: H[] = [];
+      if (f.assembly.ownIsRun) {
+        const flight = this.writeFlight(scope, el, repRun(f, rep), `${key}#flight`, `${el.attrs.number || el.id}`, false, storey);
+        if (flight) parts.push(flight);
+      }
+      this.aggregates.push({ whole: rec.handle, parts });
+      const risers = Math.max(1, f.calc?.risers ?? f.stepCount);
+      const riser = (f.calc?.riser ?? Math.abs(f.endZ - f.startZ) / f.stepCount) * rep.scale;
+      this.pset(rec, 'Pset_StairCommon', {
+        Reference: w.ident(el.attrs.number), NumberOfRiser: w.count(risers),
+        NumberOfTreads: w.count(risers), RiserHeight: w.len(riser), TreadLength: w.len(f.calc?.going ?? f.horLen / f.stepCount),
+      });
+      this.bimdownPset(rec);
+      wholes.push({ handle: rec.handle, storey, rep });
     }
-    this.aggregates.push({ whole: rec.handle, parts });
-    const rise = Math.abs(f.endZ - f.startZ) / f.stepCount;
-    this.pset(rec, 'Pset_StairCommon', {
-      Reference: w.ident(el.attrs.number), NumberOfRiser: w.count(f.stepCount),
-      NumberOfTreads: w.count(f.stepCount), RiserHeight: w.len(rise), TreadLength: w.len(f.horLen / f.stepCount),
-    });
-    this.bimdownPset(rec);
+    this.stairWholes.set(`${scope.id}/${el.id}`, wholes);
   }
 
-  private writeFlight(scope: Scope, el: CanonicalElement, f: StairFacts | StairRunFacts, key: string, name: string, contained = false): H | null {
+  /** The IfcStair records (per repetition) of a host stair reference. */
+  private stairWholesOf(scope: Scope, hostRef: string): StairWhole[] | undefined {
+    if (!hostRef) return undefined;
+    return this.stairWholes.get(`${scope.id}/${hostRef}`) ?? this.stairWholes.get(`__global__/${hostRef}`)
+      ?? this.stairWholes.get(`${scope.id}/global:${hostRef}`);
+  }
+
+  private writeFlight(scope: Scope, el: CanonicalElement, f: StairFacts | StairRunFacts, key: string, name: string, contained = false, storey?: Storey): H | null {
     const { w } = this;
     const geom = stairFlightGeom(f);
     if (!geom) return null;
@@ -845,44 +879,67 @@ class Exporter {
       : [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread)];
     const part = this.product({
       scope, el, key, type: 'IfcStairFlight', geom, styles: this.styleFor(f.material, 'stair'), name,
-      objectType: 'flight', tail, contained, register: contained,
+      objectType: 'flight', tail, contained, register: contained, storey,
     });
     this.singleMaterial(part.handle, f.material);
     return part.handle;
   }
 
   private exportStairRun(scope: Scope, el: CanonicalElement, f: StairRunFacts): void {
-    const host = this.findRec(scope, el.attrs.host_id || el.hostId || '');
-    const flight = this.writeFlight(scope, el, f, this.recKey(scope, el), el.attrs.number || el.id, !host || host.table !== 'stair');
-    if (!flight) return;
-    this.bimdownPset({ ...(host ?? scope.storey as any), key: this.recKey(scope, el), el, handle: flight });
-    if (host && host.table === 'stair') this.aggregates.find(a => a.whole === host.handle)?.parts.push(flight);
+    const wholes = this.stairWholesOf(scope, el.attrs.host_id || el.hostId || '');
+    const key = this.recKey(scope, el);
+    if (!wholes) {
+      const flight = this.writeFlight(scope, el, f, key, el.attrs.number || el.id, true);
+      if (flight) this.bimdownPset({ ...(scope.storey as any), key, el, handle: flight });
+      return;
+    }
+    for (const whole of wholes) {
+      const k = whole.rep.index === 0 ? key : `${key}#rep${whole.rep.index}`;
+      const flight = this.writeFlight(scope, el, repRun(f, whole.rep), k, el.attrs.number || el.id, false, whole.storey);
+      if (!flight) continue;
+      this.bimdownPset({ ...(scope.storey as any), key: k, el, handle: flight });
+      this.aggregates.find(a => a.whole === whole.handle)?.parts.push(flight);
+    }
   }
 
-  private exportLanding(scope: Scope, el: CanonicalElement, f: { vertices: { x: number; y: number }[]; baseY: number; thickness: number; material: string }): void {
-    const host = this.findRec(scope, el.attrs.host_id || el.hostId || '');
-    const inStair = !!host && host.table === 'stair';
-    // base_offset is the landing top: the slab hangs below it (like the 3D view's extrusion from baseY − thickness).
-    const rec = this.product({
-      scope, el, type: 'IfcSlab', geom: { solids: [extrudePlan(f.vertices, f.baseY - f.thickness, f.thickness)] },
-      styles: this.styleFor(f.material, 'stair_landing'), objectType: 'landing',
-      tail: [this.w.enumv('IfcSlabTypeEnum', 'LANDING')], contained: !inStair,
-    });
-    this.singleMaterial(rec.handle, f.material);
-    if (inStair) this.aggregates.find(a => a.whole === host!.handle)?.parts.push(rec.handle);
-    this.bimdownPset(rec);
+  private exportLanding(scope: Scope, el: CanonicalElement, f: StairLandingFacts): void {
+    const wholes = this.stairWholesOf(scope, el.attrs.host_id || el.hostId || '');
+    const key = this.recKey(scope, el);
+    // base_offset is the landing top: the slab hangs below it (like the 3D view).
+    for (const whole of wholes ?? [null]) {
+      const rep = whole?.rep;
+      const top = f.levelY + (rep ? repZ(rep, f.landing.top) : f.landing.top);
+      const k = !rep || rep.index === 0 ? key : `${key}#rep${rep.index}`;
+      const rec = this.product({
+        scope, el, key: k, type: 'IfcSlab', geom: { solids: [extrudePlan(f.vertices, top - f.thickness, f.thickness)] },
+        styles: this.styleFor(f.material, 'stair_landing'), objectType: 'landing',
+        tail: [this.w.enumv('IfcSlabTypeEnum', 'LANDING')], contained: !whole, storey: whole?.storey,
+        register: !rep || rep.index === 0,
+      });
+      this.singleMaterial(rec.handle, f.material);
+      if (whole) this.aggregates.find(a => a.whole === whole.handle)?.parts.push(rec.handle);
+      this.bimdownPset(rec);
+    }
   }
 
+  /** IfcRailing along its path; a stair railing once per storey of its (multi-storey) stair. */
   private exportRailing(scope: Scope, el: CanonicalElement, f: RailingFacts): void {
-    const geom = railingGeom(f);
-    if (!geom) return;
-    const rec = this.product({
-      scope, el, type: 'IfcRailing', geom, styles: this.styleFor(f.material, 'railing'), objectType: 'railing',
-      tail: [this.w.enumv('IfcRailingTypeEnum', 'GUARDRAIL')],
+    const wholes = f.host === 'stair' ? this.stairWholesOf(scope, el.attrs.host_id || el.hostId || '') : undefined;
+    const key = this.recKey(scope, el);
+    f.paths.forEach((segs, i) => {
+      const geom = railingGeom(segs, f.baseY, f.style);
+      if (!geom) return;
+      const storey = wholes?.[i]?.storey;
+      const rec = this.product({
+        scope, el, key: i === 0 ? key : `${key}#rep${i}`, type: 'IfcRailing', geom, storey,
+        styles: this.styleFor(f.material, 'railing'), objectType: f.host === 'stair' ? `stair:${f.side ?? 'left'}` : 'railing',
+        tail: [this.w.enumv('IfcRailingTypeEnum', f.host === 'stair' ? 'HANDRAIL' : 'GUARDRAIL')],
+        register: i === 0,
+      });
+      this.singleMaterial(rec.handle, f.material);
+      this.pset(rec, 'Pset_RailingCommon', { Reference: this.w.ident(el.attrs.number), Height: this.w.len(f.height) });
+      this.bimdownPset(rec);
     });
-    this.singleMaterial(rec.handle, f.material);
-    this.pset(rec, 'Pset_RailingCommon', { Reference: this.w.ident(el.attrs.number), Height: this.w.len(f.height) });
-    this.bimdownPset(rec);
   }
 
   private exportRamp(scope: Scope, el: CanonicalElement, f: RampFacts, ctx: GeometryContext): void {

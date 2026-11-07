@@ -83,6 +83,31 @@ describe('plan drawing', () => {
     expect(d.items.some(i => i.kind === 'text' && i.text === 'UP')).toBe(true);
   });
 
+  it('draws an L stair: second run and landing beyond the cut hidden, one walking line, derived railings', async () => {
+    const line = (id: string, a: number[], b: number[]) => ({ type: 'Feature', properties: { id }, geometry: { type: 'LineString', coordinates: [a, b] } });
+    const { project } = await open({
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3\n',
+      'lv-1/stair.csv': 'id,number,width,step_count,stair_type\nst-1,,1.2,9,quarter_turn\n',
+      'lv-1/stair.geojson': fc([line('st-1', [0, 0, 0], [2.52, 0, 1.5])]),
+      'lv-1/stair_run.csv': 'id,number,host_id,width,step_count\nsr-1,,st-1,1.2,9\n',
+      'lv-1/stair_run.geojson': fc([line('sr-1', [3.12, 0.6, 1.5], [3.12, 3.12, 3])]),
+      'lv-1/stair_landing.csv': 'id,number,base_offset,host_id,thickness\nsl_land-1,,1.5,st-1,0.2\n',
+      'lv-1/stair_landing.geojson': fc([{ type: 'Feature', properties: { id: 'sl_land-1' }, geometry: { type: 'Polygon', coordinates: [[[2.52, -0.6], [3.72, -0.6], [3.72, 0.6], [2.52, 0.6], [2.52, -0.6]]] } }]),
+      'lv-1/railing.csv': 'id,number,host_id,side,height\nrl-1,,st-1,left,1\nrl-2,,st-1,right,1\n',
+    });
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', discipline: 'architecture' }, 100)!;
+    const above = on(d.items, 'A-FLOR-STRS-ABOV');
+    // run 2 starts at 1.5 m > cut: its treads and the landing outline are hidden lines
+    expect(above.some(i => i.kind === 'path' && i.closed && i.pts.length === 4)).toBe(true);
+    expect(above.length).toBeGreaterThan(9);
+    expect(d.items.filter(i => i.kind === 'text' && i.text === 'UP')).toHaveLength(1);
+    const rails = on(d.items, 'A-FLOR-HRAL');
+    expect(rails).toHaveLength(2);
+    // The outer rail goes round the landing (corner points), not a straight line
+    expect(Math.max(...rails.map(r => (r.kind === 'path' ? r.pts.length : 0)))).toBeGreaterThanOrEqual(5);
+  });
+
   it('runs annotators (the hook for dimensions) and writes their items', async () => {
     const { project } = await open(room());
     const off = registerPlanAnnotator(ctx => {

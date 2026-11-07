@@ -27,6 +27,10 @@ import type { DoorFacts } from '../../elements/door.tsx';
 import type { WindowFacts } from '../../elements/window.tsx';
 import type { ColumnFacts } from '../../elements/column.tsx';
 import type { StairFacts } from '../../elements/stair.tsx';
+import type { StairRunFacts } from '../../elements/stair_run.tsx';
+import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
+import type { RailingFacts } from '../../elements/railing.tsx';
+import { runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
 import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
@@ -414,50 +418,43 @@ function drawColumn(env: DrawEnv, f: ColumnFacts, table: string) {
   e.poly(outline, pts, true);
 }
 
+/** One flight: outline and treads split at the plan cut (beyond = hidden), break line at the cut. */
+function drawRun(env: DrawEnv, run: StairRun) {
+  const { e, src } = env;
+  e.phase = Phase.Floor;
+  const plan = runPlan(run, CUT_HEIGHT_M * src.upm);
+  for (const l of plan.lines) e.line(l.above ? LAYERS.stairAbove : LAYERS.stair, l.a, l.b);
+  if (plan.breakLine) e.poly(LAYERS.stair, plan.breakLine, false, { weight: 0.25 });
+}
+
+/**
+ * Stair (its own run) + the walking line over all runs and landings: dot at
+ * the bottom, arrow head at the top, UP / DN beside the start.
+ */
 function drawStair(env: DrawEnv, f: StairFacts) {
   const { e, pm, src } = env;
-  e.phase = Phase.Floor;
-  const u = unit(sub(f.end, f.start));
-  const n = perp(u);
-  const hw = f.width / 2;
-  const at = (t: number, o: number) => add(add(f.start, u, f.horLen * t), n, o);
-  const goingUp = f.endZ > f.startZ;
-  const cutZ = CUT_HEIGHT_M * src.upm;
-  // Fraction of the run below the cut plane; the rest is above (hidden)
-  const cut = goingUp && f.endZ - f.startZ > 1e-9
-    ? Math.max(0, Math.min(1, (cutZ - f.startZ) / (f.endZ - f.startZ)))
-    : 1;
-  const below = LAYERS.stair, above = LAYERS.stairAbove;
-  // Stringers
-  for (const o of [hw, -hw]) {
-    if (cut > 0) e.line(below, at(0, o), at(cut, o));
-    if (cut < 1) e.line(above, at(cut, o), at(1, o));
-  }
-  e.line(below, at(0, hw), at(0, -hw));
-  e.line(cut < 1 ? above : below, at(1, hw), at(1, -hw));
-  // Treads
-  for (let i = 1; i < f.stepCount; i++) {
-    const t = i / f.stepCount;
-    e.line(t <= cut ? below : above, at(t, hw), at(t, -hw));
-  }
-  // Break line across the run at the cut plane
-  if (cut > 0 && cut < 1) {
-    const z = Math.min(f.horLen * 0.06, 2.5 * pm) / f.horLen;
-    e.poly(below, [at(cut - z, hw), at(cut - z / 4, hw * 0.1), at(cut + z / 4, -hw * 0.1), at(cut + z, -hw)], false, { weight: 0.25 });
-  }
-  // Walking line from the start (dot) to an arrow head at the far end
-  const head = Math.min(2.2 * pm, f.width * 0.35);
-  const t0 = Math.min(0.08, (1.2 * pm) / f.horLen), t1 = 1 - Math.min(0.04, (0.6 * pm) / f.horLen);
-  const tip = at(t1, 0);
-  const back = add(tip, u, -head);
-  e.line(below, at(t0, 0), back);
-  e.push({ kind: 'path', layer: e.layer(below), pts: [tip, add(back, n, head * 0.35), add(back, n, -head * 0.35)], closed: true, fill: below.color });
-  e.push({ kind: 'circle', layer: e.layer(below), center: at(t0, 0), radius: 0.7 * pm, fill: below.color, noStroke: true });
+  drawRun(env, f.run);
+  const pts = walkingLine(f.assembly);
+  if (pts.length < 2) return;
+  const first = f.assembly.runs[0] ?? f.run;
+  const goingUp = first.endZ >= first.startZ;
+  const below = LAYERS.stair;
+  const head = Math.min(2.2 * pm, first.width * 0.35);
+  const tipFrom = pts[pts.length - 2], tip = pts[pts.length - 1];
+  const ut = unit(sub(tip, tipFrom));
+  const back = add(tip, ut, -head);
+  const u0 = first.u;
+  const start = add(pts[0], u0, Math.min(1.2 * pm, first.length * 0.08));
+  e.line(below, start, pts.length > 2 ? pts[1] : back);
+  for (let i = 1; i + 2 < pts.length; i++) e.line(below, pts[i], pts[i + 1]);
+  if (pts.length > 2) e.line(below, pts[pts.length - 2], back);
+  e.push({ kind: 'path', layer: e.layer(below), pts: [tip, add(back, perp(ut), head * 0.35), add(back, perp(ut), -head * 0.35)], closed: true, fill: below.color });
+  e.push({ kind: 'circle', layer: e.layer(below), center: start, radius: 0.7 * pm, fill: below.color, noStroke: true });
   // UP / DN beside the start of the walking line, reading upright
   e.phase = Phase.Tags;
   const label = drawingLabel(src.lang, goingUp ? 'drawing.up' : 'drawing.down');
-  const labelAt = add(at(Math.min(0.35, t0 + (3.5 * pm) / f.horLen), 0), n, Math.min(hw * 0.5, 2 * pm));
-  e.text(LAYERS.areaIden, labelAt, label, 1.8 * pm, { bold: true, rotation: uprightAngle(u) });
+  const labelAt = add(add(pts[0], u0, Math.min(first.length * 0.35, 3.5 * pm + Math.min(1.2 * pm, first.length * 0.08))), perp(u0), Math.min(first.width * 0.25, 2 * pm));
+  e.text(LAYERS.areaIden, labelAt, label, 1.8 * pm, { bold: true, rotation: uprightAngle(u0) });
 }
 
 /** Direction angle of `u`, flipped by 180° when text along it would read upside down. */
@@ -710,19 +707,23 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       return;
     }
     case 'stair':
-    case 'stair_run':
       return drawStair(env, facts as StairFacts);
+    case 'stair_run':
+      return drawRun(env, (facts as StairRunFacts).run);
     case 'stair_landing': {
+      // Beyond the plan cut: hidden lines, like the treads above it.
+      const f = facts as StairLandingFacts;
       e.phase = Phase.Floor;
-      e.poly(LAYERS.stair, (facts as { vertices: Point[] }).vertices, true);
+      e.poly(f.landing.top > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, f.vertices, true);
       return;
     }
     case 'ramp':
       return drawRamp(env, facts as RampFacts);
     case 'railing': {
-      const f = facts as { start: Point; end: Point };
+      // Sketched or derived (stair railings follow the runs and landings)
+      const f = facts as RailingFacts;
       e.phase = Phase.Floor;
-      e.line(LAYERS.railing, f.start, f.end);
+      if (f.plan.length >= 2) e.poly(LAYERS.railing, f.plan, false);
       return;
     }
     case 'room_separator': {
