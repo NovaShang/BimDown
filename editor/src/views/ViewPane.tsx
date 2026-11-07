@@ -38,7 +38,9 @@ export default function ViewPane() {
     <div
       data-testid="view-pane"
       className={cn(
-        'absolute top-16 bottom-[52px] z-30 flex flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] bg-[var(--bg-canvas)] shadow-[var(--shadow-panel)]',
+        'absolute top-16 z-30 flex flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] bg-[var(--bg-canvas)] shadow-[var(--shadow-panel)]',
+        // Stay clear of the bottom tool bar (bottom-3, ~57 px tall) when editing; the view bar alone when read-only
+        readonly ? 'bottom-[52px]' : 'bottom-[80px]',
         views.paneMaximized ? 'left-3 right-3' : 'right-3',
       )}
       style={views.paneMaximized ? undefined : { width }}
