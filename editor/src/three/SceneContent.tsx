@@ -1,4 +1,5 @@
 import { useRef, useEffect, useMemo, useCallback, Suspense } from 'react';
+import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 import { OrbitControls, Environment } from '@react-three/drei';
 import { EffectComposer, N8AO } from '@react-three/postprocessing';
 import { useThree } from '@react-three/fiber';
@@ -293,6 +294,7 @@ export default function SceneContent({ sectionBox }: { sectionBox: SectionBoxBri
   // renderer planes don't clip the shadow pass (a removed roof would still shade).
   const state = useCoreEditorState();
   const { enabled: boxOn, bounds: boxBounds } = state.views.sectionBox;
+  const upm = unitsPerMetreOf(getProjectUnits(state));
   const capPlanes = useMemo(() => (boxOn && boxBounds ? sectionBoxPlanes(boxBounds).map(p => {
     const w = toWorldPlane(p);
     return new Plane(new Vector3(...w.normal), w.constant);
@@ -336,7 +338,7 @@ export default function SceneContent({ sectionBox }: { sectionBox: SectionBoxBri
 
       {/* Screen-space ambient occlusion for depth/contact shadows */}
       <EffectComposer>
-        <N8AO aoRadius={1} intensity={1} distanceFalloff={0.5} halfRes />
+        <N8AO aoRadius={upm} intensity={1} distanceFalloff={0.5 * upm} halfRes />
       </EffectComposer>
 
       {/* Dynamic ground grid + shadow plane at model center and current elevation */}
@@ -349,11 +351,14 @@ export default function SceneContent({ sectionBox }: { sectionBox: SectionBoxBri
 function GroundPlane() {
   const groupRef = useRef<any>(null);
   const controls = useThree(s => s.controls) as OrbitControlsImpl | null;
-  const { currentLevel } = useEditorState();
+  const state = useEditorState();
+  const { currentLevel } = state;
+  const upm = unitsPerMetreOf(getProjectUnits(state));
   const modelBounds = useModelBounds();
-  const size = modelBounds?.size ?? 200;
+  const size = modelBounds?.size ?? 200 * upm;
   const elevation = modelBounds?.elevation ?? 0;
-  const gridDivisions = Math.max(10, Math.round(size / 2));
+  // About 2 m cells, whatever the project unit
+  const gridDivisions = Math.min(400, Math.max(10, Math.round(size / (2 * upm))));
 
   // After CameraFit, orbit target = model center. Snap grid there once.
   const prevLevel = useRef('');
@@ -371,7 +376,7 @@ function GroundPlane() {
   return (
     <group ref={groupRef} position={[modelBounds?.cx ?? 0, elevation, modelBounds?.cz ?? 0]}>
       <gridHelper args={[size, gridDivisions, '#c8cdd3', '#d8dce2']} />
-      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05, 0]} receiveShadow>
+      <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, -0.05 * upm, 0]} receiveShadow>
         <planeGeometry args={[size * 3, size * 3]} />
         <shadowMaterial opacity={0.2} />
       </mesh>

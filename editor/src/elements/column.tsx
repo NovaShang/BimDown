@@ -87,7 +87,7 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
       const section = resolveSection(p.attrs.shape || 'rect', attrsForSection);
       // Blank top_level_id = the level above (spec vertical_span), same rule as
       // walls and the IFC export — not a fixed 3 m.
-      const { height: extrudeHeight, baseOffset } = resolveHeight(p.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT);
+      const { height: extrudeHeight, baseOffset } = resolveHeight(p.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT * ctx.unitsPerMetre);
       return {
         id: p.id,
         position: p.position,

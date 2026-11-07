@@ -8,6 +8,7 @@ import { parseLayer } from '../model/parse.ts';
 import { computeBounds } from '../model/elements.ts';
 import type { OverlayItem } from '../hooks/useOverlayItems.ts';
 import { SectionBoxGizmo, createSectionBoxBridge } from './SectionBox.tsx';
+import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 
 /** Derive initial camera position from element bounds so the camera
  *  starts roughly above the model center, before CameraFit frames it. */
@@ -45,6 +46,8 @@ interface Canvas3DProps {
 export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps) {
   const { position, far } = useInitialCamera();
   const state = useEditorState();
+  // Near plane and pick tolerance in model units (depth precision in mm / ft projects)
+  const upm = unitsPerMetreOf(getProjectUnits(state));
 
   // Track overlay item DOM elements via callback refs
   const itemElsRef = useRef(new Map<string, HTMLDivElement>());
@@ -71,9 +74,9 @@ export default function Canvas3D({ overlayItems, elevation = 0 }: Canvas3DProps)
         // three r18x deprecated PCFSoftShadowMap and falls back to PCFShadowMap
         // with a console warning; ask for PCF ("percentage") directly.
         shadows="percentage"
-        camera={{ position, fov: 50, near: 0.1, far }}
+        camera={{ position, fov: 50, near: 0.1 * upm, far }}
         gl={{ antialias: true, toneMapping: 4 /* ACESFilmicToneMapping */ }}
-        raycaster={{ params: { Line: { threshold: 0.5 } } as any }}
+        raycaster={{ params: { Line: { threshold: 0.5 * upm } } as any }}
       >
         <color attach="background" args={[bgColor]} />
         <fog attach="fog" args={[bgColor, far * 0.3, far * 0.9]} />

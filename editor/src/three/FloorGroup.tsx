@@ -138,9 +138,13 @@ export default function FloorGroup({ allFloors: forceAll = false }: { allFloors?
 
   // Keyed on content, so a new floors array with the same elevations keeps
   // every floor's geometry context (and its batch) intact.
-  const elevationsKey = allFloors.map(f => `${f.levelId}:${f.elevation}`).join('|');
+  // Every project level counts (a wall's top level may have no elements of its own,
+  // so it is not among the floors), then the floors' own elevations.
+  const levels = project?.levels;
+  const elevationsKey = [...(levels ?? []).map(l => `${l.id}:${l.elevation}`), ...allFloors.map(f => `${f.levelId}:${f.elevation}`)].join('|');
   const levelElevations = useMemo(() => {
     const map = new Map<string, number>();
+    for (const l of levels ?? []) map.set(l.id, l.elevation);
     for (const f of allFloors) map.set(f.levelId, f.elevation);
     return map;
   // eslint-disable-next-line react-hooks/exhaustive-deps

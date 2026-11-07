@@ -339,7 +339,7 @@ export function wallGeometryFor(
   // wall rises to its top constraint (e.g. up to the next level) instead of a
   // fixed default. Walls with no top_level_id fall back via resolveHeight.
   const { height, baseOffset } = resolveHeight(
-    el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT,
+    el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT * ctx.unitsPerMetre,
   );
   const typeLayers = el.arc ? null : resolvedLayers(el, ctx.projectTypes());
   return {
