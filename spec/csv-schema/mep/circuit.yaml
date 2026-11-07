@@ -1,0 +1,37 @@
+name: circuit
+bases:
+  - element
+
+description: >
+  Electrical branch circuit fed from a panelboard (or any electrical
+  equipment). CSV-only, like connector: one row per circuit, stored in the
+  level directory of its panel. `number` is the circuit number shown on the
+  panel schedule ("1", "L-3"). Devices (terminal / equipment) join a circuit
+  through their `circuit_id`; the circuit's connected load is the sum of its
+  devices' `load`.
+
+fields:
+  - name: host_id
+    type: reference
+    reference: element
+    required: true
+    description: ID of the panel (equipment, usually equipment_type=panelboard) feeding the circuit.
+
+  - name: name
+    type: string
+    description: Label, e.g. "Lighting - Open office".
+
+  - name: voltage
+    type: float
+    unit: none
+    description: Nominal voltage, V (e.g. 230, 400).
+
+  - name: poles
+    type: int
+    unit: none
+    description: Breaker poles (1, 2 or 3).
+
+  - name: rating
+    type: float
+    unit: none
+    description: Breaker rating, A.

@@ -1,0 +1,9 @@
+name: mep_insulated
+abstract: true
+
+fields:
+  - name: insulation_thickness
+    type: float
+    description: >
+      Thickness of the insulation wrapped around the duct / pipe, meters
+      (0 or empty = bare). The insulated outer size is size + 2 × thickness.
