@@ -58,7 +58,7 @@ export default function QuantitiesSection({ selectionId }: { selectionId: string
       <div className="px-3 pb-1.5 pt-1">
         {items.map(it => (
           <div key={it.label} className="-mx-1 flex items-center gap-2 rounded-md px-1 py-[3px]">
-            <span className="w-[72px] shrink-0 truncate text-[10px] text-muted-foreground" title={it.label}>{it.label}</span>
+            <span className="w-[100px] shrink-0 truncate text-[10px] text-muted-foreground" title={it.label}>{it.label}</span>
             <span className="min-w-0 flex-1 truncate px-1.5 text-right text-[11px] tabular-nums text-foreground/80">{it.value}</span>
           </div>
         ))}

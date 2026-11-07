@@ -13,7 +13,7 @@ import { enterModifyTool } from '../tools/wallModifyTools.ts';
 
 const TOOLS: { tool: Tool; icon: typeof Scissors; label: string; tip: string; key: string }[] = [
   { tool: 'trim_corner', icon: CornerDownRight, label: 'tool.trimCorner', tip: 'tool.trimCornerTip', key: 'J' },
-  { tool: 'trim_single', icon: ArrowRightToLine, label: 'tool.trimSingle', tip: 'tool.trimSingleTip', key: 'X' },
+  { tool: 'trim_single', icon: ArrowRightToLine, label: 'tool.trimSingle', tip: 'tool.trimSingleTip', key: 'E' },
   { tool: 'split', icon: Scissors, label: 'tool.split', tip: 'tool.splitTip', key: 'K' },
 ];
 

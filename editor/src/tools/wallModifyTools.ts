@@ -23,7 +23,7 @@ import {
 const GRID_PREFIX = 'grid:';
 
 /** Shortcut key → modify tool (2D, disciplines that draw walls). */
-export const MODIFY_TOOL_SHORTCUTS: Record<string, Tool> = { J: 'trim_corner', X: 'trim_single', K: 'split' };
+export const MODIFY_TOOL_SHORTCUTS: Record<string, Tool> = { J: 'trim_corner', E: 'trim_single', K: 'split' };
 
 export function enterModifyTool(dispatch: (a: EditorAction) => void, tool: Tool) {
   dispatch({ type: 'SET_TOOL', tool });

@@ -135,7 +135,7 @@ export function useCanvasKeyboard({
           break;
       }
 
-      // Wall modify tools (J trim/extend to corner, X to reference, K split) — 2D only
+      // Wall modify tools (J trim/extend to corner, E to reference, K split) — 2D only; X is Text
       if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey && stateRef.current.viewMode === '2d'
           && (activeDiscipline === 'architecture' || activeDiscipline === 'structure')) {
         const modifyTool = MODIFY_TOOL_SHORTCUTS[e.key.toUpperCase()];
