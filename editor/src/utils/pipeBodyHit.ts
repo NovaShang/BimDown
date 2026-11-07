@@ -12,6 +12,7 @@
  * legitimate end-to-end joints don't get mis-classified as T's.
  */
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
+import { systemsJoin } from '../model/mepTopology.ts';
 
 const MEP_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
 
@@ -50,7 +51,7 @@ export interface PipeBodyHitOptions {
   /** Extra slack added on top of the pipe's stroke half-width so users
    *  don't have to land exactly on the visible edge. Default 0.10 m. */
   pickPadding?: number;
-  /** When set, only pipes carrying this system_type are considered. */
+  /** When set, only pipes carrying this system_type (or one it joins, a vent on its stack) are considered. */
   systemType?: string;
   /** Pipe ids to exclude from the search (e.g. the pipe being authored). */
   excludeIds?: ReadonlySet<string>;
@@ -74,7 +75,7 @@ export function findPipeBodyHit(
     if (!MEP_TABLES.has(el.tableName)) continue;
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
     if (opts.excludeIds?.has(el.id)) continue;
-    if (opts.systemType && (el.attrs.system_type ?? '') !== opts.systemType) continue;
+    if (opts.systemType && !systemsJoin(el.attrs.system_type, opts.systemType)) continue;
 
     const ln = el as MepCurveElement;
     const proj = projectOnSegment(cursor, ln.start, ln.end);

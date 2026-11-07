@@ -298,6 +298,23 @@ function createVerticalElement(
     attrs: mergedAttrs,
   };
 
+  // A vent stack goes out through the roof: its top is an open end (no open-end warning).
+  if (target.tableName === 'pipe' && /^(V|VENT|VTR|SV)$/i.test((mergedAttrs.system_type ?? '').trim())) {
+    existingIds.add(id);
+    const nodeId = generateId('mep_node', existingIds);
+    const topIsEnd = endZ >= startZ;
+    mergedAttrs[topIsEnd ? 'to' : 'from'] = nodeId;
+    const node: CanonicalElement = {
+      id: nodeId, tableName: 'mep_node', discipline: 'mep', geometry: 'point', position: { ...pt }, width: 0, height: 0,
+      attrs: { ...defaultAttrs('mep_node', resolveNextLevelId(state)), id: nodeId, kind: '', fitting: 'open',
+        system_type: mergedAttrs.system_type ?? '', base_offset: String(Math.max(startZ, endZ)) },
+    };
+    ctx.dispatch({ type: 'CREATE_ELEMENTS', elements: [element, node], description: 'Vent stack', selectPrimary: false });
+    ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: pt } });
+    ctx.setSnap(null);
+    return;
+  }
+
   ctx.dispatch({ type: 'CREATE_ELEMENT', element });
   // Keep vertical mode active; just clear the drawing scratch state.
   ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: pt } });

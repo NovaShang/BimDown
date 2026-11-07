@@ -221,6 +221,24 @@ describe('sanitary branches', () => {
   });
 });
 
+describe('vent stacks', () => {
+  it('tie into the sanitary main and open through the roof without warnings', () => {
+    const h = createHarness();
+    h.pick('pipe', { start_z: '-0.3', system_type: 'SAN', size_x: '0.1' });
+    h.click(0, 0); h.click(10, 0);
+    h.done();
+    h.pick('pipe', { system_type: 'VENT', size_x: '0.05', start_z: '-0.3', end_z: '8', __vertical_mode: 'true' });
+    h.click(4, 0);
+    const vent = pipes(h.state).find(p => p.attrs.system_type === 'VENT')!;
+    expect([vent.startZ, vent.endZ]).toEqual([-0.3, 8]);
+    const top = els(h.state, 'mep_node').find(n => n.attrs.fitting === 'open')!;
+    expect(vent.attrs.to).toBe(top.id);
+    expect(vent.attrs.from).toMatch(/^mn-/); // teed into the main
+    expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
+    expect(checkDocument(h.state.document!.elements).filter(p => p.code === 'open_end').map(p => p.id).sort()).not.toContain(vent.id);
+  });
+});
+
 describe('inline equipment', () => {
   it('a VAV clicked on the supply trunk splits it, faces the flow and takes its system and size', () => {
     const h = createHarness();

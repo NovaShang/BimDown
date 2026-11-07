@@ -167,3 +167,16 @@ export function collectMepBranch(
   }
   return visited;
 }
+
+const VENT_CODES = /^(V|VENT|VTR|SV)$/i;
+const DRAIN_CODES = /^(SAN|SS|SW|W|WASTE|SOIL|D|DR|DRAIN)$/i;
+
+/**
+ * Two system tags that may meet at a fitting: the same tag, or a plumbing
+ * vent tying into the sanitary / waste stack it ventilates.
+ */
+export function systemsJoin(a: string | undefined, b: string | undefined): boolean {
+  const x = (a ?? '').trim(), y = (b ?? '').trim();
+  if (x === y) return true;
+  return (VENT_CODES.test(x) && DRAIN_CODES.test(y)) || (VENT_CODES.test(y) && DRAIN_CODES.test(x));
+}
