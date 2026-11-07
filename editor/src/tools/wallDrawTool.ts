@@ -223,7 +223,7 @@ interface Plan {
 }
 
 /** The walls a click at `pt` creates in line / arc mode. */
-function planChain(state: ToolStateSnapshot, anchor: Point, pt: Point, through: Point | null, forPreview: boolean): Plan {
+function planChain(state: ToolStateSnapshot, anchor: Point, pt: Point, through: Point | null): Plan {
   const opts = wallDrawOptions(state.drawingAttrs);
   const s = centreShift(opts, thicknessOf(state));
   const ds = state.drawingState;
@@ -243,6 +243,10 @@ function planChain(state: ToolStateSnapshot, anchor: Point, pt: Point, through: 
     if (prev && s !== 0) {
       const copy = { ...prev };
       if (meet(copy, span)) adjust.set(lastId, { end: copy.end });
+    } else if (prev) {
+      // Continue from where the last wall really ended (it may have been
+      // seated onto another wall's centreline).
+      span.start = { ...prev.end };
     }
   } else if (!through) {
     span.start = seatOnWalls(els, span.end, span.start, chainIds);
@@ -261,7 +265,7 @@ function planChain(state: ToolStateSnapshot, anchor: Point, pt: Point, through: 
         span.end = { ...first.start };
       }
     }
-  } else if (!through && !forPreview) {
+  } else if (!through) {
     span.end = seatOnWalls(els, span.start, span.end, chainIds);
   }
   return { spans: [span], adjust, closes };
@@ -363,7 +367,7 @@ function place(ctx: ToolContext, pt: Point) {
 
   const end = ds.arcEnd ?? pt;
   const through = ds.arcEnd ? pt : null;
-  const plan = planChain(state, anchor, end, through, false);
+  const plan = planChain(state, anchor, end, through);
   const ids = commitPlan(ctx, plan);
   if (ids.length === 0) return;
   if (plan.closes || !opts.chain) {
@@ -392,8 +396,8 @@ function ghostFor(ctx: ToolContext, state: ToolStateSnapshot, cursor: Point): Dr
   if (!anchor) return undefined;
   const s = centreShift(opts, thicknessOf(state));
   if (opts.mode === 'rect') return rectSpans(anchor, cursor, s);
-  if (ds?.arcEnd) return planChain(state, anchor, ds.arcEnd, cursor, true).spans;
-  return planChain(state, anchor, cursor, null, true).spans;
+  if (ds?.arcEnd) return planChain(state, anchor, ds.arcEnd, cursor).spans;
+  return planChain(state, anchor, cursor, null).spans;
 }
 
 export const wallDrawTool: ToolHandler = {

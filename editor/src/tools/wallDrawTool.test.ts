@@ -107,6 +107,13 @@ describe('wall chain drawing', () => {
     expect(h.walls()[1]).toEqual(['w-2', [5, 0], [5, 4]]);
   });
 
+  it('a chain continues from a seated end, not from the raw click', () => {
+    const h = harness();
+    h.click(0, 0); h.click(10, 0); h.key('Enter');
+    h.click(5, 4); h.click(5, 0.08); h.click(8, 2);
+    expect(h.walls().slice(1)).toEqual([['w-2', [5, 4], [5, 0]], ['w-3', [5, 0], [8, 2]]]);
+  });
+
   it('arc mode makes an arc wall through the third point', () => {
     const h = harness({ [WALL_OPT.mode]: 'arc' });
     h.click(0, 0); h.click(6, 0); h.click(3, 3);
