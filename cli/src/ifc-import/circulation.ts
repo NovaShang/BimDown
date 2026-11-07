@@ -72,11 +72,28 @@ export function convertStairOrRamp(ctx: ImportContext, id: number, table: 'stair
   for (const p of [...flights, ...landings, ...others]) ctx.consume(p, id);
   const shape = STAIR_SHAPE[enumValue(model.line(id)?.ShapeType) ?? enumValue(model.line(id)?.PredefinedType) ?? ''] ?? 'straight';
   const out: OutEl[] = [];
-  for (const f of flights) {
-    const m = ctx.mesh(f);
-    if (!m) { ctx.skip(f, 'no body geometry'); continue; }
-    const el = flight(ctx, f, m, flights.length > 1 ? 'straight' : shape, table);
+  // Flights bottom → top. A stair is its own first run; the further flights
+  // are stair_run rows hosted on it (stairs by component), so the stair keeps
+  // its overall shape (quarter / half turn …).
+  const meshes = flights.map(f => ({ f, m: ctx.mesh(f) })).filter(x => { if (!x.m) ctx.skip(x.f, 'no body geometry'); return !!x.m; })
+    .sort((a, b) => a.m!.min.z - b.m!.min.z);
+  for (const { f, m } of meshes) {
+    if (table === 'stair' && out.length > 0) {
+      const wl = walkingLine(m!);
+      if (!wl) { ctx.skip(f, 'no usable geometry'); continue; }
+      out.push(ctx.add('stair_run', f, out[0].level, {
+        number: ctx.label(f), host_id: out[0].id, width: r3(wl.width), step_count: risers(ctx, f, wl.end.z - wl.start.z),
+      }, line3(wl.start, wl.end)));
+      continue;
+    }
+    const el = flight(ctx, f, m!, shape, table);
     if (el) out.push(el);
+  }
+  // The stair arrives on the level its top flight reaches
+  if (table === 'stair' && out[0]) {
+    const zTop = Math.max(...meshes.map(x => x.m!.max.z));
+    const top = ctx.levels.find(l => l.index > out[0].level && Math.abs(l.elevation - zTop) < 0.1);
+    if (top) out[0].attrs.top_level_id = top.id;
   }
   if (out.length === 0) {
     const m = ctx.mesh(id) ?? mergeMeshes([...flights, ...others].map(p => ctx.mesh(p)).filter((x): x is WorldMesh => !!x));
@@ -109,7 +126,22 @@ export function convertFlight(ctx: ImportContext, id: number, table: 'stair' | '
   return flight(ctx, id, m, 'straight', table);
 }
 
-/** IfcRailing → railing rows along its axis (or body long axis). */
+/** railing_type row for the IfcRailingType of a railing (once per type), else undefined. */
+function railingType(ctx: ImportContext, id: number, height: number): string | undefined {
+  if (!ctx.tables.has('railing_type')) return undefined;
+  const t = ctx.model.typeOf.get(id);
+  if (!t) return undefined;
+  const key = `railing_type:${t}`;
+  const known = ctx.typeIds.get(key);
+  if (known) return known;
+  const name = (ctx.label(t) ?? `Railing ${Math.round(height * 1000)}`).slice(0, 120);
+  const el = ctx.add('railing_type', 0, 0, { name, height: r3(height) }, null);
+  el.global = true;
+  ctx.typeIds.set(key, el.id);
+  return el.id;
+}
+
+/** IfcRailing → railing rows along its axis (or body long axis), typed by its IfcRailingType. */
 export function convertRailing(ctx: ImportContext, id: number): OutEl[] {
   const { model } = ctx;
   const parts = model.parts.get(id) ?? [];
@@ -138,7 +170,7 @@ export function convertRailing(ctx: ImportContext, id: number): OutEl[] {
     const h = typeof psetH === 'number' ? psetH * model.scale : Math.max(0.3, body);
     // A handrail without posts: the body is only the rail, its foot is a railing height lower
     if (body < h * 0.5) { za -= h - body; zb -= h - body; }
-    out.push(ctx.add('railing', id, level, { number: ctx.label(id), height: r3(h) }, line3({ x: a.x, y: a.y, z: za }, { x: b.x, y: b.y, z: zb })));
+    out.push(ctx.add('railing', id, level, { number: ctx.label(id), height: r3(h), type_id: railingType(ctx, id, h) }, line3({ x: a.x, y: a.y, z: za }, { x: b.x, y: b.y, z: zb })));
   }
   return out;
 }

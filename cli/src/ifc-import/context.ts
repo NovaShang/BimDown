@@ -67,6 +67,8 @@ export class ImportContext {
   /** IfcBuildingStorey express id → level index. */
   storeyLevel = new Map<number, number>();
   out: OutEl[] = [];
+  /** Element type rows made so far (e.g. `railing_type:<IfcRailingType id>` → row id). */
+  typeIds = new Map<string, string>();
   /** IFC product → BimDown elements made from it. */
   bySrc = new Map<number, OutEl[]>();
   /** Part → the aggregate it was imported with (curtain wall panels, stair flights' parent …). */

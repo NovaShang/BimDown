@@ -17,7 +17,16 @@ export interface FixtureOptions {
   furniture?: { name: string; x: number; y: number; w: number; d: number; h: number }[];
   /** Storey elevation (mm). */
   elevation?: number;
+  /** An empty storey above (elevation, mm). */
+  upperStorey?: number;
+  /** IfcStairs with their flights (stepped bodies) aggregated. */
+  stairs?: { name: string; shape: string; flights: FixtureFlight[] }[];
+  /** IfcRailings along an axis, optionally typed by an IfcRailingType. */
+  railings?: { from: [number, number]; to: [number, number]; z?: number; height: number; type?: string }[];
 }
+
+/** A straight flight from (x, y, z) along (dx, dy): `steps` risers of `riser`, treads of `going` (mm). */
+export interface FixtureFlight { x: number; y: number; z: number; dx: number; dy: number; steps: number; going: number; riser: number; width: number }
 
 export function fixtureIfc(o: FixtureOptions): string {
   const lines: string[] = [];
@@ -42,7 +51,12 @@ export function fixtureIfc(o: FixtureOptions): string {
   const storey = add(`IFCBUILDINGSTOREY(${guid('storey')},$,'Ground Floor',$,$,${stPl},$,$,.ELEMENT.,${f(elev)})`);
   add(`IFCRELAGGREGATES(${guid('agg1')},$,$,$,${project},(${site}))`);
   add(`IFCRELAGGREGATES(${guid('agg2')},$,$,$,${site},(${building}))`);
-  add(`IFCRELAGGREGATES(${guid('agg3')},$,$,$,${building},(${storey}))`);
+  const storeys = [storey];
+  if (o.upperStorey !== undefined) {
+    const upPl = add(`IFCLOCALPLACEMENT(${bldPl},${add(`IFCAXIS2PLACEMENT3D(${pt(0, 0, o.upperStorey)},$,$)`)})`);
+    storeys.push(add(`IFCBUILDINGSTOREY(${guid('storey2')},$,'First Floor',$,$,${upPl},$,$,.ELEMENT.,${f(o.upperStorey)})`));
+  }
+  add(`IFCRELAGGREGATES(${guid('agg3')},$,$,$,${building},(${storeys.join(',')}))`);
 
   /** Rectangle extrusion placed at (x, y) turned by `dir`, profile centred on (cx, cy). */
   const box = (cx: number, cy: number, xd: number, yd: number, h: number, z = 0) => {
@@ -86,6 +100,31 @@ export function fixtureIfc(o: FixtureOptions): string {
   (o.furniture ?? []).forEach((f, i) => {
     const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${box(f.x, f.y, f.w, f.d, f.h)}))`);
     contained.push(add(`IFCFURNISHINGELEMENT(${guid(`furn${i}`)},$,'${f.name}',$,$,${placeAt(0, 0)},${add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${body}))`)},$)`));
+  });
+  (o.stairs ?? []).forEach((st, i) => {
+    const flights = st.flights.map((fl, j) => {
+      const solids = Array.from({ length: fl.steps }, (_, k) => box((k + 0.5) * fl.going, 0, fl.going, fl.width, fl.riser, k * fl.riser));
+      const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${solids.join(',')}))`);
+      return add(`IFCSTAIRFLIGHT(${guid(`flight${i}_${j}`)},$,'Run ${j + 1}',$,$,${placeAt(fl.x, fl.y, fl.dx, fl.dy, stPl, fl.z)},${add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${body}))`)},$,${fl.steps},${fl.steps - 1},${f(fl.riser)},${f(fl.going)})`);
+    });
+    const stair = add(`IFCSTAIR(${guid(`stair${i}`)},$,'${st.name}',$,$,${placeAt(0, 0)},$,$,.${st.shape}.)`);
+    add(`IFCRELAGGREGATES(${guid(`stagg${i}`)},$,$,$,${stair},(${flights.join(',')}))`);
+    contained.push(stair);
+  });
+  const railTypes = new Map<string, string>();
+  (o.railings ?? []).forEach((r, i) => {
+    const dx = r.to[0] - r.from[0], dy = r.to[1] - r.from[1];
+    const len = Math.hypot(dx, dy);
+    const pl = placeAt(r.from[0], r.from[1], dx / len, dy / len, stPl, r.z ?? 0);
+    const axis = add(`IFCSHAPEREPRESENTATION(${ctx},'Axis','Curve2D',(${add(`IFCPOLYLINE((${pt2(0, 0)},${pt2(len, 0)}))`)}))`);
+    const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${box(len / 2, 0, len, 50, r.height)}))`);
+    const rail = add(`IFCRAILING(${guid(`rail${i}`)},$,'Railing ${i + 1}',$,$,${pl},${add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${axis},${body}))`)},$,.GUARDRAIL.)`);
+    contained.push(rail);
+    if (r.type) {
+      let t = railTypes.get(r.type);
+      if (!t) railTypes.set(r.type, t = add(`IFCRAILINGTYPE(${guid(`railtype${railTypes.size}`)},$,'${r.type}',$,$,$,$,$,$,.GUARDRAIL.)`));
+      add(`IFCRELDEFINESBYTYPE(${guid(`railtyped${i}`)},$,$,$,(${rail}),${t})`);
+    }
   });
   const spaces = (o.spaces ?? []).map((s, i) => {
     const pl = placeAt(0, 0);

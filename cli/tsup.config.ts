@@ -21,6 +21,9 @@ export default defineConfig([
   {
     ...base,
     entry: { cli: 'src/index.ts' },
+    // Commands loaded with import() (import-ifc and its web-ifc) become their
+    // own chunks, so the other commands don't load them.
+    splitting: true,
     banner: { js: '#!/usr/bin/env node' },
     define: {
       CLI_VERSION: JSON.stringify(pkg.version),

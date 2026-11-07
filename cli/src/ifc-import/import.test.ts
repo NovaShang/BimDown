@@ -152,4 +152,39 @@ describe('importIfc', () => {
       expect(['corrupt', 'empty']).toContain((e as IfcImportError).code);
     }
   });
+
+  it('imports a multi-flight stair by component (stair + stair_run + top level) and typed railings', () => {
+    const ifc = fixtureIfc({
+      walls: [{ from: [0, 0], to: [6000, 0], thickness: 200 }],
+      upperStorey: 3000,
+      stairs: [{
+        name: 'Stair:L:7001', shape: 'QUARTER_TURN_STAIR', flights: [
+          { x: 1000, y: 1000, z: 0, dx: 1, dy: 0, steps: 9, going: 280, riser: 166.67, width: 1000 },
+          { x: 4500, y: 1500, z: 1500, dx: 0, dy: 1, steps: 9, going: 280, riser: 166.67, width: 1000 },
+        ],
+      }],
+      railings: [
+        { from: [500, 4000], to: [3500, 4000], height: 1100, type: 'Guard 1100' },
+        { from: [500, 4500], to: [3500, 4500], height: 1100, type: 'Guard 1100' },
+        { from: [500, 5000], to: [3500, 5000], height: 900 },
+      ],
+    });
+    const { files, report } = importIfc(api, enc(ifc));
+    expect(report.counts.stair).toBe(1);
+    expect(report.counts.stair_run).toBe(1);
+    const [stair] = rows(files, 'lv-1/stair.csv');
+    expect(stair).toMatchObject({ stair_type: 'quarter_turn', step_count: '9', top_level_id: 'lv-2' });
+    const [run] = rows(files, 'lv-1/stair_run.csv');
+    expect(run).toMatchObject({ host_id: stair.id, step_count: '9' });
+    const types = rows(files, 'global/railing_type.csv');
+    expect(types).toHaveLength(1);
+    expect(types[0]).toMatchObject({ name: 'Guard 1100', height: '1.1' });
+    const rails = rows(files, 'lv-1/railing.csv');
+    expect(rails.map(r => r.type_id)).toEqual([types[0].id, types[0].id, '']);
+    const dir = writeProject(files);
+    try {
+      const b = build(dir);
+      expect(b.issues).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });
