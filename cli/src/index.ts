@@ -145,7 +145,7 @@ program
   .option('-l, --level <id>', 'Level to render (defaults to lv-1)', 'lv-1')
   .option('-o, --output <file>', 'Output file path (defaults to render.png)', 'render.png')
   .option('-w, --width <px>', 'Image width in pixels', '2048')
-  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls). DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: ducts=cyan, pipes=light blue, cable tray=green, conduit=teal, equipment=red fill, terminals=orange fill.')
+  .description('Renders the BimDown project into a visual blueprint (PNG). Color legend: walls=dark navy, structural walls=slate, columns=dark filled, slabs=light grey translucent, spaces=blue translucent, stairs=orange, beams/braces=thin purple dashed centerlines (overhead, drawn under walls). DOORS render as BOLD RED (#e63946) lines and WINDOWS as BOLD TEAL (#2a9d8f) lines cutting across their host walls. MEP: runs at their real width in system colours (SA blue, RA light blue, CHWS cyan, SAN brown, FP red, …) with elbow / tee / reducer bodies, system + size tags, rise / drop boxes, slope arrows; terminals, equipment and valves as plan symbols.')
   .action(async (dir: string, opts: { level: string; output: string; width: string }) => {
     const absDir = resolve(dir);
     const { renderLevel } = await import('./render.js');
