@@ -120,3 +120,22 @@ describe('face graph cache', () => {
     expect(performance.now() - t0).toBeLessThan(2000);
   });
 });
+
+describe('tee tolerance', () => {
+  it('splits a long wall at a tee a few cm from its end (1 cm is a distance, not a fraction)', () => {
+    // 20 m wall; the partition meets it 5 cm from its start (under 1% of its length)
+    const walls = [
+      wall(0, 0, 20, 0), wall(20, 0, 20, 4), wall(20, 4, -2, 4), wall(-2, 4, -2, 0), wall(-2, 0, 0, 0),
+      wall(0.05, 0, 0.05, 4),
+    ];
+    for (const derive of [deriveSpaceBoundary, deriveSpaceBoundaryLegacy]) {
+      const room = derive({ x: 10, y: 2 }, walls)!;
+      let a = 0;
+      for (let i = 0; i < room.length; i++) {
+        const p = room[i], q = room[(i + 1) % room.length];
+        a += p.x * q.y - q.x * p.y;
+      }
+      expect(Math.abs(a / 2)).toBeCloseTo(19.95 * 4, 3);
+    }
+  });
+});

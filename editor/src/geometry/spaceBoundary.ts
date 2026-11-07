@@ -336,6 +336,8 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
       const dx = seg.endX - seg.startX;
       const dy = seg.endY - seg.startY;
       const lenSq = dx * dx + dy * dy;
+      // Tolerances below are distances along the segment (1 cm), not fractions of it
+      const segLen = Math.sqrt(lenSq);
       if (lenSq < TOLERANCE * TOLERANCE) {
         nextResult.push(seg);
         continue;
@@ -352,7 +354,7 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
         if (Math.abs(epX - seg.endX) < TOLERANCE && Math.abs(epY - seg.endY) < TOLERANCE) continue;
 
         const t = ((epX - seg.startX) * dx + (epY - seg.startY) * dy) / lenSq;
-        if (t <= TOLERANCE || t >= 1 - TOLERANCE) continue;
+        if (t * segLen <= TOLERANCE || (1 - t) * segLen <= TOLERANCE) continue;
 
         const closestX = seg.startX + t * dx;
         const closestY = seg.startY + t * dy;
@@ -376,8 +378,9 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
         const t = (rx * oy - ry * ox) / det;
         const s = (rx * dy - ry * dx) / det;
 
-        if (t <= TOLERANCE || t >= 1 - TOLERANCE) continue;
-        if (s <= TOLERANCE || s >= 1 - TOLERANCE) continue;
+        if (t * segLen <= TOLERANCE || (1 - t) * segLen <= TOLERANCE) continue;
+        const otherLen = Math.hypot(ox, oy);
+        if (s * otherLen <= TOLERANCE || (1 - s) * otherLen <= TOLERANCE) continue;
 
         splitPoints.push({ x: seg.startX + t * dx, y: seg.startY + t * dy, t });
       }
@@ -390,7 +393,7 @@ function splitAtIntersections(segments: Segment[]): Segment[] {
 
         const unique = [splitPoints[0]];
         for (let k = 1; k < splitPoints.length; k++) {
-          if (Math.abs(splitPoints[k].t - unique[unique.length - 1].t) > TOLERANCE) {
+          if (Math.abs(splitPoints[k].t - unique[unique.length - 1].t) * segLen > TOLERANCE) {
             unique.push(splitPoints[k]);
           }
         }
