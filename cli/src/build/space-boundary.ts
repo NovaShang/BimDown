@@ -39,10 +39,10 @@ export function computeSpaceBoundaries(
   const spaceCsv = readCsv(spaceCsvPath);
   if (spaceCsv.rows.length === 0) return { warnings, geojsonWritten: false, roomIssues };
 
-  // 1. Collect all boundary line segments (level-local + global)
+  // 1. Collect all boundary line segments (level-local + the global ones standing on this level)
   const segments = collectBoundarySegments(levelDir.path);
   if (globalDir) {
-    segments.push(...collectBoundarySegments(globalDir));
+    segments.push(...collectBoundarySegments(globalDir, globalIdsOnLevel(globalDir, levelDir.name)));
   }
   if (segments.length === 0) {
     warnings.push(`${levelDir.name}/  no boundary elements found for space boundary computation`);
@@ -70,7 +70,46 @@ export function computeSpaceBoundaries(
 
 // ─── Segment collection ─────────────────────────────────
 
-function collectBoundarySegments(levelPath: string): Segment[] {
+/**
+ * Ids of global boundary elements standing on `levelName`: base at or below
+ * the level, top above it (a multi-storey wall ending at a level's floor
+ * doesn't divide that level's rooms). Null when the levels are unknown (all
+ * global elements count, as before).
+ */
+function globalIdsOnLevel(globalDir: string, levelName: string): Set<string> | null {
+  const levelCsv = join(globalDir, 'level.csv');
+  if (!existsSync(levelCsv)) return null;
+  const levels = readCsv(levelCsv).rows
+    .map((r) => ({ id: r.id, elevation: parseFloat(r.elevation ?? '') }))
+    .filter((l) => !isNaN(l.elevation))
+    .sort((a, b) => a.elevation - b.elevation);
+  const here = levels.find((l) => l.id === levelName)?.elevation;
+  if (here === undefined) return null;
+  const elev = new Map(levels.map((l) => [l.id, l.elevation]));
+  const ids = new Set<string>();
+  for (const table of BOUNDARY_TABLES) {
+    const csvPath = join(globalDir, `${table}.csv`);
+    const geomPath = join(globalDir, `${GEOJSON_FILE_NAMES[table] ?? table}.geojson`);
+    if (!existsSync(csvPath) || !existsSync(geomPath)) continue;
+    const props = new Map<string, Record<string, unknown>>();
+    try {
+      for (const f of parseGeoJsonFile(geomPath).features) props.set(String(f.properties?.id ?? ''), (f.properties ?? {}) as Record<string, unknown>);
+    } catch { continue; }
+    for (const row of readCsv(csvPath).rows) {
+      const base = elev.get(row.base_level_id ?? '');
+      if (base === undefined) { ids.add(row.id); continue; }
+      const p = props.get(row.id) ?? {};
+      const above = levels.find((l) => l.elevation > base + 1e-6);
+      const topLevel = elev.get(row.top_level_id ?? '') ?? above?.elevation;
+      const bottom = base + (Number(p.base_offset) || 0);
+      const top = topLevel === undefined ? Infinity : topLevel + (Number(p.top_offset) || 0);
+      if (bottom <= here + TOLERANCE && top > here + TOLERANCE) ids.add(row.id);
+    }
+  }
+  return ids;
+}
+
+function collectBoundarySegments(levelPath: string, only?: Set<string> | null): Segment[] {
   const segments: Segment[] = [];
 
   for (const table of BOUNDARY_TABLES) {
@@ -84,7 +123,7 @@ function collectBoundarySegments(levelPath: string): Segment[] {
       for (const f of fc.features) {
         if (f.geometry.type !== 'LineString') continue;
         const id = String(f.properties?.id ?? '');
-        if (!id) continue;
+        if (!id || (only && !only.has(id))) continue;
         const lg = extractLineGeometry(f);
         if (lg.length < TOLERANCE) continue;
         segments.push({

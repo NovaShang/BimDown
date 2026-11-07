@@ -229,10 +229,14 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   // MEP
   for (const id of products) {
     if (done(id)) continue;
-    const kind = mepKind(model, id);
+    let kind = mepKind(model, id);
     if (!kind) continue;
+    // Our own exports say what each element was
+    const bt = bimdownTable(id);
+    if (bt === 'equipment' || bt === 'terminal') kind = bt;
+    else if (bt === 'mep_node' && kind !== 'accessory') kind = 'fitting';
     if (kind === 'segment') {
-      const t = segmentTable(ctx, id);
+      const t = bt === 'duct' || bt === 'pipe' || bt === 'cable_tray' || bt === 'conduit' ? bt : segmentTable(ctx, id);
       if (t) convertSegment(ctx, systems, id, t); else ctx.skip(id, 'cable segment');
     } else if (kind === 'fitting') convertNode(ctx, systems, id, false);
     else if (kind === 'accessory') convertNode(ctx, systems, id, true);

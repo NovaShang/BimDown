@@ -380,7 +380,9 @@ export function checkRooms(ctx: ImportContext, spaces: SpaceRef[]): RoomCheck {
   for (const level of ctx.levels) {
     const seeds = spaces.filter(s => s.el.level === level.index);
     if (seeds.length === 0) continue;
-    const lines = [...(levels.get(level.index) ?? []).filter(el => !el.global), ...global];
+    // Global (multi-storey) lines count on the levels they stand on, as in build
+    const standing = global.filter(el => { const z = ctx.lines.get(el); return !z || (z.zMin <= level.elevation + 0.01 && z.zMax > level.elevation + 0.01); });
+    const lines = [...(levels.get(level.index) ?? []).filter(el => !el.global), ...standing];
     const segments: Segment[] = lines.map(el => {
       const [a, b] = endpoints(el);
       return { startX: a.x, startY: a.y, endX: b.x, endY: b.y, id: el.id };
