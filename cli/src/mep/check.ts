@@ -302,7 +302,7 @@ export function checkMep(model: MepModelIn): MepProblem[] {
         key: 'open_end_node', vars: { table: curves[0].table, id: curves[0].id, node: h.id } });
     }
     const systems = new Set(curves.map(c => c.system).filter(Boolean));
-    if (systems.size > 1) {
+    if (systems.size > 1 && !ventOnStack(systems)) {
       out.push({ severity: 'warning', code: 'system_mismatch', id: h.id, scope: h.scope, table: h.table, system: [...systems].join(','),
         message: `fitting ${h.id} joins different systems: ${[...systems].join(', ')}`, at: h.pos,
         key: 'system_node', vars: { id: h.id, systems: [...systems].join(', ') } });
@@ -375,6 +375,14 @@ export function checkMep(model: MepModelIn): MepProblem[] {
   out.push(...duplicateSegments(model.curves));
   out.push(...flowBalance(model, findHost, hkey, portsOf));
   return out;
+}
+
+const VENT = /^(V|VENT|VTR|SV)$/i;
+const DRAIN = /^(SAN|SS|SW|W|WASTE|SOIL|D|DR|DRAIN)$/i;
+/** A plumbing vent tying into the one drainage system it ventilates. */
+function ventOnStack(systems: Set<string>): boolean {
+  const list = [...systems];
+  return list.every(s => VENT.test(s) || DRAIN.test(s)) && list.filter(s => DRAIN.test(s)).length === 1;
 }
 
 const roundSection = (table: string, shape: string | undefined) => table === 'pipe' || table === 'conduit' || shape === 'round';

@@ -48,16 +48,20 @@ fields:
       from the incident curves (see mep-port-conventions.md §4). Set it
       only where geometry can't tell: `tap` = a branch cut straight into
       the main (no tee body); `cap` = an intentional closed end (a node
-      with a single curve). Other values record the derived kind.
+      with a single curve); `open` = an intentional open end (vent
+      through the roof, outfall); `wye` = a 45° branch (drainage). Other
+      values record the derived kind.
     values:
       - elbow
       - tee
       - tap
+      - wye
       - cross
       - reducer
       - transition
       - coupling
       - cap
+      - open
 
   - name: family
     type: text
