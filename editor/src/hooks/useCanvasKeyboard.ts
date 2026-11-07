@@ -6,6 +6,7 @@ import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
 import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
 import { MODIFY_TOOL_SHORTCUTS, enterModifyTool } from '../tools/wallModifyTools.ts';
+import { rotatePlacement } from '../tools/placementRotate.ts';
 
 const PLACEMENT_TO_TOOL: Record<string, Tool> = {
   hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
@@ -27,6 +28,9 @@ export function useCanvasKeyboard({
   globalDispatch, stateRef, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, onToolKeyDown,
 }: UseCanvasKeyboardOptions) {
   useEffect(() => {
+    // Space: held = pan; a quick tap while placing turns the element (tools/placementRotate.ts)
+    let spaceTap: { at: number; tool: Tool; panned: boolean } | null = null;
+    const onPointerDown = () => { if (spaceTap) spaceTap.panned = true; };
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
       if (!stateRef.current.readonly && onToolKeyDown?.(e)) return;
@@ -74,6 +78,7 @@ export function useCanvasKeyboard({
           break;
         case ' ':
           e.preventDefault();
+          if (!e.repeat && !stateRef.current.spaceHeld) spaceTap = { at: performance.now(), tool: stateRef.current.activeTool, panned: false };
           globalDispatch({ type: 'SET_SPACE_HELD', held: true });
           break;
         case 'Escape':
@@ -162,14 +167,21 @@ export function useCanvasKeyboard({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') {
         globalDispatch({ type: 'SET_SPACE_HELD', held: false });
+        const tap = spaceTap;
+        spaceTap = null;
+        if (tap && !tap.panned && performance.now() - tap.at < 300 && !stateRef.current.readonly) {
+          rotatePlacement({ ...stateRef.current, activeTool: tap.tool }, globalDispatch, e.shiftKey ? -1 : 1);
+        }
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('pointerdown', onPointerDown, true);
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
       window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('pointerdown', onPointerDown, true);
     };
   }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, stateRef, onToolKeyDown]);
 }

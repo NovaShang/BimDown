@@ -165,6 +165,7 @@ export const SINGLE_KEYS: Shortcut[] = [
   { keys: 'U', labelKey: 'layer.duct', group: 'draw', context: 'mep' },
   { keys: 'R', labelKey: 'shortcut.placeRotate', group: 'draw', context: 'placing' },
   { keys: 'M', labelKey: 'shortcut.placeMirror', group: 'draw', context: 'placing' },
+  { keys: 'Space', labelKey: 'shortcut.placeSpace', group: 'draw', context: 'placing' },
   { keys: 'G', labelKey: 'layer.grid', group: 'draw' },
   { keys: 'M', labelKey: 'annot.dimension', group: 'annotate' },
   { keys: 'X', labelKey: 'annot.text', group: 'annotate' },
