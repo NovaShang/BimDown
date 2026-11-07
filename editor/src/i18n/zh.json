@@ -73,6 +73,7 @@
   "layer.mesh": "网格体",
   "layer.room_separator": "分隔线",
   "layer.grid": "轴网",
+  "layer.furniture": "家具",
 
   "display.Walls": "墙",
   "display.Curtain Walls": "幕墙",
@@ -106,6 +107,7 @@
   "display.Room Separators": "房间分隔线",
   "display.Grids": "轴网",
   "display.Connectors": "连接件",
+  "display.Furniture": "家具与构件",
 
   "field.ID": "ID",
   "field.Number": "编号",
@@ -177,6 +179,8 @@
   "field.Dir Z": "方向 Z",
   "field.Size W": "尺寸 W",
   "field.Size H": "尺寸 H",
+  "field.Variant": "样式",
+  "field.Mirror": "镜像",
 
   "option.Single": "单开",
   "option.Double": "双开",
@@ -261,6 +265,8 @@
   "option.VAV Box": "VAV 风量调节箱",
   "option.Inline Pump": "管道泵",
   "option.Air-cooled Chiller": "风冷冷水机",
+  "option.No": "否",
+  "option.Yes": "是",
 
   "prop.Identity": "标识",
   "prop.Geometry": "几何",
@@ -363,5 +369,14 @@
   "landing.sampleDesc": "加载内置示例模型",
   "landing.privacy": "此编辑器完全在浏览器本地运行，不会上传任何数据。",
   "landing.urlPrompt": "请输入 .zip 文件的 URL：",
-  "landing.urlError": "加载 ZIP 失败"
+  "landing.urlError": "加载 ZIP 失败",
+
+  "library.button": "构件库",
+  "library.tooltip": "构件库：家具、橱柜、家电、车辆、植物",
+  "library.title": "构件库",
+  "library.search": "搜索：书桌、床、冰箱、sofa…",
+  "library.all": "全部",
+  "library.count": "{{count}} 项",
+  "library.empty": "没有匹配的构件",
+  "library.hint": "单击放置 · 背面自动贴墙 · R 旋转 · M 镜像 · 按住 Alt 自由放置"
 }

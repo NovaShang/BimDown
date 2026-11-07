@@ -13,6 +13,7 @@ import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
 import type { IconName } from './Icons.tsx';
 import { cn } from '../lib/utils';
+import LibraryButton from '../library/LibraryPanel.tsx';
 
 interface FloatingToolbarProps {
   activeDiscipline: string | null;
@@ -526,6 +527,8 @@ export default function FloatingToolbar({ activeDiscipline }: FloatingToolbarPro
                   />
                 )
               )}
+              {/* Component library (furniture, casework, …) */}
+              <LibraryButton disciplineColor={disciplineColor} />
             </>
           ) : (
             // Non-architecture: flat list. Variants of one table (e.g. the

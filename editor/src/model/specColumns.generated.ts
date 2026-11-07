@@ -14,6 +14,7 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   duct: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'system_type', 'from', 'to'], geojson: ['base_offset'] },
   equipment: { csv: ['id', 'number', 'mesh_file', 'system_type', 'equipment_type', 'family', 'type'], geojson: ['base_offset'] },
   foundation: { csv: ['id', 'number', 'mesh_file', 'material', 'thickness', 'width', 'length'], geojson: ['base_offset'] },
+  furniture: { csv: ['id', 'number', 'mesh_file', 'family', 'variant', 'size_x', 'size_y', 'height', 'mirror', 'type_id'], geojson: ['base_offset'] },
   grid: { csv: ['id', 'number', 'start_x', 'start_y', 'end_x', 'end_y'], geojson: [] },
   level: { csv: ['id', 'number', 'name', 'elevation'], geojson: [] },
   mep_node: { csv: ['id', 'number', 'mesh_file', 'system_type', 'kind', 'family', 'type', 'shape', 'size_w', 'size_h'], geojson: ['base_offset'] },

@@ -73,6 +73,7 @@
   "layer.mesh": "Mesh",
   "layer.room_separator": "Separator",
   "layer.grid": "Grid",
+  "layer.furniture": "Furniture",
 
   "display.Walls": "Walls",
   "display.Curtain Walls": "Curtain Walls",
@@ -106,6 +107,7 @@
   "display.Room Separators": "Room Separators",
   "display.Grids": "Grids",
   "display.Connectors": "Connectors",
+  "display.Furniture": "Furniture",
 
   "field.ID": "ID",
   "field.Number": "Number",
@@ -177,6 +179,8 @@
   "field.Dir Z": "Dir Z",
   "field.Size W": "Size W",
   "field.Size H": "Size H",
+  "field.Variant": "Variant",
+  "field.Mirror": "Mirror",
 
   "option.Single": "Single",
   "option.Double": "Double",
@@ -261,6 +265,8 @@
   "option.VAV Box": "VAV Box",
   "option.Inline Pump": "Inline Pump",
   "option.Air-cooled Chiller": "Air-cooled Chiller",
+  "option.No": "No",
+  "option.Yes": "Yes",
 
   "prop.Identity": "Identity",
   "prop.Geometry": "Geometry",
@@ -363,5 +369,14 @@
   "landing.sampleDesc": "Load the bundled sample model",
   "landing.privacy": "This editor runs entirely in your browser. No data is uploaded.",
   "landing.urlPrompt": "Enter URL to a .zip file:",
-  "landing.urlError": "Failed to load ZIP"
+  "landing.urlError": "Failed to load ZIP",
+
+  "library.button": "Library",
+  "library.tooltip": "Component library: furniture, kitchen, appliances, cars, plants",
+  "library.title": "Component library",
+  "library.search": "Search: desk, bed, fridge, 沙发…",
+  "library.all": "All",
+  "library.count": "{{count}} items",
+  "library.empty": "No matching components",
+  "library.hint": "Click to place · back snaps to walls · R rotate · M mirror · hold Alt to place freely"
 }
