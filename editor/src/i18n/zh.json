@@ -554,6 +554,7 @@
   "schedule.col.length": "长度",
   "schedule.col.netArea": "净面积",
   "schedule.col.grossArea": "毛面积",
+  "schedule.col.grossAreaCentreline": "毛面积（中线）",
   "schedule.col.volume": "体积",
   "schedule.col.function": "用途",
   "schedule.col.shape": "形状",

@@ -52,7 +52,9 @@ export const SCHEDULES: ScheduleCategory[] = [
   {
     key: 'rooms', label: 'schedule.rooms', tables: ['space'],
     columns: [NUMBER, C('name', 'schedule.col.name', 'text'), LEVEL,
-      C('area', 'schedule.col.area', 'area', true, true), C('perimeter', 'schedule.col.perimeter', 'length', true, true), COUNT],
+      // Net area at the wall faces (Revit's default); the centre-line area as an optional column
+      C('area', 'schedule.col.area', 'area', true, true), C('gross_area', 'schedule.col.grossAreaCentreline', 'area', false, true),
+      C('perimeter', 'schedule.col.perimeter', 'length', true, true), COUNT],
   },
   {
     key: 'doors', label: 'schedule.doors', tables: ['door'],

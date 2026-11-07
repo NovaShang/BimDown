@@ -4,8 +4,10 @@
  *   - length: centre line (arc length for curved walls; 3D length for spatial lines)
  *   - height: top level elevation + top_offset − (base level elevation + base_offset),
  *     top level defaulting to the next level up (empty when there is none)
- *   - room area / perimeter: the boundary derived from wall centre lines of the
- *     level plus global/ walls (space.geojson)
+ *   - room area / perimeter: net, at the wall faces (geometry/roomArea.ts, the
+ *     CLI's `net_area`), of the boundary derived from wall centre lines of the
+ *     level plus global/ walls (space.geojson); gross_area = the centre-line
+ *     area (the CLI's `area`)
  *   - polygon area: shoelace of the outline
  * Wall area is net of hosted doors / windows / openings (as in Revit); gross
  * area is reported alongside.
@@ -17,7 +19,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '.
 import type { Level, ProjectData } from '../types.ts';
 import { parseFloorLayers, parseLayer } from '../model/parse.ts';
 import { arcLength } from '../geometry/arc.ts';
-import { boundaryWalls, roomPolygon, polygonArea, polygonPerimeter } from '../annotation/rooms.ts';
+import { boundaryWalls, roomPolygon, roomAreasOf, polygonArea, polygonPerimeter } from '../annotation/rooms.ts';
 import { isAnnotationTable } from '../annotation/model.ts';
 import { elementQuantities as structuralQuantities } from '../model/quantities.ts';
 
@@ -98,10 +100,13 @@ export function elementQuantities(
   const q: ElementQuantities = {};
   const thickness = parseFloat(el.attrs.thickness ?? '');
   if (el.tableName === 'space') {
-    const poly = roomPolygon(el, boundaryWalls(context));
+    const walls = boundaryWalls(context);
+    const poly = roomPolygon(el, walls);
     if (poly) {
-      q.area = polygonArea(poly);
-      q.perimeter = polygonPerimeter(poly);
+      const r = roomAreasOf(poly, walls);
+      q.area = r.area;
+      q.gross_area = r.grossArea;
+      q.perimeter = polygonPerimeter(r.netPolygon ?? poly);
     }
     return q;
   }

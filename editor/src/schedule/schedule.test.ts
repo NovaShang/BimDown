@@ -26,13 +26,17 @@ function twoLevels() {
 }
 
 describe('schedules', () => {
-  it('lists rooms on every level with build areas and perimeters', async () => {
+  it('lists rooms on every level: net area / perimeter at the wall faces, centre-line gross area', async () => {
     const { state } = await load(twoLevels());
     const rows = scheduleRows(cat('rooms'), state.project!, 'm', name, 'lv-1', state.document!.elements);
-    expect(rows.map(r => [r.sid, r.values.area, r.values.perimeter])).toEqual([
-      ['lv-1:sp-1', 50, 30],
-      ['lv-2:sp-1', 30, 22],
-    ]);
+    const v = rows.map(r => [r.sid, r.values.area, r.values.gross_area, r.values.perimeter] as [string, number, number, number]);
+    expect(v.map(r => r[0])).toEqual(['lv-1:sp-1', 'lv-2:sp-1']);
+    // 10 × 5 and 6 × 5 centre lines, 0.2 walls → 9.8 × 4.8 and 5.8 × 4.8 inside
+    expect(v[0][1]).toBeCloseTo(9.8 * 4.8, 9);
+    expect(v[0][2]).toBeCloseTo(50, 9);
+    expect(v[0][3]).toBeCloseTo(2 * (9.8 + 4.8), 9);
+    expect(v[1][1]).toBeCloseTo(5.8 * 4.8, 9);
+    expect(v[1][2]).toBeCloseTo(30, 9);
   });
 
   it('walls: length, height from levels, net area without openings, volume', async () => {

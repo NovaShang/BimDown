@@ -89,7 +89,7 @@ describe('tags and export', () => {
   it('draws dimensions, text and tags as export primitives', async () => {
     const { state } = await load();
     const prims = drawAnnotations([...els(state).values()], 'm');
-    expect(prims.texts.map(t => t.text)).toEqual(expect.arrayContaining(['10000', 'North wing', 'Office', '101', '50.00 m²', 'D01']));
+    expect(prims.texts.map(t => t.text)).toEqual(expect.arrayContaining(['10000', 'North wing', 'Office', '101', '47.04 m²', 'D01']));
     expect(prims.boxes).toHaveLength(1); // door tag box; room tags are unboxed
   });
 

@@ -554,6 +554,7 @@
   "schedule.col.length": "Length",
   "schedule.col.netArea": "Net area",
   "schedule.col.grossArea": "Gross area",
+  "schedule.col.grossAreaCentreline": "Gross area (centreline)",
   "schedule.col.volume": "Volume",
   "schedule.col.function": "Function",
   "schedule.col.shape": "Shape",

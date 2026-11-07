@@ -6,7 +6,7 @@ import { ANNOTATION_DISCIPLINE, TAG_HEADERS, isTagPinned, type TagElement } from
 import {
   tagLines, tagDefaultPosition, tagBox, elementAnchor, metre, sub, len,
 } from '../annotation/geometry.ts';
-import { roomPolygonFromCtx, polygonArea } from '../annotation/rooms.ts';
+import { roomNetAreaFromCtx } from '../annotation/rooms.ts';
 import { DIM_INK } from './dimension.tsx';
 
 export interface TagFacts {
@@ -75,8 +75,8 @@ export const tagModule: ElementModule<TagFacts> = {
     if (!host) return null;
     const lookup = (id: string) => ctx.elementById(id);
     const room = host.tableName === 'space';
-    const poly = room ? roomPolygonFromCtx(host, ctx) : null;
-    const lines = tagLines(host, el.attrs.content, poly ? polygonArea(poly) : null);
+    // Rooms: net area at the wall faces (annotation/rooms.ts)
+    const lines = tagLines(host, el.attrs.content, room ? roomNetAreaFromCtx(host, ctx) : null);
     const position = tagPosition(el, host, lookup);
     const anchor = elementAnchor(host);
     const box = tagBox(lines, room);

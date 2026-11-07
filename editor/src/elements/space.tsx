@@ -9,7 +9,7 @@ import { getSpaceFaceGraph, findSpaceBoundary, BOUNDARY_TABLES } from '../geomet
 // imports this module — and the host (e.g. the BimClaw web app) has its
 // own merged resources, so a second init wipes them out.
 import i18n from 'i18next';
-import { polygonArea } from '../annotation/rooms.ts';
+import { boundaryWallsFromCtx, roomAreasOf } from '../annotation/rooms.ts';
 import { formatArea } from '../annotation/geometry.ts';
 
 /** Vertical offset (in model units) between the seed and the rendered name
@@ -25,7 +25,7 @@ export interface SpaceFacts {
   vertices?: Point[];
   number: string;
   name: string;
-  /** Derived area (polygon rooms), for the plain label. */
+  /** Net area at the wall faces (polygon rooms), for the plain label. */
   area?: number;
   /** A tag labels this room — the plain label steps aside. */
   tagged?: boolean;
@@ -99,7 +99,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         // on the seed (not the polygon centroid) so the label, the move
         // handle and the user's click point all line up — moving the seed
         // visually moves everything together.
-        return { id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name, area: polygonArea(derived), tagged: taggedRooms(ctx).has(el.id) };
+        return { id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name, area: roomAreasOf(derived, boundaryWallsFromCtx(ctx)).area, tagged: taggedRooms(ctx).has(el.id) };
       }
       return { id: el.id, kind: 'point', anchor: pt.position, number, name, tagged: taggedRooms(ctx).has(el.id) };
     }
@@ -110,7 +110,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         id: el.id, kind: 'polygon',
         anchor: centroid(poly.vertices),
         vertices: poly.vertices,
-        number, name, area: polygonArea(poly.vertices), tagged: taggedRooms(ctx).has(el.id),
+        number, name, area: roomAreasOf(poly.vertices, boundaryWallsFromCtx(ctx)).area, tagged: taggedRooms(ctx).has(el.id),
       };
     }
     return null;

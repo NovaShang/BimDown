@@ -36,10 +36,16 @@ export default function QuantitiesSection({ selectionId }: { selectionId: string
     }
     const global = project.globalLayers.flatMap(gl => parseLayer(gl));
     const q = elementQuantities(el, level, project.levels, [...doc.elements.values(), ...global]);
-    // Walls show net area as "Net area"; rooms and slabs as "Area"
-    const isWall = q.gross_area !== undefined;
+    // Walls: "Net area" (openings deducted) + "Gross area". Rooms: "Area" at the
+    // wall faces + "Gross area (centreline)". Slabs: "Area".
+    const isRoom = el.tableName === 'space';
+    const isWall = !isRoom && q.gross_area !== undefined;
+    const label = (r: typeof ROWS[number]) =>
+      r.key === 'area' && isWall ? 'schedule.col.netArea'
+        : r.key === 'gross_area' && isRoom ? 'schedule.col.grossAreaCentreline'
+          : r.label;
     return ROWS.filter(r => q[r.key] !== undefined && !(r.key === 'height' && el.tableName === 'space')).map(r => ({
-      label: t(r.key === 'area' && isWall ? 'schedule.col.netArea' : r.label),
+      label: t(label(r)),
       value: `${formatCell(q[r.key], r.kind, unit)} ${unitSuffix(r.kind, unit)}`,
     }));
     // eslint-disable-next-line react-hooks/exhaustive-deps

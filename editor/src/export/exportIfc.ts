@@ -51,7 +51,8 @@ import {
   openingPartSolids, railingGeom, rampGeom, sectionProfile, stairFlightGeom, sweep, wallGeom,
   wallOpeningFrame, wallOpeningSolid, type FittingLeg,
 } from './ifc/geometry.ts';
-import { isExternalWall, matchRoomEdges, netRoomPolygon } from './ifc/spaces.ts';
+import { isExternalWall } from './ifc/spaces.ts';
+import { matchRoomEdges, netRoomOutline } from '../geometry/roomArea.ts';
 // Ship the wasm as a build asset: web-ifc's default looks for it next to the
 // page URL, which an SPA host answers with index.html.
 import wasmUrl from 'web-ifc/web-ifc.wasm?url';
@@ -949,7 +950,8 @@ class Exporter {
       const baseZ = level.elevation + baseOffset;
       const gross = Math.abs(polygonArea(polygon));
       const edges = matchRoomEdges(polygon, scope.boundaryLines);
-      const net = netRoomPolygon(edges, wl => (wl.tableName === 'room_separator' ? 0 : wl.strokeWidth / 2));
+      // Net = at the wall faces, the same area the editor's tags and schedules show.
+      const net = netRoomOutline(edges);
       const netArea = net ? Math.abs(polygonArea(net)) : gross;
       const key = this.recKey(scope, el);
       const placement = w.placement(scope.storey.placement, scope.storey.frame, scope.storey.frame);

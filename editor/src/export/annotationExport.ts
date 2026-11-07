@@ -13,7 +13,8 @@ import {
   resolveDimension, formatDimension, readableAngle, tagLines, tagDefaultPosition, tagBox, elementAnchor,
   metre, add, sub, mul, mid, len, type Lookup,
 } from '../annotation/geometry.ts';
-import { boundaryWalls, roomPolygon, polygonArea } from '../annotation/rooms.ts';
+import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
+import { roomAreas } from '../geometry/roomArea.ts';
 import { textNoteLines } from '../elements/text_note.tsx';
 import { registerPlanAnnotator, type PlanAnnotator } from './drawing/annotations.ts';
 import { LAYERS } from './drawing/layers.ts';
@@ -74,7 +75,7 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit)
       if (!host) continue;
       const room = host.tableName === 'space';
       const poly = room ? roomPolygon(host, walls) : null;
-      const lines = tagLines(host, el.attrs.content, poly ? polygonArea(poly) : null, unit);
+      const lines = tagLines(host, el.attrs.content, poly ? roomAreas(poly, walls, m).area : null, unit);
       const pos = isTagPinned(el) ? el.position : tagDefaultPosition(host, lookup, unit);
       const box = tagBox(lines, room, unit);
       const anchor = elementAnchor(host);

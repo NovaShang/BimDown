@@ -39,6 +39,7 @@ import { tint } from './color.ts';
 import { registeredPlanAnnotators, type PlanAnnotator } from './annotations.ts';
 // Registers the dimension / text note / tag annotator.
 import { taggedRoomIds } from '../annotationExport.ts';
+import { roomAreas } from '../../geometry/roomArea.ts';
 import { drawingLabel, type DrawingLang } from './labels.ts';
 import type { Box, DrawItem, DrawingDiscipline, LegendEntry, PlanDrawing } from './types.ts';
 
@@ -170,15 +171,6 @@ function rectAt(c: Point, w: number, d: number, deg: number): Point[] {
   return rotateAbout([
     { x: -w / 2, y: -d / 2 }, { x: w / 2, y: -d / 2 }, { x: w / 2, y: d / 2 }, { x: -w / 2, y: d / 2 },
   ], c, deg);
-}
-
-function polygonArea(v: Point[]): number {
-  let a = 0;
-  for (let i = 0; i < v.length; i++) {
-    const p = v[i], q = v[(i + 1) % v.length];
-    a += p.x * q.y - q.x * p.y;
-  }
-  return Math.abs(a) / 2;
 }
 
 /** Join edges that share endpoints into polylines (wall outlines read as continuous lines in CAD). */
@@ -509,46 +501,6 @@ export function formatArea(areaModel: number, unitName: ProjectUnit): string {
 
 const BOUNDING = new Set(['wall', 'structure_wall', 'curtain_wall', 'room_separator']);
 
-/**
- * Room outline at the wall faces. Derived boundaries run along wall centre
- * lines; plans quote the net (usable) area, so each edge moves inwards by half
- * the thickness of the wall it lies on (0 for room separators / unmatched).
- */
-export function netRoomPolygon(v: Point[], walls: LineElement[], eps: number): Point[] {
-  const n = v.length;
-  if (n < 3) return v;
-  let signed = 0;
-  for (let i = 0; i < n; i++) signed += v[i].x * v[(i + 1) % n].y - v[(i + 1) % n].x * v[i].y;
-  const ccw = signed > 0;
-  const lines = v.map((a, i) => {
-    const b = v[(i + 1) % n];
-    const d = unit(sub(b, a));
-    const inward = ccw ? perp(d) : { x: -perp(d).x, y: -perp(d).y };
-    const mid = lerp(a, b, 0.5);
-    let half = 0;
-    for (const w of walls) {
-      if (w.arc) continue;
-      const wd = sub(w.end, w.start), wl = len(wd);
-      if (wl < eps) continue;
-      const wu = { x: wd.x / wl, y: wd.y / wl };
-      const off = (p: Point) => Math.abs((p.x - w.start.x) * wu.y - (p.y - w.start.y) * wu.x);
-      if (off(a) > eps || off(b) > eps) continue;
-      const t = (mid.x - w.start.x) * wu.x + (mid.y - w.start.y) * wu.y;
-      if (t < -eps || t > wl + eps) continue;
-      half = w.tableName === 'room_separator' ? 0 : w.strokeWidth / 2;
-      break;
-    }
-    return { p: add(a, inward, half), d };
-  });
-  return lines.map((cur, i) => {
-    const prev = lines[(i + n - 1) % n];
-    const den = prev.d.x * cur.d.y - prev.d.y * cur.d.x;
-    if (Math.abs(den) < 1e-12) return cur.p;
-    const t = ((cur.p.x - prev.p.x) * cur.d.y - (cur.p.y - prev.p.y) * cur.d.x) / den;
-    return add(prev.p, prev.d, t);
-  });
-}
-
 /** Width of the polygon along the horizontal line through `p` (the inside span containing p). */
 function spanAt(v: Point[], p: Point): number | null {
   const xs: number[] = [];
@@ -573,7 +525,8 @@ function drawSpace(env: DrawEnv, el: CanonicalElement, f: SpaceFacts) {
   if (f.number) lines.push({ text: f.number, h: 2.0 * pm });
   if (f.kind === 'polygon' && f.vertices && (f.name || f.number)) {
     const walls = src.entries.filter(x => BOUNDING.has(x.el.tableName) && x.el.geometry === 'line').map(x => x.el as LineElement);
-    lines.push({ text: formatArea(polygonArea(netRoomPolygon(f.vertices, walls, 1e-4 * src.upm)), src.unit), h: 1.8 * pm });
+    // Net area at the wall faces (geometry/roomArea.ts, as tags and schedules)
+    lines.push({ text: formatArea(roomAreas(f.vertices, walls, src.upm).area, src.unit), h: 1.8 * pm });
   }
   if (lines.length === 0) return;
   e.phase = Phase.Tags;
