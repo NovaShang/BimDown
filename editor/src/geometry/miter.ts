@@ -252,6 +252,28 @@ function miterPoint(P: Pt, wi: JunctionWall, wj: JunctionWall): Pt | null {
   return M;
 }
 
+/** For a 3-wall junction with a collinear pair, the stem and where its two
+ *  sides meet the pair's near face; null when no two walls are collinear. */
+function teeAtJunction(P: Pt, walls: JunctionWall[]): { stem: JunctionWall; stemCorners: CornerAdjustment } | null {
+  for (let s = 0; s < 3; s++) {
+    const a = walls[(s + 1) % 3], b = walls[(s + 2) % 3], stem = walls[s];
+    const collinear = Math.abs(a.dx * b.dy - a.dy * b.dx) < 1e-6 && a.dx * b.dx + a.dy * b.dy < 0;
+    if (!collinear) continue;
+    // Pair's face on the stem's side.
+    let nx = -a.dy, ny = a.dx;
+    if (nx * stem.dx + ny * stem.dy < 0) { nx = -nx; ny = -ny; }
+    const hw = Math.max(a.halfWidth, b.halfWidth);
+    const face = { x: P.x + nx * hw, y: P.y + ny * hw };
+    const along = { x: a.dx, y: a.dy };
+    const dir = { x: stem.dx, y: stem.dy };
+    const left = rayIntersect(ccwPt(P, stem), dir, face, along);
+    const right = rayIntersect(cwPt(P, stem), dir, face, along);
+    if (!left || !right) return null;
+    return { stem, stemCorners: { left, right } };
+  }
+  return null;
+}
+
 /**
  * Compute per-wall endpoint corner adjustments for miter joins + T-junctions.
  * Returns adjustments map (key: "wallId:start"/"wallId:end"), junction fills,
@@ -288,12 +310,25 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
       miters.push(miterPoint(P, sorted[i], sorted[(i + 1) % n]));
     }
 
+    // Three walls where two continue each other (a wall split where a third
+    // tees in): treat it as a tee. The pair gets square ends and the stem
+    // stops on the pair's near face; mitring would run the stem through to
+    // the far face (painting over its outline in plan, z-fighting in 3D).
+    const tee = n === 3 ? teeAtJunction(P, sorted) : null;
+
     for (let i = 0; i < n; i++) {
       const w = sorted[i];
       const prevGap = (i - 1 + n) % n;
       const thisGap = i;
+      const key = `${w.seg.id}:${w.which}`;
+      if (tee) {
+        result.adjustments.set(key, w === tee.stem
+          ? tee.stemCorners
+          : { left: ccwPt(P, w), right: cwPt(P, w) });
+        continue;
+      }
 
-      result.adjustments.set(`${w.seg.id}:${w.which}`, {
+      result.adjustments.set(key, {
         left: miters[prevGap] ?? ccwPt(P, w),
         right: miters[thisGap] ?? cwPt(P, w),
       });

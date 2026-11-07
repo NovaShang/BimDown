@@ -366,7 +366,7 @@ export function wallDraw2D(
           // A hairline of the fill colour hides the anti-aliasing seam where
           // two mitred / teed wall polygons meet.
           stroke={fill}
-          strokeWidth={0.004}
+          strokeWidth={0.01}
           strokeLinejoin="miter"
           data-id={facts.id}
         />
@@ -378,7 +378,9 @@ export function wallDraw2D(
             x1={a.x} y1={a.y} x2={b.x} y2={b.y}
             stroke={stroke}
             strokeWidth={strokeWidth}
-            strokeLinecap="butt"
+            // Square caps close the hairline gap where two walls' outline
+            // pieces meet end to end (collinear walls, mitred corners).
+            strokeLinecap="square"
             data-id={facts.id}
           />
         )),
