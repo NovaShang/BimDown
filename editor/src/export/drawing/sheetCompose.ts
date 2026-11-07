@@ -17,7 +17,7 @@ import type { GridData, ProjectData } from '../../types.ts';
 import { LAYER_STYLES } from '../../types.ts';
 import type { SheetDef, ViewportDef, SheetSet } from '../../sheets/sheetTypes.ts';
 import { SHEET_PAPERS } from '../../sheets/sheetTypes.ts';
-import { SCHEDULES, scheduleRows, sortRows, totalsOf, formatCell, unitSuffix } from '../../schedule/schedules.ts';
+import { SCHEDULES, scheduleRows, sortRows, totalsOf, formatCell, unitSuffix, scheduleGroups, columnDigits } from '../../schedule/schedules.ts';
 import { getProjectUnits } from '../../utils/units.ts';
 import { sectionFrame } from '../../views/viewGeometry.ts';
 import { collectPlan, renderPlan, approxTextWidth, itemsBounds, isoDate, paperMm, type PlanSource } from './plan.ts';
@@ -351,7 +351,7 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
     const s = LAYER_STYLES[table];
     return s ? drawingLabel(lang, `display.${s.displayName}`) : table;
   };
-  const rows = sortRows(scheduleRows(cat, project, unit, displayName, ctx.live?.levelId, ctx.live ? new Map(ctx.live.elements.map(e => [e.id, e])) : undefined, lang),
+  let rows = sortRows(scheduleRows(cat, project, unit, displayName, ctx.live?.levelId, ctx.live ? new Map(ctx.live.elements.map(e => [e.id, e])) : undefined, lang),
     { key: cat.columns.some(c => c.key === 'number') ? 'number' : cat.columns[0].key, dir: 1 });
   // Printed door / window schedules list types (one row per mark and size, with a count);
   // other schedules list every element. Host ids mean nothing on paper.
@@ -361,7 +361,9 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
     const u = unitSuffix(c.kind, unit);
     return u ? `${drawingLabel(lang, c.label)} (${u})` : drawingLabel(lang, c.label);
   });
-  let cells = rows.map(r => columns.map(c => formatCell(r.values[c.key], c.kind, unit)));
+  // Aggregated schedules (MEP runs) print one row per group, like the Schedule view
+  if (cat.itemize === false && cat.groupBy) rows = scheduleGroups(rows, columns, cat.groupBy, null, false)[0].rows;
+  let cells = rows.map(r => columns.map(c => formatCell(r.values[c.key], c.kind, unit, columnDigits(c, unit))));
   const totals = totalsOf(rows, columns);
   if (byType) {
     const ci = columns.findIndex(c => c.key === 'count');
@@ -375,7 +377,7 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
     cells = [...groups.values()];
   }
   const th = 2.0 * k, rowH = 5.2 * k, pad = 1.6 * k;
-  const totalRow = columns.map((c, i) => (i === 0 ? drawingLabel(lang, 'schedule.total') : c.total ? formatCell(totals[c.key], c.kind, unit) : ''));
+  const totalRow = columns.map((c, i) => (i === 0 ? drawingLabel(lang, 'schedule.total') : c.total ? formatCell(totals[c.key], c.kind, unit, columnDigits(c, unit)) : ''));
   const widths = columns.map((_, i) => Math.min(70 * k, Math.max(
     approxTextWidth(header[i], th) * 1.05, ...cells.map(r => approxTextWidth(r[i], th)), approxTextWidth(totalRow[i], th),
   ) + 2 * pad));
