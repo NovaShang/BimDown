@@ -147,7 +147,7 @@ describe('section and elevation drawings', () => {
     const top = Math.max(...roofCut.map(b => b.maxY));
     expect(top).toBeGreaterThan(3.2 + rise);
     // The ground floor's north wall climbs to the roof underside: tall at the ridge, low at its ends
-    const wall = collectViewParts({ project, grids }).find(p => p.id === 'w-3')!;
+    const wall = collectViewParts({ project }).find(p => p.id === 'w-3')!;
     const zAt = (x: number) => {
       let z = -Infinity;
       for (let i = 0; i < wall.tris.length; i += 3) if (Math.abs(wall.tris[i] - x) < 0.05) z = Math.max(z, wall.tris[i + 2]);
