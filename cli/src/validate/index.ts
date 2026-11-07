@@ -13,6 +13,7 @@ import { projectUnits } from '../utils/units.js';
 import { validateGeoJsonFile } from './geojson.js';
 import { catalogFromEntries, typeSuppliedFields, validateTypes } from './types.js';
 import { validateAnnotations } from './annotations.js';
+import { validateGroups } from './groups.js';
 
 interface CsvEntry {
   path: string;       // relative display path
@@ -102,6 +103,9 @@ export function validate(dir: string): string[] {
   for (const entry of csvEntries) {
     issues.push(...validateAnnotations(entry.path, entry.tableName, entry.data, idRegistry));
   }
+
+  // 7d. Model groups: members and their group on one level
+  issues.push(...validateGroups(csvEntries, idRegistry));
 
   // 8. Value range validation (catches unit mistakes; limits are scaled to the project unit)
   const units = projectUnits(dir);

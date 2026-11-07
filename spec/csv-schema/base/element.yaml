@@ -24,6 +24,20 @@ fields:
     type: string
     description: Optional GLB mesh path for precise 3D visualization
 
+  - name: group_id
+    type: reference
+    reference: model_group
+    description: >
+      Model group instance (model_group row on the same level) this element
+      belongs to. Empty = not grouped.
+
+  - name: pinned
+    type: enum
+    values: ["true", "false"]
+    description: >
+      "true" = pinned: editors must not move, rotate or reshape the element
+      (it can still be edited in its properties). Empty = not pinned.
+
   # bbox extents in meters. Not stored in CSV — exposed instead as the optional
   # `size: [x, y, z]` GeoJSON Feature property on Point features (equipment,
   # terminal, mep_node, column, …). For FamilyInstance elements the bbox is

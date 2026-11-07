@@ -24,3 +24,8 @@ fields:
   - name: end_y
     type: float
     required: true
+
+  - name: pinned
+    type: enum
+    values: ["true", "false"]
+    description: '"true" = pinned (editors must not move it). Empty = not pinned.'

@@ -124,6 +124,18 @@ Plan annotations, CSV only, in level directories only (never `global/`). They re
 | `text_note`  | No (CSV point) | Free text at `x`,`y` with `size` and `rotation` |
 | `tag`        | No (CSV point) | Label of one element (`host_id`): door/window mark, room name + number + area, number/name/type/size; empty `x`,`y` = default spot that follows the host |
 
+### Model groups
+
+A repeated unit (an apartment, a toilet core, a bay of columns) placed several times. Each placement is a `model_group` row in the level directory (CSV only): `name`, origin `x`,`y`, `rotation` (degrees CCW) and `mirrored`. Its members are ordinary elements of the same level with `group_id` = the row id, stored as usual (absolute plan coordinates), so anything that ignores groups still reads them. Instances with the same `name` are copies of one group: their members are identical in the group's local frame (plan = origin + rotate(rotation) · (mirrored ? flip-Y : identity) · local). Editing one instance in an editor rebuilds the others; `bimdown build` warns when instances of one group differ.
+
+| Table         | Geometry file | Description |
+|---------------|---------------|-------------|
+| `model_group` | No (CSV point) | Group instance: `name`, `x`, `y`, `rotation`, `mirrored`; members carry `group_id` |
+
+### Pinned elements
+
+`pinned = "true"` (every element, and grids) marks an element editors must not move, rotate or reshape (properties stay editable). Empty = not pinned.
+
 ### Fallback
 
 | Table  | Geometry file | Description |
@@ -165,6 +177,8 @@ Two modes (see [geojson-schema/readme.md §4](geojson-schema/readme.md) for deta
 1. **Level-anchored** (wall, column, slab, ceiling, roof, curtain_wall): geometry coords are 2D; Z lives in CSV (`base_level_id`, `top_level_id`) + GeoJSON properties (`base_offset`, `top_offset`). Resilient to level elevation changes.
 2. **Spatial** (beam, brace, stair, ramp, railing, duct, pipe, cable_tray, conduit): geometry coords are 3D with absolute Z; CSV still carries `base_level_id` for partitioning but no Z numerics.
 
+Changing a level's `elevation` moves everything on that level with it: level-anchored elements follow by themselves; the absolute Z in that level's spatial GeoJSON (beams, ducts, pipes, stairs, equipment, …) must be shifted by the same amount (editors rewrite it). To keep the storey heights above, shift the higher levels (and their spatial Z) too.
+
 This split keeps numeric Z arithmetic out of the LLM's hands for the bulk of building elements while preserving full 3D fidelity for elements that genuinely need it.
 
 In the **SVG encoding** (2D-only), the same two modes apply but Z always lives in CSV: level-anchored `base_offset`/`top_offset` and spatial `start_z`/`end_z` are CSV columns. See [svg-schema/readme.md §6](svg-schema/readme.md).
@@ -175,7 +189,7 @@ In the **SVG encoding** (2D-only), the same two modes apply but Z always lives i
 
 | Mixin                        | Key Fields |
 |------------------------------|------------|
-| `element`                    | `id` (short ID, PK), `number`, `base_offset` (GeoJSON property), `mesh_file` |
+| `element`                    | `id` (short ID, PK), `number`, `base_offset` (GeoJSON property), `mesh_file`, `group_id` (model group), `pinned` |
 | `line_element`               | `start_x/y`, `end_x/y`, `length` (all computed) |
 | `spatial_line_element`       | extends `line_element` + `start_z`, `end_z` (computed from 3D coords) |
 | `point_element`              | `x`, `y` (computed from Point coords), `rotation` (computed from GeoJSON property) |
@@ -239,6 +253,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `text_note` | `tx` | `tx-1` |
 | `tag` | `tg` | `tg-1` |
 | `underlay` | `ul` | `ul-1` |
+| `model_group` | `mg` | `mg-1` |
 
 Round-trip fidelity with Revit is maintained via a `BimDown_Id` shared parameter stored on each Revit element, and `_IdMap.csv` at the project root.
 

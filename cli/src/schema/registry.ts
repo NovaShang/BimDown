@@ -27,6 +27,8 @@ export const ID_PREFIXES: Record<string, string> = {
   dimension: 'dm', text_note: 'tx', tag: 'tg',
   // Tracing references
   underlay: 'ul',
+  // Model group instances (members carry group_id)
+  model_group: 'mg',
 };
 
 /** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
@@ -41,6 +43,9 @@ export const LAYERED_TYPE_TABLES = new Set(['wall_type', 'slab_type', 'roof_type
 
 // Annotation tables: CSV-only plan annotations, allowed in level directories only.
 export const ANNOTATION_TABLES = new Set(['dimension', 'text_note', 'tag']);
+
+// Tables allowed in level directories only (never global/).
+export const LEVEL_ONLY_TABLES = new Set([...ANNOTATION_TABLES, 'model_group']);
 
 // Tables whose CSV lives only in global/ (not per-level)
 export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', 'underlay', ...TYPE_TABLES, 'type_layer']);
@@ -64,6 +69,7 @@ const TABLES_WITHOUT_GEOMETRY = new Set([
   'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view', 'underlay',
   ...TYPE_TABLES, 'type_layer',
   ...ANNOTATION_TABLES,
+  'model_group',
 ]);
 
 // GeoJSON file name mapping: table name -> geojson file name (without extension)
