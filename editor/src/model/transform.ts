@@ -169,9 +169,21 @@ export function transformElement(el: CanonicalElement, T: Xform): CanonicalEleme
     }
     case 'polygon': {
       const poly = el as PolygonElement;
+      // A mirror reverses the ring; it restarts at the old second vertex so the
+      // first edge stays the first edge (extrusion roof profiles hang on it)
+      // and per-edge values (roof edge_slopes) follow their edges.
+      const out = poly.vertices.map(p => applyXform(T, p));
+      const n = out.length;
+      const vertices = mirror && n >= 3 ? [out[1], out[0], ...out.slice(2).reverse()] : out;
+      let attrs = el.attrs;
+      if (mirror && n >= 3 && attrs.edge_slopes) {
+        const list = attrs.edge_slopes.split(';');
+        if (list.length === n) attrs = { ...attrs, edge_slopes: list.map((_, j) => list[(n - j) % n]).join(';') };
+      }
       return {
         ...poly,
-        vertices: transformPoints(T, poly.vertices, mirror),
+        attrs,
+        vertices,
         ...(poly.holes ? { holes: poly.holes.map(h => transformPoints(T, h, mirror)) } : {}),
       };
     }

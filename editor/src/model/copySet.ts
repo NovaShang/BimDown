@@ -156,6 +156,8 @@ export function cloneElements(
       attrs.host_id = map(attrs.host_id) ?? '';
     }
     if (attrs.group_id) attrs.group_id = idMap.get(attrs.group_id) ?? '';
+    // A wall attached to a roof / floor: the copied one, else (same level) the same one, maybe on another level
+    if (attrs.top_attach_id) attrs.top_attach_id = idMap.get(attrs.top_attach_id) ?? (keep ? attrs.top_attach_id : '');
     // Devices follow a copied circuit; otherwise same-level copies stay on theirs
     if (attrs.circuit_id) attrs.circuit_id = map(attrs.circuit_id) ?? '';
     if (opts.numbers && RENUMBER_TABLES.has(el.tableName) && attrs.number?.trim()) {

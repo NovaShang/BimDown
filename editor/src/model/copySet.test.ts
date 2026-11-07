@@ -83,3 +83,40 @@ describe('copy set', () => {
     expect(nextFreeNumber('Lobby', new Set(['Lobby-2']))).toBe('Lobby-3');
   });
 });
+
+describe('envelope attributes under modify', () => {
+  it('a mirrored roof keeps each edge slope on its (mirrored) edge, first edge first', async () => {
+    const { mirrorAcross, transformElement, applyXform } = await import('./transform.ts');
+    const roof = {
+      id: 'ro-1', tableName: 'roof', discipline: 'architecture', geometry: 'polygon',
+      vertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 6 }, { x: 0, y: 6 }],
+      attrs: { id: 'ro-1', edge_slopes: '30;0;45;0' },
+    } as unknown as CanonicalElement;
+    const T = mirrorAcross({ x: 20, y: 0 }, { x: 0, y: 1 });
+    const m = transformElement(roof, T) as typeof roof & { vertices: { x: number; y: number }[] };
+    const src = (roof as unknown as { vertices: { x: number; y: number }[] }).vertices;
+    const slopes = roof.attrs.edge_slopes.split(';'), next = m.attrs.edge_slopes.split(';');
+    const key = (a: { x: number; y: number }, b: { x: number; y: number }) => [a, b].map(p => `${p.x.toFixed(6)},${p.y.toFixed(6)}`).sort().join('|');
+    for (let i = 0; i < 4; i++) {
+      const edge = key(applyXform(T, src[i]), applyXform(T, src[(i + 1) % 4]));
+      const j = [0, 1, 2, 3].find(k => key(m.vertices[k], m.vertices[(k + 1) % 4]) === edge)!;
+      expect(next[j], `edge ${i}`).toBe(slopes[i]);
+    }
+    expect(key(m.vertices[0], m.vertices[1])).toBe(key(applyXform(T, src[0]), applyXform(T, src[1])));
+  });
+
+  it('copies keep a wall attached to its roof, or to the copied roof', async () => {
+    const f = files();
+    f['lv-1/roof.csv'] = 'id,number,roof_type,edge_slopes,thickness\nro-1,,gable,0;30;0;30,0.2\n';
+    f['lv-1/roof.geojson'] = fc([{ type: 'Feature', properties: { id: 'ro-1', base_offset: 3 }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 5], [0, 5], [0, 0]]] } }]);
+    f['lv-1/wall.csv'] = f['lv-1/wall.csv'].replace(/^id,([^\n]*)/, 'id,$1,top_attach_id').replace(/\n(w-\d[^\n]*)/g, '\n$1,ro-1');
+    const { state } = await load(f);
+    const els = state.document!.elements;
+    const alone = cloneElements(els, ['w-1'], { taken: new Set(els.keys()), keepOutsideRefs: true });
+    expect([...alone.clones.values()][0].attrs.top_attach_id).toBe('ro-1');
+    const both = cloneElements(els, ['w-1', 'ro-1'], { taken: new Set(els.keys()), keepOutsideRefs: true });
+    expect(both.clones.get(both.idMap.get('w-1')!)!.attrs.top_attach_id).toBe(both.idMap.get('ro-1'));
+    const away = cloneElements(els, ['w-1'], { taken: new Set(els.keys()) });
+    expect([...away.clones.values()][0].attrs.top_attach_id).toBe('');
+  });
+});

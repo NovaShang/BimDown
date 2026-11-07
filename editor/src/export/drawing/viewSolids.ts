@@ -15,13 +15,14 @@
  */
 import '../../elements/registerAll.ts';
 import { ShapeUtils, Vector2, type BufferGeometry } from 'three';
-import type { CanonicalElement, LineElement } from '../../model/elements.ts';
+import type { CanonicalElement, LineElement, PolygonElement } from '../../model/elements.ts';
 import type { Level, ProjectData } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
 import { getElementModule } from '../../elements/registry.ts';
 import { parseFloorLayers } from '../../model/parse.ts';
 import { buildGeometryContext } from '../../adapters/svg/buildContext.ts';
-import { createRoofGeometry } from '../../three/utils/roofGeometry.ts';
+import { roofGeometryFromSolution } from '../../three/utils/roofGeometry.ts';
+import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { wallSolidGeometry, type LineWallFacts } from '../../elements/_lineWallShared.tsx';
 import type { SlabFacts } from '../../elements/_slabShared.tsx';
 import type { RoofFacts } from '../../elements/roof.tsx';
@@ -381,8 +382,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
       const f = facts as RoofFacts;
       if (f.vertices.length < 3) break;
       let solid: Solid | null = null;
-      if (f.roofType !== 'flat' && f.slopeDeg > 0) {
-        const geo = createRoofGeometry({ kind: 'extrude', vertices: f.vertices, baseY: f.baseY, height: f.thickness, roofType: f.roofType, slopeDeg: f.slopeDeg });
+      if (f.slopeDeg > 0) {
+        // The footprint roof solver's planes (edge slopes, gables, hips), as the 3D view and IFC
+        const geo = roofGeometryFromSolution(f.solution, f.vertices.map(p => ({ x: p.x, y: p.y })), f.baseY, f.thickness, (el as PolygonElement).holes ?? []);
         solid = geo ? brepFromBuffer(geo) : null;
         geo?.dispose();
       }
@@ -491,13 +493,15 @@ export function collectViewParts(input: ViewModelInput): ViewPart[] {
         ? 0 : byId.get(el.attrs.base_level_id ?? '') ?? 0),
     });
   }
+  // Roofs / slabs / shafts of every level: walls attached to a roof above, shafts through floors
+  const crossLevel = buildCrossLevelIndex(project);
   for (const scope of scopes) {
     const allElements = new Map(scope.elements.map(e => [e.id, e]));
     const ctxCache = new Map<number, GeometryContext>();
     const ctxAt = (elevation: number) => {
       let c = ctxCache.get(elevation);
       if (!c) {
-        c = buildGeometryContext({ level: { ...scope.level, elevation }, allLevels, allElements, mepSystems: project.mepSystems, types: project.types, unitsPerMetre: upm });
+        c = buildGeometryContext({ level: { ...scope.level, elevation }, allLevels, allElements, mepSystems: project.mepSystems, types: project.types, unitsPerMetre: upm, crossLevel });
         ctxCache.set(elevation, c);
       }
       return c;

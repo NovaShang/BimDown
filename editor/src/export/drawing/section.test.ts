@@ -4,6 +4,7 @@ import { loadProject, loadGrids } from '../../utils/loader.ts';
 import { memoryDataSource, fc } from '../../test/memoryDataSource.ts';
 import { buildViewDrawing, collectViewSource, renderView, resolveViewId, VIEW_LAYERS } from './section.ts';
 import { itemsBounds } from './plan.ts';
+import { collectViewParts } from './viewSolids.ts';
 import { planToDxf } from '../exportDxf.ts';
 import type { DrawItem } from './types.ts';
 
@@ -128,5 +129,31 @@ describe('section and elevation drawings', () => {
     const furn = paths(on(d.items, 'A-SECT-FURN'));
     expect(furn.length).toBeGreaterThan(2);
     expect(Math.max(...furn.flatMap(p => p.pts.map(q => q.y)))).toBeCloseTo(2.2, 3);
+  });
+
+  it('cuts sloped roofs by their edge slopes and shows walls attached to them', async () => {
+    const files = building();
+    const ring = [[-0.5, -0.5], [6.5, -0.5], [6.5, 4.5], [-0.5, 4.5]];
+    // Gable over level 2: east and west edges slope (30°), ridge along y at x = 3
+    files['lv-2/roof.csv'] = 'id,number,roof_type,edge_slopes,thickness,base_offset\nro-1,,gable,0;30;0;30,0.2,0\n';
+    files['lv-2/roof.geojson'] = fc([{ type: 'Feature', properties: { id: 'ro-1' }, geometry: { type: 'Polygon', coordinates: [[...ring, ring[0]]] } }]);
+    // The ground floor's north wall (w-3, beyond the cut) runs up to the roof one level above
+    files['lv-1/wall.csv'] = files['lv-1/wall.csv'].replace('top_level_id', 'top_level_id,top_attach_id').replace(/(w-\d,,0.2,brick,lv-2)/g, '$1,').replace('w-3,,0.2,brick,lv-2,', 'w-3,,0.2,brick,,ro-1');
+    const { project, grids } = await open(files);
+    const d = buildViewDrawing({ project, grids }, { kind: 'section', id: 'vw-1' }, 100)!;
+    const rise = 3.5 * Math.tan(Math.PI / 6);
+    // Roof poché peaks over the ridge, far above the eaves
+    const roofCut = paths(on(d.items, 'A-SECT-PATT')).map(p => itemsBounds([p])!).filter(b => b.minY > 3.1);
+    const top = Math.max(...roofCut.map(b => b.maxY));
+    expect(top).toBeGreaterThan(3.2 + rise);
+    // The ground floor's north wall climbs to the roof underside: tall at the ridge, low at its ends
+    const wall = collectViewParts({ project, grids }).find(p => p.id === 'w-3')!;
+    const zAt = (x: number) => {
+      let z = -Infinity;
+      for (let i = 0; i < wall.tris.length; i += 3) if (Math.abs(wall.tris[i] - x) < 0.05) z = Math.max(z, wall.tris[i + 2]);
+      return z;
+    };
+    expect(zAt(3)).toBeGreaterThan(3.2 + rise - 0.3);
+    expect(zAt(0)).toBeLessThan(3.2 + 0.6);
   });
 });
