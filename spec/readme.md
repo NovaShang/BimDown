@@ -318,6 +318,19 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 
 **Revit import**: Curves are created from endpoint coordinates. Fittings are auto-inserted at junctions where curves meet nodes.
 
+### Curtain Wall Grids and Panels
+
+A curtain wall is a grid of cells: columns along the wall (col 0 at the start), rows up from the base (row 0 at the bottom).
+- **Uniform**: `v_grid_count` columns × `u_grid_count` rows (or a line every `v_spacing` / `u_spacing` when the count is empty; default 3 × 3).
+- **Explicit**: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, semicolon-separated (`1.2;2.4;3.9`); they override the counts. Lines must lie inside the wall.
+- **Panels**: `panels` = `col:row=kind` overrides, `;`-separated, `*` = every col / row (`*:0=solid;1:0=door`). Kinds: `glass` (default, `panel_material`), `solid` (opaque spandrel, `solid_material`), `door`, `double_door` (hinged on the cell's start side, swinging to the wall's left; no bottom transom), `empty` (mullions only).
+- **Mullions**: `mullion_width` (along the wall; Ø when round), `mullion_depth`, `mullion_profile` (`rect`/`round`, interior members only), all type parameters. Two curtain walls meeting at an endpoint share one corner mullion.
+
+```csv
+id,v_grids,u_grids,panels
+cw-1,1.5;3.3;4.8,0.9;2.4,*:0=solid;1:0=door;3:2=empty
+```
+
 ### Material Enum
 
 A fixed enum of 15 common structural/architectural materials. Represents the **primary material** of an element. Multi-layer constructions are expressed through element types (below); `material` stays the primary (core) material.
@@ -334,7 +347,7 @@ Like Revit family types: a named set of defaults that many elements share. All t
 | `ceiling_type` | `ceiling` | `material` + layers (thickness is type-only) |
 | `door_type` | `door` | `width`, `height`, `operation`, `material`; type-only `frame_width`, `u_value`, `shgc`, `vt` |
 | `window_type` | `window` | same as `door_type` |
-| `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `material`; type-only thermal |
+| `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `solid_material`, `mullion_width`, `mullion_depth`, `mullion_profile`, `material`; type-only thermal |
 | `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `material` |
 | `beam_type` | `beam`, `brace` | same as `column_type` |
 
