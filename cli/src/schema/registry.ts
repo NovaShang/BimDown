@@ -16,10 +16,11 @@ export const ID_PREFIXES: Record<string, string> = {
   connector: 'cn',
   mep_system: 'sys',
   mesh: 'ms',
+  underlay: 'ul',
 };
 
 // Tables whose CSV lives only in global/ (not per-level)
-export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system']);
+export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'underlay']);
 
 // Tables that can appear in global/ (cross-floor elements)
 export const GLOBAL_ALLOWED_TABLES = new Set([
@@ -33,8 +34,9 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 
 // Tables without a geometry file (level/grid use CSV inline; door/window are hosted; mesh is GLB;
 // mep_system is a project-wide lookup table with no geometry; connector is a CSV-only port
-// on its host equipment / terminal / mep_node, position is derived from host + offsets)
-const TABLES_WITHOUT_GEOMETRY = new Set(['level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector']);
+// on its host equipment / terminal / mep_node, position is derived from host + offsets;
+// underlay is a tracing reference whose source file lives in underlays/)
+const TABLES_WITHOUT_GEOMETRY = new Set(['level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'underlay']);
 
 // GeoJSON file name mapping: table name -> geojson file name (without extension)
 // GeoJSON files use the same name as the CSV (both singular): wall.csv + wall.geojson

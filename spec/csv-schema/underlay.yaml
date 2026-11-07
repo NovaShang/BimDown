@@ -1,0 +1,73 @@
+name: underlay
+description: |
+  A reference drawing placed under one level for tracing (raster image, one
+  PDF page, or DXF vectors). Not a building element: build, render, query and
+  exports ignore it. The source file lives in `underlays/` at the project root.
+  Placement maps the file's own coordinates (image pixels with the origin at
+  the bottom-left, PDF points from the page's bottom-left, DXF drawing units)
+  to plan coordinates: plan = (x, y) + rotate(rotation) · (scale · local).
+
+fields:
+  - name: id
+    type: string
+    required: true
+
+  - name: name
+    type: string
+    description: Display name (defaults to the file name)
+
+  - name: level_id
+    type: reference
+    reference: level
+    required: true
+    description: Level whose plan view shows the underlay
+
+  - name: file
+    type: string
+    required: true
+    description: Path relative to the project root, under underlays/ (.png, .jpg, .jpeg, .webp, .pdf, .dxf)
+
+  - name: page
+    type: int
+    default: 1
+    description: PDF page number (1-based); ignored for images and DXF
+
+  - name: x
+    type: float
+    default: 0
+    description: Plan X of the file's local origin
+
+  - name: y
+    type: float
+    default: 0
+    description: Plan Y of the file's local origin
+
+  - name: rotation
+    type: float
+    default: 0
+    description: Counter-clockwise rotation in degrees about the local origin
+
+  - name: scale
+    type: float
+    default: 1
+    description: Project units per local unit (per pixel, PDF point or DXF unit); set by two-point calibration
+
+  - name: opacity
+    type: float
+    default: 0.5
+    description: 0 (invisible) to 1 (opaque)
+
+  - name: visible
+    type: enum
+    values: ["true", "false"]
+    default: "true"
+
+  - name: locked
+    type: enum
+    values: ["true", "false"]
+    default: "false"
+    description: A locked underlay can't be moved, rotated or calibrated
+
+  - name: hidden_layers
+    type: string
+    description: DXF layer names turned off, separated by ";"
