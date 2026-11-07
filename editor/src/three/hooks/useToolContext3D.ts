@@ -143,7 +143,7 @@ export function useToolContext3D(floorElevation: number) {
     for (const [id, el] of doc.elements) {
       // Same predicate as SVGLayers / 2D marquee: a background-only layer is
       // visible-as-context but not interactive, so it shouldn't be box-selectable.
-      if (isBackgroundDiscipline(el.discipline, activeDisc)) continue;
+      if (isBackgroundDiscipline(el.discipline, activeDisc, el.tableName)) continue;
       // Get element center in model coords
       let cx: number, cy: number;
       if (el.geometry === 'line' || el.geometry === 'spatial_line') {

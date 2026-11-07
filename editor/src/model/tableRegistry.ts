@@ -24,7 +24,7 @@ import {
 // ─── Types ───────────────────────────────────────────────────────────────────
 
 export type GeometryType = 'line' | 'spatial_line' | 'point' | 'polygon' | 'mixed';
-export type PlacementType = 'free_line' | 'spatial_line' | 'hosted' | 'free_point' | 'free_polygon' | 'grid';
+export type PlacementType = 'free_line' | 'spatial_line' | 'hosted' | 'free_point' | 'free_polygon' | 'grid' | 'region';
 
 export interface DrawingField {
   key: string;
@@ -98,6 +98,16 @@ export function drawingFieldsForTable(name: string, levels?: Level[]): DrawingFi
     : [];
 
   return [...mod.drawingFields, ...topFields];
+}
+
+/** CSV attrs holding a point element's plan size (X, Y). */
+export function pointSizeAttrsForTable(name: string): [string, string] {
+  return getElementModule(name)?.pointSizeAttrs ?? ['size_x', 'size_y'];
+}
+
+/** CSV attr holding a line element's plan width (walls: thickness). */
+export function lineWidthAttrForTable(name: string): string {
+  return getElementModule(name)?.lineWidthAttr ?? 'thickness';
 }
 
 export function isHostedTable(name: string): boolean {

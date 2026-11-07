@@ -61,10 +61,6 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   const flushPendingSave = useRef(async () => {
     clearTimeout(persistTimer.current);
     const currentState = stateRef.current;
-    // The next document's versions restart at 0: without this reset, edits
-    // on a level opened after a clean switch were not saved until its
-    // version passed the previous level's.
-    lastProcessedVersion.current = 0;
     // No document: its level was just removed, nothing of it may be written.
     if (!currentState.document) pendingKeys.current.clear();
     if (!currentState.document || pendingKeys.current.size === 0) return;
@@ -154,6 +150,9 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     // Inject grid elements from global state
     const gridElements = gridsToElements(state.grids);
     const doc = createDocument(state.currentLevel, [...elements, ...gridElements]);
+    // The new document counts versions from 0 again: forget the old level's
+    // last version, or its first edits here would be skipped and never saved.
+    lastProcessedVersion.current = 0;
     dispatch({ type: 'INIT_DOCUMENT', document: doc });
   }, [state.project, state.currentLevel, dispatch]);
 
@@ -240,7 +239,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   // Use document model for rendering when available
   const processedLayers = useMemo(
     () => state.document ? getProcessedLayersFromDocument(state) : getProcessedLayers(state),
-    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline, state.showArchContext],
+    [state.document, state.documentVersion, state.project, state.currentLevel, state.visibleLayers, state.activeDiscipline, state.showArchContext, state.viewOptions.showStructureInArch],
   );
   // viewBox only recomputes on level change / project load — not on every edit.
   // This keeps the canvas coordinate space stable during drawing; SVG overflow:visible

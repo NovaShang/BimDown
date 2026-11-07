@@ -5,14 +5,24 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
 import { createProfile } from '../three/primitives/profiles.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
+import { BASE_OFFSET_FIELD, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, SHAPE_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
 import { resolveSection } from '../families/sections/index.ts';
+import { resolveHeight } from '../three/utils/elementTo3D.ts';
+import { PlanTag, tagText } from './_planTag.tsx';
 import type { SectionFamily, SectionParams } from '../families/sections/index.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 const OUTLINE_WIDTH = 0.02;  // world meters; constant regardless of column size
 const CROSS_WIDTH = 0.015;
 const CROSS_MARGIN = 0.9;    // X stays inside the column outline with a 10% margin
+
+/** Cut structural section: solid fill, as structural plans draw columns. */
+function structuralColumnFill(material: string): string {
+  const m = (material || '').toLowerCase();
+  if (m.includes('steel') || m.includes('metal')) return '#3d5266';
+  if (m.includes('wood') || m.includes('clt')) return '#8a6a45';
+  return '#4d4d4d';
+}
 
 function columnFill(material: string): string {
   const m = (material || '').toLowerCase();
@@ -31,26 +41,11 @@ export interface ColumnFacts {
   material: string;
   baseY: number;
   extrudeHeight: number;  // 3D extrusion height
-}
-
-function resolveLevelHeight(
-  attrs: Record<string, string>,
-  levelElevation: number,
-  levelElevations: Map<string, number>,
-): { height: number; baseOffset: number } {
-  const baseOffset = parseFloat(attrs.base_offset || '0') || 0;
-  const topLevelId = attrs.top_level_id;
-  if (topLevelId && levelElevations.has(topLevelId)) {
-    const topElevation = levelElevations.get(topLevelId)!;
-    const topOffset = parseFloat(attrs.top_offset || '0') || 0;
-    const top = topElevation + topOffset;
-    const base = levelElevation + baseOffset;
-    return { height: Math.max(0.01, top - base), baseOffset };
-  }
-  return { height: DEFAULT_HEIGHT, baseOffset };
+  number: string;
 }
 
 function buildColumnModule(table: string, defaults: Record<string, string>, layerStyle: any, shapeOptions = SHAPE_OPTIONS): ElementModule<ColumnFacts> {
+  const structural = table === 'structure_column';
   return {
     table,
     discipline: table.startsWith('structure') ? 'structure' : 'architecture',
@@ -60,6 +55,7 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
     csvHeaders: [
       'number', 'base_offset', 'top_level_id', 'top_offset', 'material',
       'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'rotation',
+      ...(structural ? ['material_grade'] : []),
     ],
     defaults,
     drawingFields: [
@@ -71,11 +67,12 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.002, step: 0.002 },
       { key: 'rotation', label: 'Rotation', type: 'number', unit: '°', step: 15 },
       { key: 'material', label: 'Material', type: 'select', options: MATERIAL_OPTIONS },
+      ...(structural ? [MATERIAL_GRADE_FIELD] : []),
       BASE_OFFSET_FIELD,
     ],
     propertyFields: [],
     layerStyle,
-    renderZIndex: table === 'structure_column' ? 51 : 50,
+    renderZIndex: structural ? 51 : 50,
 
     geometry(el: CanonicalElement, ctx: GeometryContext): ColumnFacts | null {
       if (el.geometry !== 'point') return null;
@@ -88,7 +85,9 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
         size_y: p.attrs.size_y || String(p.height || p.width || 0.3),
       };
       const section = resolveSection(p.attrs.shape || 'rect', attrsForSection);
-      const { height: extrudeHeight, baseOffset } = resolveLevelHeight(p.attrs, ctx.levelElevation, ctx.levelElevations);
+      // Blank top_level_id = the level above (spec vertical_span), same rule as
+      // walls and the IFC export — not a fixed 3 m.
+      const { height: extrudeHeight, baseOffset } = resolveHeight(p.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT);
       return {
         id: p.id,
         position: p.position,
@@ -97,46 +96,75 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
         material: p.attrs.material || defaults.material,
         baseY: ctx.levelElevation + baseOffset,
         extrudeHeight,
+        number: tagText(p.attrs),
       };
     },
 
     draw2D(facts, drawCtx): ReactNode {
-      const fill = columnFill(facts.material);
       const stroke = drawCtx.selected ? '#3a7bff' : (drawCtx.hovered ? '#06b6d4' : '#333');
       const transform = `translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`;
       const { family, params } = facts.section;
       const bb = family.bbox(params);
       const hw = bb.w / 2;
       const hh = bb.d / 2;
+      const tag = drawCtx.showNumbers && facts.number ? (
+        <PlanTag x={facts.position.x + Math.max(hw, hh) + 0.25} y={facts.position.y + Math.max(hw, hh) + 0.15}
+          text={facts.number} color={structural ? '#333' : '#555'} />
+      ) : null;
 
+      // Structural columns are cut by the plan: a solid section, the real outline.
+      if (structural) {
+        const fill = structuralColumnFill(facts.material);
+        const body = family.id === 'round'
+          ? <ellipse cx={0} cy={0} rx={hw} ry={hh} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+          : <polygon points={family.outline2D(params).map(pt => `${pt.x},${pt.y}`).join(' ')}
+              fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />;
+        return (
+          <g data-id={facts.id}>
+            <g transform={transform}>{body}</g>
+            {tag}
+          </g>
+        );
+      }
+
+      const fill = columnFill(facts.material);
       // Round: ellipse + X (inscribed in ellipse).
       if (family.id === 'round') {
         const xx = hw * Math.SQRT1_2 * CROSS_MARGIN;
         const yy = hh * Math.SQRT1_2 * CROSS_MARGIN;
         return (
-          <g data-id={facts.id} transform={transform}>
-            <ellipse cx={0} cy={0} rx={hw} ry={hh} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
-            <line x1={-xx} y1={-yy} x2={xx} y2={yy} stroke={stroke} strokeWidth={CROSS_WIDTH} />
-            <line x1={xx} y1={-yy} x2={-xx} y2={yy} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+          <g data-id={facts.id}>
+            <g transform={transform}>
+              <ellipse cx={0} cy={0} rx={hw} ry={hh} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+              <line x1={-xx} y1={-yy} x2={xx} y2={yy} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+              <line x1={xx} y1={-yy} x2={-xx} y2={yy} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+            </g>
+            {tag}
           </g>
         );
       }
       // Rect: outline + diagonal X (standard plan symbol).
       if (family.id === 'rect') {
         return (
-          <g data-id={facts.id} transform={transform}>
-            <rect x={-hw} y={-hh} width={bb.w} height={bb.d}
-              fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
-            <line x1={-hw} y1={-hh} x2={hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
-            <line x1={hw} y1={-hh} x2={-hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+          <g data-id={facts.id}>
+            <g transform={transform}>
+              <rect x={-hw} y={-hh} width={bb.w} height={bb.d}
+                fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+              <line x1={-hw} y1={-hh} x2={hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+              <line x1={hw} y1={-hh} x2={-hw} y2={hh} stroke={stroke} strokeWidth={CROSS_WIDTH} />
+            </g>
+            {tag}
           </g>
         );
       }
-      // Structural sections (I/T/L/C/cross): render the actual outline.
+      // Other sections (I/T/L/C/cross): render the actual outline.
       const points = family.outline2D(params).map(pt => `${pt.x},${pt.y}`).join(' ');
       return (
-        <g data-id={facts.id} transform={transform}>
-          <polygon points={points} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+        <g data-id={facts.id}>
+          <g transform={transform}>
+            <polygon points={points} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+          </g>
+          {tag}
         </g>
       );
     },
@@ -216,10 +244,17 @@ export const columnModule = buildColumnModule('column', {
   shape: 'rect', size_x: '0.3', size_y: '0.3', rotation: '0',
 }, { displayName: 'Columns', color: '#2d2d2d', icon: '■', order: 3 });
 
-export const structureColumnModule = buildColumnModule('structure_column', {
-  base_offset: '0', top_level_id: '', top_offset: '0', material: 'steel',
-  shape: 'rect', size_x: '0.3', size_y: '0.3', rotation: '0',
-}, { displayName: 'Str. Columns', color: '#5c3d2e', icon: '■', order: 4 }, STRUCTURAL_SHAPE_OPTIONS);
+export const structureColumnModule: ElementModule<ColumnFacts> = {
+  ...buildColumnModule('structure_column', {
+    base_offset: '0', top_level_id: '', top_offset: '0', material: 'steel',
+    shape: 'rect', size_x: '0.3', size_y: '0.3', rotation: '0',
+  }, { displayName: 'Str. Columns', color: '#5c3d2e', icon: '■', order: 4 }, STRUCTURAL_SHAPE_OPTIONS),
+  toolbarVariants: [
+    { id: 'single', label: 'layer.structure_column', icon: '■', iconName: 'structure_column', placementType: 'free_point' },
+    // Drag a box over the grid (or click a crossing): a column at every crossing.
+    { id: 'at_grids', label: 'layer.columns_at_grids', icon: '┼', iconName: 'grid_columns', placementType: 'region' },
+  ],
+};
 
 registerElement(columnModule);
 registerElement(structureColumnModule);

@@ -48,6 +48,22 @@ export default function TopBar() {
         </button>
       )}
 
+      {/* Architecture view: show structural columns / walls / slabs */}
+      {activeDiscipline === 'architecture' && (
+        <button
+          className={cn(
+            'flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none px-2 text-[10px] transition-all',
+            state.viewOptions.showStructureInArch
+              ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+          onClick={() => dispatch({ type: 'TOGGLE_VIEW_OPTION', key: 'showStructureInArch' })}
+          title={t('topbar.structContext')}
+        >
+          {t('topbar.structContextShort')}
+        </button>
+      )}
+
       <Separator orientation="vertical" className="mx-0.5 self-stretch" />
 
       {/* Project unit indicator (read-only in phase 1) */}

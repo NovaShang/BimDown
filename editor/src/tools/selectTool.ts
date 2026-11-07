@@ -437,7 +437,7 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
         if (!rawId) continue;
         const elemId = toElementId(rawId);
         const canonical = docElements?.get(elemId);
-        if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline)) continue;
+        if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline, canonical.tableName)) continue;
         // Connectors are pure derivatives of their host — not selectable.
         if (canonical?.tableName === 'connector') continue;
         ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);

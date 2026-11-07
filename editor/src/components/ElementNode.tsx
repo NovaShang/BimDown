@@ -23,6 +23,8 @@ interface ElementNodeBodyProps {
   hovered: boolean;
   hostSelected: boolean;
   mepToolActive: boolean;
+  showNumbers: boolean;
+  gridBubblesBothEnds: boolean;
 }
 
 /** Renders one canonical element through its registered ElementModule.
@@ -45,11 +47,13 @@ export function ElementNode({ element }: ElementNodeProps) {
       hovered={hovered}
       hostSelected={hostSelected}
       mepToolActive={mepToolActive}
+      showNumbers={core.viewOptions?.showElementNumbers ?? false}
+      gridBubblesBothEnds={core.viewOptions?.gridBubblesBothEnds ?? false}
     />
   );
 }
 
-const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, mepToolActive }: ElementNodeBodyProps) {
+const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, mepToolActive, showNumbers, gridBubblesBothEnds }: ElementNodeBodyProps) {
   const ctx = useGeometryContext();
   if (!ctx) return null;
   const mod = getElementModule(element.tableName);
@@ -64,6 +68,8 @@ const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected,
     levelElevation: ctx.levelElevation,
     hostSelected,
     mepToolActive,
+    showNumbers,
+    gridBubblesBothEnds,
   };
   const result = mod.draw2D(facts, drawCtx);
   if (result === null || result === undefined) return null;

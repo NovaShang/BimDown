@@ -22,6 +22,59 @@ export interface SlabFacts {
   material: string;
   /** Polygon-opening holes (from opening elements hosting this slab). */
   holes: Point[][];
+  /** One-way span direction (degrees CCW from +X), null when not set. */
+  spanDirection: number | null;
+  /** Where plan symbols go: the outline's area centroid. */
+  labelAt: Point;
+  /** Element mark for plan tags (structure_slab). */
+  number?: string;
+}
+
+/** Area centroid of a simple polygon (vertex average when degenerate). */
+export function polygonCentroid(vs: Point[]): Point {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < vs.length; i++) {
+    const p = vs[i], q = vs[(i + 1) % vs.length];
+    const c = p.x * q.y - q.x * p.y;
+    a += c; cx += (p.x + q.x) * c; cy += (p.y + q.y) * c;
+  }
+  if (Math.abs(a) < 1e-9) {
+    const n = vs.length || 1;
+    return { x: vs.reduce((s, v) => s + v.x, 0) / n, y: vs.reduce((s, v) => s + v.y, 0) / n };
+  }
+  return { x: cx / (3 * a), y: cy / (3 * a) };
+}
+
+/**
+ * One-way span symbol: a double-headed arrow along the span direction through
+ * the slab centroid (a short perpendicular tick marks the supported edges).
+ */
+export function spanSymbol2D(facts: SlabFacts, stroke: string): ReactNode {
+  if (facts.spanDirection === null) return null;
+  const a = (facts.spanDirection * Math.PI) / 180;
+  const ux = Math.cos(a), uy = Math.sin(a);
+  // Arrow length: ~40% of the slab extent along the direction, 1–4 m.
+  let lo = Infinity, hi = -Infinity;
+  for (const v of facts.vertices) {
+    const t = (v.x - facts.labelAt.x) * ux + (v.y - facts.labelAt.y) * uy;
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+  }
+  const half = Math.max(0.5, Math.min(2, (hi - lo) * 0.2));
+  const c = facts.labelAt;
+  const p1 = { x: c.x - ux * half, y: c.y - uy * half };
+  const p2 = { x: c.x + ux * half, y: c.y + uy * half };
+  const head = 0.25;
+  const nx = -uy, ny = ux;
+  const arrow = (tip: { x: number; y: number }, dir: number) =>
+    `M ${tip.x - dir * ux * head + nx * head * 0.5},${tip.y - dir * uy * head + ny * head * 0.5} L ${tip.x},${tip.y} L ${tip.x - dir * ux * head - nx * head * 0.5},${tip.y - dir * uy * head - ny * head * 0.5}`;
+  return (
+    <g pointerEvents="none">
+      <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={stroke} strokeWidth={0.03} />
+      <path d={`${arrow(p2, 1)} ${arrow(p1, -1)}`} fill="none" stroke={stroke} strokeWidth={0.03} />
+      <line x1={c.x - nx * 0.3} y1={c.y - ny * 0.3} x2={c.x + nx * 0.3} y2={c.y + ny * 0.3}
+        stroke={stroke} strokeWidth={0.02} />
+    </g>
+  );
 }
 
 export function collectSlabHoles(
@@ -63,8 +116,17 @@ export function slabGeometryFor(
     thickness,
     baseY: ctx.levelElevation + baseOffset + extraOffset - (topAnchored ? thickness : 0),
     material: el.attrs.material || defaultMaterial,
-    holes: collectSlabHoles(el.id, ctx),
+    // Inner rings of the outline + polygon openings hosted on the slab.
+    holes: [...(el.holes ?? []), ...collectSlabHoles(el.id, ctx)],
+    spanDirection: parseSpan(el.attrs.span_direction),
+    labelAt: polygonCentroid(el.vertices),
   };
+}
+
+function parseSpan(v: string | undefined): number | null {
+  if (v === undefined || v.trim() === '') return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
 }
 
 export function slabDraw2D(facts: SlabFacts, fill: string, stroke: string): ReactNode {

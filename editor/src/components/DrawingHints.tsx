@@ -10,6 +10,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_polygon: 'hint.polygon',
   draw_hosted:  'hint.hosted',
   draw_grid:    'hint.line',
+  draw_region:  'hint.region.at_grids',
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
@@ -32,18 +33,26 @@ export default function DrawingHints() {
     && drawingAttrs[VERTICAL_MODE_KEY] === 'true';
   // For polygon, show a different hint once we have 3+ points
   const isPolygonClosable = activeTool === 'draw_polygon' && drawingState && drawingState.points.length >= 3;
+  const REGION_HINTS: Record<string, string> = {
+    at_grids: 'hint.region.at_grids',
+    between_columns: 'hint.region.between_columns',
+    beam_system: 'hint.region.beam_system',
+  };
+  const regionHint = activeTool === 'draw_region' ? REGION_HINTS[drawingTarget?.variantId ?? ''] : undefined;
   // Wall placement: one hint per draw mode; the first trim pick has its own.
   const wallMode = activeTool === 'draw_line' && isWallDrawTable(drawingTarget?.tableName)
     ? wallDrawOptions(drawingAttrs).mode : null;
-  const text = wallMode
-    ? t(`hint.wall_${wallMode}`)
-    : (activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState?.pick
-      ? t(`${hintKey}2`)
-      : isVerticalLine
-    ? t('hint.vertical')
-    : isPolygonClosable
-      ? t('hint.polygonClose')
-      : t(hintKey);
+  const text = regionHint
+    ? t(regionHint)
+    : wallMode
+      ? t(`hint.wall_${wallMode}`)
+      : (activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState?.pick
+        ? t(`${hintKey}2`)
+        : isVerticalLine
+          ? t('hint.vertical')
+          : isPolygonClosable
+            ? t('hint.polygonClose')
+            : t(hintKey);
 
   return (
     <div className="absolute top-16 left-1/2 z-20 -translate-x-1/2 pointer-events-none animate-in fade-in slide-in-from-top-1 duration-200">

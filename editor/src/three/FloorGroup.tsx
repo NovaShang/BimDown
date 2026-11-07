@@ -2,7 +2,7 @@ import { memo, useMemo, useLayoutEffect, useRef, useState, Suspense } from 'reac
 import { Group } from 'three';
 import { createPortal } from '@react-three/fiber';
 import { useEditorState, useSelectionState } from '../state/EditorContext.tsx';
-import { isDisciplineVisible } from '../state/selectors.ts';
+import { isLayerVisibleInView } from '../state/selectors.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { Level } from '../types.ts';
 import { parseFloorLayers } from '../model/parse.ts';
@@ -23,6 +23,7 @@ interface FloorCacheEntry {
   visibleLayers: Set<string>;
   discipline: string | null;
   archContext: boolean;
+  viewOptions: unknown;
   elevation: number;
   data: FloorRenderData | null;
 }
@@ -44,13 +45,14 @@ function useAllFloorsElements(): FloorRenderData[] {
     const seen = new Set<string>();
 
     const isVisible = (el: CanonicalElement) =>
-      isDisciplineVisible(el.discipline, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
+      isLayerVisibleInView(el.discipline, el.tableName, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
 
     const floorData = (levelId: string, elevation: number, source: unknown, parse: () => CanonicalElement[]) => {
       seen.add(levelId);
       const hit = cache.get(levelId);
       if (hit && hit.source === source && hit.visibleLayers === visibleLayers && hit.elevation === elevation
-        && hit.discipline === state.activeDiscipline && hit.archContext === state.showArchContext) {
+        && hit.discipline === state.activeDiscipline && hit.archContext === state.showArchContext
+        && hit.viewOptions === state.viewOptions) {
         return hit.data;
       }
       const filtered = parse().filter(isVisible);
@@ -59,7 +61,7 @@ function useAllFloorsElements(): FloorRenderData[] {
         : null;
       cache.set(levelId, {
         source, visibleLayers, elevation, data,
-        discipline: state.activeDiscipline, archContext: state.showArchContext,
+        discipline: state.activeDiscipline, archContext: state.showArchContext, viewOptions: state.viewOptions,
       });
       return data;
     };
@@ -91,9 +93,9 @@ function useAllFloorsElements(): FloorRenderData[] {
     for (const id of cache.keys()) if (!seen.has(id)) cache.delete(id);
 
     return result;
-  // state includes activeDiscipline + showArchContext used by isDisciplineVisible
+  // state includes activeDiscipline + showArchContext + viewOptions used by isLayerVisibleInView
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, doc, documentVersion, currentLevel]);
+  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, state.viewOptions, doc, documentVersion, currentLevel]);
 }
 
 /** Compute which levels are visible based on floor3DMode. */

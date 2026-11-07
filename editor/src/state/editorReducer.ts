@@ -7,7 +7,7 @@ import { generateId, toElementId, toSelectionId } from '../model/ids.ts';
 import { resolveHostedGeometry, computeHostedPosition } from '../geometry/hosted.ts';
 import { arcLength } from '../geometry/arc.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
-import { isVerticalSpanTable } from '../model/tableRegistry.ts';
+import { isVerticalSpanTable, lineWidthAttrForTable, pointSizeAttrsForTable } from '../model/tableRegistry.ts';
 import { collectMepBranch, isMepLineTable } from '../model/mepTopology.ts';
 import { bondEndpoints } from '../model/bondEndpoints.ts';
 import { parsePortRef } from '../utils/portRef.ts';
@@ -22,6 +22,8 @@ import { applyMoveJoins, applyReshapeJoins, rehostChildren } from '../geometry/w
 import { reresolveElements, reresolveProject, retypeElements } from './typeEdits.ts';
 import { EMPTY_CATALOG, reresolveTypeAttrs } from '../model/types/catalog.ts';
 import { withDefaultDrawingType } from '../model/types/drawingType.ts';
+import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
+import { followColumnMoves } from '../model/framingCascade.ts';
 
 /** Tables hidden by default (user can toggle on via layer panel). */
 const HIDDEN_BY_DEFAULT = new Set(['ceiling']);
@@ -76,6 +78,7 @@ export const initialState: EditorState = {
   activeFilter: null,
   activeDiscipline: null,
   showArchContext: true,
+  viewOptions: loadViewOptions(),
   spaceHeld: false,
 
   selectedIds: new Set(),
@@ -232,7 +235,15 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       // Auto-switch between select ↔ orbit when toggling 2D/3D
       if (action.mode === '3d' && tool === 'select') tool = 'orbit';
       if (action.mode === '2d' && tool === 'orbit') tool = 'select';
-      return { ...state, viewMode: action.mode, activeTool: tool };
+      // Entering 3D all-floors after a 2D level switch (which keeps only that
+      // level's layers): show every floor's layers again, e.g. the columns and
+      // foundations of the levels below.
+      let visibleLayers = state.visibleLayers;
+      if (action.mode === '3d' && state.floor3DMode === 'all' && state.project) {
+        visibleLayers = new Set(visibleLayers);
+        addAllFloorLayers(visibleLayers, state.project.floors);
+      }
+      return { ...state, viewMode: action.mode, activeTool: tool, visibleLayers };
     }
 
     case 'SET_FLOOR_3D_MODE': {
@@ -479,6 +490,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'TOGGLE_ARCH_CONTEXT':
       return { ...state, showArchContext: !state.showArchContext };
 
+    case 'TOGGLE_VIEW_OPTION': {
+      const viewOptions = { ...state.viewOptions, [action.key]: !state.viewOptions[action.key] };
+      saveViewOptions(viewOptions);
+      return { ...state, viewOptions };
+    }
+
     case 'SELECT': {
       if (action.additive) {
         const next = new Set(state.selectedIds);
@@ -599,6 +616,12 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const moveJoins = preview ? action.wallJoins ?? [] : action.wallJoins;
       for (const id of applyMoveJoins(state.document.elements, next, movedSet, moveJoins, dx, dy)) {
         if (!movedSet.has(id)) partialMoved.add(id);
+        changed = true;
+      }
+      // Framing cascade: a beam / brace end that frames into a moved column
+      // (lies inside its footprint) follows it; the other end stays put.
+      for (const id of followColumnMoves(state.document.elements, next, allIds, movedSet, dx, dy)) {
+        partialMoved.add(id);
         changed = true;
       }
       if (!changed) return state;
@@ -846,18 +869,20 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
       const before = new Map<string, CanonicalElement | null>([[rawId, el]]);
       const updated = { ...el, attrs: { ...el.attrs, ...action.attrs } };
 
-      // Sync size_x/size_y attrs → PointElement width/height
+      // Sync plan-size attrs (size_x/size_y; foundation width/length) → PointElement width/height
       if (updated.geometry === 'point') {
         const pt = updated as PointElement;
-        if ('size_x' in action.attrs) pt.width = parseFloat(action.attrs.size_x) || pt.width;
-        if ('size_y' in action.attrs) pt.height = parseFloat(action.attrs.size_y) || pt.height;
+        const [sx, sy] = pointSizeAttrsForTable(updated.tableName);
+        if (sx in action.attrs) pt.width = parseFloat(action.attrs[sx]) || pt.width;
+        if (sy in action.attrs) pt.height = parseFloat(action.attrs[sy]) || pt.height;
       }
 
-      // Sync thickness attr → LineElement/SpatialLineElement strokeWidth.
+      // Sync the plan-width attr (thickness; strip footing width) → strokeWidth.
       // Without this, wall/beam/duct geometry stays at the old thickness even
       // though the CSV row shows the new value.
-      if ((updated.geometry === 'line' || updated.geometry === 'spatial_line') && 'thickness' in action.attrs) {
-        const t = parseFloat(action.attrs.thickness);
+      const widthAttr = lineWidthAttrForTable(updated.tableName);
+      if ((updated.geometry === 'line' || updated.geometry === 'spatial_line') && widthAttr in action.attrs) {
+        const t = parseFloat(action.attrs[widthAttr]);
         if (Number.isFinite(t) && t > 0) (updated as LineElement).strokeWidth = t;
       }
       // Same for a section's plan width (duct / pipe / beam size_x, diameter).
@@ -1190,7 +1215,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     case 'SET_DRAWING_TARGET': {
       let attrs: Record<string, string> = {};
       if (action.target) {
-        attrs = getDefaultDrawingAttrs(action.target.tableName, state.currentLevel, state.project?.levels);
+        attrs = getDefaultDrawingAttrs(action.target.tableName, state.currentLevel, state.project?.levels, action.target.variantId);
         // Modules opt in to sequential defaults / other tool-activation
         // auto-fills via `autoFillOnPlace`. Counts existing elements of this
         // table so each placement bumps the next default value.
@@ -1427,6 +1452,7 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
       return {
         ...el,
         vertices: el.vertices.map(v => ({ x: v.x + dx, y: v.y + dy })),
+        ...(el.holes ? { holes: el.holes.map(h => h.map(v => ({ x: v.x + dx, y: v.y + dy }))) } : {}),
       };
   }
 }
@@ -1482,6 +1508,11 @@ function maybeMigrateToGlobal(element: CanonicalElement, state: EditorState): im
   return { ...project, globalLayers };
 }
 
+/** Round to mm so resized sizes don't persist float noise. */
+function r3(n: number): number {
+  return Math.round(n * 1000) / 1000;
+}
+
 function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): CanonicalElement {
   // Optional attrs merge — callers (e.g. MEP endpoint snap) may need to
   // co-update `from`/`to` along with the geometry change. We don't allow
@@ -1523,8 +1554,9 @@ function applyResize(el: CanonicalElement, changes: Partial<CanonicalElement>): 
       // For CSV-only tables like `space`, x/y *are* the persisted position columns —
       // without this sync the element re-loads at (0,0) after refresh.
       const pointAttrs = { ...el.attrs };
-      if ('width' in changes && 'size_x' in pointAttrs) pointAttrs.size_x = String(newW);
-      if ('height' in changes && 'size_y' in pointAttrs) pointAttrs.size_y = String(newH);
+      const [sx, sy] = pointSizeAttrsForTable(el.tableName);
+      if ('width' in changes && sx in pointAttrs) pointAttrs[sx] = String(r3(newW));
+      if ('height' in changes && sy in pointAttrs) pointAttrs[sy] = String(r3(newH));
       if ('position' in changes && 'x' in pointAttrs) pointAttrs.x = String(newPos.x);
       if ('position' in changes && 'y' in pointAttrs) pointAttrs.y = String(newPos.y);
       return {

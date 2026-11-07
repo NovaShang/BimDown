@@ -12,6 +12,7 @@ import SVGLayers from './SVGLayers.tsx';
 import SelectionOverlay from './SelectionOverlay.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
+import { previewRegion } from '../tools/drawRegionTool.ts';
 import ResizeHandles from './ResizeHandles.tsx';
 import SnapOverlay from './SnapOverlay.tsx';
 import PortDragOverlay from './PortDragOverlay.tsx';
@@ -527,7 +528,9 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <PortDragOverlay scale={scale} />
 
         {state.drawingState && (
-          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} elements={state.document?.elements ?? null} projectUnit={getProjectUnits(state)} />
+          <DrawingOverlay drawingState={state.drawingState} activeTool={activeTool} scale={scale} drawingAttrs={state.drawingAttrs} tableName={state.drawingTarget?.tableName ?? null} elements={state.document?.elements ?? null} projectUnit={getProjectUnits(state)}
+            regionPreview={activeTool === 'draw_region' && state.drawingState?.points.length === 1 && state.drawingState.cursor
+              ? previewRegion(toolCtx.getState(), state.drawingState.points[0], state.drawingState.cursor) : null} />
         )}
       </svg>
 

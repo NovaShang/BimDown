@@ -240,16 +240,22 @@ function featureForElement(el: CanonicalElement, isSpatial: boolean, elevation: 
     case 'polygon': {
       const poly = el as PolygonElement;
       if (poly.vertices.length < 3) return null;
-      const ring: number[][] = poly.vertices.map(v => [r2(v.x), r2(v.y)]);
-      // Close the ring per RFC 7946
-      const first = ring[0], last = ring[ring.length - 1];
-      if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
+      // Outer ring, then any inner rings (holes) kept from the source file.
+      const rings = [poly.vertices, ...(poly.holes ?? []).filter(h => h.length >= 3)].map(closedRing);
       const props: Record<string, unknown> = { id: poly.id };
       attachZProps(props, poly.attrs);
-      return { type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: [ring] } };
+      return { type: 'Feature', properties: props, geometry: { type: 'Polygon', coordinates: rings } };
     }
   }
   return null;
+}
+
+/** Points → closed GeoJSON ring (RFC 7946: last position repeats the first). */
+function closedRing(points: { x: number; y: number }[]): number[][] {
+  const ring: number[][] = points.map(v => [r2(v.x), r2(v.y)]);
+  const first = ring[0], last = ring[ring.length - 1];
+  if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
+  return ring;
 }
 
 function attachZProps(props: Record<string, unknown>, attrs: Record<string, string>): void {

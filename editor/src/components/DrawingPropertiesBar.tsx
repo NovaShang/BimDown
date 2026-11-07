@@ -46,7 +46,7 @@ export default function DrawingPropertiesBar() {
   const drawingTypeId = state.drawingAttrs.type_id ?? '';
   // With a type picked, its parameters come from the type (Edit Type changes them).
   const typeKeys = new Set(drawingTypeId ? typeParamKeys(target.tableName) : []);
-  const fields = getDrawingFields(target.tableName, levels)
+  const fields = getDrawingFields(target.tableName, levels, target.variantId)
     .filter(f => !typeKeys.has(f.key))
     .map(f =>
       f.key === 'system_type' && systemOptions.length > 0
@@ -76,6 +76,7 @@ export default function DrawingPropertiesBar() {
 
   // Vertical-pipe toggle: only for MEP topo-line tables (duct / pipe / conduit / cable_tray).
   const elMod = getElementModule(target.tableName);
+  const variant = target.variantId ? elMod?.toolbarVariants?.find(v => v.id === target.variantId) : undefined;
   const supportsVertical = elMod?.archetype === 'topo-line';
   const verticalOn = attrs[VERTICAL_MODE_KEY] === 'true';
   const toggleVertical = () => {
@@ -93,7 +94,7 @@ export default function DrawingPropertiesBar() {
       style={{ '--dp-color': disciplineColor } as React.CSSProperties}
     >
       <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold select-none" style={{ color: disciplineColor }}>
-        <Icon name={target.tableName} width={20} height={20} /> {style ? t(`display.${style.displayName}`) : target.tableName}
+        <Icon name={variant?.iconName ?? target.tableName} width={20} height={20} /> {variant ? t(variant.label) : style ? t(`display.${style.displayName}`) : target.tableName}
       </span>
       <Separator orientation="vertical" className="h-4" />
       {typed && (

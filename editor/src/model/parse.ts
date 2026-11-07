@@ -1,6 +1,7 @@
 import type { LayerData, CsvRow } from '../types.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement, Point, ArcParams } from './elements.ts';
 import { geometryTypeForTable, isHostedTable } from './elements.ts';
+import { defaultAttrsForTable, lineWidthAttrForTable, pointSizeAttrsForTable } from './tableRegistry.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 
@@ -270,12 +271,13 @@ function buildSpatialLine(id: string, feat: Feature, layer: LayerData, csv?: Csv
   return el;
 }
 
-/** Plan width of a line element: wall thickness, or a duct / pipe / beam
- *  section's size_x (diameter for round), same rule as the draw tools. */
+/** Plan width of a line element: a duct / pipe / beam section's size_x
+ *  (diameter for round), same rule as the draw tools; otherwise its CSV width
+ *  attr (walls: thickness; strip footings: width), 0.1 when blank. */
 function lineStrokeWidth(tableName: string, csv?: CsvRow): number {
   const fromAttrs = csv ? resolveLineStrokeWidth(tableName, csv) : null;
   if (fromAttrs != null) return fromAttrs;
-  const t = parseFloat(csv?.thickness ?? '');
+  const t = parseFloat(csv?.[lineWidthAttrForTable(tableName)] ?? '');
   return t > 0 ? t : 0.1;
 }
 
@@ -283,8 +285,12 @@ function buildPoint(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): 
   const g = feat.geometry as PointGeom;
   const c = g.coordinates;
   const attrs = csvToAttrs(csv, id);
-  const csvSizeX = parseFloat(attrs.size_x);
-  const csvSizeY = parseFloat(attrs.size_y);
+  // Plan size attrs: size_x/size_y for columns & equipment, width/length for
+  // foundation pads (legacy size_x/size_y still read as a fallback).
+  const [sxKey, syKey] = pointSizeAttrsForTable(layer.tableName);
+  const legacy = sxKey !== 'size_x';
+  const csvSizeX = parseFloat(attrs[sxKey] || (legacy ? attrs.size_x : ''));
+  const csvSizeY = parseFloat(attrs[syKey] || (legacy ? attrs.size_y : ''));
   // Bounding-box display size from GeoJSON properties (e.g. Revit export):
   // size = [plan width (x), plan depth (y), vertical height (z)]. Drives the 2D
   // footprint and the 3D box; explicit CSV size_x/size_y still win (CSV is the
@@ -292,8 +298,10 @@ function buildPoint(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): 
   // modules read for their 3D box.
   const sizeProp = feat.properties?.size;
   const size = Array.isArray(sizeProp) ? (sizeProp as number[]) : null;
-  const w = !isNaN(csvSizeX) ? csvSizeX : (typeof size?.[0] === 'number' ? size[0] : 0.3);
-  const h = !isNaN(csvSizeY) ? csvSizeY : (typeof size?.[1] === 'number' ? size[1] : (!isNaN(csvSizeX) ? csvSizeX : 0.3));
+  // No size at all: the table's default, else 1.5 m (foundation pad) / 0.3 m.
+  const fallback = parseFloat(defaultAttrsForTable(layer.tableName, '')[sxKey]) || (legacy ? 1.5 : 0.3);
+  const w = !isNaN(csvSizeX) ? csvSizeX : (typeof size?.[0] === 'number' ? size[0] : fallback);
+  const h = !isNaN(csvSizeY) ? csvSizeY : (typeof size?.[1] === 'number' ? size[1] : (!isNaN(csvSizeX) ? csvSizeX : w));
   if (typeof size?.[2] === 'number' && (attrs.height === undefined || attrs.height === '')) {
     attrs.height = String(size[2]);
   }
@@ -308,24 +316,30 @@ function buildPoint(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): 
 
 function buildPolygon(id: string, feat: Feature, layer: LayerData, csv?: CsvRow): PolygonElement {
   const g = feat.geometry as PolygonGeom;
-  const ring = g.coordinates[0] ?? [];
-  // Drop closing duplicate if present
+  const vertices = ringToPoints(g.coordinates[0] ?? []);
+  const el: PolygonElement = {
+    geometry: 'polygon', id,
+    tableName: layer.tableName, discipline: layer.discipline,
+    vertices,
+    attrs: csvToAttrs(csv, id),
+  };
+  // Inner rings are holes: keep them so a save doesn't drop them.
+  const holes = g.coordinates.slice(1).map(ringToPoints).filter(h => h.length >= 3);
+  if (holes.length > 0) el.holes = holes;
+  return el;
+}
+
+/** GeoJSON ring → points, dropping the closing duplicate if present. */
+function ringToPoints(ring: Position[]): Point[] {
   let end = ring.length;
   if (end >= 2) {
     const first = ring[0];
     const last = ring[ring.length - 1];
     if (first[0] === last[0] && first[1] === last[1]) end -= 1;
   }
-  const vertices: Point[] = [];
-  for (let i = 0; i < end; i++) {
-    vertices.push({ x: ring[i][0], y: ring[i][1] });
-  }
-  return {
-    geometry: 'polygon', id,
-    tableName: layer.tableName, discipline: layer.discipline,
-    vertices,
-    attrs: csvToAttrs(csv, id),
-  };
+  const out: Point[] = [];
+  for (let i = 0; i < end; i++) out.push({ x: ring[i][0], y: ring[i][1] });
+  return out;
 }
 
 /**

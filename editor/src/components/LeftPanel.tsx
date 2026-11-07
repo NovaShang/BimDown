@@ -6,6 +6,7 @@ import { csvHeadersForTable } from '../model/tableRegistry.ts';
 import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import { PROPERTY_FIELD_DEFS } from '../elements/_propertyFields.ts';
 import type { LayerGroup } from '../state/editorTypes.ts';
+import { STRUCTURE_IN_ARCH_TABLES } from '../state/selectors.ts';
 import { ScrollArea } from './ui/scroll-area';
 import { Icon } from './Icons.tsx';
 import { cn } from '../lib/utils';
@@ -202,6 +203,11 @@ export default function LeftPanel({
     } else {
       const group = layerGroups.find(g => g.discipline === activeDiscipline);
       layers = group ? group.layers : [];
+      // Architecture view also lists the structure it shows (columns, walls, slabs).
+      if (activeDiscipline === 'architecture' && editorState.viewOptions?.showStructureInArch) {
+        const str = layerGroups.find(g => g.discipline === 'structure');
+        layers = [...layers, ...(str?.layers ?? []).filter(l => STRUCTURE_IN_ARCH_TABLES.has(l.tableName))];
+      }
     }
     return [...layers].sort((a, b) => {
       const oa = LAYER_STYLES[a.tableName]?.order ?? 99;

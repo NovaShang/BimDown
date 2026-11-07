@@ -1,6 +1,7 @@
 import React from 'react';
 import type { ProcessedLayer } from '../state/editorTypes.ts';
 import { ElementNode } from './ElementNode.tsx';
+import { ARCH_SHARED_WITH_STRUCTURE } from '../state/selectors.ts';
 
 interface SVGLayersProps {
   layers: ProcessedLayer[];
@@ -25,8 +26,12 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
         // they're meant to be visible at all times so the user can use
         // them as a layout reference regardless of which discipline is
         // active.
-        const isArchContext = layer.discipline === 'architecture' && activeDiscipline !== 'architecture';
-        const isReferenceContext = layer.discipline === 'reference' && activeDiscipline !== 'reference';
+        const isArchContext = layer.discipline === 'architecture' && activeDiscipline !== 'architecture'
+          && !(activeDiscipline === 'structure' && ARCH_SHARED_WITH_STRUCTURE.has(layer.tableName));
+        // Structure draws grids too, so they stay clickable there (the marquee
+        // still skips them: isBackgroundDiscipline).
+        const isReferenceContext = layer.discipline === 'reference' && activeDiscipline !== 'reference'
+          && activeDiscipline !== 'structure';
         const layerStyle = isArchContext
           ? { pointerEvents: 'none' as const, opacity: 0.35 }
           : isReferenceContext

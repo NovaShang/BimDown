@@ -2,9 +2,9 @@
 // Per table: columns stored in CSV, and fields stored as GeoJSON Feature properties.
 
 export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> = {
-  beam: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'type_id'], geojson: ['base_offset'] },
+  beam: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'type_id', 'material_grade'], geojson: ['base_offset'] },
   beam_type: { csv: ['id', 'name', 'description', 'material', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness'], geojson: [] },
-  brace: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'type_id'], geojson: ['base_offset'] },
+  brace: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'type_id', 'material_grade'], geojson: ['base_offset'] },
   cable_tray: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'system_type', 'from', 'to'], geojson: ['base_offset'] },
   ceiling: { csv: ['id', 'number', 'mesh_file', 'material', 'type_id'], geojson: ['base_offset', 'height_offset'] },
   ceiling_type: { csv: ['id', 'name', 'description', 'material', 'thickness'], geojson: [] },
@@ -18,7 +18,7 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   door_type: { csv: ['id', 'name', 'description', 'material', 'u_value', 'shgc', 'vt', 'width', 'height', 'operation', 'frame_width'], geojson: [] },
   duct: { csv: ['id', 'number', 'mesh_file', 'shape', 'size_x', 'size_y', 'system_type', 'from', 'to'], geojson: ['base_offset'] },
   equipment: { csv: ['id', 'number', 'mesh_file', 'system_type', 'equipment_type', 'family', 'type'], geojson: ['base_offset'] },
-  foundation: { csv: ['id', 'number', 'mesh_file', 'material', 'thickness', 'width', 'length'], geojson: ['base_offset'] },
+  foundation: { csv: ['id', 'number', 'mesh_file', 'material', 'kind', 'thickness', 'width', 'length', 'material_grade'], geojson: ['base_offset'] },
   grid: { csv: ['id', 'number', 'start_x', 'start_y', 'end_x', 'end_y'], geojson: [] },
   level: { csv: ['id', 'number', 'name', 'elevation'], geojson: [] },
   mep_node: { csv: ['id', 'number', 'mesh_file', 'system_type', 'kind', 'family', 'type', 'shape', 'size_w', 'size_h'], geojson: ['base_offset'] },
@@ -37,9 +37,9 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   stair: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'width', 'step_count', 'stair_type'], geojson: ['base_offset', 'top_offset'] },
   stair_landing: { csv: ['id', 'number', 'base_offset', 'mesh_file', 'material', 'host_id', 'thickness'], geojson: [] },
   stair_run: { csv: ['id', 'number', 'mesh_file', 'material', 'host_id', 'width', 'step_count'], geojson: ['base_offset'] },
-  structure_column: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'material', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'type_id'], geojson: ['base_offset', 'top_offset'] },
-  structure_slab: { csv: ['id', 'number', 'mesh_file', 'material', 'function', 'thickness', 'type_id'], geojson: ['base_offset'] },
-  structure_wall: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'material', 'thickness', 'type_id'], geojson: ['base_offset', 'top_offset'] },
+  structure_column: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'material', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'type_id', 'material_grade'], geojson: ['base_offset', 'top_offset'] },
+  structure_slab: { csv: ['id', 'number', 'mesh_file', 'material', 'function', 'thickness', 'type_id', 'material_grade', 'span_direction'], geojson: ['base_offset'] },
+  structure_wall: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'material', 'thickness', 'type_id', 'material_grade'], geojson: ['base_offset', 'top_offset'] },
   terminal: { csv: ['id', 'number', 'mesh_file', 'system_type', 'terminal_type', 'family', 'type'], geojson: ['base_offset'] },
   type_layer: { csv: ['material', 'id', 'type_id', 'seq', 'function', 'thickness', 'conductivity', 'name'], geojson: [] },
   wall: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'material', 'thickness', 'type_id'], geojson: ['base_offset', 'top_offset'] },
