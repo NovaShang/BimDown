@@ -129,7 +129,8 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
       fill: '',
       arc: el.arc,
     }));
-    const adj = computeCornerAdjustments(miterInput).adjustments;
+    const miter = computeCornerAdjustments(miterInput);
+    const adj = miter.adjustments;
 
     const epCount = new Map<string, number>();
     for (const w of walls) {
@@ -143,7 +144,7 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
     const elIdxRanges: { elId: string; from: number; to: number }[] = [];
     for (const w of walls) {
       const openings = collectWallOpenings(w.el, ctx);
-      const wallPolys = buildWallPolygons(w.el, openings, adj, w.startKey, w.endKey);
+      const wallPolys = buildWallPolygons(w.el, openings, miter.planAdjustments, w.startKey, w.endKey);
       const from = polys.length;
       polys.push(...wallPolys);
       elIdxRanges.push({ elId: w.el.id, from, to: polys.length });
@@ -362,7 +363,11 @@ export function wallDraw2D(
           key={`f${i}`}
           points={seg.corners.map(p => `${p.x},${p.y}`).join(' ')}
           fill={fill}
-          stroke="none"
+          // A hairline of the fill colour hides the anti-aliasing seam where
+          // two mitred / teed wall polygons meet.
+          stroke={fill}
+          strokeWidth={0.004}
+          strokeLinejoin="miter"
           data-id={facts.id}
         />
       ))}
