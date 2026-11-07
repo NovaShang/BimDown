@@ -34,6 +34,8 @@ export interface GeometryContext {
   level: Level;
   levelElevation: number;
   levelElevations: Map<string, number>;
+  /** Project units per metre (library components are defined in metres). */
+  unitsPerMetre: number;
 
   /** Full element map for the current scope (level-scoped + global). */
   allElements: Map<string, CanonicalElement>;

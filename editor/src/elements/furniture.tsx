@@ -19,6 +19,7 @@ import {
   type PlanPrim, type ResolvedFurniture,
 } from '../library/furnitureLibrary.generated.ts';
 import { renderPrims } from '../library/FurnitureSymbol.tsx';
+import { metre } from '../annotation/geometry.ts';
 import { furnitureGeometry, furnitureMaterial } from '../library/furniture3D.ts';
 import { placeFurnitureTool } from '../library/placeFurniture.ts';
 import { FurniturePlacementPreview } from '../library/PlacementPreview.tsx';
@@ -54,13 +55,13 @@ const num = (v: string | undefined) => {
   const n = parseFloat(v ?? '');
   return Number.isFinite(n) ? n : undefined;
 };
-const same = (a: number | undefined, b: number) => a === undefined || Math.abs(a - b) < 1e-6;
+const same = (a: number | undefined, b: number) => a === undefined || Math.abs(a - b) < 1e-6 * Math.max(1, Math.abs(b));
 
 /**
  * When the family or variant changes, sizes (and the mount height) that were
  * still at the old default follow the new default; edited values are kept.
  */
-export function furnitureAttrRules(prev: Record<string, string>, changes: Record<string, string>): Record<string, string> {
+export function furnitureAttrRules(prev: Record<string, string>, changes: Record<string, string>, upm = metre()): Record<string, string> {
   if (!('family' in changes) && !('variant' in changes)) return {};
   const out: Record<string, string> = {};
   const oldFam = getFurnitureFamily(prev.family);
@@ -71,8 +72,8 @@ export function furnitureAttrRules(prev: Record<string, string>, changes: Record
     variant = newFam.variants?.[0]?.id ?? '';
     out.variant = variant;
   }
-  const oldSize = oldFam ? defaultSize(oldFam, prev.variant) : undefined;
-  const newSize = defaultSize(newFam, variant);
+  const oldSize = oldFam ? defaultSize(oldFam, prev.variant).map(v => v * upm) : undefined;
+  const newSize = defaultSize(newFam, variant).map(v => v * upm);
   (['size_x', 'size_y', 'height'] as const).forEach((k, i) => {
     if (k in changes) return;
     const cur = num(prev[k]);
@@ -80,21 +81,21 @@ export function furnitureAttrRules(prev: Record<string, string>, changes: Record
   });
   if (!('base_offset' in changes)) {
     const cur = num(prev.base_offset) ?? 0;
-    if (same(cur, oldFam?.baseOffset ?? 0)) out.base_offset = String(newFam.baseOffset ?? 0);
+    if (same(cur, (oldFam?.baseOffset ?? 0) * upm)) out.base_offset = String((newFam.baseOffset ?? 0) * upm);
   }
   return out;
 }
 
 /** Initial attrs for placing a family (sizes and mount height from the library). */
-export function furniturePlacementAttrs(familyId: string, variant?: string): Record<string, string> {
+export function furniturePlacementAttrs(familyId: string, variant?: string, upm = metre()): Record<string, string> {
   const fam = getFurnitureFamily(familyId);
   if (!fam) return { family: familyId };
   const v = variant ?? fam.variants?.[0]?.id ?? '';
-  const [w, d, h] = defaultSize(fam, v);
+  const [w, d, h] = defaultSize(fam, v).map(x => x * upm);
   return {
     family: fam.id, variant: v,
     size_x: String(w), size_y: String(d), height: String(h),
-    base_offset: String(fam.baseOffset ?? 0), mirror: 'false',
+    base_offset: String((fam.baseOffset ?? 0) * upm), mirror: 'false',
   };
 }
 
@@ -105,7 +106,9 @@ function toWorld(o: Point, rotDeg: number, lx: number, ly: number): Point {
 }
 
 function sizeHandles(facts: FurnitureFacts): SelectionHandle[] {
-  const { w, d } = facts.resolved.params;
+  const { w, d } = facts.resolved.size;
+  const k = facts.resolved.upm; // sizes snap to 1 cm, at least 10 cm
+  const snapSize = (v: number) => Math.max(0.1 * k, Math.round(v / (0.01 * k)) * 0.01 * k);
   const rot = facts.rotationDeg;
   const a = (rot * Math.PI) / 180;
   const ux = { x: Math.cos(a), y: Math.sin(a) };   // local +X in world
@@ -119,7 +122,7 @@ function sizeHandles(facts: FurnitureFacts): SelectionHandle[] {
         const p = snapshot as PointElement;
         const sw = num(p.attrs.size_x) ?? w;
         const left = { x: p.position.x - ux.x * sw / 2, y: p.position.y - ux.y * sw / 2 };
-        const nw = Math.max(0.1, Math.round(((snapped.x - left.x) * ux.x + (snapped.y - left.y) * ux.y) * 100) / 100);
+        const nw = snapSize((snapped.x - left.x) * ux.x + (snapped.y - left.y) * ux.y);
         return {
           position: { x: left.x + ux.x * nw / 2, y: left.y + ux.y * nw / 2 },
           width: nw,
@@ -135,7 +138,7 @@ function sizeHandles(facts: FurnitureFacts): SelectionHandle[] {
         const p = snapshot as PointElement;
         const sd = num(p.attrs.size_y) ?? d;
         const back = { x: p.position.x + uy.x * sd / 2, y: p.position.y + uy.y * sd / 2 };
-        const nd = Math.max(0.1, Math.round(((back.x - snapped.x) * uy.x + (back.y - snapped.y) * uy.y) * 100) / 100);
+        const nd = snapSize((back.x - snapped.x) * uy.x + (back.y - snapped.y) * uy.y);
         return {
           position: { x: back.x - uy.x * nd / 2, y: back.y - uy.y * nd / 2 },
           height: nd,
@@ -188,7 +191,7 @@ export const furnitureModule: ElementModule<FurnitureFacts> = {
   geometry(el: CanonicalElement, ctx: GeometryContext): FurnitureFacts | null {
     if (el.geometry !== 'point') return null;
     const p = el as PointElement;
-    const resolved = resolveFurniture(p.attrs);
+    const resolved = resolveFurniture(p.attrs, ctx.unitsPerMetre);
     return {
       id: p.id,
       position: p.position,
@@ -200,14 +203,15 @@ export const furnitureModule: ElementModule<FurnitureFacts> = {
   },
 
   draw2D(facts, ctx): ReactNode {
-    const { w, d } = facts.resolved.params;
+    const { w, d } = facts.resolved.size;
+    const k = facts.resolved.upm;
     const stroke = ctx.selected ? STROKE_SELECTED : ctx.hovered ? STROKE_HOVER : STROKE;
     return (
       <g data-id={facts.id}
         transform={`translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`}>
         {/* Pick area: line-only symbols (partitions, parking) stay clickable. */}
         <rect x={-w / 2} y={-d / 2} width={w} height={d} fill="none" pointerEvents="all" />
-        {renderPrims(facts.prims, { stroke, width: ctx.selected ? 0.02 : 0.012 })}
+        {renderPrims(facts.prims, { stroke, width: (ctx.selected ? 0.02 : 0.012) * k, dash: `${0.06 * k} ${0.04 * k}` })}
       </g>
     );
   },
@@ -231,7 +235,7 @@ export const furnitureModule: ElementModule<FurnitureFacts> = {
   },
 
   bbox(facts) {
-    const { w, d } = facts.resolved.params;
+    const { w, d } = facts.resolved.size;
     const a = (facts.rotationDeg * Math.PI) / 180;
     const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
     const bw = w * c + d * s, bh = w * s + d * c;
@@ -239,7 +243,7 @@ export const furnitureModule: ElementModule<FurnitureFacts> = {
   },
 
   hitZones(facts) {
-    const { w, d } = facts.resolved.params;
+    const { w, d } = facts.resolved.size;
     const corners = [[-w / 2, -d / 2], [w / 2, -d / 2], [w / 2, d / 2], [-w / 2, d / 2]];
     return [{ kind: 'polygon', points: corners.map(([x, y]) => toWorld(facts.position, facts.rotationDeg, x, y)) }];
   },

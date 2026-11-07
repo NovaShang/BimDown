@@ -109,7 +109,10 @@ export function collectPlan(input: PlanInput): PlanSource | null {
 
   const byId = new Map<string, CanonicalElement>();
   for (const el of elements) byId.set(el.id, el);
-  const ctx = buildGeometryContext({ level, allLevels: project.levels, allElements: byId, mepSystems: project.mepSystems, types: project.types });
+  const ctx = buildGeometryContext({
+    level, allLevels: project.levels, allElements: byId, mepSystems: project.mepSystems, types: project.types,
+    unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+  });
   const factsCache = new Map<string, unknown>();
   const entries: Entry[] = [];
   for (const el of elements) {

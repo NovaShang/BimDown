@@ -2,6 +2,7 @@ import type { CanonicalElement } from '../../model/elements.ts';
 import type { Level, SystemDef } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
 import type { TypeCatalog } from '../../model/types/catalog.ts';
+import { metre } from '../../annotation/geometry.ts';
 
 interface BuildGeometryContextOpts {
   level: Level;
@@ -11,6 +12,8 @@ interface BuildGeometryContextOpts {
   mepSystems?: SystemDef[];
   /** Project element types (for layered wall rendering). */
   types?: TypeCatalog;
+  /** Project units per metre (1000 for mm); default: the open project's (editor), else 1. */
+  unitsPerMetre?: number;
 }
 
 /**
@@ -72,6 +75,7 @@ export function buildGeometryContext(opts: BuildGeometryContextOpts): GeometryCo
     level,
     levelElevation: level.elevation,
     levelElevations,
+    unitsPerMetre: opts.unitsPerMetre ?? metre(),
     allElements,
     elementById: id => allElements.get(id),
     elementsByTable,

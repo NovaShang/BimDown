@@ -3,16 +3,19 @@
  * face, sliding along it, flush into corners and against neighbours already
  * on the same wall (cabinet runs). Pure; model units, plan Y up.
  */
+import { metre } from '../annotation/geometry.ts';
 import type { CanonicalElement, LineElement, PointElement, Point } from '../model/elements.ts';
 import { resolveFurniture } from './furnitureLibrary.generated.ts';
 
 const WALL_TABLES = new Set(['wall', 'structure_wall', 'curtain_wall']);
 /** How far beyond the component's own depth the cursor may be to still snap. */
-const REACH = 0.5;
+const REACH_M = 0.5;
 /** Distance within which an edge snaps flush to a corner or a neighbour. */
-const FLUSH = 0.25;
-const JOIN_TOL = 0.05;
-const TIE = 0.05;
+const FLUSH_M = 0.25;
+const JOIN_TOL_M = 0.05;
+const TIE_M = 0.05;
+/** Distances above are metres; the model is in project units (`metre()` per metre). */
+const REACH = () => REACH_M * metre(), FLUSH = () => FLUSH_M * metre(), JOIN_TOL = () => JOIN_TOL_M * metre(), TIE = () => TIE_M * metre();
 
 export interface WallPose {
   position: Point;
@@ -30,7 +33,7 @@ function wallSegments(elements: Iterable<CanonicalElement>): Seg[] {
     if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
     const l = el as LineElement;
     if (l.arc) continue;
-    const half = (l.strokeWidth || 0.1) / 2;
+    const half = (l.strokeWidth || 0.1 * metre()) / 2;
     out.push({ id: l.id, a: l.start, b: l.end, half });
   }
   return out;
@@ -53,7 +56,7 @@ function faceSpan(seg: Seg, len: number, ux: number, uy: number, side: number, a
   for (const s of segs) {
     if (s === seg) continue;
     for (const [e, o] of [[s.a, s.b], [s.b, s.a]] as const) {
-      if (distToSeg(e, seg.a, seg.b) > seg.half + JOIN_TOL) continue;
+      if (distToSeg(e, seg.a, seg.b) > seg.half + JOIN_TOL()) continue;
       // The other wall must run into this side of the face.
       const crossO = ux * (o.y - seg.a.y) - uy * (o.x - seg.a.x);
       if (crossO * side <= 0) continue;
@@ -88,10 +91,10 @@ export function snapBackToWall(
     if (along < -w / 2 || along > len + w / 2) continue;
     const cross = ux * ry - uy * rx; // + = left of a→b
     const dist = Math.abs(cross);
-    if (dist > seg.half + d + REACH) continue;
+    if (dist > seg.half + d + REACH()) continue;
     // In a corner both walls are about as close: the longer wall wins (a
     // desk runs along the room, not into its short end).
-    const better = !best || dist < best.dist - TIE || (dist <= best.dist + TIE && len > best.len);
+    const better = !best || dist < best.dist - TIE() || (dist <= best.dist + TIE() && len > best.len);
     if (better) best = { seg, along, len, side: cross >= 0 ? 1 : -1, dist, ux, uy };
   }
   if (!best) return null;
@@ -103,8 +106,8 @@ export function snapBackToWall(
   const clampSpan = (v: number) => (fits ? Math.max(lo + w / 2, Math.min(hi - w / 2, v)) : v);
   let along = clampSpan(best.along);
   if (fits) {
-    if (along - w / 2 - lo < FLUSH) along = lo + w / 2;
-    if (hi - (along + w / 2) < FLUSH) along = hi - w / 2;
+    if (along - w / 2 - lo < FLUSH()) along = lo + w / 2;
+    if (hi - (along + w / 2) < FLUSH()) along = hi - w / 2;
   }
 
   // Flush against components already on this face (same orientation).
@@ -115,16 +118,16 @@ export function snapBackToWall(
   for (const el of elements.values()) {
     if (snapped || el.tableName !== 'furniture' || el.geometry !== 'point' || el.id === ignoreId) continue;
     const p = el as PointElement;
-    const r = resolveFurniture(p.attrs);
+    const r = resolveFurniture(p.attrs, metre());
     const er = parseFloat(p.attrs.rotation || '0') || 0;
     if (Math.abs(((er - rot) % 360 + 540) % 360 - 180) > 1) continue;
     const ox = p.position.x - seg.a.x, oy = p.position.y - seg.a.y;
     const offWall = ox * nx + oy * ny;
-    if (Math.abs(offWall - (faceOff + r.params.d / 2)) > 0.05) continue;
+    if (Math.abs(offWall - (faceOff + r.size.d / 2)) > JOIN_TOL()) continue;
     const c = ox * ux + oy * uy;
-    for (const edge of [c - r.params.w / 2, c + r.params.w / 2]) {
-      if (Math.abs(along - w / 2 - edge) < FLUSH && edge >= c) { along = edge + w / 2; snapped = true; break; }
-      if (Math.abs(along + w / 2 - edge) < FLUSH && edge <= c) { along = edge - w / 2; snapped = true; break; }
+    for (const edge of [c - r.size.w / 2, c + r.size.w / 2]) {
+      if (Math.abs(along - w / 2 - edge) < FLUSH() && edge >= c) { along = edge + w / 2; snapped = true; break; }
+      if (Math.abs(along + w / 2 - edge) < FLUSH() && edge <= c) { along = edge - w / 2; snapped = true; break; }
     }
   }
   // A neighbour never pushes it through the room's end walls.

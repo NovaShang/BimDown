@@ -178,3 +178,34 @@ describe('furniture types', () => {
     expect([stored.family, stored.variant, stored.size_x]).toEqual(['', '', '']);
   });
 });
+
+describe('furniture in a millimetre project', () => {
+  it('draws, places and exports at the project unit', async () => {
+    const { memoryDataSource: mds, fc } = await import('../test/memoryDataSource.ts');
+    const { buildPlanDrawing } = await import('../export/drawing/plan.ts');
+    const { buildIfc } = await import('../export/exportIfc.ts');
+    const ds = mds({
+      'project_metadata.json': JSON.stringify({ format_version: 2, units: 'mm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\n',
+      'lv-1/furniture.csv': 'id,number,family,variant,size_x,size_y,height,mirror\nfu-1,,desk,standard,1600,800,750,\nfu-2,,bed,double,,,,\n',
+      'lv-1/furniture.geojson': fc([
+        { type: 'Feature', properties: { id: 'fu-1' }, geometry: { type: 'Point', coordinates: [2000, 2000] } },
+        { type: 'Feature', properties: { id: 'fu-2' }, geometry: { type: 'Point', coordinates: [8000, 2000] } },
+      ]),
+    });
+    const project = await loadProject(ds);
+    // Plan sheet: the desk outline is 1600 × 800 mm
+    const d = buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!;
+    const pts = d.items.filter(i => i.layer === 'A-FURN' && i.kind === 'path').flatMap(i => (i.kind === 'path' ? i.pts : [])).filter(p => p.x < 5000);
+    expect(Math.max(...pts.map(p => p.x)) - Math.min(...pts.map(p => p.x))).toBeCloseTo(1600, 0);
+    // The bed takes its library default size in mm
+    const bed = d.items.filter(i => i.layer === 'A-FURN' && i.kind === 'path').flatMap(i => (i.kind === 'path' ? i.pts : [])).filter(p => p.x > 5000);
+    expect(Math.max(...bed.map(p => p.y)) - Math.min(...bed.map(p => p.y))).toBeGreaterThan(1900);
+    // IFC: millimetre length unit, sizes in mm
+    const step = new TextDecoder().decode(await buildIfc(project, 'mm'));
+    expect(step).toMatch(/IFCSIUNIT\(\*,\.LENGTHUNIT\.,\.MILLI\.,\.METRE\.\)/);
+    expect(step).toContain("IFCPROPERTYSINGLEVALUE('Width',$,IFCLENGTHMEASURE(1600.)");
+    // Placement attrs in mm
+    expect(furniturePlacementAttrs('desk', undefined, 1000).size_x).toBe('1400');
+  });
+});

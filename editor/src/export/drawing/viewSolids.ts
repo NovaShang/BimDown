@@ -37,6 +37,8 @@ import type { EquipmentFacts } from '../../elements/equipment.tsx';
 import { doorParts, windowParts } from '../../elements/_opening3D.tsx';
 import type { Frame, Profile, Solid, V2, V3 } from '../ifc/frame.ts';
 import { cross, frameY, planFrame, v3 } from '../ifc/frame.ts';
+import { getProjectUnits } from '../../utils/units.ts';
+import { unitsPerMetre } from './plan.ts';
 import {
   box, brepFromBuffer, curtainWallParts, extrudePlan, hangFromTop, openingPartSolids, railingGeom, rampGeom,
   sectionProfile, stairFlightGeom, sweep, wallOpeningFrame,
@@ -453,6 +455,7 @@ export interface ViewModelInput {
 export function collectViewParts(input: ViewModelInput): ViewPart[] {
   const { project } = input;
   const allLevels = project.levels;
+  const upm = unitsPerMetre(getProjectUnits({ project }));
   const out: ViewPart[] = [];
   const scopes: { id: string; level: Level; elements: CanonicalElement[]; baseOf: (el: CanonicalElement) => number }[] = [];
   for (const level of allLevels) {
@@ -480,7 +483,7 @@ export function collectViewParts(input: ViewModelInput): ViewPart[] {
     const ctxAt = (elevation: number) => {
       let c = ctxCache.get(elevation);
       if (!c) {
-        c = buildGeometryContext({ level: { ...scope.level, elevation }, allLevels, allElements, mepSystems: project.mepSystems, types: project.types });
+        c = buildGeometryContext({ level: { ...scope.level, elevation }, allLevels, allElements, mepSystems: project.mepSystems, types: project.types, unitsPerMetre: upm });
         ctxCache.set(elevation, c);
       }
       return c;

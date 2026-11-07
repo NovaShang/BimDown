@@ -69,7 +69,7 @@ const CACHE_MAX = 400;
 
 export function furnitureGeometryKey(r: ResolvedFurniture): string {
   const p = r.params;
-  return `${r.family.id}|${p.variant}|${p.w.toFixed(3)}|${p.d.toFixed(3)}|${p.h.toFixed(3)}|${r.mirror ? 1 : 0}`;
+  return `${r.family.id}|${p.variant}|${p.w.toFixed(3)}|${p.d.toFixed(3)}|${p.h.toFixed(3)}|${r.mirror ? 1 : 0}|${r.upm}`;
 }
 
 /** Cached shared geometry: instances with equal parameters share one buffer. */
@@ -100,10 +100,10 @@ export function furnitureMaterial(): MeshStandardMaterial {
 }
 
 /** A standalone mesh for export (glTF): world-placed, named `furniture:<id>`. */
-export function furnitureObject3D(el: CanonicalElement, levelElevation: number): Mesh | null {
+export function furnitureObject3D(el: CanonicalElement, levelElevation: number, upm = 1): Mesh | null {
   if (el.tableName !== 'furniture' || el.geometry !== 'point') return null;
   const p = el as PointElement;
-  const r = resolveFurniture(p.attrs);
+  const r = resolveFurniture(p.attrs, upm);
   const mesh = new Mesh(buildFurnitureGeometry(r), furnitureMaterial());
   mesh.position.set(p.position.x, levelElevation + (parseFloat(p.attrs.base_offset || '0') || 0), -p.position.y);
   mesh.rotation.y = ((parseFloat(p.attrs.rotation || '0') || 0) * Math.PI) / 180;

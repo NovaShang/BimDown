@@ -14,6 +14,7 @@ import { getProjectUnits } from '../utils/units.ts';
 import { resolveNextLevelId } from '../tools/levelUtil.ts';
 import { resolveFurniture } from './furnitureLibrary.generated.ts';
 import { snapBackToWall } from './wallSnap.ts';
+import { metre } from '../annotation/geometry.ts';
 
 interface Pose { position: Point; rotationDeg: number; wallSnapped: boolean }
 
@@ -22,10 +23,10 @@ function poseAt(ctx: ToolContext, e: React.PointerEvent): { pose: Pose; snap: Re
   if (!svgPt) return null;
   const state = ctx.getState();
   const attrs = state.drawingAttrs;
-  const r = resolveFurniture(attrs);
+  const r = resolveFurniture(attrs, metre());
   const userRot = parseFloat(attrs.rotation || '0') || 0;
   if (r.family.wallBacked && !e.altKey && state.document) {
-    const wall = snapBackToWall(svgPt, r.params.w, r.params.d, state.document.elements);
+    const wall = snapBackToWall(svgPt, r.size.w, r.size.d, state.document.elements);
     if (wall) return { pose: { position: wall.position, rotationDeg: wall.rotationDeg, wallSnapped: true }, snap: null };
   }
   const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined,
@@ -58,15 +59,15 @@ export const placeFurnitureTool: ToolHandler = {
     const base = defaultAttrs(target.tableName, resolveNextLevelId(state));
     const merged: Record<string, string> = { ...base, ...state.drawingAttrs };
     for (const k of Object.keys(merged)) if (k.startsWith('__')) delete merged[k];
-    const r = resolveFurniture(merged);
+    const r = resolveFurniture(merged, metre());
     const id = generateId(target.tableName, new Set(state.document?.elements.keys() ?? []));
     const attrs: Record<string, string> = {
       ...merged,
       family: r.family.id,
       variant: r.params.variant,
-      size_x: String(r.params.w),
-      size_y: String(r.params.d),
-      height: String(r.params.h),
+      size_x: String(r.size.w),
+      size_y: String(r.size.d),
+      height: String(r.size.h),
       rotation: String(Math.round(pose.rotationDeg * 1000) / 1000),
     };
     const element: PointElement = {
@@ -75,8 +76,8 @@ export const placeFurnitureTool: ToolHandler = {
       discipline: target.discipline,
       geometry: 'point',
       position: { x: Math.round(pose.position.x * 1000) / 1000, y: Math.round(pose.position.y * 1000) / 1000 },
-      width: r.params.w,
-      height: r.params.d,
+      width: r.size.w,
+      height: r.size.d,
       attrs,
     };
     ctx.dispatch({ type: 'CREATE_ELEMENT', element });

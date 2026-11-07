@@ -48,6 +48,8 @@ import { Matrix4 } from 'three';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
 import { triggerDownload } from './download.ts';
+import { getProjectUnits } from '../utils/units.ts';
+import { unitsPerMetre } from './drawing/plan.ts';
 import { IfcWriter, type H, type IfcSchema } from './ifc/writer.ts';
 import {
   type Frame, type Solid, type V2, type V3,
@@ -267,12 +269,15 @@ class Exporter {
 
   private w: IfcWriter;
   private project: ProjectData;
+  /** Project units per metre (the file's length unit follows the project). */
+  private upm: number;
   private modelName: string;
   private grids: GridData[];
 
   constructor(w: IfcWriter, project: ProjectData, modelName: string, grids: GridData[]) {
     this.w = w;
     this.project = project;
+    this.upm = unitsPerMetre(getProjectUnits({ project }));
     this.modelName = modelName;
     this.grids = grids;
     this.S = w.S;
@@ -315,10 +320,25 @@ class Exporter {
     w.axisContext = w.add('IfcGeometricRepresentationSubContext', w.label('Axis'), w.label('Model'),
       context, null, S.IfcGeometricProjectionEnum.GRAPH_VIEW, null);
 
-    const unit = (type: string, name: string) => w.add('IfcSIUnit', S.IfcUnitEnum[type], null, S.IfcSIUnitName[name]);
+    // Lengths are written in project units: metre, millimetre (SI prefix) or
+    // foot / inch (conversion-based units), with matching area and volume.
+    const unit = (type: string, name: string, prefix?: string) =>
+      w.add('IfcSIUnit', S.IfcUnitEnum[type], prefix ? S.IfcSIPrefix[prefix] : null, S.IfcSIUnitName[name]);
+    const projectUnit = getProjectUnits({ project: this.project });
+    const imperial = (type: string, name: string, factor: number, si: H, dim: number) =>
+      w.add('IfcConversionBasedUnit', w.add('IfcDimensionalExponents', dim, 0, 0, 0, 0, 0, 0), S.IfcUnitEnum[type], w.label(name),
+        w.add('IfcMeasureWithUnit', new S.IfcReal(factor), si));
+    const ft = projectUnit === 'ft' ? 0.3048 : projectUnit === 'in' ? 0.0254 : 0;
+    const prefix = projectUnit === 'mm' ? 'MILLI' : undefined;
+    const lengthUnits = ft
+      ? [
+        imperial('LENGTHUNIT', projectUnit === 'ft' ? 'FOOT' : 'INCH', ft, unit('LENGTHUNIT', 'METRE'), 1),
+        imperial('AREAUNIT', projectUnit === 'ft' ? 'SQUARE FOOT' : 'SQUARE INCH', ft * ft, unit('AREAUNIT', 'SQUARE_METRE'), 2),
+        imperial('VOLUMEUNIT', projectUnit === 'ft' ? 'CUBIC FOOT' : 'CUBIC INCH', ft * ft * ft, unit('VOLUMEUNIT', 'CUBIC_METRE'), 3),
+      ]
+      : [unit('LENGTHUNIT', 'METRE', prefix), unit('AREAUNIT', 'SQUARE_METRE', prefix), unit('VOLUMEUNIT', 'CUBIC_METRE', prefix)];
     const units = w.add('IfcUnitAssignment', [
-      unit('LENGTHUNIT', 'METRE'), unit('AREAUNIT', 'SQUARE_METRE'),
-      unit('VOLUMEUNIT', 'CUBIC_METRE'), unit('PLANEANGLEUNIT', 'RADIAN'),
+      ...lengthUnits, unit('PLANEANGLEUNIT', 'RADIAN'),
     ]);
 
     const org = w.add('IfcOrganization', null, w.label('BimDown'), null, null, null);
@@ -371,7 +391,7 @@ class Exporter {
         let c = ctxCache.get(elev);
         if (!c) {
           const level: Level = { ...storey.level, elevation: elev };
-          c = buildGeometryContext({ level, allLevels, allElements, mepSystems, types: project.types });
+          c = buildGeometryContext({ level, allLevels, allElements, mepSystems, types: project.types, unitsPerMetre: this.upm });
           ctxCache.set(elev, c);
         }
         return c;
@@ -846,7 +866,7 @@ class Exporter {
     });
     this.pset(rec, 'BimDown_Component', {
       Family: w.label(r.family.id), Variant: w.label(r.params.variant || null), Category: w.label(r.family.category),
-      RevitCategory: w.label(r.family.revit), Width: w.len(r.params.w), Depth: w.len(r.params.d), Height: w.len(r.params.h),
+      RevitCategory: w.label(r.family.revit), Width: w.len(r.size.w), Depth: w.len(r.size.d), Height: w.len(r.size.h),
     });
     this.bimdownPset(rec);
   }

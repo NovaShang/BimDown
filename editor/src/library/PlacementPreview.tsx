@@ -3,15 +3,16 @@ import type { ReactNode } from 'react';
 import type { Point } from '../model/elements.ts';
 import { furniturePlan, resolveFurniture } from './furnitureLibrary.generated.ts';
 import { renderPrims } from './FurnitureSymbol.tsx';
+import { metre } from '../annotation/geometry.ts';
 
 /** Ghost of the component under the cursor (DrawingOverlay, model Y-up group). */
 export function FurniturePlacementPreview({ cursor, rotation, attrs, scale }: {
   cursor: Point; rotation?: number; attrs: Record<string, string>; scale: number;
 }): ReactNode {
-  const r = resolveFurniture(attrs);
+  const r = resolveFurniture(attrs, metre());
   const rot = rotation ?? (parseFloat(attrs.rotation || '0') || 0);
-  const { w, d } = r.params;
-  const tick = 0.25;
+  const { w, d } = r.size;
+  const tick = 0.25 * r.upm;
   return (
     <g className="drawing-overlay" transform="scale(1,-1)">
       <g transform={`translate(${cursor.x},${cursor.y}) rotate(${rot})`} opacity={0.85}>

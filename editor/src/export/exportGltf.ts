@@ -4,6 +4,8 @@ import { elementTo3DParams } from '../three/utils/elementTo3D.ts';
 import type { BoxParams, ExtrudeParams } from '../three/utils/elementTo3D.ts';
 import { triggerDownload } from './download.ts';
 import { furnitureObject3D } from '../library/furniture3D.ts';
+import { getProjectUnits } from '../utils/units.ts';
+import { unitsPerMetre } from './drawing/plan.ts';
 
 // Color palette per table name (matches editor 2D layer styles)
 const TABLE_COLORS: Record<string, number> = {
@@ -55,6 +57,7 @@ export async function exportGltf(project: ProjectData, modelName: string): Promi
     return mat;
   }
 
+  const upm = unitsPerMetre(getProjectUnits({ project }));
   for (const level of project.levels) {
     const floor = project.floors.get(level.id);
     if (!floor) continue;
@@ -65,7 +68,7 @@ export async function exportGltf(project: ProjectData, modelName: string): Promi
 
     for (const el of elements) {
       // Library components: their merged low-poly mesh (vertex colours).
-      const fu = furnitureObject3D(el, level.elevation);
+      const fu = furnitureObject3D(el, level.elevation, upm);
       if (fu) { group.add(fu); continue; }
       const params = elementTo3DParams(el, level.elevation, levelElevations);
       if (!params) continue;
