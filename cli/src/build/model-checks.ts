@@ -2,9 +2,10 @@
  * Copy of bimdown-editor/editor/src/geometry/modelChecks.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
  */
 /**
- * Model checks shared by `bimdown build` warnings and the editor's Warnings
- * panel (Revit "Review Warnings"): overlapping doors / windows / openings on
- * one host, and walls overlapping each other. Pure core on a flat,
+ * Model checks shared by `bimdown build` / `validate` and the editor
+ * (Warnings panel, properties): overlapping doors / windows / openings on
+ * one host, walls overlapping each other, and numeric fields that must be
+ * positive (thickness, widths…). Pure core on a flat,
  * unit-agnostic model; callers pass a tolerance in project units. The CLI
  * keeps a verbatim copy in bimdown-spec/cli/src/build/model-checks.ts
  * (web/src/lib/shared-code-drift.test.ts).
@@ -140,4 +141,23 @@ export function wallOverlaps(walls: CheckWall[], tol: number, minOverlap = tol *
     }
   }
   return out;
+}
+
+/** Numeric fields that must be greater than 0 when set (an empty value inherits from the type). */
+export const POSITIVE_FIELDS = new Set([
+  'thickness', 'width', 'height', 'size_x', 'size_y', 'flange', 'web', 'step_count',
+  'u_spacing', 'v_spacing', 'mullion_width', 'mullion_depth', 'frame_width',
+  'baluster_spacing', 'baluster_size', 'top_rail_size', 'conductivity',
+]);
+/** Numeric fields that must not be negative. */
+export const NON_NEGATIVE_FIELDS = new Set(['position', 'u_grid_count', 'v_grid_count', 'u_value', 'shgc', 'vt', 'load', 'rating', 'voltage', 'poles']);
+
+/** 'positive' / 'non_negative' when `raw` breaks the field's sign rule, else null (empty / non-numeric: other checks). */
+export function numericFieldError(field: string, raw: string | undefined): 'positive' | 'non_negative' | null {
+  if (raw === undefined || raw.trim() === '') return null;
+  const v = Number(raw);
+  if (!Number.isFinite(v)) return null;
+  if (POSITIVE_FIELDS.has(field) && !(v > 0)) return 'positive';
+  if (NON_NEGATIVE_FIELDS.has(field) && v < 0) return 'non_negative';
+  return null;
 }

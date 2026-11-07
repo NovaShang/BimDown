@@ -7,6 +7,7 @@
 import type { ResolvedTable } from '../schema/types.js';
 import type { CsvData } from '../utils/csv.js';
 import { UNIT_TO_M } from '../utils/units.js';
+import { numericFieldError } from '../build/model-checks.js';
 
 /** Per-field max reasonable values in meters. */
 const FIELD_MAX: Record<string, number> = {
@@ -53,9 +54,17 @@ export function validateRanges(path: string, table: ResolvedTable, data: CsvData
     (f) => (f.type === 'float' || f.type === 'int') && f.name !== 'id' && f.unit !== 'none',
   );
 
+  // Sign rules shared with the editor (thickness, widths… > 0; positions ≥ 0)
+  const numericFields = table.csvFields.filter((f) => f.type === 'float' || f.type === 'int');
+
   for (let i = 0; i < data.rows.length; i++) {
     const row = data.rows[i];
     const rowNum = i + 2; // 1-indexed + header
+
+    for (const field of numericFields) {
+      const err = numericFieldError(field.name, row[field.name]);
+      if (err) issues.push(`${path}:${rowNum}  ${field.name}=${row[field.name]} must be ${err === 'positive' ? 'greater than 0' : '0 or more'}`);
+    }
 
     for (const field of floatFields) {
       const raw = row[field.name];
