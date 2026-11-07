@@ -114,4 +114,15 @@ describe('framing across levels', () => {
     expect(back.get('bm-1')!.end).toEqual({ x: 7.2, y: 0 });
     expect((undone.document!.elements.get('sc-2') as CanonicalElement & { position: { x: number } }).position.x).toBe(7.2);
   });
+
+  it('copy to the top level turns floor slabs into roof slabs (option)', () => {
+    const slab = parseLayer(layer('structure_slab', 'id,number,thickness,function\nss-1,,0.2,floor', [F('ss-1', { type: 'Polygon', coordinates: [[[0, 0], [7, 0], [7, 8], [0, 8], [0, 0]]] })]));
+    const p = project({ 'lv-1': [], 'lv-2': [], 'lv-3': [] });
+    const state = { ...initialState, project: p, currentLevel: 'lv-1', document: createDocument('lv-1', slab) } as EditorState;
+    const fn = (s: EditorState, lv: string) => parseFloorLayers(s.project!.floors.get(lv)!.layers).find(e => e.tableName === 'structure_slab')?.attrs.function;
+    const on = editorReducer(state, { type: 'COPY_TO_LEVELS', ids: ['lv-1:ss-1'], levelIds: ['lv-2', 'lv-3'], roofOnTop: true });
+    expect([fn(on, 'lv-2'), fn(on, 'lv-3')]).toEqual(['floor', 'roof']);
+    const off = editorReducer(state, { type: 'COPY_TO_LEVELS', ids: ['lv-1:ss-1'], levelIds: ['lv-3'] });
+    expect(fn(off, 'lv-3')).toBe('floor');
+  });
 });

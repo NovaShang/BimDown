@@ -89,9 +89,28 @@ function nextId(prefix: string, used: Iterable<string>): string {
 export const nextSheetId = (set: SheetSet) => nextId('sh', set.sheets.map(s => s.id));
 export const nextViewportId = (set: SheetSet) => nextId('vp', set.viewports.map(v => v.id));
 
-/** Next sheet number after the highest one with the same prefix ("A-101" → "A-102"). */
-export function nextSheetNumber(sheets: SheetDef[]): string {
+/** Sheet number prefix per discipline (US NCS): A- architecture, S- structure, M- MEP. */
+export const SHEET_PREFIX: Record<string, string> = { architecture: 'A-', structure: 'S-', mep: 'M-' };
+
+/**
+ * Next sheet number after the highest one with the same prefix ("A-101" →
+ * "A-102"); with a discipline, after the highest of that discipline's prefix
+ * (S-101 for the first structural sheet).
+ */
+export function nextSheetNumber(sheets: SheetDef[], discipline?: string | null): string {
   const used = new Set(sheets.map(s => s.number));
+  const prefix = discipline ? SHEET_PREFIX[discipline] : undefined;
+  if (prefix) {
+    let max = 100;
+    for (const s of sheets) {
+      if (!s.number.startsWith(prefix)) continue;
+      const n = parseInt(s.number.slice(prefix.length), 10);
+      if (Number.isFinite(n) && n > max) max = n;
+    }
+    let n = max + 1;
+    while (used.has(`${prefix}${n}`)) n++;
+    return `${prefix}${n}`;
+  }
   const last = sheets[sheets.length - 1]?.number ?? '';
   const m = /^(.*?)(\d+)$/.exec(last);
   if (m) {
@@ -107,9 +126,9 @@ export function nextSheetNumber(sheets: SheetDef[]): string {
   return `A-${n}`;
 }
 
-export function newSheet(set: SheetSet, paper: SheetPaper = DEFAULT_PAPER): SheetDef {
+export function newSheet(set: SheetSet, paper: SheetPaper = DEFAULT_PAPER, discipline?: string | null): SheetDef {
   return {
-    id: nextSheetId(set), number: nextSheetNumber(set.sheets), name: '', paper,
+    id: nextSheetId(set), number: nextSheetNumber(set.sheets, discipline), name: '', paper,
     revision: '', revisionDate: '', revisionNote: '', issueDate: '', drawnBy: '', checkedBy: '',
   };
 }

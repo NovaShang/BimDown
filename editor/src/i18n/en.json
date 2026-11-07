@@ -1132,5 +1132,6 @@
   "renumber.cat.equipment.generator": "Generators",
   "renumber.cat.equipment.water_heater": "Water heaters",
   "renumber.cat.equipment.tank": "Tanks",
-  "renumber.cat.equipment.other": "Other equipment"
+  "renumber.cat.equipment.other": "Other equipment",
+  "levels.roofOnTop": "Floor slabs become roof slabs on the top level"
 }

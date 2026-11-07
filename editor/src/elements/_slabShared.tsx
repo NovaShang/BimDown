@@ -49,6 +49,25 @@ export function polygonCentroid(vs: Point[]): Point {
   return { x: cx / (3 * a), y: cy / (3 * a) };
 }
 
+/** Polylines of the one-way span symbol (shaft, two arrow heads, tick) — editor, PDF / DXF. */
+export function spanSymbolLines(vertices: readonly Point[], at: Point, deg: number, head = 0.25, tick = 0.3): Point[][] {
+  const a = (deg * Math.PI) / 180;
+  const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of vertices) {
+    const t = (v.x - at.x) * ux + (v.y - at.y) * uy;
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+  }
+  const half = Math.max(0.5, Math.min(2, (hi - lo) * 0.2));
+  const p1 = { x: at.x - ux * half, y: at.y - uy * half };
+  const p2 = { x: at.x + ux * half, y: at.y + uy * half };
+  const arrow = (tip: Point, d: number) => [
+    { x: tip.x - d * ux * head + nx * head * 0.5, y: tip.y - d * uy * head + ny * head * 0.5 }, tip,
+    { x: tip.x - d * ux * head - nx * head * 0.5, y: tip.y - d * uy * head - ny * head * 0.5 },
+  ];
+  return [[p1, p2], arrow(p2, 1), arrow(p1, -1), [{ x: at.x - nx * tick, y: at.y - ny * tick }, { x: at.x + nx * tick, y: at.y + ny * tick }]];
+}
+
 /**
  * One-way span symbol: a double-headed arrow along the span direction through
  * the slab centroid (a short perpendicular tick marks the supported edges).

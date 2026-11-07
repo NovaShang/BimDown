@@ -1446,7 +1446,7 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
       const targets = action.levelIds.filter(id => id !== state.document!.levelId && state.project!.levels.some(l => l.id === id));
       if (targets.length === 0) return state;
       const numbers = getModifyOptions().renumberCopies ? projectNumbers(state) : undefined;
-      const patches = copyToLevelsPatches(state, state.document.elements, action.ids.map(toElementId), state.document.levelId, targets, undefined, numbers);
+      const patches = copyToLevelsPatches(state, state.document.elements, action.ids.map(toElementId), state.document.levelId, targets, undefined, numbers, action.roofOnTop);
       return pushMultiLevel(state, 'Copy to levels', patches);
     }
 

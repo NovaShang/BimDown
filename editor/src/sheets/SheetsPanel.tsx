@@ -88,7 +88,8 @@ export default function SheetsPanel({ onClose }: { onClose: () => void }) {
     setSelectedVp(null);
   };
   const createSheet = () => {
-    const s = { ...newSheet(set), name: '' };
+    // Structural / MEP views number their sheets S-101 / M-101
+    const s = { ...newSheet(set, undefined, state.activeDiscipline), name: '' };
     update({ ...set, sheets: [...set.sheets, s] });
     setCurrentId(s.id);
     setSelectedVp(null);

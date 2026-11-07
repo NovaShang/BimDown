@@ -15,6 +15,8 @@ import { formatElevation, getProjectUnits } from '../utils/units.ts';
 import { SINGLE_KEYS, TWO_LETTER, type Shortcut, type ShortcutGroup } from '../tools/shortcuts.ts';
 import { Input } from './ui/input';
 import RenumberDialog from './RenumberDialog.tsx';
+import { FLOOR_SLAB_TABLES } from '../state/levelEdits.ts';
+import { toElementId } from '../model/ids.ts';
 import { cn } from '../lib/utils';
 
 const primary = 'cursor-pointer rounded border-none bg-[var(--color-accent)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-40';
@@ -60,11 +62,18 @@ function LevelsDialog({ mode, onClose }: { mode: 'copy' | 'paste'; onClose: () =
   const unit = getProjectUnits(state);
   const levels = [...(state.project?.levels ?? [])].reverse();
   const [picked, setPicked] = useState<Set<string>>(new Set());
+  const [roofOnTop, setRoofOnTop] = useState(true);
   const toggle = (id: string) => setPicked(p => { const n = new Set(p); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  // Copying floor slabs to the top level: offer to make them roof slabs.
+  const topId = levels[0]?.id;
+  const hasFloorSlabs = mode === 'copy' && [...state.selectedIds].some(sid => {
+    const el = state.document?.elements.get(toElementId(sid));
+    return !!el && FLOOR_SLAB_TABLES.has(el.tableName) && (el.attrs.function || 'floor') === 'floor';
+  });
   const ok = async () => {
     const ids = [...picked];
     if (mode === 'copy') {
-      dispatch({ type: 'COPY_TO_LEVELS', ids: [...state.selectedIds], levelIds: ids });
+      dispatch({ type: 'COPY_TO_LEVELS', ids: [...state.selectedIds], levelIds: ids, roofOnTop: hasFloorSlabs && roofOnTop });
       showNotice('notice.copiedToLevels', { count: ids.length });
       return;
     }
@@ -92,6 +101,12 @@ function LevelsDialog({ mode, onClose }: { mode: 'copy' | 'paste'; onClose: () =
           onClick={() => setPicked(new Set(levels.filter(l => mode !== 'copy' || l.id !== state.currentLevel).map(l => l.id)))}>{t('dialog.all')}</button>
         <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[var(--color-accent)]" onClick={() => setPicked(new Set())}>{t('dialog.none')}</button>
       </div>
+      {hasFloorSlabs && topId && picked.has(topId) && (
+        <label className="mt-2 flex cursor-pointer items-center gap-2 text-[11px]">
+          <input type="checkbox" checked={roofOnTop} onChange={e => setRoofOnTop(e.target.checked)} data-testid="copy-roof-on-top" />
+          <span>{t('levels.roofOnTop')}</span>
+        </label>
+      )}
       <Buttons onClose={onClose} onOk={ok} okLabel={t(mode === 'copy' ? 'levels.copy' : 'ctx.paste')} disabled={picked.size === 0} />
     </Modal>
   );

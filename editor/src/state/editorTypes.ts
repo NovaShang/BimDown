@@ -209,7 +209,8 @@ export type EditorAction =
   /** Copy everything on a level to a new level (one undo step). */
   | { type: 'DUPLICATE_LEVEL'; levelId: string; level: Level }
   /** Copy selected elements (raw or selection ids on the open level) to other levels, same plan place. */
-  | { type: 'COPY_TO_LEVELS'; ids: string[]; levelIds: string[] }
+  /** `roofOnTop`: floor slabs copied to the top level become roof slabs. */
+  | { type: 'COPY_TO_LEVELS'; ids: string[]; levelIds: string[]; roofOnTop?: boolean }
   | { type: 'SET_PROJECT_SELECTION'; levels: Map<string, string[]> | null }
   /** Per-level element patches (and optionally the new level list) as one undo step. */
   | { type: 'APPLY_LEVEL_EDITS'; description: string; patches: LevelPatches; levels?: Level[]; select?: string[] }

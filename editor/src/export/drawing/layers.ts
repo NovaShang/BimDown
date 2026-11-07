@@ -55,6 +55,8 @@ export const LAYERS = {
   sBeam:       L('S-BEAM',      '#333333', 7, 0.25, 'hidden', 'Beams (above)'),
   sBrace:      L('S-BRCG',      '#333333', 7, 0.25, 'hidden', 'Braces'),
   sSlab:       L('S-SLAB',      '#7a7a7a', 8, 0.13, 'solid',  'Structural slab edges'),
+  sSlabIden:   L('S-SLAB-IDEN', '#333333', 7, 0.18, 'solid',  'One-way slab span direction symbols'),
+  sFloorOpen:  L('S-FLOR-OPEN', '#444444', 7, 0.18, 'solid',  'Openings in structural slabs and foundations'),
   sFoundation: L('S-FNDN',      '#444444', 7, 0.25, 'hidden', 'Foundations (below)'),
   mEquip:      L('M-EQPM',      '#1a1a1a', 7, 0.35, 'solid',  'Mechanical equipment'),
   mEquipIden:  L('M-EQPM-IDEN', '#1a1a1a', 7, 0.18, 'solid',  'Equipment tags'),

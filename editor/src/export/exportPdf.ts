@@ -9,7 +9,7 @@ import type { jsPDF as JsPdf } from 'jspdf';
 import type { ProjectData } from '../types.ts';
 import { triggerDownload } from './download.ts';
 import { collectPlans, renderPlan, isoDate, type PlanExportOptions } from './drawing/plan.ts';
-import { sheetLayout, pickScale, scaleBarStep, type PaperSize, type SheetLayout } from './drawing/sheet.ts';
+import { sheetLayout, pickScale, scaleBarStep, fits, type PaperSize, type SheetLayout } from './drawing/sheet.ts';
 import { drawingLabel, drawingLang, type DrawingLang } from './drawing/labels.ts';
 
 import { needsUnicodeFont, loadUnicodeFont, CJK_FONT_FILE, CJK_FONT_NAME, type FontLoader } from './drawing/pdfFont.ts';
@@ -178,6 +178,24 @@ export function suggestPlanScale(project: ProjectData, opts: PdfExportOptions = 
   if (!sources.length) return null;
   const L = sheetLayout(opts.paper ?? 'A3');
   return pickScale(s => sources.map(src => renderPlan(src, s)), L.drawArea).scale;
+}
+
+/**
+ * Levels whose plan does not fit the paper at the chosen fixed scale (the PDF
+ * would crop grids and elements), with the largest scale that fits. Empty
+ * for the automatic scale.
+ */
+export function planPdfOverflow(project: ProjectData, opts: PdfExportOptions = {}): { levels: string[]; fitScale: number | null } {
+  const fixed = typeof opts.scale === 'number' && opts.scale > 0 ? opts.scale : null;
+  if (!fixed) return { levels: [], fitScale: null };
+  const lang = drawingLang(opts.lang);
+  const sources = collectPlans(project, opts, lang);
+  if (!sources.length) return { levels: [], fitScale: null };
+  const L = sheetLayout(opts.paper ?? 'A3');
+  const levels = sources.map(s => renderPlan(s, fixed))
+    .filter(d => d.items.some(i => !i.dxfOnly && i.layer !== 'S-GRID' && i.layer !== 'S-GRID-IDEN') && !fits(d, L.drawArea))
+    .map(d => d.levelName);
+  return { levels, fitScale: levels.length ? suggestPlanScale(project, opts) : null };
 }
 
 /** Build the PDF; null when no level has anything to draw. */
