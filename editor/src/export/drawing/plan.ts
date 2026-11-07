@@ -615,13 +615,18 @@ function drawFoundation(env: DrawEnv, f: FoundationFacts) {
   }
 }
 
+/** Colour of the (first) system; every system of a combined tag ("SA,RA") gets its own legend row. */
 function systemColor(env: DrawEnv, systemType: string, fallback: string): string {
-  const sys = systemType.trim();
-  if (!sys) return fallback;
-  const def = env.src.input.project.mepSystems.find(s => s.system_type === sys || s.id === sys);
-  const color = resolveMepSystemColor(sys, def?.color);
-  if (!env.legend.has(sys)) env.legend.set(sys, { label: def?.name && def.name !== sys ? `${sys} ${def.name}` : sys, color });
-  return color;
+  const systems = [...new Set(systemType.split(',').map(s => s.trim()).filter(Boolean))];
+  if (!systems.length) return fallback;
+  let first: string | undefined;
+  for (const sys of systems) {
+    const def = env.src.input.project.mepSystems.find(s => s.system_type === sys || s.id === sys);
+    const color = resolveMepSystemColor(sys, def?.color);
+    first ??= color;
+    if (!env.legend.has(sys)) env.legend.set(sys, { label: def?.name && def.name !== sys ? `${sys} ${def.name}` : sys, color });
+  }
+  return first!;
 }
 
 /** In an MEP sheet the services sit on top of the faded building; elsewhere walls cover them. */

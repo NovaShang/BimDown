@@ -140,6 +140,16 @@ describe('plan drawing', () => {
     expect(planToDxf(d)).toContain('\nP-FIXT\n');
   });
 
+  it('lists each system of a combined tag once in the legend', async () => {
+    const files = room();
+    files['lv-1/duct.csv'] = 'id,number,shape,size_x,size_y,system_type\ndu-1,,rect,0.4,0.3,"SA, RA"\ndu-2,,rect,0.4,0.3,RA\n';
+    const line = (id: string, y: number) => ({ type: 'Feature', properties: { id }, geometry: { type: 'LineString', coordinates: [[0.5, y, 2.7], [3.5, y, 2.7]] } });
+    files['lv-1/duct.geojson'] = fc([line('du-1', 2), line('du-2', 1)]);
+    const { project, grids } = await open(files);
+    const mep = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'mep' }, 100)!;
+    expect(mep.legend.map(l => l.label).sort()).toEqual(['RA', 'SA']);
+  });
+
   it('writes a PDF for systems whose colour is generated (hsl)', async () => {
     const files = room();
     files['lv-1/duct.csv'] = 'id,number,shape,size_x,size_y,system_type\ndu-1,,rect,0.4,0.3,ZZ-CUSTOM\n';
