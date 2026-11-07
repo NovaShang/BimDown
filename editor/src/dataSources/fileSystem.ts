@@ -67,6 +67,19 @@ export function createFileSystemDataSource(
   // external change (but a later external write to the same file still counts)
   const selfWrites = new Map<string, number>();
 
+  async function write(path: string, content: string | ArrayBuffer): Promise<void> {
+    const parts = path.split('/');
+    let dir: FileSystemDirectoryHandle = dirHandle;
+    for (const part of parts.slice(0, -1)) {
+      dir = await dir.getDirectoryHandle(part, { create: true });
+    }
+    const fileHandle = await dir.getFileHandle(parts[parts.length - 1]!, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(content);
+    await writable.close();
+    selfWrites.set(path, (await fileHandle.getFile()).lastModified);
+  }
+
   return {
     async fetchText(path: string): Promise<string | null> {
       try {
@@ -85,16 +98,19 @@ export function createFileSystemDataSource(
     },
 
     async saveFile(path: string, content: string): Promise<void> {
-      const parts = path.split('/');
-      let dir: FileSystemDirectoryHandle = dirHandle;
-      for (const part of parts.slice(0, -1)) {
-        dir = await dir.getDirectoryHandle(part, { create: true });
+      await write(path, content);
+    },
+
+    async saveBinary(path: string, data: ArrayBuffer): Promise<void> {
+      await write(path, data);
+    },
+
+    async fetchBinary(path: string): Promise<ArrayBuffer | null> {
+      try {
+        return await (await getFile(dirHandle, path)).arrayBuffer();
+      } catch {
+        return null;
       }
-      const fileHandle = await dir.getFileHandle(parts[parts.length - 1]!, { create: true });
-      const writable = await fileHandle.createWritable();
-      await writable.write(content);
-      await writable.close();
-      selfWrites.set(path, (await fileHandle.getFile()).lastModified);
     },
 
     async deleteFile(path: string): Promise<void> {

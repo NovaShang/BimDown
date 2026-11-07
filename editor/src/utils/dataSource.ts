@@ -9,7 +9,8 @@ export interface DataSource {
   /** Write text content to a path */
   saveFile(path: string, content: string): Promise<void>;
   /** Optional: delete a file (missing files are not an error). Needed to
-   *  remove a level's folder; without it the files are left in place. */
+   *  remove a level's folder, an emptied layer or a removed underlay; without
+   *  it the files are left in place. */
   deleteFile?(path: string): Promise<void>;
   /** Subscribe to file changes. Returns unsubscribe function. */
   watchChanges(onFileChanged: (path: string) => void): () => void;
@@ -19,6 +20,25 @@ export interface DataSource {
   /** Optional: list all existing project files. When provided, the loader skips
    *  probing paths that aren't present, avoiding 404 storms on sparse projects. */
   listFiles?(): Promise<string[]>;
+  /** Optional: write raw bytes (underlay images, PDFs, DXFs). Without it the
+   *  editor can't import underlays into this source. */
+  saveBinary?(path: string, data: ArrayBuffer): Promise<void>;
+  /** Optional: read raw bytes. Falls back to fetching `resolveUrl(path)`. */
+  fetchBinary?(path: string): Promise<ArrayBuffer | null>;
+}
+
+/** Read a binary file through `ds.fetchBinary`, else by fetching its URL. */
+export async function fetchBinaryFile(ds: DataSource, path: string): Promise<ArrayBuffer | null> {
+  if (ds.fetchBinary) return ds.fetchBinary(path);
+  try {
+    const url = await ds.resolveUrl(path);
+    if (!url) return null;
+    const resp = await fetch(url);
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+    return resp.ok ? await resp.arrayBuffer() : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

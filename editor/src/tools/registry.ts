@@ -16,6 +16,7 @@ import { trimCornerTool, trimSingleTool, splitTool } from './wallModifyTools.ts'
 import { drawRegionTool } from './drawRegionTool.ts';
 import { drawDimensionTool, drawTextTool, drawTagTool } from './annotationTools.ts';
 import { drawSectionTool } from './drawSectionTool.ts';
+import { underlayTool } from './underlayTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -55,6 +56,9 @@ const toolRegistry: Record<string, ToolHandler> = {
 
   // View annotation: section line in the plan
   draw_section: drawSectionTool,
+
+  // Point picking for underlay calibrate / move / rotate (underlay/store.ts)
+  underlay: underlayTool,
 };
 
 export function getToolHandler(tool: Tool): ToolHandler {

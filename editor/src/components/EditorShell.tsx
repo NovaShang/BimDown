@@ -24,8 +24,9 @@ import { useMediaQuery } from '../hooks/useMediaQuery.ts';
 import SchedulePanel, { SCHEDULE_TOGGLE_EVENT } from './SchedulePanel.tsx';
 import { setAnnotationUnits } from '../annotation/geometry.ts';
 import { getProjectUnits } from '../utils/units.ts';
-
 import ViewPane from '../views/ViewPane.tsx';
+import { UnderlayProvider } from '../underlay/UnderlayContext.tsx';
+import { UnderlayHint, CalibrateDialog } from '../underlay/UnderlayDialogs.tsx';
 
 
 const Canvas3D = lazy(() => import('../three/Canvas3D.tsx'));
@@ -315,6 +316,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   }, []);
 
   return (
+    <UnderlayProvider>
     <div className="relative h-full w-full">
       <div className="relative h-full overflow-hidden">
         {/* Mobile panel toggle buttons */}
@@ -387,9 +389,12 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         )}
         {showSchedule && <SchedulePanel onClose={() => setShowSchedule(false)} />}
         <DrawingHints />
+        <UnderlayHint />
+        <CalibrateDialog />
         {/* The tour teaches editing tools: not for read-only / shared views */}
         {!state.readonly && <OnboardingTour />}
       </div>
     </div>
+    </UnderlayProvider>
   );
 }

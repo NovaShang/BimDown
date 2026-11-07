@@ -7,7 +7,7 @@ import { AabbGrid, type Box2 } from '../geometry/aabbGrid.ts';
 
 // ── Snap types ──
 
-export type SnapType = 'endpoint' | 'center' | 'gridline' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid' | 'connector';
+export type SnapType = 'endpoint' | 'center' | 'gridline' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid' | 'connector' | 'underlay';
 
 export type SnapGuideType = 'point' | 'vline' | 'hline' | 'edge_segment' | 'angle_line' | 'length_ring';
 
@@ -58,6 +58,32 @@ export interface ConnectorSnapPoint {
   /** Port height above the level (host base_offset + offset_z). */
   z?: number;
 }
+
+// ── External snap targets (underlays) ──
+
+/** A snap target outside the document model, e.g. a DXF underlay vertex. */
+export interface ExternalSnapTarget {
+  x: number;
+  y: number;
+  type: 'endpoint' | 'edge' | 'midpoint';
+  edgeFrom?: Point;
+  edgeTo?: Point;
+}
+
+/** Returns targets within `radius` of `p` (plan coordinates). */
+export type ExternalSnapProvider = (p: Point, radius: number) => ExternalSnapTarget[];
+
+let underlaySnapProvider: ExternalSnapProvider | null = null;
+
+/** Register the underlay snap source (one editor per page); null to clear.
+ *  Its targets rank just below the model's own, and the 'underlay' snap
+ *  toggle turns them all off. */
+export function setUnderlaySnapProvider(provider: ExternalSnapProvider | null): void {
+  underlaySnapProvider = provider;
+}
+
+/** Model targets win ties against underlay targets of the same kind. */
+const UNDERLAY_PRIORITY: Record<ExternalSnapTarget['type'], number> = { endpoint: 1.1, edge: 2.1, midpoint: 3.1 };
 
 // ── Grid spacing ──
 
@@ -397,6 +423,10 @@ export function computeSnap(
   // Track edge snap separately (needs 2D coherent snap)
   let bestEdge: { target: SnapTarget; dist: number } | null = null;
 
+  // Set when the cursor sits on a point target (vertex, grid intersection):
+  // later angle / length rounding must not drag it off that point.
+  let onPoint = false;
+
   // Tangent direction of the gridline that captured the cursor (Pass 0b),
   // used by Pass 5 to keep along-line integer snapping ON the line.
   let gridLineDir: { ux: number; uy: number; a: Point } | null = null;
@@ -409,6 +439,11 @@ export function computeSnap(
   if (extraEndpoints && extraEndpoints.length > 0) {
     for (const p of extraEndpoints) {
       targets.push({ x: p.x, y: p.y, type: 'endpoint', priority: 1 });
+    }
+  }
+  if (underlaySnapProvider && !disabledSnapTypes.has('underlay')) {
+    for (const t of underlaySnapProvider(input, threshold)) {
+      targets.push({ x: t.x, y: t.y, type: t.type, priority: UNDERLAY_PRIORITY[t.type], edgeFrom: t.edgeFrom, edgeTo: t.edgeTo });
     }
   }
   // Drop object-snap targets the user has turned off (endpoint/center/midpoint/edge).
@@ -445,6 +480,7 @@ export function computeSnap(
       }
     }
     if (bestIntersection) {
+      onPoint = true;
       snapX = { type: 'gridline', value: bestIntersection.pt.x, priority: 1 };
       snapY = { type: 'gridline', value: bestIntersection.pt.y, priority: 1 };
       guides.push({ type: 'point', x: bestIntersection.pt.x, y: bestIntersection.pt.y, snapType: 'gridline' });
@@ -516,6 +552,22 @@ export function computeSnap(
         snapY = { type: t.type, value: t.y, priority: t.priority };
       }
     }
+  }
+
+  // ── Pass 1b: a point target under the cursor takes both axes ──
+  // Independent X/Y alignment could otherwise combine the X of one vertex with
+  // the Y of a neighbor (e.g. the two faces of a DXF double-line wall).
+  let direct: { t: SnapTarget; d: number } | null = null;
+  for (const t of targets) {
+    if (t.type === 'edge') continue;
+    const d = dist2D(input, t);
+    if (d >= threshold) continue;
+    if (!direct || t.priority < direct.t.priority || (t.priority === direct.t.priority && d < direct.d)) direct = { t, d };
+  }
+  if (direct && direct.t.priority <= Math.min(snapX?.priority ?? Infinity, snapY?.priority ?? Infinity)) {
+    onPoint = true;
+    snapX = { type: direct.t.type, value: direct.t.x, priority: direct.t.priority };
+    snapY = { type: direct.t.type, value: direct.t.y, priority: direct.t.priority };
   }
 
   // ── Pass 2: Edge targets — 2D distance, coherent X+Y ──
@@ -686,7 +738,7 @@ export function computeSnap(
     }
   }
 
-  if (anchor && !disabledSnapTypes.has('length')) {
+  if (anchor && !onPoint && !disabledSnapTypes.has('length')) {
     const preX = snapX ? snapX.value : input.x;
     const preY = snapY ? snapY.value : input.y;
 

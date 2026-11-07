@@ -45,6 +45,7 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   terminal: { csv: ['id', 'number', 'mesh_file', 'system_type', 'terminal_type', 'family', 'type'], geojson: ['base_offset'] },
   text_note: { csv: ['id', 'x', 'y', 'text', 'size', 'rotation'], geojson: [] },
   type_layer: { csv: ['material', 'id', 'type_id', 'seq', 'function', 'thickness', 'conductivity', 'name'], geojson: [] },
+  underlay: { csv: ['id', 'name', 'level_id', 'file', 'page', 'x', 'y', 'rotation', 'scale', 'opacity', 'visible', 'locked', 'hidden_layers'], geojson: [] },
   view: { csv: ['id', 'name', 'view_type', 'start_x', 'start_y', 'end_x', 'end_y', 'depth'], geojson: [] },
   wall: { csv: ['id', 'number', 'mesh_file', 'base_level_id', 'top_level_id', 'material', 'thickness', 'type_id'], geojson: ['base_offset', 'top_offset'] },
   wall_type: { csv: ['id', 'name', 'description', 'material', 'thickness'], geojson: [] },

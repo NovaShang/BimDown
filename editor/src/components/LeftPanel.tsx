@@ -17,6 +17,7 @@ import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { formatElevation, getProjectUnits } from '../utils/units.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import { persistMepSystems } from '../utils/persist.ts';
+import UnderlayPanel from '../underlay/UnderlayPanel.tsx';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -317,6 +318,8 @@ export default function LeftPanel({
             </div>
         </ScrollArea>
       </div>
+
+      <UnderlayPanel />
 
       {/* MEP Systems Legend + editor. Header "+" adds a new system; each row
           has hover-revealed edit / delete actions. */}
