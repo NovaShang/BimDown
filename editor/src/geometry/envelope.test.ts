@@ -12,6 +12,7 @@ import { getElementModule } from '../elements/registry.ts';
 import type { SlabFacts } from '../elements/_slabShared.tsx';
 import type { LineWallFacts } from '../elements/_lineWallShared.tsx';
 import type { ProjectData, LayerData } from '../types.ts';
+import { wallSolid } from '../elements/_lineWallShared.tsx';
 
 const wall = (id: string, a: Point, b: Point, t = 0.2, attrs: Record<string, string> = {}): LineElement => ({
   id, tableName: 'wall', discipline: 'architecture', geometry: 'line', start: a, end: b, strokeWidth: t,
@@ -80,6 +81,17 @@ describe('wall top attached to a roof', () => {
     const f = getElementModule('wall')!.geometry(w, ctx) as LineWallFacts;
     expect(f.topAttach).toBeDefined();
     expect(f.height).toBeCloseTo(7.5, 6); // the ridge runs along the wall
+  });
+
+  it('builds a closed gable-end wall solid (with a door cut) under the roof', () => {
+    const w = wall('w-8', { x: 10, y: 0 }, { x: 10, y: 8 }, 0.2, { top_attach_id: 'ro-1' });
+    const els = new Map<string, CanonicalElement>([[w.id, w], [roof.id, roof]]);
+    const ctx = buildGeometryContext({ level: { id: 'lv-1', number: '', name: '', elevation: 0 }, allLevels: [], allElements: els });
+    const f = getElementModule('wall')!.geometry(w, ctx) as LineWallFacts;
+    // top(y) = 3 + min(y + 0.5, 8.5 − y): ∫ over 0..8 = 44 → × 0.2 thick
+    expect(meshVolume(wallSolid(f, f.footprint))).toBeCloseTo(8.8, 3);
+    const withDoor = { ...f, openings: [{ hostedId: 'd-1', hostedTable: 'door' as const, position: 4, width: 1, height: 2, sillHeight: 0, shape: 'rect' as const }] };
+    expect(meshVolume(wallSolid(withDoor, f.footprint))).toBeCloseTo(8.8 - 0.4, 3);
   });
 });
 
@@ -160,4 +172,16 @@ function parseRows(csv: string): Map<string, Record<string, string>> {
     out.set(row.id, row);
   }
   return out;
+}
+
+function meshVolume(geo: import('three').BufferGeometry): number {
+  const p = geo.getAttribute('position');
+  let v = 0;
+  for (let i = 0; i < p.count; i += 3) {
+    const [ax, ay, az] = [p.getX(i), p.getY(i), p.getZ(i)];
+    const [bx, by, bz] = [p.getX(i + 1), p.getY(i + 1), p.getZ(i + 1)];
+    const [cx, cy, cz] = [p.getX(i + 2), p.getY(i + 2), p.getZ(i + 2)];
+    v += ax * (by * cz - bz * cy) - ay * (bx * cz - bz * cx) + az * (bx * cy - by * cx);
+  }
+  return v / 6;
 }
