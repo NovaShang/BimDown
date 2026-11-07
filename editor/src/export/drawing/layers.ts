@@ -58,6 +58,7 @@ export const LAYERS = {
   mEquipIden:  L('M-EQPM-IDEN', '#1a1a1a', 7, 0.18, 'solid',  'Equipment tags'),
   mTerminal:   L('M-HVAC-TERM', '#1a1a1a', 7, 0.25, 'solid',  'Air terminals and fixtures'),
   mFitting:    L('M-FITT',      '#333333', 7, 0.18, 'solid',  'MEP fittings and accessories'),
+  furniture:   L('A-FURN',      '#4a4a4a', 7, 0.13, 'solid',  'Furniture, casework, appliances, planting and entourage (library components)'),
   annoText:    L('G-ANNO-TEXT', '#1a1a1a', 7, 0.18, 'solid',  'General annotation text'),
   annoDims:    L('G-ANNO-DIMS', '#1a1a1a', 7, 0.13, 'solid',  'Dimensions'),
 } satisfies Record<string, DrawingLayer>;

@@ -21,7 +21,8 @@ function color(c: MassColor): Color {
   return col;
 }
 
-function partGeometry(m: MassPart): BufferGeometry {
+/** One mass part as a non-indexed, vertex-coloured geometry (local frame, three axes). */
+export function furniturePartGeometry(m: MassPart): BufferGeometry {
   let g: BufferGeometry;
   switch (m.k) {
     case 'box':
@@ -55,7 +56,7 @@ function partGeometry(m: MassPart): BufferGeometry {
 
 /** Merge the parts of one resolved component (local frame, origin at the base centre). */
 export function buildFurnitureGeometry(r: ResolvedFurniture): BufferGeometry {
-  const parts = furnitureMass(r).map(partGeometry);
+  const parts = furnitureMass(r).map(furniturePartGeometry);
   const merged = mergeGeometries(parts, false) ?? new BufferGeometry();
   for (const p of parts) p.dispose();
   merged.computeBoundingBox();

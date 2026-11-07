@@ -8,6 +8,10 @@ import type { CanonicalElement } from '../model/elements.ts';
 import type { Level, ProjectData, ProjectUnit } from '../types.ts';
 import { collectLevels, elementQuantities } from './quantities.ts';
 import type { ElementQuantities } from './quantities.ts';
+import i18n from 'i18next';
+import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
+import { pointInPolygon } from '../geometry/spaceBoundary.ts';
+import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
 
 export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count';
 
@@ -96,6 +100,12 @@ export const SCHEDULES: ScheduleCategory[] = [
       NUMBER, C('length', 'schedule.col.length', 'length', true, true), C('count', 'schedule.col.count', 'count', false, true)],
   },
   {
+    // Library components: count by family / variant, with the room they stand in
+    key: 'furniture', label: 'schedule.furniture', tables: ['furniture'], groupBy: 'family_variant',
+    columns: [C('family_variant', 'schedule.col.familyVariant', 'text'), C('room', 'schedule.col.room', 'text'), LEVEL, NUMBER,
+      C('size', 'schedule.col.size', 'text'), C('count', 'schedule.col.count', 'count', true, true)],
+  },
+  {
     key: 'equipment', label: 'schedule.equipment', tables: ['equipment', 'terminal'], groupBy: 'type',
     columns: [NUMBER, LEVEL, CATEGORY, C('type', 'schedule.col.type', 'text'), C('system_type', 'schedule.col.system', 'text'),
       C('count', 'schedule.col.count', 'count', true, true)],
@@ -148,6 +158,37 @@ function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, uni
   };
 }
 
+interface LevelRoom { label: string; poly: { x: number; y: number }[] }
+
+/** The level's rooms with their outline (smallest first, so a nested room wins). */
+function levelRooms(elements: CanonicalElement[], context: CanonicalElement[]): LevelRoom[] {
+  const walls = boundaryWalls(context);
+  const out: (LevelRoom & { area: number })[] = [];
+  for (const el of elements) {
+    if (el.tableName !== 'space') continue;
+    const poly = roomPolygon(el, walls);
+    if (!poly) continue;
+    let a = 0;
+    for (let i = 0; i < poly.length; i++) { const p = poly[i], q = poly[(i + 1) % poly.length]; a += p.x * q.y - q.x * p.y; }
+    out.push({ label: [el.attrs.number, el.attrs.name].filter(Boolean).join(' ') || el.id, poly, area: Math.abs(a) / 2 });
+  }
+  return out.sort((x, y) => x.area - y.area);
+}
+
+/** Furniture rows: "Family · Variant" in the UI language, and the room it stands in. */
+function furnitureValues(el: CanonicalElement, rooms: LevelRoom[]): Record<string, string> {
+  const r = resolveFurniture(el.attrs);
+  const zh = (i18n.language ?? '').startsWith('zh');
+  const name = (o: { en: string; zh: string }) => (zh ? o.zh : o.en);
+  const variant = r.family.variants?.find(v => v.id === r.params.variant);
+  const at = el.geometry === 'point' ? el.position : undefined;
+  const room = at ? rooms.find(rm => pointInPolygon(at.x, at.y, rm.poly)) : undefined;
+  return {
+    family_variant: variant ? `${name(r.family)} · ${name(variant)}` : name(r.family),
+    room: room?.label ?? '',
+  };
+}
+
 /** All rows of a schedule across every level. */
 export function scheduleRows(
   cat: ScheduleCategory, project: ProjectData, unit: ProjectUnit,
@@ -159,12 +200,20 @@ export function scheduleRows(
   const tables = new Set(cat.tables);
   const rows: ScheduleRow[] = [];
   const lowest = allLevels[0];
+  const roomCache = new Map<string, LevelRoom[]>();
+  const rooms = (levelId: string, elements: CanonicalElement[], context: CanonicalElement[]) => {
+    let r = roomCache.get(levelId);
+    if (!r) roomCache.set(levelId, r = levelRooms(elements, context));
+    return r;
+  };
   for (const { level, elements } of levels) {
     const context = [...elements, ...global];
     for (const el of elements) {
       if (!tables.has(el.tableName)) continue;
       const q = elementQuantities(el, level, allLevels, context);
-      rows.push({ sid: `${level.id}:${el.id}`, id: el.id, levelId: level.id, table: el.tableName, values: rowValues(el, level, q, unit, displayName) });
+      const values = rowValues(el, level, q, unit, displayName);
+      if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context)));
+      rows.push({ sid: `${level.id}:${el.id}`, id: el.id, levelId: level.id, table: el.tableName, values });
     }
   }
   // Multi-storey elements in global/ count once, on their base level

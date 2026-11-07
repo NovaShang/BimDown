@@ -38,6 +38,9 @@ import type { RampFacts } from '../elements/ramp.tsx';
 import type { CurtainWallFacts } from '../elements/curtain_wall.tsx';
 import type { EquipmentFacts } from '../elements/equipment.tsx';
 import type { SpaceFacts } from '../elements/space.tsx';
+import type { FurnitureFacts } from '../elements/furniture.tsx';
+import { furnitureMass, MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
+import { furniturePartGeometry } from '../library/furniture3D.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
 import { triggerDownload } from './download.ts';
@@ -89,6 +92,7 @@ const TABLE_ORDER = [
   'door', 'window', 'opening',
   'column', 'structure_column', 'beam', 'brace',
   'stair', 'stair_run', 'stair_landing', 'railing', 'ramp',
+  'furniture',
   'duct', 'pipe', 'cable_tray', 'conduit', 'equipment', 'terminal', 'mep_node',
 ];
 
@@ -507,6 +511,7 @@ class Exporter {
       case 'stair_landing': this.exportLanding(scope, el, facts); break;
       case 'railing': this.exportRailing(scope, el, facts as RailingFacts); break;
       case 'ramp': this.exportRamp(scope, el, facts as RampFacts, ctx); break;
+      case 'furniture': this.exportFurniture(scope, el, facts as FurnitureFacts); break;
     }
   }
 
@@ -770,6 +775,65 @@ class Exporter {
       w.ident(el.id), ...this.pt4('IfcOpeningElement', 'OPENING'));
     w.add('IfcRelVoidsElement', w.guid(this.relKey('voids')), w.ownerHistory, null, null, host.handle, handle);
     this.bimdownPset({ ...host, key: this.recKey(scope, el), el, handle });
+  }
+
+  /**
+   * Library component → the entity its family names (`ifc`, e.g.
+   * IfcFurniture.DESK): IFC4 IfcFurniture / IfcElectricAppliance /
+   * IfcFurnishingElement / IfcGeographicElement / IfcBuildingElementProxy with
+   * the predefined type; IFC2X3 falls back to IfcFurnishingElement (furniture),
+   * IfcFlowTerminal (appliances) and IfcBuildingElementProxy (trees, cars,
+   * people, generic). Body: the 3D view's mass parts — boxes and cylinders as
+   * extrusions, cones and spheres as faceted breps — coloured per part.
+   */
+  private exportFurniture(scope: Scope, el: CanonicalElement, f: FurnitureFacts): void {
+    const { w, S } = this;
+    const r = f.resolved;
+    const th = (f.rotationDeg * Math.PI) / 180;
+    const c = Math.cos(th), s = Math.sin(th);
+    const toWorld = (x: number, y: number): V2 => ({ x: f.position.x + x * c - y * s, y: f.position.y + x * s + y * c });
+    const solids: Solid[] = [];
+    const styles: H[] = [];
+    for (const m of furnitureMass(r)) {
+      let solid: Solid | null = null;
+      if (m.k === 'box') {
+        solid = box(toWorld(m.x, m.y), f.baseY + m.z, m.w, m.d, m.h, th);
+      } else if (m.k === 'cyl' && m.rx === m.ry && (m.top ?? 1) === 1) {
+        const p = toWorld(m.x, m.y);
+        solid = { kind: 'extrude', profile: { kind: 'circle', r: m.rx }, frame: planFrame(v3(p.x, p.y, f.baseY + m.z), th), depth: m.h };
+      } else {
+        const g = furniturePartGeometry(m);
+        g.rotateY(th);
+        g.translate(f.position.x, f.baseY, -f.position.y);
+        solid = brepFromBuffer(g);
+        g.dispose();
+      }
+      if (!solid || !(m.k === 'sph' || m.h > 1e-6)) continue;
+      solids.push(solid);
+      styles.push(w.surfaceStyle(`furniture-${m.c}`, MASS_COLORS[m.c], 0));
+    }
+    const [entity4, predefined] = r.family.ifc.split('.');
+    let type: string, tail: any[];
+    if (w.ifc4) {
+      type = entity4;
+      tail = entity4 === 'IfcFurnishingElement' ? []
+        : [w.enumv(`${entity4}TypeEnum`, predefined ?? (entity4 === 'IfcBuildingElementProxy' ? 'ELEMENT' : 'NOTDEFINED'))];
+    } else if (entity4 === 'IfcFurniture' || entity4 === 'IfcFurnishingElement') {
+      type = 'IfcFurnishingElement'; tail = [];
+    } else if (entity4 === 'IfcElectricAppliance') {
+      type = 'IfcFlowTerminal'; tail = [];
+    } else {
+      type = 'IfcBuildingElementProxy'; tail = [S.IfcElementCompositionEnum.ELEMENT];
+    }
+    const rec = this.product({
+      scope, el, type, geom: { solids }, styles, objectType: r.params.variant ? `${r.family.id}:${r.params.variant}` : r.family.id,
+      name: el.attrs.number || r.family.en, tail,
+    });
+    this.pset(rec, 'BimDown_Component', {
+      Family: w.label(r.family.id), Variant: w.label(r.params.variant || null), Category: w.label(r.family.category),
+      RevitCategory: w.label(r.family.revit), Width: w.len(r.params.w), Depth: w.len(r.params.d), Height: w.len(r.params.h),
+    });
+    this.bimdownPset(rec);
   }
 
   // ─── Structure ─────────────────────────────────────────────────────────────

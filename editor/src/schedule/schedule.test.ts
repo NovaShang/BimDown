@@ -39,6 +39,24 @@ describe('schedules', () => {
     expect(v[1][2]).toBeCloseTo(30, 9);
   });
 
+  it('furniture: count by family / variant, with the room each item stands in', async () => {
+    const f = twoLevels();
+    f['lv-1/furniture.csv'] = 'id,number,family,variant,size_x,size_y,height,mirror\nfu-1,,desk,standard,,,,\nfu-2,,desk,standard,,,,\nfu-3,,office_chair,,,,,\nfu-4,,tree,deciduous,,,,\n';
+    f['lv-1/furniture.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'fu-1' }, geometry: { type: 'Point', coordinates: [2, 2] } },
+      { type: 'Feature', properties: { id: 'fu-2' }, geometry: { type: 'Point', coordinates: [5, 2] } },
+      { type: 'Feature', properties: { id: 'fu-3' }, geometry: { type: 'Point', coordinates: [2, 3] } },
+      { type: 'Feature', properties: { id: 'fu-4' }, geometry: { type: 'Point', coordinates: [20, 20] } },
+    ]);
+    const { state } = await load(f);
+    const c = cat('furniture');
+    const rows = scheduleRows(c, state.project!, 'm', name, 'lv-1', state.document!.elements);
+    expect(rows.find(r => r.id === 'fu-1')!.values).toMatchObject({ family_variant: 'Desk · Standard', room: '101 Office' });
+    expect(rows.find(r => r.id === 'fu-4')!.values.room).toBe('');
+    const groups = groupRows(rows, c.groupBy!, c.columns);
+    expect(groups.map(g => [g.key, g.totals.count])).toEqual([['Desk · Standard', 2], ['Office chair', 1], ['Tree · Deciduous', 1]]);
+  });
+
   it('walls: length, height from levels, net area without openings, volume', async () => {
     const { state } = await load(twoLevels());
     const rows = scheduleRows(cat('walls'), state.project!, 'm', name, 'lv-1', state.document!.elements);

@@ -352,6 +352,39 @@ describe('IFC export of the building', () => {
     }
   });
 
+  it('exports library furniture per family with its 3D parts', async () => {
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3\n',
+      'lv-2/furniture.csv': 'id,number,family,variant,size_x,size_y,height,mirror\n'
+        + 'fu-1,D1,desk,standard,1.6,0.8,0.75,\nfu-2,,refrigerator,single,,,,\nfu-3,,tree,deciduous,,,,\nfu-4,,car,sedan,,,,\nfu-5,,plant,,,,,\n',
+      'lv-2/furniture.geojson': fc([
+        { type: 'Feature', properties: { id: 'fu-1', rotation: 90 }, geometry: { type: 'Point', coordinates: [2, 2] } },
+        { type: 'Feature', properties: { id: 'fu-2' }, geometry: { type: 'Point', coordinates: [5, 2] } },
+        { type: 'Feature', properties: { id: 'fu-3' }, geometry: { type: 'Point', coordinates: [10, 2] } },
+        { type: 'Feature', properties: { id: 'fu-4' }, geometry: { type: 'Point', coordinates: [15, 2] } },
+        { type: 'Feature', properties: { id: 'fu-5' }, geometry: { type: 'Point', coordinates: [20, 2] } },
+      ]),
+    };
+    const expected = {
+      IFC2X3: ['IFCFURNISHINGELEMENT', 'IFCFLOWTERMINAL', 'IFCBUILDINGELEMENTPROXY', 'IFCBUILDINGELEMENTPROXY', 'IFCFURNISHINGELEMENT'],
+      IFC4: ['IFCFURNITURE', 'IFCELECTRICAPPLIANCE', 'IFCGEOGRAPHICELEMENT', 'IFCBUILDINGELEMENTPROXY', 'IFCFURNISHINGELEMENT'],
+    };
+    for (const schema of ['IFC2X3', 'IFC4'] as const) {
+      const { data, ents, keys } = await exportFiles(files, schema);
+      const got = await readBack(data, keys);
+      const ids = ['fu-1', 'fu-2', 'fu-3', 'fu-4', 'fu-5'];
+      expect(ids.map(id => byKey(ents, keys, `furniture:${id}`).type)).toEqual(expected[schema]);
+      if (schema === 'IFC4') {
+        expect(byKey(ents, keys, 'furniture:fu-1').args[8]).toBe('.DESK.');
+        expect(byKey(ents, keys, 'furniture:fu-2').args[8]).toBe('.REFRIGERATOR.');
+      }
+      // Desk 1.6 × 0.8 turned 90° CCW: 0.8 along X, 1.6 along Y, on L2 (z 3 .. 3.75)
+      expectBox(got, 'furniture:fu-1', [1.6, 1.2, 3], [2.4, 2.8, 3.75], 3);
+      for (const id of ids) expect(got.get(`furniture:${id}`)!.triangles, id).toBeGreaterThan(0);
+    }
+  });
+
   it('assigns global (multi-storey) elements to their base storey', async () => {
     const files = {
       'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),

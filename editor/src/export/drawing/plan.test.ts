@@ -96,6 +96,26 @@ describe('plan drawing', () => {
     expect(on(buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!.items, 'G-ANNO-DIMS')).toHaveLength(0);
   });
 
+  it('draws library furniture symbols on A-FURN (turned with the element)', async () => {
+    const files = room();
+    files['lv-1/furniture.csv'] = 'id,number,family,variant,size_x,size_y,height,mirror\nfu-1,,bed,double,1.6,2,,\nfu-2,,tree,deciduous,,,,\n';
+    files['lv-1/furniture.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'fu-1', rotation: 90 }, geometry: { type: 'Point', coordinates: [2, 1.5] } },
+      { type: 'Feature', properties: { id: 'fu-2' }, geometry: { type: 'Point', coordinates: [30, 30] } },
+    ]);
+    const { project } = await open(files);
+    const d = buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!;
+    const furn = on(d.items, 'A-FURN');
+    expect(furn.length).toBeGreaterThan(4);
+    // The bed's outline (1.6 wide, 2 deep) turned 90°: 2 along X, 1.6 along Y around (2, 1.5)
+    const pts = furn.flatMap(i => (i.kind === 'path' ? i.pts : []));
+    const xs = pts.map(p => p.x).filter(x => x < 4), ys = pts.filter(p => p.x < 4).map(p => p.y);
+    expect(Math.min(...xs)).toBeCloseTo(1, 3);
+    expect(Math.max(...xs)).toBeCloseTo(3, 3);
+    expect(Math.min(...ys)).toBeCloseTo(0.7, 3);
+    expect(planToDxf(d)).toContain('\nA-FURN\n');
+  });
+
   it('chains wall outline edges into polylines', () => {
     const p = (x: number, y: number) => ({ x, y });
     expect(chainEdges([[p(0, 0), p(1, 0)], [p(1, 0), p(1, 1)], [p(5, 5), p(6, 5)]], 1e-9)).toEqual([

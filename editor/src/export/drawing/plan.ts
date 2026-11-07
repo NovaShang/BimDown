@@ -29,6 +29,7 @@ import type { ColumnFacts } from '../../elements/column.tsx';
 import type { StairFacts } from '../../elements/stair.tsx';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
+import type { FurnitureFacts } from '../../elements/furniture.tsx';
 import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
 import type { BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
@@ -547,6 +548,53 @@ function drawSpace(env: DrawEnv, el: CanonicalElement, f: SpaceFacts) {
   }
 }
 
+/**
+ * Library component plan symbol (the editor's and `bimdown render`'s
+ * primitives) on A-FURN: local frame rotated by the element's rotation and
+ * placed at its position. Paper fills mask the floor below (PDF only), dark
+ * fills are solid in DXF too.
+ */
+function drawFurniture(env: DrawEnv, f: FurnitureFacts) {
+  const { e } = env;
+  e.phase = Phase.Floor;
+  const th = (f.rotationDeg * Math.PI) / 180;
+  const c = Math.cos(th), s = Math.sin(th);
+  const at = (x: number, y: number): Point => ({ x: f.position.x + x * c - y * s, y: f.position.y + x * s + y * c });
+  const L = LAYERS.furniture;
+  const fillOf = (fill?: string) => (fill === 'paper' ? '#ffffff' : fill === 'tone' ? '#e3e3e3' : fill === 'dark' ? L.color : undefined);
+  const style = (p: { dash?: boolean }) => (p.dash ? { dash: 'dashed' as const } : {});
+  const ring = (cx: number, cy: number, rx: number, ry: number) =>
+    Array.from({ length: 32 }, (_, i) => at(cx + rx * Math.cos((i / 32) * Math.PI * 2), cy + ry * Math.sin((i / 32) * Math.PI * 2)));
+  for (const p of f.prims) {
+    switch (p.k) {
+      case 'rect': {
+        const pts = [at(p.x, p.y), at(p.x + p.w, p.y), at(p.x + p.w, p.y + p.h), at(p.x, p.y + p.h)];
+        e.poly(L, pts, true, { ...style(p), ...(fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      }
+      case 'circle':
+        e.push({ kind: 'circle', layer: e.layer(L), center: at(p.cx, p.cy), radius: p.r, ...style(p), ...(fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      case 'ellipse':
+        e.poly(L, ring(p.cx, p.cy, p.rx, p.ry), true, { ...style(p), ...(fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      case 'line':
+        e.line(L, at(p.x1, p.y1), at(p.x2, p.y2), style(p));
+        break;
+      case 'poly':
+        e.poly(L, p.pts.map(([x, y]) => at(x, y)), !!p.closed, { ...style(p), ...(p.closed && fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      case 'arc':
+        e.push({ kind: 'arc', layer: e.layer(L), center: at(p.cx, p.cy), radius: p.r,
+          start: (p.a0 * Math.PI) / 180 + th, end: (p.a1 * Math.PI) / 180 + th, ...style(p) });
+        break;
+      case 'text':
+        e.text(L, at(p.x, p.y), p.text, p.size * 0.72, { rotation: th });
+        break;
+    }
+  }
+}
+
 function drawFoundation(env: DrawEnv, f: FoundationFacts) {
   const { e } = env;
   e.phase = Phase.Below;
@@ -741,6 +789,8 @@ function drawEntry(env: DrawEnv, entry: Entry) {
     }
     case 'foundation':
       return drawFoundation(env, facts as FoundationFacts);
+    case 'furniture':
+      return drawFurniture(env, facts as FurnitureFacts);
     case 'duct':
     case 'pipe':
     case 'cable_tray':

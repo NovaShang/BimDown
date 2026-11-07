@@ -529,7 +529,7 @@ function traceFaces(halfEdges: HalfEdge[]): Face[] {
 
 // ─── Point-in-polygon (ray casting) ────────────────────────────────────────
 
-function pointInPolygon(px: number, py: number, polygon: Point[]): boolean {
+export function pointInPolygon(px: number, py: number, polygon: Point[]): boolean {
   let crossings = 0;
   for (let i = 0; i < polygon.length; i++) {
     const j = (i + 1) % polygon.length;
