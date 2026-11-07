@@ -19,9 +19,11 @@ import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '.
 import type { Level, ProjectData } from '../types.ts';
 import { parseFloorLayers, parseLayer } from '../model/parse.ts';
 import { arcLength } from '../geometry/arc.ts';
-import { boundaryWalls, roomPolygon, roomAreasOf, polygonArea, polygonPerimeter } from '../annotation/rooms.ts';
+import { boundaryWalls, redundantRooms, roomPolygon, roomAreasOf, polygonArea, polygonPerimeter } from '../annotation/rooms.ts';
 import { isAnnotationTable } from '../annotation/model.ts';
 import { elementQuantities as structuralQuantities } from '../model/quantities.ts';
+import { curtainEmbedSpan } from '../geometry/curtainEmbed.ts';
+import { metre } from '../annotation/geometry.ts';
 
 export interface ElementQuantities {
   length?: number;
@@ -90,6 +92,32 @@ function openingArea(wall: CanonicalElement, hosted: CanonicalElement[]): number
   return a;
 }
 
+const redundantCache = new WeakMap<CanonicalElement[], Map<string, string>>();
+/** The room an earlier space in `context` already holds this room's area for (annotation/rooms.ts). */
+function redundantOf(el: CanonicalElement, context: CanonicalElement[], walls: LineElement[]): string | undefined {
+  let m = redundantCache.get(context);
+  if (!m) redundantCache.set(context, m = redundantRooms(context, walls));
+  return m.get(el.id);
+}
+
+/** Face area of the curtain walls embedded in a straight wall (geometry/curtainEmbed.ts). */
+function embeddedCurtainArea(wall: CanonicalElement, wallHeight: number, level: Level, levels: Level[], context: CanonicalElement[]): number {
+  if (wall.tableName === 'curtain_wall' || wall.geometry !== 'line' || (wall as LineElement).arc) return 0;
+  const w = wall as LineElement;
+  const num = (v: string | undefined) => parseFloat(v ?? '') || 0;
+  let a = 0;
+  for (const c of context) {
+    if (c.tableName !== 'curtain_wall' || c.geometry !== 'line' || (c as LineElement).arc) continue;
+    const span = curtainEmbedSpan(w, w.strokeWidth, c as LineElement, 0.005 * metre());
+    const h = spanHeight(c, level, levels);
+    if (!span || h === undefined) continue;
+    const lo = Math.max(0, num(c.attrs.base_offset) - num(w.attrs.base_offset));
+    const hi = Math.min(wallHeight, num(c.attrs.base_offset) - num(w.attrs.base_offset) + h);
+    if (hi > lo) a += (span.hi - span.lo) * (hi - lo);
+  }
+  return a;
+}
+
 /**
  * Quantities of one element. `context` is the element's level (+ global
  * elements) — rooms need its walls, walls their openings.
@@ -102,6 +130,12 @@ export function elementQuantities(
   if (el.tableName === 'space') {
     const walls = boundaryWalls(context);
     const poly = roomPolygon(el, walls);
+    if (poly && redundantOf(el, context, walls)) {
+      // Redundant room: its area counts once, in the room already there.
+      q.area = 0;
+      q.gross_area = 0;
+      return q;
+    }
     if (poly) {
       const r = roomAreasOf(poly, walls);
       q.area = r.area;
@@ -116,7 +150,7 @@ export function elementQuantities(
   if (VERTICAL.has(el.tableName)) q.height = spanHeight(el, level, levels);
   if (['wall', 'structure_wall', 'curtain_wall'].includes(el.tableName) && q.length !== undefined && q.height !== undefined) {
     q.gross_area = q.length * q.height;
-    q.area = Math.max(0, q.gross_area - openingArea(el, context));
+    q.area = Math.max(0, q.gross_area - openingArea(el, context) - embeddedCurtainArea(el, q.height, level, levels, context));
     if (Number.isFinite(thickness)) q.volume = q.area * thickness;
   }
   if (SLABS.has(el.tableName) && el.geometry === 'polygon' && el.vertices.length >= 3) {

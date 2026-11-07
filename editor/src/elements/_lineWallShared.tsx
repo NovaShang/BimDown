@@ -25,18 +25,23 @@ import { resolveTopAttach, wallTopPieces, maxTop, type AttachPiece } from '../ge
 import { resolvedLayers } from '../model/types/catalog.ts';
 import { layerBands, wallFrame, clipToBand, chordAt, type LayerBand } from '../geometry/layerBands.ts';
 import { layerFill } from './_layerHatch.tsx';
+import { curtainEmbedSpan, curtainWallSpan } from '../geometry/curtainEmbed.ts';
 
 const HOSTED_TABLES = new Set(['door', 'window', 'opening']);
 const DEFAULT_HEIGHT = 3.0;
 
 export interface WallOpening {
   hostedId: string;
-  hostedTable: 'door' | 'window' | 'opening';
+  /** `curtain_wall`: a curtain wall embedded in this wall (geometry/curtainEmbed.ts). */
+  hostedTable: 'door' | 'window' | 'opening' | 'curtain_wall';
   position: number;
   width: number;
   height: number;
   sillHeight: number;
   shape: 'rect' | 'round' | 'arch';
+  /** False when the void misses the plan cut plane (an embedded curtain wall
+   *  above or below it): the plan keeps the wall solid there. */
+  planCut?: boolean;
 }
 
 /** A draw-ready piece of a wall — one polygon plus the edges that should
@@ -215,7 +220,8 @@ export function buildLineWallFootprint(
 
 export function collectWallOpenings(el: LineElement, ctx: GeometryContext): WallOpening[] {
   const children = ctx.hostedOf(el.id);
-  if (children.length === 0) return [];
+  const embedded = embeddedCurtainWalls(el, ctx);
+  if (children.length === 0) return embedded;
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
   const wallLen = Math.sqrt(dx * dx + dy * dy);
@@ -255,7 +261,43 @@ export function collectWallOpenings(el: LineElement, ctx: GeometryContext): Wall
     const shape = (hosted.attrs.shape || 'rect') as 'rect' | 'round' | 'arch';
     result.push({ hostedId: hosted.id, hostedTable: tbl, position, width, height, sillHeight, shape });
   }
+  result.push(...embedded);
   return result.sort((a, b) => a.position - b.position);
+}
+
+/** Plan cut plane height above the level (m), as the plan drawing. */
+const PLAN_CUT = 1.2;
+
+/**
+ * Voids of the curtain walls embedded in a straight wall (Revit "Automatically
+ * Embed", geometry/curtainEmbed.ts): the overlap along the wall, from the
+ * curtain wall's base to its top, clipped to the wall.
+ */
+export function embeddedCurtainWalls(el: LineElement, ctx: GeometryContext): WallOpening[] {
+  if (el.arc) return [];
+  const cws = ctx.elementsByTable('curtain_wall');
+  if (cws.length === 0) return [];
+  const upm = ctx.unitsPerMetre;
+  const wall = resolveHeight(el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT * upm);
+  const out: WallOpening[] = [];
+  for (const c of cws) {
+    if (c.geometry !== 'line' || (c as LineElement).arc) continue;
+    const cw = c as LineElement;
+    const span = curtainEmbedSpan(el, el.strokeWidth, cw, 0.005 * upm);
+    if (!span) continue;
+    const v = curtainWallSpan(cw.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT * upm);
+    const sill = Math.max(0, v.baseOffset - wall.baseOffset);
+    const top = Math.min(wall.height, v.baseOffset + v.height - wall.baseOffset);
+    if (top - sill <= 0.005 * upm) continue;
+    const cut = PLAN_CUT * upm;
+    out.push({
+      hostedId: cw.id, hostedTable: 'curtain_wall',
+      position: (span.lo + span.hi) / 2, width: span.hi - span.lo,
+      height: top - sill, sillHeight: sill, shape: 'rect',
+      planCut: sill <= cut && top >= cut,
+    });
+  }
+  return out;
 }
 
 /**
@@ -301,6 +343,7 @@ function buildWallPolygons(
   const intervals: [number, number][] = [];
   let cursor = 0;
   for (const op of openings) {
+    if (op.planCut === false) continue;
     const oLo = Math.max(0, op.position - op.width / 2);
     const oHi = Math.min(wallLen, op.position + op.width / 2);
     if (oLo > cursor + 1e-6) intervals.push([cursor, oLo]);
