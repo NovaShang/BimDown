@@ -2,6 +2,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, P
 import { computeBounds } from './elements.ts';
 import type { CsvRow } from '../types.ts';
 import { csvHeadersForTable } from './tableRegistry.ts';
+import { SPEC_COLUMNS } from './specColumns.generated.ts';
 
 /** Tables that are CSV-only (no SVG geometry file). */
 const CSV_ONLY_TABLES = new Set(['door', 'window', 'space', 'connector']);
@@ -196,6 +197,8 @@ function featureForElement(el: CanonicalElement, isSpatial: boolean, elevation: 
           sweep: line.arc.sweep === true,
         };
       }
+      // Vertical-span offsets (stair top_offset, …) are GeoJSON properties too.
+      attachZProps(props, line.attrs);
       return {
         type: 'Feature',
         properties: props,
@@ -221,6 +224,15 @@ function featureForElement(el: CanonicalElement, isSpatial: boolean, elevation: 
       } else {
         attachZProps(props, pt.attrs);
         coords = [r2(pt.position.x), r2(pt.position.y)];
+      }
+      // Tables without CSV size columns (equipment, terminal, mep_node) keep
+      // their bounding box in `properties.size = [x, y, z]` (spec element.yaml).
+      const spec = SPEC_COLUMNS[pt.tableName];
+      if (spec && !spec.csv.includes('size_x') && pt.width > 0 && pt.height > 0) {
+        const size = [r2(pt.width), r2(pt.height)];
+        const z = parseFloat(pt.attrs.height ?? '');
+        if (isFinite(z) && z > 0) size.push(r2(z));
+        props.size = size;
       }
       return { type: 'Feature', properties: props, geometry: { type: 'Point', coordinates: coords } };
     }
@@ -278,14 +290,24 @@ export function serializeToCsv(elements: CanonicalElement[], tableName: string):
       headerSet.add(k);
     }
   }
+  // `id` is always the first column (attrs may carry it too).
+  headerSet.delete('id');
 
-  // Spatial geometry carries its Z in the coordinates: start_z/end_z are
-  // computed fields, and a spatial point's base_offset is its coordinate Z.
-  if (SPATIAL_3D_TABLES.has(tableName)) {
-    headerSet.delete('start_z');
-    headerSet.delete('end_z');
+  const spec = SPEC_COLUMNS[tableName];
+  if (spec) {
+    // Only the spec's CSV columns. Everything else the editor keeps in attrs
+    // lives elsewhere (Z offsets / rotation / size in GeoJSON properties,
+    // spatial Z in coordinates) or is computed (start_z, height, …).
+    const allowed = new Set(spec.csv);
+    for (const h of headerSet) if (!allowed.has(h)) headerSet.delete(h);
+  } else {
+    // Tables unknown to the spec: drop what is known to be computed.
+    if (SPATIAL_3D_TABLES.has(tableName)) {
+      headerSet.delete('start_z');
+      headerSet.delete('end_z');
+    }
+    if (SPATIAL_POINT_TABLES.has(tableName)) headerSet.delete('base_offset');
   }
-  if (SPATIAL_POINT_TABLES.has(tableName)) headerSet.delete('base_offset');
 
   const headers = ['id', ...headerSet];
   const lines: string[] = [headers.join(',')];

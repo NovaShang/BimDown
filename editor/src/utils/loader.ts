@@ -32,7 +32,7 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
   }
 }
 
-function parseCsv(text: string): CsvRow[] {
+export function parseCsv(text: string): CsvRow[] {
   const lines = text.trim().split(/\r?\n/);
   if (lines.length < 2) return [];
   const headers = parseCsvLine(lines[0]);
@@ -43,7 +43,9 @@ function parseCsv(text: string): CsvRow[] {
     const values = parseCsvLine(line);
     const row: CsvRow = {};
     for (let j = 0; j < headers.length; j++) {
-      row[headers[j]] = values[j] || '';
+      // A repeated header (older editors wrote `id` twice) merges into one
+      // column, first non-empty value winning; the next save writes it once.
+      if (!row[headers[j]]) row[headers[j]] = values[j] || '';
     }
     rows.push(row);
   }
@@ -126,6 +128,9 @@ export function importLayerGeometry(
       if (row && typeof v === 'number' && isFinite(v)) row[key] = String(v);
     }
     const g = ft.geometry;
+    // Point orientation is a GeoJSON property too (spec); the editor reads attrs.rotation.
+    const rot = ft.properties?.rotation;
+    if (row && g?.type === 'Point' && typeof rot === 'number' && isFinite(rot)) row.rotation = String(rot);
     if (spatial && g?.type === 'Point') {
       const c = g.coordinates as number[];
       if (Array.isArray(c) && c.length >= 3 && typeof c[2] === 'number') {
