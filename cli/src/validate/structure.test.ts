@@ -38,6 +38,14 @@ describe('validateStructure — project_metadata.json', () => {
     expect(validateStructure(testDir)).toEqual(['project_metadata.json  unknown field "foo"']);
   });
 
+  it('allows licence / attribution notes in the project root, nothing else', () => {
+    writeMeta({ format_version: '3.0' });
+    for (const f of ['LICENSE.txt', 'README.md', 'NOTICE', 'notes.txt']) writeFileSync(join(testDir, f), 'x');
+    expect(validateStructure(testDir)).toEqual([
+      'notes.txt  unexpected entry in project root — only global/, lv-{n}/, mesh/, _IdMap.csv, project_metadata.json and LICENSE/README notes are allowed',
+    ]);
+  });
+
   it('knows exactly the fields declared in spec/project_metadata.schema.yaml', () => {
     const schema = parse(readFileSync(join(__dirname, '../../../spec/project_metadata.schema.yaml'), 'utf-8'));
     const declared = (schema.fields as { name: string }[]).map((f) => f.name).sort();

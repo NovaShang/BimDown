@@ -34,7 +34,8 @@ BimDown uses **CSV for attributes** and a **geometry layer** that may be encoded
 │   └── ...
 ├── 2F/
 │   └── ...
-└── _IdMap.csv                       # UUID ↔ short ID mapping (Revit round-trip)
+├── _IdMap.csv                       # UUID ↔ short ID mapping (Revit round-trip)
+└── LICENSE.txt                      # optional licence / attribution note (also README, NOTICE, CREDITS; .txt/.md)
 ```
 
 > The geometry files above are shown as `.geojson` (`format_version: 2`). In an SVG project (`format_version: 1`) the same elements use `.svg` files instead (`wall.svg`, `column.svg`, …); CSV files are unchanged. See [svg-schema/readme.md](svg-schema/readme.md).

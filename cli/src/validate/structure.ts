@@ -13,6 +13,8 @@ const OPTIONAL_GEOMETRY_TABLES = new Set(['opening', 'space', 'stair', 'ramp', '
 const KNOWN_CSV_NAMES = new Set(Object.keys(ID_PREFIXES).map((t) => `${t}.csv`));
 const KNOWN_GEOJSON_NAMES = new Set(Object.values(GEOJSON_FILE_NAMES).map((s) => `${s}.geojson`));
 const KNOWN_GLOBAL_EXTRAS = new Set(['_IdMap.csv']);
+/** Licence / attribution notes allowed in the project root (e.g. a model shared under CC BY or MIT). */
+const ROOT_NOTE_FILE = /^(LICEN[CS]E|COPYING|NOTICE|README|CREDITS)(\.(txt|md))?$/i;
 
 // Minimum supported format version. v1 was SVG geometry; v2+ is GeoJSON. Builds
 // accept any version >= this (v2, v3, ...) since they share the GeoJSON format.
@@ -103,14 +105,16 @@ export function validateStructure(dir: string): string[] {
   }
 
   // Reject top-level entries other than global/, lv-{n}/, project_metadata.json,
-  // _IdMap.csv (UUID↔short-id map) and mesh/ (GLB asset directory).
+  // _IdMap.csv (UUID↔short-id map), mesh/ (GLB asset directory) and the licence /
+  // attribution notes a shared model must carry (LICENSE.txt, README.md, …).
   const topEntries = readdirSync(dir);
   for (const f of topEntries) {
     if (f === 'global' || /^lv-.+$/.test(f)) continue;
     if (f === 'project_metadata.json') continue;
     if (f === '_IdMap.csv' || f === 'mesh') continue;
     if (f.startsWith('.')) continue;
-    issues.push(`${f}  unexpected entry in project root — only global/, lv-{n}/, mesh/, _IdMap.csv are allowed`);
+    if (ROOT_NOTE_FILE.test(f)) continue;
+    issues.push(`${f}  unexpected entry in project root — only global/, lv-{n}/, mesh/, _IdMap.csv, project_metadata.json and LICENSE/README notes are allowed`);
   }
 
   // Validate project_metadata.json
