@@ -6,7 +6,7 @@
 import { arcPath, furniturePlan, resolveFurniture, type PlanFill, type PlanPrim } from './library.js';
 
 const STROKE = '#4b5563';
-const LINE = 0.012;
+const LINE = 0.012; // metres; scaled by the project's units per metre
 const FILLS: Record<PlanFill, string> = { paper: '#ffffff', tone: '#e5e7eb', dark: '#4b5563' };
 
 function fmt(n: number): string {
@@ -18,30 +18,32 @@ function esc(s: string): string {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
-function paint(fill: PlanFill | undefined, dash: boolean | undefined): string {
+function paint(fill: PlanFill | undefined, dash: boolean | undefined, k = 1): string {
   const f = fill ? FILLS[fill] : 'none';
-  const d = dash ? ` stroke-dasharray="0.06,0.04"` : '';
-  return `fill="${f}" stroke="${STROKE}" stroke-width="${LINE}"${d}`;
+  const d = dash ? ` stroke-dasharray="${fmt(0.06 * k)},${fmt(0.04 * k)}"` : '';
+  return `fill="${f}" stroke="${STROKE}" stroke-width="${fmt(LINE * k)}"${d}`;
 }
 
-export function primToSvg(p: PlanPrim): string {
+/** One plan primitive as SVG; `k` = project units per metre (pen sizes). */
+export function primToSvg(p: PlanPrim, k = 1): string {
+  const paint_ = (fill: PlanFill | undefined, dash: boolean | undefined) => paint(fill, dash, k);
   switch (p.k) {
     case 'rect':
-      return `<rect x="${fmt(p.x)}" y="${fmt(p.y)}" width="${fmt(p.w)}" height="${fmt(p.h)}"${p.r ? ` rx="${fmt(p.r)}"` : ''} ${paint(p.fill, p.dash)} />`;
+      return `<rect x="${fmt(p.x)}" y="${fmt(p.y)}" width="${fmt(p.w)}" height="${fmt(p.h)}"${p.r ? ` rx="${fmt(p.r)}"` : ''} ${paint_(p.fill, p.dash)} />`;
     case 'circle':
-      return `<circle cx="${fmt(p.cx)}" cy="${fmt(p.cy)}" r="${fmt(p.r)}" ${paint(p.fill, p.dash)} />`;
+      return `<circle cx="${fmt(p.cx)}" cy="${fmt(p.cy)}" r="${fmt(p.r)}" ${paint_(p.fill, p.dash)} />`;
     case 'ellipse':
-      return `<ellipse cx="${fmt(p.cx)}" cy="${fmt(p.cy)}" rx="${fmt(p.rx)}" ry="${fmt(p.ry)}" ${paint(p.fill, p.dash)} />`;
+      return `<ellipse cx="${fmt(p.cx)}" cy="${fmt(p.cy)}" rx="${fmt(p.rx)}" ry="${fmt(p.ry)}" ${paint_(p.fill, p.dash)} />`;
     case 'line':
-      return `<line x1="${fmt(p.x1)}" y1="${fmt(p.y1)}" x2="${fmt(p.x2)}" y2="${fmt(p.y2)}" ${paint(undefined, p.dash)} />`;
+      return `<line x1="${fmt(p.x1)}" y1="${fmt(p.y1)}" x2="${fmt(p.x2)}" y2="${fmt(p.y2)}" ${paint_(undefined, p.dash)} />`;
     case 'poly': {
       const pts = p.pts.map(([x, y]) => `${fmt(x)},${fmt(y)}`).join(' ');
       return p.closed
-        ? `<polygon points="${pts}" ${paint(p.fill, p.dash)} />`
-        : `<polyline points="${pts}" ${paint(undefined, p.dash)} />`;
+        ? `<polygon points="${pts}" ${paint_(p.fill, p.dash)} />`
+        : `<polyline points="${pts}" ${paint_(undefined, p.dash)} />`;
     }
     case 'arc':
-      return `<path d="${arcPath(p)}" ${paint(undefined, p.dash)} />`;
+      return `<path d="${arcPath(p)}" ${paint_(undefined, p.dash)} />`;
     case 'text':
       // Text reads upright: undo the composite's Y flip at the anchor.
       return `<text transform="translate(${fmt(p.x)},${fmt(p.y)}) scale(1,-1)" font-size="${fmt(p.size)}" font-family="sans-serif" fill="${STROKE}" text-anchor="middle" dominant-baseline="central">${esc(p.text)}</text>`;
@@ -60,15 +62,17 @@ export function furnitureToSvg(
   x: number,
   y: number,
   rotationDeg: number,
+  /** Project units per metre (row sizes and the drawing are in project units). */
+  upm = 1,
 ): FurnitureSvg {
-  const r = resolveFurniture(attrs);
-  const body = furniturePlan(r).map(primToSvg).join('');
+  const r = resolveFurniture(attrs, upm);
+  const body = furniturePlan(r).map(p => primToSvg(p, upm)).join('');
   const rot = rotationDeg ? ` rotate(${fmt(rotationDeg)})` : '';
   const svg = `    <g id="${esc(id)}" transform="translate(${fmt(x)},${fmt(y)})${rot}">${body}</g>`;
   // Rotated footprint bounds.
   const a = (rotationDeg * Math.PI) / 180;
   const c = Math.abs(Math.cos(a)), s = Math.abs(Math.sin(a));
-  const hx = (r.params.w * c + r.params.d * s) / 2;
-  const hy = (r.params.w * s + r.params.d * c) / 2;
+  const hx = (r.size.w * c + r.size.d * s) / 2;
+  const hy = (r.size.w * s + r.size.d * c) / 2;
   return { svg, bounds: { minX: x - hx, minY: y - hy, maxX: x + hx, maxY: y + hy } };
 }

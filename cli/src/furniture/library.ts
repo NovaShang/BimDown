@@ -1068,22 +1068,55 @@ export interface ResolvedFurniture {
   family: FurnitureFamily;
   /** True when the row's family is not in the library (drawn as a generic box). */
   unknownFamily: boolean;
+  /** Family parameters in metres (what the symbol / massing builders take). */
   params: FurnitureParams;
   mirror: boolean;
+  /** Project units per metre: plan / mass output is scaled by it. */
+  upm: number;
+  /** Width / depth / height in project units. */
+  size: { w: number; d: number; h: number };
 }
 
-/** Resolve a `furniture` CSV row (string attrs) to a family + full parameters. */
-export function resolveFurniture(attrs: Record<string, string | undefined>): ResolvedFurniture {
+/**
+ * Resolve a `furniture` CSV row (string attrs) to a family + full parameters.
+ * Row sizes are in project units (`upm` units per metre: 1000 for mm); the
+ * library works in metres, so `furniturePlan` / `furnitureMass` scale back.
+ */
+export function resolveFurniture(attrs: Record<string, string | undefined>, upm = 1): ResolvedFurniture {
   const known = getFurnitureFamily(attrs.family);
   const family = known ?? fallbackFamily();
   const variant = resolveVariant(family, attrs.variant)?.id ?? '';
   const [dw, dd, dh] = defaultSize(family, variant);
+  const m = (v: string | undefined) => { const n = num(v); return n === undefined ? undefined : n / upm; };
+  const params = { variant, w: m(attrs.size_x) ?? dw, d: m(attrs.size_y) ?? dd, h: m(attrs.height) ?? dh };
   return {
     family,
     unknownFamily: !known,
-    params: { variant, w: num(attrs.size_x) ?? dw, d: num(attrs.size_y) ?? dd, h: num(attrs.height) ?? dh },
+    params,
     mirror: attrs.mirror === 'true' || attrs.mirror === '1',
+    upm,
+    size: { w: params.w * upm, d: params.d * upm, h: params.h * upm },
   };
+}
+
+function scalePrim(p: PlanPrim, k: number): PlanPrim {
+  switch (p.k) {
+    case 'rect': return { ...p, x: p.x * k, y: p.y * k, w: p.w * k, h: p.h * k, ...(p.r ? { r: p.r * k } : {}) };
+    case 'circle': return { ...p, cx: p.cx * k, cy: p.cy * k, r: p.r * k };
+    case 'ellipse': return { ...p, cx: p.cx * k, cy: p.cy * k, rx: p.rx * k, ry: p.ry * k };
+    case 'line': return { ...p, x1: p.x1 * k, y1: p.y1 * k, x2: p.x2 * k, y2: p.y2 * k };
+    case 'poly': return { ...p, pts: p.pts.map(([x, y]) => [x * k, y * k] as [number, number]) };
+    case 'arc': return { ...p, cx: p.cx * k, cy: p.cy * k, r: p.r * k };
+    case 'text': return { ...p, x: p.x * k, y: p.y * k, size: p.size * k };
+  }
+}
+
+function scalePart(m: MassPart, k: number): MassPart {
+  switch (m.k) {
+    case 'box': return { ...m, x: m.x * k, y: m.y * k, z: m.z * k, w: m.w * k, d: m.d * k, h: m.h * k };
+    case 'cyl': return { ...m, x: m.x * k, y: m.y * k, z: m.z * k, rx: m.rx * k, ry: m.ry * k, h: m.h * k };
+    case 'sph': return { ...m, x: m.x * k, y: m.y * k, z: m.z * k, rx: m.rx * k, ry: m.ry * k, rz: m.rz * k };
+  }
 }
 
 function mirrorPrim(p: PlanPrim): PlanPrim {
@@ -1098,15 +1131,15 @@ function mirrorPrim(p: PlanPrim): PlanPrim {
   }
 }
 
-/** Plan symbol in the local frame (mirror applied; rotation/position are the caller's). */
+/** Plan symbol in the local frame, project units (mirror applied; rotation/position are the caller's). */
 export function furniturePlan(r: ResolvedFurniture): PlanPrim[] {
-  const prims = r.family.plan(r.params);
+  const prims = r.family.plan(r.params).map(p => (r.upm === 1 ? p : scalePrim(p, r.upm)));
   return r.mirror ? prims.map(mirrorPrim) : prims;
 }
 
 /** 3D parts in the local frame (mirror applied). */
 export function furnitureMass(r: ResolvedFurniture): MassPart[] {
-  const parts = r.family.mass(r.params);
+  const parts = r.family.mass(r.params).map(m => (r.upm === 1 ? m : scalePart(m, r.upm)));
   return r.mirror ? parts.map(m => ({ ...m, x: -m.x })) : parts;
 }
 

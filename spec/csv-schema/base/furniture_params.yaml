@@ -49,12 +49,12 @@ fields:
 
   - name: size_x
     type: float
-    description: Width along the local X axis (left-right when facing the front), meters.
+    description: Width along the local X axis (left-right when facing the front), project units.
 
   - name: size_y
     type: float
-    description: Depth along the local Y axis (front to back), meters.
+    description: Depth along the local Y axis (front to back), project units.
 
   - name: height
     type: float
-    description: Overall height above the base, meters.
+    description: Overall height above the base, project units.

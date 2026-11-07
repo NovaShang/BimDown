@@ -5,6 +5,7 @@ import { readCsv } from '../utils/csv.js';
 import { parseGeoJsonFile } from '../utils/geojson.js';
 import { furnitureToSvg } from './svg.js';
 import { effectiveRows } from '../catalog/index.js';
+import { projectUnits, UNIT_TO_M } from '../utils/units.js';
 
 export interface RenderedFurniture {
   tableName: 'furniture';
@@ -22,6 +23,7 @@ export function renderFurniture(levelPath: string): RenderedFurniture[] {
   // Type-resolved rows: an instance may take family / variant / size from its furniture_type.
   if (existsSync(csvPath)) for (const row of effectiveRows(dirname(levelPath), 'furniture', readCsv(csvPath).rows)) rows.set(row.id, row);
 
+  const upm = 1 / (UNIT_TO_M[projectUnits(dirname(levelPath))] ?? 1);
   const out: RenderedFurniture[] = [];
   for (const f of fc.features) {
     if (f.geometry.type !== 'Point') continue;
@@ -29,7 +31,7 @@ export function renderFurniture(levelPath: string): RenderedFurniture[] {
     if (!id) continue;
     const [x, y] = f.geometry.coordinates;
     const rot = typeof f.properties.rotation === 'number' ? f.properties.rotation : 0;
-    const r = furnitureToSvg(id, rows.get(id) ?? {}, x, y, rot);
+    const r = furnitureToSvg(id, rows.get(id) ?? {}, x, y, rot, upm);
     out.push({ tableName: 'furniture', ...r });
   }
   return out;

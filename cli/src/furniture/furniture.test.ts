@@ -141,4 +141,20 @@ describe('furniture in a project', () => {
     expect(issues).toContain('"spaceship" is not a valid enum');
     expect(issues).toContain('family "armchair" has no variants');
   });
+
+  it('works in project units (mm): sizes, symbol and bounds scale by 1000', async () => {
+    const { resolveFurniture, furniturePlan, furnitureMass } = await import('./library.js');
+    const { furnitureToSvg } = await import('./svg.js');
+    const m = resolveFurniture({ family: 'bed', variant: 'double' });
+    const mm = resolveFurniture({ family: 'bed', variant: 'double' }, 1000);
+    expect(mm.params).toEqual(m.params); // the library itself stays in metres
+    expect(mm.size.w).toBeCloseTo(m.size.w * 1000, 6);
+    const outline = (r: typeof m) => furniturePlan(r).find(p => p.k === 'rect')!;
+    expect((outline(mm) as { w: number }).w).toBeCloseTo((outline(m) as { w: number }).w * 1000, 6);
+    expect(furnitureMass(mm)[0].h).toBeCloseTo(furnitureMass(m)[0].h * 1000, 6);
+    const sized = resolveFurniture({ family: 'desk', size_x: '1600', size_y: '800' }, 1000);
+    expect([sized.params.w, sized.size.w]).toEqual([1.6, 1600]);
+    const b = furnitureToSvg('fu-1', { family: 'desk', size_x: '1600', size_y: '800' }, 0, 0, 0, 1000).bounds;
+    expect([b.maxX - b.minX, b.maxY - b.minY]).toEqual([1600, 800]);
+  });
 });
