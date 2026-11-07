@@ -15,6 +15,7 @@ export const ID_PREFIXES: Record<string, string> = {
   equipment: 'eq', terminal: 'tm', mep_node: 'mn',
   connector: 'cn',
   mep_system: 'sys',
+  view: 'vw',
   mesh: 'ms',
   // Element types (global/ only) and the layers of layered types
   wall_type: 'wt', slab_type: 'slt', roof_type: 'rot', ceiling_type: 'clt',
@@ -39,11 +40,11 @@ export const LAYERED_TYPE_TABLES = new Set(['wall_type', 'slab_type', 'roof_type
 export const ANNOTATION_TABLES = new Set(['dimension', 'text_note', 'tag']);
 
 // Tables whose CSV lives only in global/ (not per-level)
-export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', ...TYPE_TABLES, 'type_layer']);
+export const GLOBAL_ONLY_TABLES = new Set(['level', 'grid', 'mesh', 'mep_system', 'view', ...TYPE_TABLES, 'type_layer']);
 
 // Tables that can appear in global/ (cross-floor elements)
 export const GLOBAL_ALLOWED_TABLES = new Set([
-  'level', 'grid', 'stair',
+  'level', 'grid', 'view', 'stair',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
   'connector',
@@ -53,9 +54,10 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 
 // Tables without a geometry file (level/grid use CSV inline; door/window are hosted; mesh is GLB;
 // mep_system is a project-wide lookup table with no geometry; connector is a CSV-only port
-// on its host equipment / terminal / mep_node, position is derived from host + offsets)
+// on its host equipment / terminal / mep_node, position is derived from host + offsets;
+// view rows carry their plan line inline like grid)
 const TABLES_WITHOUT_GEOMETRY = new Set([
-  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector',
+  'level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'view',
   ...TYPE_TABLES, 'type_layer',
   ...ANNOTATION_TABLES,
 ]);
