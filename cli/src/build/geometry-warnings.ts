@@ -5,6 +5,7 @@ import { discoverLayout } from '../utils/fs.js';
 import { readCsv } from '../utils/csv.js';
 import { effectiveRows } from '../catalog/index.js';
 import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
+import { insertOverlaps, wallOverlaps, type CheckInsert, type CheckWall } from './model-checks.js';
 
 const TOLERANCE = 0.01; // 1cm
 
@@ -54,6 +55,9 @@ export function validateGeometry(dir: string): string[] {
 
     // C. Hosted overlap
     warnings.push(...validateHostedOverlap(d));
+
+    // D. Overlapping walls
+    warnings.push(...validateWallOverlap(d));
   }
 
   return warnings;
@@ -219,64 +223,52 @@ function validateHostedBounds(
 
 // ─── C. Hosted overlap ──────────────────────────────────
 
+/** Default sill / height when a row leaves them empty (as the editor's 3D: windows sit at 0.9 m). */
+const INSERT_DEFAULTS: Record<string, { sill: number; height: number }> = {
+  door: { sill: 0, height: 2.1 }, window: { sill: 0.9, height: 1.2 }, opening: { sill: 0, height: 2.1 },
+};
+
 function validateHostedOverlap(levelDir: { name: string; path: string }): string[] {
-  const warnings: string[] = [];
-
-  interface HostedEntry {
-    id: string;
-    hostId: string;
-    position: number;
-    width: number;
-    tableName: string;
-    row: number;
-  }
-
-  const entries: HostedEntry[] = [];
-
+  const inserts: CheckInsert[] = [];
   for (const tableName of ['door', 'window', 'opening']) {
     const csvPath = join(levelDir.path, `${tableName}.csv`);
     if (!existsSync(csvPath)) continue;
-
     const rows = effectiveRows(dirname(levelDir.path), tableName, readCsv(csvPath).rows);
-    for (let i = 0; i < rows.length; i++) {
-      const row = rows[i];
-      const hostId = row.host_id;
+    const d = INSERT_DEFAULTS[tableName];
+    for (const row of rows) {
       const position = parseFloat(row.position ?? '');
       const width = parseFloat(row.width ?? '');
-
-      if (!hostId || isNaN(position) || isNaN(width)) continue;
-      entries.push({ id: row.id, hostId, position, width, tableName, row: i + 2 });
+      if (!row.host_id || isNaN(position) || isNaN(width)) continue;
+      const sill = row.base_offset !== undefined && row.base_offset !== '' ? parseFloat(row.base_offset) || 0 : d.sill;
+      const height = parseFloat(row.height ?? '') || d.height;
+      inserts.push({ id: row.id, scope: levelDir.name, table: tableName, hostId: row.host_id, position, width, sill, height });
     }
   }
+  return insertOverlaps(inserts, TOLERANCE).map((p) => `[warn] ${levelDir.name}/  ${p.message}`);
+}
 
-  // Group by host_id
-  const byHost = new Map<string, HostedEntry[]>();
-  for (const entry of entries) {
-    const list = byHost.get(entry.hostId) ?? [];
-    list.push(entry);
-    byHost.set(entry.hostId, list);
-  }
+// ─── D. Overlapping walls ───────────────────────────────
 
-  // Check pairwise overlap
-  for (const [hostId, group] of byHost) {
-    if (group.length < 2) continue;
-    group.sort((a, b) => a.position - b.position);
-
-    for (let i = 0; i < group.length; i++) {
-      for (let j = i + 1; j < group.length; j++) {
-        const a = group[i];
-        const b = group[j];
-        const aEnd = a.position + a.width / 2;
-        const bStart = b.position - b.width / 2;
-
-        if (aEnd > bStart + TOLERANCE) {
-          warnings.push(
-            `[warn] ${levelDir.name}/  ${a.id} and ${b.id} overlap on ${hostId} (${a.id}: ${(a.position - a.width / 2).toFixed(3)}–${aEnd.toFixed(3)}m, ${b.id}: ${bStart.toFixed(3)}–${(b.position + b.width / 2).toFixed(3)}m)`,
-          );
-        }
+function validateWallOverlap(levelDir: { name: string; path: string }): string[] {
+  const walls: CheckWall[] = [];
+  for (const table of ['wall', 'structure_wall']) {
+    const geomName = GEOJSON_FILE_NAMES[table];
+    const path = join(levelDir.path, `${geomName}.geojson`);
+    if (!geomName || !existsSync(path)) continue;
+    const thickness = new Map<string, number>();
+    const csvPath = join(levelDir.path, `${table}.csv`);
+    if (existsSync(csvPath)) {
+      try { for (const r of effectiveRows(dirname(levelDir.path), table, readCsv(csvPath).rows)) thickness.set(r.id, parseFloat(r.thickness ?? '') || 0); } catch { /* skip */ }
+    }
+    try {
+      for (const f of parseGeoJsonFile(path).features) {
+        if (f.geometry.type !== 'LineString' || f.properties?.arc) continue;
+        const id = String(f.properties?.id ?? '');
+        if (!id) continue;
+        const lg = extractLineGeometry(f);
+        walls.push({ id, scope: levelDir.name, table, a: { x: lg.start_x, y: lg.start_y }, b: { x: lg.end_x, y: lg.end_y }, thickness: thickness.get(id) || 0.2 });
       }
-    }
+    } catch { /* skip */ }
   }
-
-  return warnings;
+  return wallOverlaps(walls, TOLERANCE).map((p) => `[warn] ${levelDir.name}/  ${p.message}`);
 }

@@ -64,7 +64,9 @@ export function computeSpaceBoundaries(
   // 9. Write space.geojson (with each room's net area at the wall faces)
   const lines = collectBoundaryLines(levelDir.path);
   if (globalDir) lines.push(...collectBoundaryLines(globalDir));
-  writeSvg(levelDir.path, matchedSpaces, lines, unitsPerMetre(units));
+  // Redundant rooms: every seed but the first in a shared area (area counted once).
+  const redundant = new Set(rooms.roomIssues.filter((r) => r.kind === 'shared').flatMap((r) => r.spaceIds.slice(1)));
+  writeSvg(levelDir.path, matchedSpaces, lines, unitsPerMetre(units), redundant);
   return { warnings, geojsonWritten: true, roomIssues };
 }
 
@@ -140,7 +142,7 @@ function collectBoundarySegments(levelPath: string, only?: Set<string> | null): 
 
 // ─── GeoJSON output ─────────────────────────────────────
 
-function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>, lines: BoundaryLine[], upm: number): void {
+function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>, lines: BoundaryLine[], upm: number, redundant: Set<string>): void {
   const features: BimDownFeature[] = [];
   for (const [spaceId, face] of matchedSpaces) {
     // Close the ring per RFC 7946
@@ -153,7 +155,9 @@ function writeSvg(levelPath: string, matchedSpaces: Map<string, Face>, lines: Bo
     if (first[0] !== last[0] || first[1] !== last[1]) ring.push([first[0], first[1]]);
     features.push({
       type: 'Feature',
-      properties: { id: spaceId, net_area: Number(roomNetArea(face.polygon, lines, upm).toFixed(4)) },
+      properties: redundant.has(spaceId)
+        ? { id: spaceId, net_area: 0, redundant: true }
+        : { id: spaceId, net_area: Number(roomNetArea(face.polygon, lines, upm).toFixed(4)) },
       geometry: { type: 'Polygon', coordinates: [ring] },
     });
   }

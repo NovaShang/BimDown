@@ -75,4 +75,16 @@ describe('renderLevel', () => {
     expect(lineOf('ss-1').match(/M /g)).toHaveLength(2);
     expect(svg.indexOf('id="f-1"')).toBeLessThan(svg.indexOf('id="ss-1"'));
   });
+  it('blanks the host wall under an embedded curtain wall', () => {
+    const lv = setup();
+    writeFileSync(join(lv, 'curtain_wall.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [line('cw-1', [3, 0.05], [7, 0.05]), line('cw-2', [3, 2], [7, 2])] }));
+    writeFileSync(join(lv, 'curtain_wall.csv'), 'id,number\ncw-1,\ncw-2,\n');
+    const svg = renderLevel(testDir, 'lv-1');
+    const masks = svg.split('\n').filter((l) => l.includes('stroke="white"') && l.includes('<line'));
+    expect(masks).toHaveLength(1);
+    expect(masks[0]).toContain('x1="3"');
+    expect(masks[0]).toContain('x2="7"');
+    expect(svg.indexOf(masks[0])).toBeLessThan(svg.indexOf('id="cw-1"'));
+    expect(svg.indexOf(masks[0])).toBeGreaterThan(svg.indexOf('id="w-1"'));
+  });
 });
