@@ -195,6 +195,14 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 - **匿名**:无账号;服务器返回随机分享 token。任何持链人都可在过期前(默认 7 天)查看和下载。
 - **同意要求**:每个项目**首次发布前**必须显式得到用户许可,不要自主上传。
 
+## 构件类型（type）
+
+`global/` 下可选的 Revit 式类型表（`bimdown init` 会写入一套公制起步类型）：`wall_type`、`slab_type`、`roof_type`、`ceiling_type`（分层写在 `type_layer.csv`），`door_type`、`window_type`（宽、高、开启方式、`u_value`、`shgc`、`vt`），`curtain_wall_type`、`column_type`、`beam_type`。
+- 构件填 `type_id`，类型给出的字段留空（如墙 `thickness`、门 `width`）；构件自己填的值只覆盖该构件。
+- `type_layer.csv`：`id,type_id,seq,function,material,thickness,conductivity,name`；`seq` 1 为外侧 / 顶面，`function` 取 core | substrate | insulation | air_gap | membrane | finish；类型厚度 = 各层之和。
+- 墙的第 1 层在其左侧（从起点看向终点）：外墙按俯视顺时针绘制，保温和饰面朝外。
+- `bimdown query` 返回生效值，可直接关联类型表：`SELECT w.id, w.thickness, t.name FROM wall w JOIN wall_type t ON w.type_id = t.id`。
+
 ## 关键规则
 
 - **ID 格式**:`{prefix}-{n}`(纯数字)适用于多数元素;`lv-{any}` / `gr-{any}` 适用于 level/grid。

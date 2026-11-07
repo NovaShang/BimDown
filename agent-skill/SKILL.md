@@ -1,6 +1,6 @@
 ---
 name: bimdown
-version: 2.1.0
+version: 2.2.0
 description: Read, create and edit BIM models in the BimDown format (CSV attributes + GeoJSON geometry, one folder per level) with the `bimdown` CLI — architecture, structure, foundations and MEP. Use when asked to build a building model from drawings or a brief, to query or check an existing BimDown project, or when a task mentions BimDown / bim.jouledown.com / BimClaw.
 metadata:
   {
@@ -181,6 +181,14 @@ wn-1,C1515,w-7,4.2,1.5,1.5,0.9,aluminum
 - `position ± width/2` must stay within the wall; openings on one wall must not overlap.
 - `base_offset` is measured from the level elevation (like Revit's sill height), even when the host wall starts below the level. Windows: always set it (0.9 typical); 0 puts the window on the level.
 - Put the drawing's mark (e.g. `FM甲1022`, `C1515`) in `number`.
+
+## 7b. Element types
+
+Optional Revit-style types in `global/` (`bimdown init` writes a metric starter catalog): `wall_type`, `slab_type`, `roof_type`, `ceiling_type` (layers in `type_layer.csv`), `door_type`, `window_type` (width, height, operation, `u_value`, `shgc`, `vt`), `curtain_wall_type`, `column_type`, `beam_type`.
+- Elements set `type_id` and leave the type's fields empty (e.g. wall `thickness`, door `width`); a value they set overrides the type for that element.
+- `type_layer.csv`: `id,type_id,seq,function,material,thickness,conductivity,name`; `seq` 1 = exterior / top, `function` core | substrate | insulation | air_gap | membrane | finish. Type thickness = sum of layers.
+- A wall's layer 1 is on its left looking start→end: draw exterior walls clockwise seen from above.
+- `bimdown query` returns effective values and joins types: `SELECT w.id, w.thickness, t.name FROM wall w JOIN wall_type t ON w.type_id = t.id`.
 
 ## 8. CLI reference
 
