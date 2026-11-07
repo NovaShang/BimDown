@@ -6,6 +6,7 @@ import { computeSpaceBoundaries, type RoomIssue } from './space-boundary.js';
 import { validateGeometry } from './geometry-warnings.js';
 import { resolveHostedCoords } from './resolve-hosted-coords.js';
 import { snapEndpoints, type SnapRecord } from './snap-endpoints.js';
+import { mepWarnings } from '../mep/index.js';
 
 export type { RoomIssue };
 
@@ -31,6 +32,9 @@ export function build(dir: string): BuildResult {
 
   // 2. Geometry warnings (connectivity, hosted bounds, overlap)
   const warnings = validateGeometry(dir);
+
+  // 2b. MEP connectivity (open ends, unresolved / misplaced port refs, system mismatches)
+  warnings.push(...mepWarnings(dir));
 
   // 3. Compute space boundaries per level → write space.geojson
   const artifacts: string[] = [];

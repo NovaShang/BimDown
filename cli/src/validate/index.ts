@@ -5,7 +5,7 @@ import type { ResolvedTable } from '../schema/types.js';
 import { discoverLayout, listFiles } from '../utils/fs.js';
 import { readCsv, type CsvData } from '../utils/csv.js';
 import { validateStructure } from './structure.js';
-import { validateCsvHeaders, validateCsvRequired, validateCsvEnums } from './csv.js';
+import { validateCsvHeaders, validateCsvRequired, validateCsvEnums, validateCsvTypes } from './csv.js';
 import { validateIdFormat, createIdRegistry, registerIds } from './ids.js';
 import { validateReferences } from './references.js';
 import { validateRanges } from './ranges.js';
@@ -81,6 +81,7 @@ export function validate(dir: string): string[] {
   // 6. Enum validation
   for (const entry of csvEntries) {
     issues.push(...validateCsvEnums(entry.path, entry.table, entry.data));
+    issues.push(...validateCsvTypes(entry.path, entry.table, entry.data));
   }
 
   // 7. Reference validation

@@ -71,3 +71,29 @@ export function validateCsvEnums(
 
   return issues;
 }
+
+const BOOLEAN_VALUES = new Set(['true', 'false']);
+
+/** Boolean columns hold `true` / `false` (empty = false). Numbers in numeric columns must parse. */
+export function validateCsvTypes(
+  path: string,
+  table: ResolvedTable,
+  data: CsvData,
+): string[] {
+  const issues: string[] = [];
+  const typed = table.csvFields.filter((f) => f.type === 'boolean' || (f.unit === 'none' && (f.type === 'float' || f.type === 'int')));
+  if (typed.length === 0) return issues;
+  for (let i = 0; i < data.rows.length; i++) {
+    const row = data.rows[i];
+    for (const f of typed) {
+      const val = row[f.name];
+      if (val === undefined || val === '') continue;
+      if (f.type === 'boolean') {
+        if (!BOOLEAN_VALUES.has(val.toLowerCase())) issues.push(`${path}:${i + 2}  field "${f.name}" value "${val}" must be true or false`);
+      } else if (!Number.isFinite(Number(val)) || Number(val) < 0) {
+        issues.push(`${path}:${i + 2}  field "${f.name}" value "${val}" must be a non-negative number`);
+      }
+    }
+  }
+  return issues;
+}

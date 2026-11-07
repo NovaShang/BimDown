@@ -13,7 +13,7 @@ export const ID_PREFIXES: Record<string, string> = {
   beam: 'bm', brace: 'br', foundation: 'f',
   duct: 'du', pipe: 'pi', cable_tray: 'ct', conduit: 'co',
   equipment: 'eq', terminal: 'tm', mep_node: 'mn',
-  connector: 'cn',
+  connector: 'cn', circuit: 'ci',
   mep_system: 'sys',
   mesh: 'ms',
 };
@@ -26,7 +26,7 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
   'level', 'grid', 'stair',
   'duct', 'pipe', 'cable_tray', 'conduit',
   'equipment', 'terminal', 'mep_node',
-  'connector',
+  'connector', 'circuit',
   'structure_column', 'beam', 'brace',
   'foundation',
 ]);
@@ -34,7 +34,7 @@ export const GLOBAL_ALLOWED_TABLES = new Set([
 // Tables without a geometry file (level/grid use CSV inline; door/window are hosted; mesh is GLB;
 // mep_system is a project-wide lookup table with no geometry; connector is a CSV-only port
 // on its host equipment / terminal / mep_node, position is derived from host + offsets)
-const TABLES_WITHOUT_GEOMETRY = new Set(['level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector']);
+const TABLES_WITHOUT_GEOMETRY = new Set(['level', 'grid', 'door', 'window', 'mesh', 'mep_system', 'connector', 'circuit']);
 
 // GeoJSON file name mapping: table name -> geojson file name (without extension)
 // GeoJSON files use the same name as the CSV (both singular): wall.csv + wall.geojson

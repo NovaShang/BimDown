@@ -232,6 +232,33 @@ program
     resolveTopology(absDir);
   });
 
+// ─── mep-check ────────────────────────────────────────────
+program
+  .command('mep-check')
+  .argument('<dir>', 'BimDown project directory')
+  .option('--json', 'Print the report as JSON')
+  .option('--all', 'Also list info-level findings (unused equipment ports, devices without a circuit)')
+  .description('MEP connectivity check: systems (curves, length, devices) and problems — open ends, port refs that do not resolve or whose curve end is not on the port, system / domain mismatches, disconnected devices, orphan fittings, overloaded circuits. Exit code 1 when there are warnings.')
+  .action(async (dir: string, opts: { json?: boolean; all?: boolean }) => {
+    const { mepReport, formatProblem } = await import('./mep/index.js');
+    const report = mepReport(resolve(dir));
+    const shown = opts.all ? report.problems : report.problems.filter(p => p.severity === 'warning');
+    if (opts.json) {
+      console.log(JSON.stringify({ systems: report.systems, problems: shown }, null, 2));
+    } else {
+      console.log('Systems:');
+      if (report.systems.length === 0) console.log('  (no MEP curves)');
+      for (const s of report.systems) {
+        console.log(`  ${s.system.padEnd(8)} ${String(s.curves).padStart(4)} curve(s)  ${s.length.toFixed(1).padStart(7)} long  ${s.devices} device(s)  [${s.tables.join(', ')}]`);
+      }
+      console.log();
+      for (const p of shown) console.log(`${p.severity === 'info' ? 'info  ' : ''}${formatProblem(p)}`);
+      const warnings = report.problems.filter(p => p.severity === 'warning').length;
+      console.log(warnings === 0 ? 'MEP connectivity: no problems.' : `\n${warnings} connectivity problem(s).`);
+    }
+    if (report.problems.some(p => p.severity === 'warning')) process.exitCode = 1;
+  });
+
 // ─── merge ───────────────────────────────────────────────
 program
   .command('merge')

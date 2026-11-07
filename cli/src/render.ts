@@ -9,6 +9,7 @@ import { discoverLayout } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
 import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
+import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -117,6 +118,11 @@ export function renderLevel(projectDir: string, levelId: string): string {
 
   for (const tableName of RENDER_ORDER) {
     if (CSV_ONLY_TABLES.has(tableName)) continue;
+    // MEP (runs, fittings, devices, accessories) has its own plan graphics.
+    if (MEP_RENDER_TABLES.has(tableName)) {
+      if (tableName === 'duct') elements.push(...renderMep(sources.map(s => s.path), layout.globalDir));
+      continue;
+    }
     const fileBase = GEOJSON_FILE_NAMES[tableName];
     if (!fileBase) continue;
 

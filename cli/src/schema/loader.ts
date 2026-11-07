@@ -70,5 +70,6 @@ function normalizeField(raw: RawField): ResolvedField {
     values: raw.values,
     description: raw.description,
     default: raw.default,
+    unit: raw.unit,
   };
 }
