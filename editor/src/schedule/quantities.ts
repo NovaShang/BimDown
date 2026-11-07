@@ -21,7 +21,8 @@ import { parseFloorLayers, parseLayer } from '../model/parse.ts';
 import { arcLength } from '../geometry/arc.ts';
 import { boundaryWalls, roomPolygon, roomAreasOf, polygonArea, polygonPerimeter } from '../annotation/rooms.ts';
 import { isAnnotationTable } from '../annotation/model.ts';
-import { elementQuantities as structuralQuantities } from '../model/quantities.ts';
+import { elementQuantities as structuralQuantities, massOf, ringArea } from '../model/quantities.ts';
+import { isShaft } from '../model/crossLevel.ts';
 
 export interface ElementQuantities {
   length?: number;
@@ -30,7 +31,23 @@ export interface ElementQuantities {
   gross_area?: number;
   volume?: number;
   perimeter?: number;
+  /** kg, framing and columns (volume × material density). */
+  weight?: number;
 }
+
+/** Plan area of the polygon openings hosted on a slab (shafts excluded). */
+export function hostedOpeningArea(slab: CanonicalElement, context: CanonicalElement[]): number {
+  let a = 0;
+  for (const o of context) {
+    if (o.tableName !== 'opening' || o.geometry !== 'polygon' || isShaft(o)) continue;
+    if ((o.attrs.host_id || o.hostId) !== slab.id) continue;
+    a += ringArea(o.vertices);
+  }
+  return a;
+}
+
+const WEIGHED = new Set(['structure_column', 'beam', 'brace']);
+const DEDUCT_OPENINGS = new Set(['slab', 'structure_slab']);
 
 export interface LevelElements {
   level: Level;
@@ -95,7 +112,7 @@ function openingArea(wall: CanonicalElement, hosted: CanonicalElement[]): number
  * elements) — rooms need its walls, walls their openings.
  */
 export function elementQuantities(
-  el: CanonicalElement, level: Level, levels: Level[], context: CanonicalElement[],
+  el: CanonicalElement, level: Level, levels: Level[], context: CanonicalElement[], upm = 1,
 ): ElementQuantities {
   const q: ElementQuantities = {};
   const thickness = parseFloat(el.attrs.thickness ?? '');
@@ -130,6 +147,16 @@ export function elementQuantities(
     // Polygon slabs / rafts: area net of their holes.
     if (s.area !== undefined && el.geometry === 'polygon') q.area = s.area;
   }
+  // Slabs: hosted floor openings deducted (gross = outline − inner rings).
+  if (DEDUCT_OPENINGS.has(el.tableName) && q.area !== undefined) {
+    const cut = hostedOpeningArea(el, context);
+    if (cut > 0) {
+      q.gross_area = q.area;
+      q.area = Math.max(0, q.area - cut);
+      if (Number.isFinite(thickness)) q.volume = q.area * thickness;
+    }
+  }
+  if (WEIGHED.has(el.tableName)) q.weight = massOf(q.volume, el.attrs.material, upm);
   return q;
 }
 

@@ -131,6 +131,12 @@ export class IfcWriter {
     return this.add('IfcPolyline', hs);
   }
 
+  /** Optional fillet radius: IFC4 non-negative, IFC2X3 positive (omitted when 0). */
+  private fillet(r: number | undefined): any {
+    if (r === undefined || !(r > 1e-9)) return null;
+    return this.ifc4 ? new this.S.IfcNonNegativeLengthMeasure(clean(r)) : this.plen(r);
+  }
+
   profile(p: Profile): H {
     const AREA = this.S.IfcProfileTypeEnum.AREA;
     const name = this.label(p.name);
@@ -142,7 +148,21 @@ export class IfcWriter {
         return this.add('IfcCircleProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }), this.plen(p.r));
       case 'ishape':
         return this.add('IfcIShapeProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
-          this.plen(p.w), this.plen(p.d), this.plen(p.web), this.plen(p.flange), null);
+          this.plen(p.w), this.plen(p.d), this.plen(p.web), this.plen(p.flange), this.fillet(p.fillet));
+      case 'ushape':
+        return this.add('IfcUShapeProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
+          this.plen(p.d), this.plen(p.w), this.plen(p.web), this.plen(p.flange), this.fillet(p.fillet));
+      case 'lshape':
+        return this.add('IfcLShapeProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
+          this.plen(p.d), this.plen(p.w), this.plen(p.t), this.fillet(p.fillet));
+      case 'rect_hollow': {
+        const inner = p.outerFillet !== undefined ? Math.max(0, p.outerFillet - p.t) : undefined;
+        return this.add('IfcRectangleHollowProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
+          this.plen(p.w), this.plen(p.d), this.plen(p.t), this.fillet(inner), this.fillet(p.outerFillet));
+      }
+      case 'circle_hollow':
+        return this.add('IfcCircleHollowProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
+          this.plen(p.r), this.plen(p.t));
       case 'poly': {
         const outer = this.polyline2(p.outer, true);
         if (p.holes && p.holes.length > 0) {
@@ -231,10 +251,11 @@ export class IfcWriter {
     return this.add('IfcPropertySet', this.guid(key), this.ownerHistory, this.label(name), null, hs);
   }
 
-  elementQuantity(key: string, name: string, quantities: { kind: 'length' | 'area' | 'volume'; name: string; value: number }[]): H | null {
+  elementQuantity(key: string, name: string, quantities: { kind: 'length' | 'area' | 'volume' | 'weight'; name: string; value: number }[]): H | null {
     const hs = quantities.filter(q => Number.isFinite(q.value) && q.value > 0).map(q => {
       if (q.kind === 'length') return this.add('IfcQuantityLength', this.label(q.name), null, null, this.len(q.value));
       if (q.kind === 'area') return this.add('IfcQuantityArea', this.label(q.name), null, null, this.area(q.value));
+      if (q.kind === 'weight') return this.add('IfcQuantityWeight', this.label(q.name), null, null, new this.S.IfcMassMeasure(clean(q.value)));
       return this.add('IfcQuantityVolume', this.label(q.name), null, null, this.volume(q.value));
     });
     if (hs.length === 0) return null;

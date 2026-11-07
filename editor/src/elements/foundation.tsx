@@ -100,27 +100,27 @@ export const foundationModule: ElementModule<FoundationFacts> = {
     {
       id: 'isolated', label: 'layer.isolated_foundation', icon: '◼', iconName: 'isolated_foundation', placementType: 'free_point',
       defaults: { kind: 'pad', width: `${DEFAULT_PAD_SIZE}`, length: `${DEFAULT_PAD_SIZE}`, thickness: '0.5' },
-      fields: ['width', 'length', 'thickness', 'material', 'base_offset'],
+      fields: ['width', 'length', 'thickness', 'material', 'material_grade', 'base_offset'],
     },
     {
       id: 'strip', label: 'layer.strip_foundation', icon: '▬', iconName: 'strip_foundation', placementType: 'free_line',
       defaults: { kind: 'strip', width: `${DEFAULT_STRIP_WIDTH}`, thickness: '0.4' },
-      fields: ['width', 'thickness', 'material', 'base_offset'],
+      fields: ['width', 'thickness', 'material', 'material_grade', 'base_offset'],
     },
     {
       id: 'raft', label: 'layer.raft_foundation', icon: '▢', iconName: 'raft_foundation', placementType: 'free_polygon',
       defaults: { kind: 'raft', thickness: '0.8' },
-      fields: ['thickness', 'material', 'base_offset'],
+      fields: ['thickness', 'material', 'material_grade', 'base_offset'],
     },
     {
       id: 'pile_cap', label: 'layer.pile_cap_foundation', icon: '▭', iconName: 'pile_cap_foundation', placementType: 'free_polygon',
       defaults: { kind: 'pile_cap', thickness: '1.0' },
-      fields: ['thickness', 'material', 'base_offset'],
+      fields: ['thickness', 'material', 'material_grade', 'base_offset'],
     },
     {
       id: 'pile', label: 'layer.pile_foundation', icon: '●', iconName: 'pile_foundation', placementType: 'free_point',
       defaults: { kind: 'pile', width: `${DEFAULT_PILE_DIAMETER}`, length: '', thickness: '15' },
-      fields: ['width', 'thickness', 'material', 'base_offset'],
+      fields: ['width', 'thickness', 'material', 'material_grade', 'base_offset'],
       fieldLabels: { width: 'Diameter', thickness: 'Pile Length' },
     },
   ],

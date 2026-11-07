@@ -89,7 +89,8 @@ export const beamModule: ElementModule<BeamFacts> = {
   prefix: 'bm',
   csvHeaders: [
     'number', 'base_offset', 'start_z', 'end_z',
-    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'material_grade',
+    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'root_radius', 'designation', 'material', 'material_grade',
+    'beam_system_id',
   ],
   // Beam z is its TOP, relative to the level: 0 = flush with this level's
   // floor (the Revit / template convention), whatever the storey height.
@@ -114,13 +115,13 @@ export const beamModule: ElementModule<BeamFacts> = {
     // Drag a box (or click a grid bay): beams between neighbouring columns.
     {
       id: 'between_columns', label: 'layer.beams_between_columns', icon: '╋', iconName: 'beams_between', placementType: 'region',
-      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material'],
+      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material', 'material_grade'],
     },
     // Click a grid bay (or drag a box): parallel infill beams at a spacing.
     {
       id: 'beam_system', label: 'layer.beam_system', icon: '▥', iconName: 'beam_system', placementType: 'region',
       defaults: { size_x: '0.25', size_y: '0.45', [BEAM_SPACING_KEY]: '2', [BEAM_SPAN_KEY]: 'short' },
-      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material'],
+      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material', 'material_grade'],
       extraFields: [
         { key: BEAM_SPACING_KEY, label: 'Spacing', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
         { key: BEAM_SPAN_KEY, label: 'Span', type: 'select', options: [

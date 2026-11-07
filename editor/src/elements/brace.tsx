@@ -36,7 +36,7 @@ export const braceModule: ElementModule<BraceFacts> = {
   prefix: 'br',
   csvHeaders: [
     'number', 'base_offset', 'start_z', 'end_z',
-    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'material_grade',
+    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'root_radius', 'designation', 'material', 'material_grade',
   ],
   defaults: { base_offset: '0', start_z: '0', end_z: '3', shape: 'rect', size_x: '0.2', size_y: '0.2', material: 'steel' },
   // A brace spans the storey: floor of this level → floor of the next.

@@ -1,5 +1,25 @@
-import { Shape } from 'three';
+import { Path, Shape } from 'three';
 import type { Shape2D } from './types.ts';
+
+/** Rounded rectangle (corner radius r, clamped) traced CCW into a Shape or Path. */
+function roundedRect<T extends Path>(p: T, hw: number, hd: number, r: number): T {
+  const rr = Math.max(0, Math.min(r, hw, hd));
+  if (rr < 1e-9) {
+    p.moveTo(-hw, -hd); p.lineTo(hw, -hd); p.lineTo(hw, hd); p.lineTo(-hw, hd); p.closePath();
+    return p;
+  }
+  p.moveTo(-hw + rr, -hd);
+  p.lineTo(hw - rr, -hd);
+  p.absarc(hw - rr, -hd + rr, rr, -Math.PI / 2, 0, false);
+  p.lineTo(hw, hd - rr);
+  p.absarc(hw - rr, hd - rr, rr, 0, Math.PI / 2, false);
+  p.lineTo(-hw + rr, hd);
+  p.absarc(-hw + rr, hd - rr, rr, Math.PI / 2, Math.PI, false);
+  p.lineTo(-hw, -hd + rr);
+  p.absarc(-hw + rr, -hd + rr, rr, Math.PI, Math.PI * 1.5, false);
+  p.closePath();
+  return p;
+}
 
 /**
  * Profile factory: converts Shape2D specs to THREE.Shape for ExtrudeGeometry.
@@ -100,6 +120,23 @@ export function createProfile(spec: Shape2D): Shape {
       shape.lineTo(hw, hd);
       shape.lineTo(-hw, hd);
       shape.closePath();
+      return shape;
+    }
+
+    case 'rect_hollow': {
+      const hw = spec.width / 2, hd = spec.depth / 2;
+      const t = Math.min(spec.thickness, hw * 0.95, hd * 0.95);
+      roundedRect(shape, hw, hd, spec.radius);
+      shape.holes.push(roundedRect(new Path(), hw - t, hd - t, Math.max(0, spec.radius - t)));
+      return shape;
+    }
+
+    case 'round_hollow': {
+      shape.absarc(0, 0, spec.radius, 0, Math.PI * 2, false);
+      const inner = Math.max(spec.radius - spec.thickness, spec.radius * 0.05);
+      const hole = new Path();
+      hole.absarc(0, 0, inner, 0, Math.PI * 2, true);
+      shape.holes.push(hole);
       return shape;
     }
 

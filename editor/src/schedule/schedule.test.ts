@@ -82,6 +82,47 @@ describe('schedules', () => {
     expect(rows('mep').find(r => r.id === 'pi-1')!.values.insulation).toBe(0.025);
   });
 
+  it('structural take-off: types and grades, steel weight, net slab volume, a foundation schedule', async () => {
+    const f = twoLevels();
+    f['global/column_type.csv'] = 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\n'
+      + 'colt-1,RC 700x700 C40,,concrete,rect,0.7,0.7,,,,,,C40\ncolt-2,HEA 300,,steel,i_shape,0.3,0.29,0.014,0.0085,,0.027,HEA 300,S355\n';
+    f['global/wall_type.csv'] = 'id,name,description,material,thickness\nwt-1,Brick 200,,brick,0.2\n';
+    f['lv-1/structure_column.csv'] = 'id,number,type_id,material_grade\nsc-1,KZ1,colt-1,C40\nsc-2,KZ2,colt-1,C40\nsc-3,GZ1,colt-2,S355\n';
+    f['lv-1/structure_column.geojson'] = fc(['sc-1', 'sc-2', 'sc-3'].map((id, i) => ({ type: 'Feature', properties: { id }, geometry: { type: 'Point', coordinates: [i * 4, 0] } })));
+    f['lv-1/structure_slab.csv'] = 'id,number,thickness,material\nss-1,,0.2,concrete\n';
+    f['lv-1/structure_slab.geojson'] = fc([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [21.6, 0], [21.6, 25.2], [0, 25.2], [0, 0]]] } }]);
+    f['lv-1/opening.csv'] = 'id,number,host_id\nop-1,,ss-1\n';
+    f['lv-1/opening.geojson'] = fc([{ type: 'Feature', properties: { id: 'op-1' }, geometry: { type: 'Polygon', coordinates: [[[5, 5], [8.1, 5], [8.1, 8.4], [5, 8.4], [5, 5]]] } }]);
+    f['lv-1/foundation.csv'] = 'id,number,kind,thickness,width,length,material,material_grade\nf-1,J1,pad,0.6,2,2,concrete,C30\nf-2,ZH1,pile,15,0.6,,concrete,C35\n';
+    f['lv-1/foundation.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'f-1' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+      { type: 'Feature', properties: { id: 'f-2' }, geometry: { type: 'Point', coordinates: [4, 0] } },
+    ]);
+    f['lv-1/wall.csv'] = 'id,number,thickness,type_id\nw-1,W1,0.2,wt-1\nw-2,,0.2,\nw-3,,0.2,\nw-4,,0.2,\n';
+    f['lv-1/door.csv'] = 'id,number,host_id,position,width,height\nd-1,D101,w-1,2,0.9,2.1\n';
+    const { state } = await load(f);
+    const rows = (k: string) => scheduleRows(cat(k), state.project!, 'm', name, 'lv-1', state.document!.elements);
+    const cols = rows('columns');
+    const c3 = cols.find(r => r.id === 'sc-3')!.values;
+    expect(c3).toMatchObject({ type_name: 'HEA 300', grade: 'S355', size: 'HEA 300' });
+    expect(c3.weight as number).toBeCloseTo(88.3 * 3, 0); // 3 m storey
+    const byType = groupRows(cols, cat('columns').groupBy!, cat('columns').columns);
+    expect(byType.map(g => [g.key, g.totals.count])).toEqual([['HEA 300', 1], ['RC 700x700 C40', 2]]);
+    expect(byType[1].totals.volume).toBeCloseTo(2 * 0.49 * 3, 6);
+    // 21.6 × 25.2 slab with a 3.1 × 3.4 opening: 533.8 m², 106.76 m³
+    const slab = rows('slabs').find(r => r.id === 'ss-1')!.values;
+    expect(slab.area as number).toBeCloseTo(533.78, 2);
+    expect(slab.gross_area as number).toBeCloseTo(544.32, 2);
+    expect(slab.volume as number).toBeCloseTo(106.756, 3);
+    // Foundations: own schedule, by kind, out of "Slabs & roofs"
+    expect(rows('slabs').some(r => r.table === 'foundation')).toBe(false);
+    const fdn = rows('foundations');
+    expect(fdn.map(r => [r.id, r.values.kind, r.values.size, r.values.grade])).toEqual([['f-1', 'Pad', '2000×2000', 'C30'], ['f-2', 'Pile', 'Ø600', 'C35']]);
+    expect(fdn[1].values.volume as number).toBeCloseTo(Math.PI * 0.09 * 15, 6);
+    // Doors name their host by mark and type
+    expect(rows('doors')[0].values.host).toBe('W1 · Brick 200');
+  });
+
   it('door / window operation prints as its translated option label', async () => {
     const f = files();
     f['lv-1/door.csv'] = 'id,number,host_id,position,width,height,operation\nd-1,D01,w-1,2,0.9,2.1,double_swing\n';

@@ -39,7 +39,9 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const unit = getProjectUnits(state);
-  const [catKey, setCatKey] = useState(SCHEDULES[0].key);
+  // Open on the discipline's own schedule (structure: columns, MEP: runs)
+  const [catKey, setCatKey] = useState(() =>
+    state.activeDiscipline === 'structure' ? 'columns' : state.activeDiscipline === 'mep' ? 'mep' : SCHEDULES[0].key);
   const [configs, setConfigs] = useState<Record<string, Config>>({});
   const [showColumns, setShowColumns] = useState(false);
   const cat = SCHEDULES.find(c => c.key === catKey)!;

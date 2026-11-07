@@ -9,12 +9,26 @@
  *   slab / structure_slab      (outline − inner rings) area × thickness
  *   foundation                 pad w × l × t, pile π r² × length, strip length × w × t,
  *                              raft / pile cap area × t
- * Hosted openings are not deducted (doors, windows, slab openings).
+ * Slab openings are deducted where the context is known (schedule/quantities.ts).
+ * `weight` (kg) = volume × material density (MATERIAL_DENSITY, the CLI's).
  */
 import type { CanonicalElement, LineElement, Point, PointElement, PolygonElement, SpatialLineElement } from './elements.ts';
 import { resolveSection } from '../families/sections/index.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
 import { foundationKind } from '../elements/foundation.tsx';
+
+/** Density per `material`, kg/m³ (reinforced concrete 2500) — same table as `bimdown query`. */
+export const MATERIAL_DENSITY: Record<string, number> = {
+  steel: 7850, concrete: 2500, wood: 500, clt: 470, aluminum: 2700, glass: 2500,
+  brick: 1800, stone: 2600, composite: 1600,
+};
+
+/** Mass (kg) of `volume` model units³ of `material` (`upm` model units per metre), or undefined. */
+export function massOf(volume: number | undefined, material: string | undefined, upm = 1): number | undefined {
+  const d = MATERIAL_DENSITY[material ?? ''];
+  if (volume === undefined || !d) return undefined;
+  return (volume / (upm * upm * upm)) * d;
+}
 
 export interface ElementQuantities {
   /** Plan length (lines) or 3D length (spatial framing). */
@@ -49,11 +63,13 @@ export function sectionArea(attrs: Record<string, string>, fallbackW = 0.3, fall
     size_x: attrs.size_x || String(fallbackW),
     size_y: attrs.size_y || String(fallbackD),
   });
+  if (section.family.area) return section.family.area(section.params);
   if (section.family.id === 'round') {
     const r = section.family.bbox(section.params).w / 2;
     return Math.PI * r * r;
   }
-  return ringArea(section.family.outline2D(section.params));
+  const holes = section.family.holes2D?.(section.params) ?? [];
+  return ringArea(section.family.outline2D(section.params)) - holes.reduce((s, h) => s + ringArea(h), 0);
 }
 
 function polygonNetArea(el: PolygonElement): number {

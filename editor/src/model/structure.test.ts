@@ -94,7 +94,7 @@ describe('foundation semantics (spec foundation.yaml)', () => {
   it('the isolated / pile toolbar variants seed their own fields', () => {
     const pad = getDefaultDrawingAttrs('foundation', 'lv-1', levels, 'isolated');
     expect(pad).toMatchObject({ kind: 'pad', width: '1.5', length: '1.5' });
-    expect(getDrawingFields('foundation', levels, 'isolated').map(f => f.key)).toEqual(['width', 'length', 'thickness', 'material', 'base_offset']);
+    expect(getDrawingFields('foundation', levels, 'isolated').map(f => f.key)).toEqual(['width', 'length', 'thickness', 'material', 'material_grade', 'base_offset']);
     const pile = getDrawingFields('foundation', levels, 'pile');
     expect(pile.find(f => f.key === 'width')!.label).toBe('Diameter');
     expect(getDefaultDrawingAttrs('foundation', 'lv-1', levels, 'pile').kind).toBe('pile');

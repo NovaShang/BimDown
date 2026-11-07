@@ -121,6 +121,35 @@ export function profileRings(p: Profile): { outer: V2[]; holes: V2[][]; smooth: 
       ].map(q => ({ x: q.x + cx, y: q.y + cy }));
       break;
     }
+    case 'ushape': {
+      const hw = p.w / 2, hd = p.d / 2, tf = p.flange, tw = p.web;
+      outer = [
+        { x: -hw, y: -hd }, { x: hw, y: -hd }, { x: hw, y: -hd + tf }, { x: -hw + tw, y: -hd + tf },
+        { x: -hw + tw, y: hd - tf }, { x: hw, y: hd - tf }, { x: hw, y: hd }, { x: -hw, y: hd },
+      ].map(q => ({ x: q.x + cx, y: q.y + cy }));
+      break;
+    }
+    case 'lshape': {
+      const hw = p.w / 2, hd = p.d / 2, t = p.t;
+      outer = [
+        { x: -hw, y: -hd }, { x: hw, y: -hd }, { x: hw, y: -hd + t }, { x: -hw + t, y: -hd + t }, { x: -hw + t, y: hd }, { x: -hw, y: hd },
+      ].map(q => ({ x: q.x + cx, y: q.y + cy }));
+      break;
+    }
+    case 'rect_hollow': {
+      const box = (hw: number, hd: number) => [{ x: cx - hw, y: cy - hd }, { x: cx + hw, y: cy - hd }, { x: cx + hw, y: cy + hd }, { x: cx - hw, y: cy + hd }];
+      outer = box(p.w / 2, p.d / 2);
+      holes = [box(p.w / 2 - p.t, p.d / 2 - p.t)];
+      break;
+    }
+    case 'circle_hollow': {
+      const n = 32;
+      const ring = (r: number) => Array.from({ length: n }, (_, i) => ({ x: cx + r * Math.cos((i / n) * Math.PI * 2), y: cy + r * Math.sin((i / n) * Math.PI * 2) }));
+      outer = ring(p.r);
+      holes = [ring(p.r - p.t)];
+      smooth = true;
+      break;
+    }
     default:
       outer = p.outer.map(q => ({ x: q.x + cx, y: q.y + cy }));
       holes = (p.holes ?? []).map(h => h.map(q => ({ x: q.x + cx, y: q.y + cy })));

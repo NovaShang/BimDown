@@ -5,21 +5,21 @@
  * Plain data so the API Worker can import it too.
  */
 export const STARTER_TYPE_FILES = {
-  'global/beam_type.csv': `id,name,description,material,shape,size_x,size_y,flange,web,thickness
-bmt-concrete-250x500,Concrete 250 x 500,,concrete,rect,0.25,0.5,,,
-bmt-concrete-300x600,Concrete 300 x 600,,concrete,rect,0.3,0.6,,,
-bmt-steel-ipe-300,Steel IPE 300,European I-beam,steel,i_shape,0.15,0.3,0.0107,0.0071,
-bmt-glulam-200x400,Glulam 200 x 400,Glued laminated timber,wood,rect,0.2,0.4,,,
+  'global/beam_type.csv': `id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade
+bmt-concrete-250x500,Concrete 250 x 500,,concrete,rect,0.25,0.5,,,,,,C30
+bmt-concrete-300x600,Concrete 300 x 600,,concrete,rect,0.3,0.6,,,,,,C30
+bmt-steel-ipe-300,Steel IPE 300,European I-beam,steel,i_shape,0.15,0.3,0.0107,0.0071,,0.015,IPE 300,S355
+bmt-glulam-200x400,Glulam 200 x 400,Glued laminated timber,wood,rect,0.2,0.4,,,,,,GL24h
 `,
   'global/ceiling_type.csv': `id,name,description,material,thickness
 clt-gypsum-board,Gypsum board 12.5,Suspended plasterboard ceiling,gypsum,0.0125
 clt-acoustic-tile,Acoustic tile 600 x 600,Mineral fibre lay-in tiles,composite,0.02
 `,
-  'global/column_type.csv': `id,name,description,material,shape,size_x,size_y,flange,web,thickness
-colt-concrete-400,Concrete 400 x 400,,concrete,rect,0.4,0.4,,,
-colt-concrete-600,Concrete 600 x 600,,concrete,rect,0.6,0.6,,,
-colt-concrete-round-400,Concrete round 400,,concrete,round,0.4,,,,
-colt-steel-hea-300,Steel HEA 300,European wide-flange section,steel,i_shape,0.3,0.29,0.014,0.0085,
+  'global/column_type.csv': `id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade
+colt-concrete-400,Concrete 400 x 400,,concrete,rect,0.4,0.4,,,,,,C30
+colt-concrete-600,Concrete 600 x 600,,concrete,rect,0.6,0.6,,,,,,C30
+colt-concrete-round-400,Concrete round 400,,concrete,round,0.4,,,,,,,C30
+colt-steel-hea-300,Steel HEA 300,European wide-flange section,steel,i_shape,0.3,0.29,0.014,0.0085,,0.027,HEA 300,S355
 `,
   'global/curtain_wall_type.csv': `id,name,description,material,u_spacing,v_spacing,panel_material,mullion_width,mullion_depth,mullion_profile,solid_material,u_value,shgc,vt
 cwt-glazed-1500,Glazed 1500 grid,Aluminium stick system with double-glazed panels,aluminum,1.5,1.5,glass,0.05,0.15,rect,aluminum,1.6,0.35,0.6
@@ -30,6 +30,14 @@ dt-single-1000,Single 1000 x 2100,Accessible flush timber door,wood,1.0,2.1,sing
 dt-double-1800,Double 1800 x 2100,Pair of flush timber leaves,wood,1.8,2.1,double_swing,0.05,2.0,,
 dt-ext-1000,Exterior insulated 1000 x 2200,Insulated entrance door,aluminum,1.0,2.2,single_swing,0.07,1.3,,
 dt-sliding-glass-2400,Sliding glass 2400 x 2100,Double-glazed aluminium patio door,aluminum,2.4,2.1,sliding,0.07,1.6,0.45,0.6
+`,
+  'global/foundation_type.csv': `id,name,description,material,kind,width,length,thickness,material_grade
+fdt-pad-1500,Pad 1500 x 1500 x 500,Isolated pad footing,concrete,pad,1.5,1.5,0.5,C30
+fdt-pad-2000,Pad 2000 x 2000 x 600,Isolated pad footing,concrete,pad,2,2,0.6,C30
+fdt-pad-2500,Pad 2500 x 2500 x 700,Isolated pad footing,concrete,pad,2.5,2.5,0.7,C30
+fdt-strip-800,Strip 800 x 400,Continuous wall footing,concrete,strip,0.8,,0.4,C30
+fdt-pile-600,Bored pile 600 x 15 m,Bored cast-in-place pile,concrete,pile,0.6,,15,C35
+fdt-cap-1000,Pile cap 1000,Pile cap,concrete,pile_cap,,,1,C35
 `,
   'global/furniture_type.csv': `id,name,description,family,variant,size_x,size_y,height
 fut-desk-1600,Desk 1600 x 800,Office desk,desk,standard,1.6,0.8,0.75
@@ -53,10 +61,10 @@ rlt-timber-900,Timber handrail 900,Timber rail on timber balusters,wood,0.9,rect
 rot-flat-insulated,Flat roof - Membrane + PIR 150 on concrete 200,Warm flat roof: waterproofing on PIR insulation on a concrete deck with plaster soffit,concrete,0.37
 rot-pitched-tile,Pitched roof - Tiles on insulated rafters,Clay tiles on battens over timber rafters filled with mineral wool,wood,0.25
 `,
-  'global/slab_type.csv': `id,name,description,material,thickness
-slt-concrete-200,Concrete 200,Plain concrete slab,concrete,0.2
-slt-floor-tile,Floor - Tile + screed on concrete 200,Ceramic tile on cement screed on a concrete slab,concrete,0.26
-slt-ground-insulated,Ground floor - Screed + XPS 100 on concrete 200,Screed on XPS insulation and damp-proof membrane on a concrete slab,concrete,0.362
+  'global/slab_type.csv': `id,name,description,material,thickness,material_grade
+slt-concrete-200,Concrete 200,Plain concrete slab,concrete,0.2,C30
+slt-floor-tile,Floor - Tile + screed on concrete 200,Ceramic tile on cement screed on a concrete slab,concrete,0.26,
+slt-ground-insulated,Ground floor - Screed + XPS 100 on concrete 200,Screed on XPS insulation and damp-proof membrane on a concrete slab,concrete,0.362,
 `,
   'global/type_layer.csv': `id,type_id,seq,function,material,thickness,conductivity,name
 tl-1,wt-concrete-200,1,core,concrete,0.2,2.3,Reinforced concrete

@@ -108,6 +108,8 @@ export const STRUCTURAL_SHAPE_OPTIONS: DrawingField['options'] = [
   { value: 'l_shape', label: 'L-Shape' },
   { value: 'c_shape', label: 'C-Shape' },
   { value: 'cross', label: 'Cross' },
+  { value: 'rect_hollow', label: 'Rect. Hollow' },
+  { value: 'round_hollow', label: 'Round Hollow' },
 ];
 
 export const SLAB_FUNCTION_OPTIONS: DrawingField['options'] = [

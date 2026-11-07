@@ -14,7 +14,13 @@ export interface Frame { o: V3; z: V3; x: V3 }
 export type Profile =
   | { kind: 'rect'; w: number; d: number; cx?: number; cy?: number; name?: string }
   | { kind: 'circle'; r: number; cx?: number; cy?: number; name?: string }
-  | { kind: 'ishape'; w: number; d: number; web: number; flange: number; cx?: number; cy?: number; name?: string }
+  | { kind: 'ishape'; w: number; d: number; web: number; flange: number; fillet?: number; cx?: number; cy?: number; name?: string }
+  /** Channel, web on −X, open towards +X (IfcUShapeProfileDef, bounding-box centred). */
+  | { kind: 'ushape'; w: number; d: number; web: number; flange: number; fillet?: number; cx?: number; cy?: number; name?: string }
+  /** Angle, legs along +X (bottom) and +Y (left) from the −X −Y corner (IfcLShapeProfileDef). */
+  | { kind: 'lshape'; w: number; d: number; t: number; fillet?: number; cx?: number; cy?: number; name?: string }
+  | { kind: 'rect_hollow'; w: number; d: number; t: number; outerFillet?: number; cx?: number; cy?: number; name?: string }
+  | { kind: 'circle_hollow'; r: number; t: number; cx?: number; cy?: number; name?: string }
   | { kind: 'poly'; outer: V2[]; holes?: V2[][]; name?: string };
 
 export type Solid =

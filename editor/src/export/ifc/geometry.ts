@@ -91,7 +91,11 @@ export function sectionProfile(shape: Shape2D, name?: string): Profile {
   switch (shape.kind) {
     case 'rect': return { kind: 'rect', w: shape.width, d: shape.depth, name };
     case 'round': return { kind: 'circle', r: shape.radius, name };
-    case 'i': return { kind: 'ishape', w: shape.width, d: shape.depth, web: shape.web, flange: shape.flange, name };
+    case 'i': return { kind: 'ishape', w: shape.width, d: shape.depth, web: shape.web, flange: shape.flange, fillet: shape.radius || undefined, name };
+    case 'c': return { kind: 'ushape', w: shape.width, d: shape.depth, web: shape.web, flange: shape.flange, fillet: shape.radius || undefined, name };
+    case 'l': return { kind: 'lshape', w: shape.width, d: shape.depth, t: shape.thickness, fillet: shape.radius || undefined, name };
+    case 'rect_hollow': return { kind: 'rect_hollow', w: shape.width, d: shape.depth, t: shape.thickness, outerFillet: shape.radius || undefined, name };
+    case 'round_hollow': return { kind: 'circle_hollow', r: shape.radius, t: shape.thickness, name };
     default: {
       const pts = createProfile(shape).getPoints(12).map(p => ({ x: p.x, y: p.y }));
       return { kind: 'poly', outer: dedupeClosing(pts), name };
@@ -111,8 +115,8 @@ function dedupeClosing(pts: V2[]): V2[] {
 export function hangFromTop(p: Profile): Profile {
   switch (p.kind) {
     case 'rect': return { ...p, cy: (p.cy ?? 0) - p.d / 2 };
-    case 'ishape': return { ...p, cy: (p.cy ?? 0) - p.d / 2 };
-    case 'circle': return { ...p, cy: (p.cy ?? 0) - p.r };
+    case 'ishape': case 'ushape': case 'lshape': case 'rect_hollow': return { ...p, cy: (p.cy ?? 0) - p.d / 2 };
+    case 'circle': case 'circle_hollow': return { ...p, cy: (p.cy ?? 0) - p.r };
     case 'poly': {
       const top = Math.max(...p.outer.map(v => v.y));
       const shift = (ring: V2[]) => ring.map(v => ({ x: v.x, y: v.y - top }));

@@ -2,17 +2,22 @@ import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { getElementModule } from '../elements/registry.ts';
-import { ArrowDown, ArrowUp, Copy, Plus, Trash2, X } from 'lucide-react';
+import { ArrowDown, ArrowUp, Copy, Library, Plus, Trash2, X } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import {
-  LAYER_FUNCTIONS, duplicateType, findType, layerTotal, nextLayerIds,
+  LAYER_FUNCTIONS, duplicateType, findType, layerTotal, nextLayerIds, nextTypeId,
   removeType, typeTableDef, typeTableFor, upsertType,
   type ElementType, type TypeCatalog, type TypeLayer,
 } from '../model/types/catalog.ts';
 import { starterCatalog, withStarterTypes } from '../model/types/starter.ts';
 import {
-  MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS, STRUCTURAL_SHAPE_OPTIONS, SHAPE_OPTIONS,
+  FOUNDATION_KIND_OPTIONS, MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS, STRUCTURAL_SHAPE_OPTIONS, SHAPE_OPTIONS,
 } from '../elements/_options.ts';
+import { getSectionFamily } from '../families/sections/index.ts';
+import {
+  SECTION_STANDARDS, sectionFamilies, sectionsOf, sectionTypeValues, steelWeightPerMetre, type SectionStandard,
+} from '../families/sections/steelLibrary.ts';
+import { typeUValue } from '../model/types/thermal.ts';
 import { LayerHatchDefs, layerFill } from '../elements/_layerHatch.tsx';
 import { getProjectUnits, getUnitSuffix, unitsPerMetreOf } from '../utils/units.ts';
 import { Input } from './ui/input';
@@ -35,6 +40,9 @@ interface ParamMeta {
 }
 
 const THERMAL = new Set(['u_value', 'shgc', 'vt']);
+const SECTION_TYPES = new Set(['column_type', 'beam_type']);
+/** Section parameters a shape family may not use (cleared when the shape changes). */
+const SECTION_PARAMS = ['size_y', 'flange', 'web', 'thickness', 'root_radius'];
 
 function paramMeta(typeTable: string, key: string): ParamMeta {
   switch (key) {
@@ -62,6 +70,11 @@ function paramMeta(typeTable: string, key: string): ParamMeta {
     case 'size_y': return { label: 'field.Depth', kind: 'length', step: 0.01, min: 0.01 };
     case 'flange': return { label: 'field.Flange Thk', kind: 'length', step: 0.001, min: 0 };
     case 'web': return { label: 'field.Web Thk', kind: 'length', step: 0.001, min: 0 };
+    case 'root_radius': return { label: 'field.Root Radius', kind: 'length', step: 0.001, min: 0 };
+    case 'designation': return { label: 'field.Designation', kind: 'text' };
+    case 'material_grade': return { label: 'field.Grade', kind: 'text' };
+    case 'kind': return { label: 'field.Kind', kind: 'select', options: FOUNDATION_KIND_OPTIONS };
+    case 'length': return { label: 'field.Length', kind: 'length', step: 0.01, min: 0 };
     // Railing types
     case 'top_rail_shape': return { label: 'railing.topRailShape', kind: 'select', options: [{ value: 'round', label: 'Round' }, { value: 'rect', label: 'Rectangle' }] };
     case 'top_rail_size': return { label: 'railing.topRailSize', kind: 'length', step: 0.005, min: 0.01 };
@@ -107,12 +120,15 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
   // Layer numbers as typed ("0.", "0.1"…), keyed `${layerId}:${field}`; the
   // layer keeps the parsed number.
   const [raw, setRaw] = useState<Record<string, string>>({});
+  // "From library" picker (column / beam types): standard, family, section.
+  const [lib, setLib] = useState<{ standard: SectionStandard; family: string; designation: string } | null>(null);
 
   useEffect(() => {
     if (!open) return;
     const base = state.project?.types ?? starterCatalog(upm);
     setDraft(base);
     setRaw({});
+    setLib(null);
     const first = base.types.find(x => x.table === def?.table)?.id ?? '';
     setSelId(findType(base, typeId)?.table === def?.table ? typeId : first);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,7 +170,30 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
     if (!sel || !def) return;
     const extra = mod?.attrChangeRules?.(sel.values, { [key]: value }) ?? {};
     const kept = Object.fromEntries(Object.entries(extra).filter(([k]) => def.columns.includes(k)));
+    // A new section shape drops the parameters it does not use (a CHS has no flange).
+    if (key === 'shape' && SECTION_TYPES.has(def.table)) {
+      const used = new Set(getSectionFamily(value)?.params.map(p => p.key) ?? []);
+      for (const k of SECTION_PARAMS) if (!used.has(k)) kept[k] = '';
+    }
     update({ ...sel, values: { ...sel.values, ...kept, [key]: value } });
+  };
+
+  /** New type from a library section: name = designation, real dimensions, default grade. */
+  const addFromLibrary = () => {
+    if (!lib || !def) return;
+    const s = sectionsOf(lib.standard, lib.family).find(x => x.designation === lib.designation);
+    if (!s) return;
+    const all = sectionTypeValues(s, upm);
+    const values = Object.fromEntries(def.columns.map(c => [c, all[c] ?? '']));
+    const existing = draft.types.find(x => x.table === def.table && x.values.designation === s.designation && x.name === s.designation);
+    if (existing) { setSelId(existing.id); setLib(null); return; }
+    const nt: ElementType = {
+      id: nextTypeId(draft, def.table), table: def.table, name: s.designation,
+      description: `${s.standard} ${s.family}`, values, layers: [],
+    };
+    setDraft(d => upsertType(d, nt));
+    setSelId(nt.id);
+    setLib(null);
   };
   const setLayer = (i: number, patch: Partial<TypeLayer>) =>
     sel && update({ ...sel, layers: sel.layers.map((l, j) => (j === i ? { ...l, ...patch } : l)) });
@@ -181,7 +220,11 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
     update({ ...sel, layers: [...sel.layers, { id, seq: sel.layers.length + 1, function: 'finish', material: 'gypsum', thickness: 0.0125, name: '' }] });
   };
 
-  const paramKeys = def.columns.filter(k => !(layered && k === 'thickness'));
+  // Section types list only the parameters their shape uses.
+  const shapeParams = sel && SECTION_TYPES.has(def.table) ? new Set(getSectionFamily(sel.values.shape || 'rect')?.params.map(p => p.key) ?? []) : null;
+  const paramKeys = def.columns.filter(k => !(layered && k === 'thickness') && !(shapeParams && SECTION_PARAMS.includes(k) && !shapeParams.has(k)));
+  const kgPerM = sel && SECTION_TYPES.has(def.table) ? steelWeightPerMetre(sel.values, upm) : undefined;
+  const uValue = sel && layered ? typeUValue(sel, upm) : undefined;
   const mainKeys = paramKeys.filter(k => !THERMAL.has(k));
   const thermalKeys = paramKeys.filter(k => THERMAL.has(k));
   const total = sel ? layerTotal(sel) : undefined;
@@ -255,6 +298,12 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
               onClick={() => { if (!sel) return; const copy = duplicateType(draft, sel); setDraft(d => upsertType(d, copy)); setSelId(copy.id); }}>
               <Copy className="size-3.5" />{t('type.duplicate')}
             </button>
+            {SECTION_TYPES.has(def.table) && (
+              <button type="button" className={BTN} data-testid="type-from-library"
+                onClick={() => setLib(l => (l ? null : { standard: 'EN', family: 'HEA', designation: 'HEA 300' }))}>
+                <Library className="size-3.5" />{t('type.fromLibrary')}
+              </button>
+            )}
             <button type="button" className={BTN} disabled={!sel || usage > 0 || categoryTypes.length <= 1}
               title={usage > 0 ? t('type.inUse') : undefined}
               onClick={() => {
@@ -266,6 +315,46 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
               <Trash2 className="size-3.5" />{t('type.delete')}
             </button>
           </div>
+
+          {lib && (() => {
+            const families = sectionFamilies(lib.standard);
+            const sections = sectionsOf(lib.standard, lib.family);
+            const picked = sections.find(s => s.designation === lib.designation);
+            const pickedKg = picked ? steelWeightPerMetre(sectionTypeValues(picked)) : undefined;
+            const pick = (label: string, value: string, options: { value: string; label: string }[], on: (v: string) => void, testid: string) => (
+              <div className="min-w-0">
+                <label className={LABEL}>{label}</label>
+                <Select value={value} onValueChange={v => { if (v) on(v); }}>
+                  <SelectTrigger size="sm" className={cn(CELL_INPUT, 'justify-between')} data-testid={testid}>
+                    <span className="truncate">{options.find(o => o.value === value)?.label ?? '—'}</span>
+                  </SelectTrigger>
+                  <SelectContent>{options.map(o => <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>)}</SelectContent>
+                </Select>
+              </div>
+            );
+            return (
+              <div className="mb-3 rounded-md border border-border bg-[var(--bg-input)]/40 px-3 py-2" data-testid="type-library">
+                <div className="grid grid-cols-[0.8fr_1.2fr_1.4fr_auto] items-end gap-2">
+                  {pick(t('type.lib.standard'), lib.standard, SECTION_STANDARDS.map(s => ({ value: s, label: t(`type.lib.std.${s}`) })), v => {
+                    const fam = sectionFamilies(v as SectionStandard)[0];
+                    setLib({ standard: v as SectionStandard, family: fam, designation: sectionsOf(v as SectionStandard, fam)[0]?.designation ?? '' });
+                  }, 'type-lib-standard')}
+                  {pick(t('type.lib.family'), lib.family, families.map(f => ({ value: f, label: f })), v =>
+                    setLib({ ...lib, family: v, designation: sectionsOf(lib.standard, v)[0]?.designation ?? '' }), 'type-lib-family')}
+                  {pick(t('type.lib.section'), lib.designation, sections.map(s => ({ value: s.designation, label: s.designation })), v =>
+                    setLib({ ...lib, designation: v }), 'type-lib-section')}
+                  <button type="button" className={cn(BTN, 'h-7')} disabled={!picked} onClick={addFromLibrary} data-testid="type-lib-add">
+                    <Plus className="size-3.5" />{t('type.lib.add')}
+                  </button>
+                </div>
+                {picked && (
+                  <div className="mt-1.5 text-[10px] tabular-nums text-muted-foreground">
+                    {t('type.lib.summary', { grade: picked.grade, kg: pickedKg !== undefined ? pickedKg.toFixed(1) : '—' })}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {categoryTypes.length === 0 && (() => {
             const withStarter = withStarterTypes(draft, def.table, upm);
@@ -368,9 +457,21 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
                 </section>
               )}
 
+              {uValue !== undefined && (
+                <div className="mb-3 text-[11px] tabular-nums text-muted-foreground" data-testid="type-u-value">
+                  {t('type.uValueComputed')}: <span className="font-semibold text-foreground">{uValue.toFixed(3)} W/(m²·K)</span>
+                </div>
+              )}
               {mainKeys.length > 0 && (
                 <section className="mb-3">
-                  <div className="mb-1.5 text-[11px] font-semibold">{t('type.parameters')}</div>
+                  <div className="mb-1.5 flex items-baseline justify-between">
+                    <div className="text-[11px] font-semibold">{t('type.parameters')}</div>
+                    {kgPerM !== undefined && (
+                      <div className="text-[11px] tabular-nums text-muted-foreground" data-testid="type-weight">
+                        {t('type.weightPerMetre')}: <span className="font-semibold text-foreground">{kgPerM.toFixed(1)} kg/m</span>
+                      </div>
+                    )}
+                  </div>
                   <div className="grid grid-cols-3 gap-2">{mainKeys.map(renderParam)}</div>
                 </section>
               )}

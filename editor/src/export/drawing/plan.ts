@@ -459,6 +459,12 @@ function drawColumn(env: DrawEnv, f: ColumnFacts, table: string) {
   const pts = rotateAbout(local, f.position, f.rotationDeg);
   e.fill(patt, pts);
   e.poly(outline, pts, true);
+  // Hollow sections (RHS / CHS): the void is paper-white, outlined.
+  for (const hole of family.holes2D?.(params) ?? []) {
+    const h = rotateAbout(hole, f.position, f.rotationDeg);
+    e.fill(patt, h, '#ffffff');
+    e.poly(outline, h, true);
+  }
 }
 
 /** One flight: outline and treads split at the plan cut (beyond = hidden), break line at the cut. */
