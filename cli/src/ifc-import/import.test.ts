@@ -113,6 +113,24 @@ describe('importIfc', () => {
     expect(report.rooms.issues).toEqual([]);
   });
 
+  it('imports furniture as boxes only where the format has a furniture table', () => {
+    const furnished = fixtureIfc({
+      walls: [{ from: [0, 0], to: [4000, 0], thickness: 200 }],
+      furniture: [{ name: 'Desk:1600 x 800:5001', x: 2000, y: 1000, w: 800, d: 1600, h: 750 }],
+    });
+    const without = importIfc(api, enc(furnished));
+    expect(without.report.counts.furniture).toBeUndefined();
+    expect(without.report.classes.find(c => c.ifcClass === 'IfcFurnishingElement')?.skipped[0]?.reason).toMatch(/furniture/);
+
+    const withTable = importIfc(api, enc(furnished), { tables: ['furniture', 'wall', 'level'] });
+    const [desk] = rows(withTable.files, 'lv-1/furniture.csv');
+    // Long side 1.6 m along y: size_x is the long side, turned 90°
+    expect(desk).toMatchObject({ family: 'desk', size_x: '1.6', size_y: '0.8', height: '0.75' });
+    const feat = JSON.parse(withTable.files['lv-1/furniture.geojson']).features[0];
+    expect(feat.geometry.coordinates).toEqual([2, 1]);
+    expect(Math.abs(feat.properties.rotation)).toBe(90);
+  });
+
   it('reports a progress sequence ending at 1', () => {
     const seen: number[] = [];
     importIfc(api, enc(room), { onProgress: p => seen.push(p.fraction) });

@@ -13,6 +13,8 @@ export interface FixtureOptions {
   spaces?: FixtureSpace[];
   doors?: FixtureDoor[];
   slab?: { x0: number; y0: number; x1: number; y1: number; thickness: number };
+  /** Furnishing boxes: centre, size along x / y, height (mm). */
+  furniture?: { name: string; x: number; y: number; w: number; d: number; h: number }[];
   /** Storey elevation (mm). */
   elevation?: number;
 }
@@ -81,6 +83,10 @@ export function fixtureIfc(o: FixtureOptions): string {
     const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${box((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, s.x1 - s.x0, s.y1 - s.y0, s.thickness)}))`);
     contained.push(add(`IFCSLAB(${guid('slab')},$,'Floor:Concrete 200:3000',$,$,${pl},${add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${body}))`)},$,.FLOOR.)`));
   }
+  (o.furniture ?? []).forEach((f, i) => {
+    const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${box(f.x, f.y, f.w, f.d, f.h)}))`);
+    contained.push(add(`IFCFURNISHINGELEMENT(${guid(`furn${i}`)},$,'${f.name}',$,$,${placeAt(0, 0)},${add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${body}))`)},$)`));
+  });
   const spaces = (o.spaces ?? []).map((s, i) => {
     const pl = placeAt(0, 0);
     const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${box((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, s.x1 - s.x0, s.y1 - s.y0, 2800)}))`);
