@@ -95,6 +95,7 @@ export default function ModifyOptionsBar() {
             </>
           )}
           <Toggle checked={o.arrayGroup} onChange={v => setModifyOptions({ arrayGroup: v })} label={t('modify.groupCopies')} testId="array-group" />
+          {typed && <span className="rounded-md border border-border px-2 py-1 text-[11px] tabular-nums text-foreground" data-testid="array-typed">{t('modify.distance')} {typed}</span>}
         </>
       )}
       {tool === 'offset' && (
