@@ -351,7 +351,7 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
     const s = LAYER_STYLES[table];
     return s ? drawingLabel(lang, `display.${s.displayName}`) : table;
   };
-  const rows = sortRows(scheduleRows(cat, project, unit, displayName, ctx.live?.levelId, ctx.live ? new Map(ctx.live.elements.map(e => [e.id, e])) : undefined),
+  const rows = sortRows(scheduleRows(cat, project, unit, displayName, ctx.live?.levelId, ctx.live ? new Map(ctx.live.elements.map(e => [e.id, e])) : undefined, lang),
     { key: cat.columns.some(c => c.key === 'number') ? 'number' : cat.columns[0].key, dir: 1 });
   // Printed door / window schedules list types (one row per mark and size, with a count);
   // other schedules list every element. Host ids mean nothing on paper.

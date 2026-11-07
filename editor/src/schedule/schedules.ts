@@ -8,11 +8,12 @@ import type { CanonicalElement } from '../model/elements.ts';
 import type { Level, ProjectData, ProjectUnit } from '../types.ts';
 import { collectLevels, elementQuantities } from './quantities.ts';
 import type { ElementQuantities } from './quantities.ts';
-import i18n from 'i18next';
 import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { pointInPolygon } from '../geometry/spaceBoundary.ts';
 import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
 import { circuitsIn, type CircuitSummary } from '../mep/circuits.ts';
+import { OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
+import { drawingLabel, drawingLang, type DrawingLang } from '../export/drawing/labels.ts';
 
 export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count';
 
@@ -143,7 +144,15 @@ export function sizeLabel(el: CanonicalElement, unit: ProjectUnit): string {
   return sx;
 }
 
-function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, unit: ProjectUnit, displayName: (table: string) => string): Record<string, string | number | undefined> {
+/** Door / window operation as its option label in `lang` (single_swing → "Single" / 单开); unknown values stay raw. */
+export function operationLabel(table: string, value: string | undefined, lang: DrawingLang = drawingLang()): string {
+  if (!value) return '';
+  const opts = table === 'window' ? WINDOW_OPERATION_OPTIONS : table === 'door' ? OPERATION_OPTIONS : undefined;
+  const label = opts?.find(o => o.value === value)?.label;
+  return label ? drawingLabel(lang, `option.${label}`) : value;
+}
+
+function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, unit: ProjectUnit, displayName: (table: string) => string, lang: DrawingLang): Record<string, string | number | undefined> {
   const a = el.attrs;
   const num = (v: string | undefined) => {
     const n = parseFloat(v ?? '');
@@ -159,7 +168,7 @@ function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, uni
     width: num(a.width),
     height: num(a.height),
     base_offset: num(a.base_offset),
-    operation: a.operation ?? '',
+    operation: operationLabel(el.tableName, a.operation, lang),
     thickness: num(a.thickness),
     function: a.function ?? '',
     shape: a.shape ?? '',
@@ -211,9 +220,9 @@ function circuitValues(el: CanonicalElement, circuits: Map<string, CircuitSummar
 }
 
 /** Furniture rows: "Family · Variant" in the UI language, and the room it stands in. */
-function furnitureValues(el: CanonicalElement, rooms: LevelRoom[]): Record<string, string> {
+function furnitureValues(el: CanonicalElement, rooms: LevelRoom[], lang: DrawingLang): Record<string, string> {
   const r = resolveFurniture(el.attrs);
-  const zh = (i18n.language ?? '').startsWith('zh');
+  const zh = lang === 'zh';
   const name = (o: { en: string; zh: string }) => (zh ? o.zh : o.en);
   const variant = r.family.variants?.find(v => v.id === r.params.variant);
   const at = el.geometry === 'point' ? el.position : undefined;
@@ -229,6 +238,7 @@ export function scheduleRows(
   cat: ScheduleCategory, project: ProjectData, unit: ProjectUnit,
   displayName: (table: string) => string,
   liveLevel?: string, live?: Map<string, CanonicalElement>,
+  lang: DrawingLang = drawingLang(),
 ): ScheduleRow[] {
   const { levels, global } = collectLevels(project, liveLevel, live);
   const allLevels = levels.map(l => l.level);
@@ -252,9 +262,9 @@ export function scheduleRows(
     for (const el of elements) {
       if (!tables.has(el.tableName)) continue;
       const q = elementQuantities(el, level, allLevels, context);
-      const values = rowValues(el, level, q, unit, displayName);
+      const values = rowValues(el, level, q, unit, displayName, lang);
       if (cat.filter && !cat.filter(el)) continue;
-      if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context)));
+      if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context), lang));
       if (el.tableName === 'circuit') Object.assign(values, circuitValues(el, circuits(level.id, context), context));
       rows.push({ sid: `${level.id}:${el.id}`, id: el.id, levelId: level.id, table: el.tableName, values });
     }
@@ -265,7 +275,7 @@ export function scheduleRows(
     const level = allLevels.find(l => l.id === el.attrs.base_level_id) ?? lowest;
     const context = [...(levels.find(l => l.level.id === level.id)?.elements ?? []), ...global];
     const q = elementQuantities(el, level, allLevels, context);
-    rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values: rowValues(el, level, q, unit, displayName) });
+    rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values: rowValues(el, level, q, unit, displayName, lang) });
   }
   return rows;
 }

@@ -82,6 +82,18 @@ describe('schedules', () => {
     expect(rows('mep').find(r => r.id === 'pi-1')!.values.insulation).toBe(0.025);
   });
 
+  it('door / window operation prints as its translated option label', async () => {
+    const f = files();
+    f['lv-1/door.csv'] = 'id,number,host_id,position,width,height,operation\nd-1,D01,w-1,2,0.9,2.1,double_swing\n';
+    f['lv-1/window.csv'] = 'id,number,host_id,position,width,height,operation\nwn-1,W01,w-2,1,1.2,1.2,tilt_and_turn\n';
+    const { state } = await load(f);
+    const op = (k: string, lang?: 'en' | 'zh') => scheduleRows(cat(k), state.project!, 'm', name, 'lv-1', state.document!.elements, lang)[0].values.operation;
+    expect(op('doors', 'en')).toBe('Double');
+    expect(op('doors', 'zh')).toBe('双开');
+    expect(op('windows', 'en')).toBe('Tilt & Turn');
+    expect(op('windows', 'zh')).toBe('内开内倒');
+  });
+
   it('walls: length, height from levels, net area without openings, volume', async () => {
     const { state } = await load(twoLevels());
     const rows = scheduleRows(cat('walls'), state.project!, 'm', name, 'lv-1', state.document!.elements);
