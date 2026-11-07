@@ -88,7 +88,8 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
       await injectHeight(conn, name);
     }
     if (levelsReady) {
-      await injectZExtent(conn, name, table.computedFields.some((f) => f.name === 'height'));
+      // Furniture keeps its (overall) height in CSV: Z extent = level + base_offset + height.
+      await injectZExtent(conn, name, name === 'furniture' || table.computedFields.some((f) => f.name === 'height'));
     }
     await injectVolume(conn, name);
   }
@@ -257,8 +258,8 @@ async function injectZExtent(conn: DuckDBConnection, tableName: string, hasHeigh
       conn,
       `UPDATE "${tableName}" AS t
        SET bbox_min_z = lv.elevation + ${num('base_offset')},
-           bbox_max_z = lv.elevation + ${num('base_offset')} + t.height
-       FROM _levels AS lv WHERE lv.id = t.level_id AND t.bbox_min_z IS NULL AND t.height IS NOT NULL`,
+           bbox_max_z = lv.elevation + ${num('base_offset')} + ${num('height')}
+       FROM _levels AS lv WHERE lv.id = t.level_id AND t.bbox_min_z IS NULL AND NULLIF(CAST(t.height AS VARCHAR), '') IS NOT NULL`,
     );
   }
 }

@@ -38,6 +38,8 @@ const TABLE_FIELD_MAX: Record<string, Record<string, number>> = {
   // A DXF underlay's origin may sit far from the plan (survey coordinates);
   // scale is units per pixel / point / drawing unit, not a length.
   underlay: { x: 1e7, y: 1e7, scale: 1e6 },
+  // Trees, cars and long counters outgrow the 10 m section limit.
+  furniture: { size_x: 30, size_y: 30 },
 };
 
 export function validateRanges(path: string, table: ResolvedTable, data: CsvData, units = 'm'): string[] {

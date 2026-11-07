@@ -25,6 +25,7 @@ const EXPECTED_GEOMETRY: Record<string, Set<'Point' | 'LineString' | 'Polygon'>>
   equipment: new Set(['Point']),
   terminal: new Set(['Point']),
   mep_node: new Set(['Point']),
+  furniture: new Set(['Point']),
   // Polygon elements → Polygon
   slab: new Set(['Polygon']),
   roof: new Set(['Polygon']),

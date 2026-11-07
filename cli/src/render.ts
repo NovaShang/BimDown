@@ -12,6 +12,7 @@ import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/g
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 import { renderAnnotations } from './annotations.js';
 import { projectUnits } from './utils/units.js';
+import { renderFurniture } from './furniture/render.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -154,6 +155,9 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
       }
     }
   }
+
+  // Furniture / library components (plan symbols), under doors and rooms
+  elements.push(...renderFurniture(levelDir.path));
 
   // Door / window / wall opening (CSV + host wall)
   for (const t of ['door', 'window', 'opening'] as const) {

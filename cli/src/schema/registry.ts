@@ -27,6 +27,7 @@ export const ID_PREFIXES: Record<string, string> = {
   dimension: 'dm', text_note: 'tx', tag: 'tg',
   // Tracing references
   underlay: 'ul',
+  furniture: 'fu',
 };
 
 /** Type tables (Revit "family types"). Each lists the instance tables that may reference it via `type_id`. */
