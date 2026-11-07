@@ -32,7 +32,7 @@ tl-30,rot-flat-insulated,1,membrane,pvc,0.005,0.17,Waterproofing membrane
 tl-31,rot-flat-insulated,2,insulation,insulation,0.15,0.022,PIR
 tl-32,rot-flat-insulated,3,core,concrete,0.2,2.3,Reinforced concrete
 tl-33,rot-flat-insulated,4,finish,gypsum,0.015,0.4,Gypsum plaster
-tl-34,rot-pitched-tile,1,finish,ceramic,0.025,1.0,Clay tiles
+tl-34,rot-pitched-tile,1,finish,ceramic,0.025,1,Clay tiles
 tl-35,rot-pitched-tile,2,air_gap,,0.025,,Battens and ventilation
 tl-36,rot-pitched-tile,3,core,wood,0.18,0.045,Rafters with mineral wool
 tl-37,rot-pitched-tile,4,finish,gypsum,0.02,0.25,Gypsum board
