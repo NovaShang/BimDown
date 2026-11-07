@@ -1,3 +1,4 @@
+import { isPointVisible } from '../clipHit.ts';
 import { useRef, useCallback, useMemo, useState, useEffect } from 'react';
 import { useThree } from '@react-three/fiber';
 import { Raycaster, Vector2, Vector3, Plane, type Object3D, type Intersection } from 'three';
@@ -88,6 +89,7 @@ export function useToolContext3D(floorElevation: number) {
     raycasterRef.current.setFromCamera(ndc, camera);
     const intersections = raycasterRef.current.intersectObjects(scene.children, true);
     for (const hit of intersections) {
+      if (!isPointVisible(hit.point, gl.clippingPlanes)) continue;
       const id = resolveElementId(hit);
       if (id) {
         // 3D (x, y, z) → model (x, -z) + elevation y

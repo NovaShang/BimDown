@@ -16,7 +16,7 @@ interface FloorRenderData {
 
 /** Parse all floors once, filter by discipline + layer visibility.
  *  For the current level, use the live document model so 3D reflects edits immediately. */
-function useAllFloorsElements(): FloorRenderData[] {
+function useAllFloorsElements(allFloors: boolean): FloorRenderData[] {
   const state = useEditorState();
   const { project, visibleLayers, document: doc, documentVersion, currentLevel } = state;
 
@@ -24,8 +24,12 @@ function useAllFloorsElements(): FloorRenderData[] {
     if (!project) return [];
     const result: FloorRenderData[] = [];
 
+    // allFloors (elevation / section pane): every floor's layers count, minus the
+    // ones the user switched off on the current floor's layer list.
+    const currentKeys = new Set(project.floors.get(currentLevel)?.layers.map(l => `${l.discipline}/${l.tableName}`));
+    const layerOn = (key: string) => visibleLayers.has(key) || (allFloors && !currentKeys.has(key));
     const isVisible = (el: CanonicalElement) =>
-      isDisciplineVisible(el.discipline, state) && visibleLayers.has(`${el.discipline}/${el.tableName}`);
+      isDisciplineVisible(el.discipline, state) && layerOn(`${el.discipline}/${el.tableName}`);
 
     // Collect all level IDs (from floors + current level if it has a document)
     const levelIds = new Set(project.floors.keys());
@@ -62,17 +66,17 @@ function useAllFloorsElements(): FloorRenderData[] {
 
     return result;
   // state includes activeDiscipline + showArchContext used by isDisciplineVisible
-  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, doc, documentVersion, currentLevel]);
+  }, [project, visibleLayers, state.activeDiscipline, state.showArchContext, doc, documentVersion, currentLevel, allFloors]);
 }
 
 /** Compute which levels are visible based on floor3DMode. */
-function useVisibleLevels(): Set<string> {
+function useVisibleLevels(allFloors: boolean): Set<string> {
   const { currentLevel, floor3DMode, project } = useEditorState();
 
   return useMemo(() => {
     if (!project) return new Set<string>();
 
-    if (floor3DMode === 'all') {
+    if (floor3DMode === 'all' || allFloors) {
       return new Set(project.levels.map(l => l.id));
     }
 
@@ -85,12 +89,13 @@ function useVisibleLevels(): Set<string> {
     }
 
     return visible;
-  }, [currentLevel, floor3DMode, project]);
+  }, [currentLevel, floor3DMode, project, allFloors]);
 }
 
-export default function FloorGroup() {
-  const allFloors = useAllFloorsElements();
-  const visibleLevels = useVisibleLevels();
+/** `allFloors`: ignore the 3D floor mode and show the whole building (elevation / section pane). */
+export default function FloorGroup({ allFloors: forceAll = false }: { allFloors?: boolean }) {
+  const allFloors = useAllFloorsElements(forceAll);
+  const visibleLevels = useVisibleLevels(forceAll);
   const mepSystems = useEditorState().project?.mepSystems;
 
   const levelElevations = useMemo(() => {
