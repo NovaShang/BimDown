@@ -5,7 +5,11 @@
  *        finished, corner radius 1.5 t), equal angles L (EN 10056)
  *   US   W, HSS rectangular / square / round (ASTM A500, design wall
  *        thickness 0.93 × nominal, corner radius 2 t), C, L (AISC Manual)
- *   CN   HW / HM / HN (GB/T 11263)
+ *   CN   HW / HM / HN (GB/T 11263), channels [ (GB/T 706), equal angles L
+ *        (GB/T 706), cold-formed square / rectangular tubes (GB/T 6728, outer
+ *        corner 2 t), round tubes Φ (GB/T 8162)
+ *   US   K-series open-web joists (SJI): depth and standard weight per foot;
+ *        the chord angle thickness is fitted so the open_web area gives it
  * Stored in metres; `sectionTypeValues` scales to the project unit. No
  * imports: the CLI keeps a verbatim copy (cli/src/sections/steel-sections.ts,
  * web/src/lib/shared-code-drift.test.ts) for import-ifc designations.
@@ -18,7 +22,7 @@ export interface SteelSection {
   standard: SectionStandard;
   /** Family within the standard ("HEA", "W", "HSS round"…), for grouping in the picker. */
   family: string;
-  shape: 'i_shape' | 'c_shape' | 'l_shape' | 'rect_hollow' | 'round_hollow';
+  shape: 'i_shape' | 'c_shape' | 'l_shape' | 'rect_hollow' | 'round_hollow' | 'open_web';
   /** Section parameters in metres (structural_section_profile fields). */
   size_x: number;
   size_y?: number;
@@ -32,6 +36,7 @@ export interface SteelSection {
 
 const MM = 0.001;
 const IN = 0.0254;
+export const STEEL_DENSITY = 7850;
 const r6 = (v: number) => Math.round(v * 1e6) / 1e6;
 
 type ISpec = [name: string, h: number, b: number, tw: number, tf: number, r: number];
@@ -131,6 +136,49 @@ const usRhs = (h: number, b: number, t: string): [string, number, number, number
 };
 const usChs = (d: string, t: string): [string, number, number] => [`HSS${d}X${t}`, Number(d), Math.round(0.93 * Number(t) * 1000) / 1000];
 
+// GB/T 706 hot-rolled channels: h, b, d (web), t (flange), r (mm)
+const CN_CHANNEL: ISpec[] = [
+  ['[10', 100, 48, 5.3, 8.5, 8.5], ['[12.6', 126, 53, 5.5, 9, 9], ['[14a', 140, 58, 6, 9.5, 9.5], ['[16a', 160, 63, 6.5, 10, 10],
+  ['[18a', 180, 68, 7, 10.5, 10.5], ['[20a', 200, 73, 7, 11, 11], ['[22a', 220, 77, 7, 11.5, 11.5], ['[25a', 250, 78, 7, 12, 12],
+  ['[28a', 280, 82, 7.5, 12.5, 12.5], ['[32a', 320, 88, 8, 14, 14], ['[36a', 360, 96, 9, 16, 16], ['[40a', 400, 100, 10.5, 18, 18],
+];
+
+/** Chord width / depth of a K-series joist section (m), as Revit's K-Series family. */
+const JOIST_CHORD_W = 0.073;
+const JOIST_CHORD_D = 0.032;
+/** open_web area factor: two double-angle chords + 15 % web rods (spec structural_section_profile). */
+export const OPEN_WEB_K = 4.6;
+
+/** K-series joist: depth (in), standard weight (lb/ft) → open_web section with the fitted chord thickness. */
+function kJoists(rows: [string, number][]): SteelSection[] {
+  return rows.map(([n, plf]) => {
+    const depth = parseInt(n, 10) * IN;
+    const area = (plf * 1.48816) / STEEL_DENSITY;
+    const a = JOIST_CHORD_W / 2 + JOIST_CHORD_D;
+    // OPEN_WEB_K · t · (a − t) = area
+    const t = (a - Math.sqrt(a * a - (4 * area) / OPEN_WEB_K)) / 2;
+    return {
+      designation: n, standard: 'US' as const, family: 'K joist', shape: 'open_web' as const, grade: 'A36',
+      size_x: JOIST_CHORD_W, size_y: r6(depth), flange: JOIST_CHORD_D, thickness: r6(t),
+    };
+  });
+}
+
+// SJI K-series standard weights (lb/ft)
+const K_SERIES: [string, number][] = [
+  ['8K1', 5.1], ['10K1', 5.0], ['12K1', 5.0], ['12K3', 5.7], ['12K5', 7.1], ['14K1', 5.2], ['14K3', 6.0], ['14K4', 6.7], ['14K6', 7.7],
+  ['16K2', 5.5], ['16K3', 6.3], ['16K4', 7.0], ['16K5', 7.5], ['16K6', 8.1], ['16K7', 8.6], ['16K9', 10.0],
+  ['18K3', 6.6], ['18K4', 7.2], ['18K5', 7.7], ['18K6', 8.5], ['18K7', 9.0], ['18K9', 10.2], ['18K10', 11.7],
+  ['20K3', 6.7], ['20K4', 7.6], ['20K5', 8.2], ['20K6', 8.9], ['20K7', 9.3], ['20K9', 10.8], ['20K10', 12.2],
+  ['22K4', 8.0], ['22K5', 8.8], ['22K6', 9.2], ['22K7', 9.7], ['22K9', 11.3], ['22K10', 12.6], ['22K11', 13.8],
+  ['24K4', 8.4], ['24K5', 9.3], ['24K6', 9.7], ['24K7', 10.1], ['24K8', 11.5], ['24K9', 12.0], ['24K10', 13.1], ['24K12', 16.0],
+  ['26K5', 9.8], ['26K6', 10.6], ['26K7', 10.9], ['26K8', 12.1], ['26K9', 12.2], ['26K10', 13.8], ['26K12', 16.6],
+  ['28K6', 11.4], ['28K7', 11.8], ['28K8', 12.7], ['28K9', 13.0], ['28K10', 14.3], ['28K12', 17.1],
+  ['30K7', 12.3], ['30K8', 13.2], ['30K9', 13.4], ['30K10', 15.0], ['30K11', 16.4], ['30K12', 17.6],
+];
+
+const cnTube = (h: number, b: number, t: number): [string, number, number, number] => [`□${h}x${b}x${t}`, h, b, t];
+
 export const STEEL_SECTIONS: SteelSection[] = [
   ...iShapes('EN', 'HEA', 'S355', MM, HEA, 'i_shape', n => `HEA ${n}`),
   ...iShapes('EN', 'HEB', 'S355', MM, HEB, 'i_shape', n => `HEB ${n}`),
@@ -170,6 +218,20 @@ export const STEEL_SECTIONS: SteelSection[] = [
   ...iShapes('CN', 'HW', 'Q355', MM, HW),
   ...iShapes('CN', 'HM', 'Q355', MM, HM),
   ...iShapes('CN', 'HN', 'Q355', MM, HN),
+  ...iShapes('CN', '[', 'Q235', MM, CN_CHANNEL, 'c_shape'),
+  ...angles('CN', 'Q235', MM, ([
+    [50, 5, 5.5], [63, 6, 7], [70, 7, 8], [75, 8, 9], [80, 8, 9], [90, 8, 10], [100, 10, 12], [110, 10, 12],
+    [125, 10, 14], [140, 12, 14], [160, 14, 16], [180, 16, 16], [200, 16, 18],
+  ] as [number, number, number][]).map(([a, t, r]) => [`L${a}x${t}`, a, a, t, r] as [string, number, number, number, number])),
+  ...rhs('CN', '□', 'Q355', MM, [
+    cnTube(100, 100, 5), cnTube(120, 120, 6), cnTube(150, 150, 6), cnTube(150, 150, 8), cnTube(200, 200, 8), cnTube(200, 200, 10),
+    cnTube(250, 250, 10), cnTube(300, 300, 12), cnTube(400, 400, 16), cnTube(150, 100, 5), cnTube(200, 100, 6), cnTube(200, 150, 8),
+    cnTube(300, 200, 8), cnTube(400, 200, 10),
+  ], 2),
+  ...chs('CN', 'Φ', 'Q355', MM, ([
+    [89, 4], [114, 5], [133, 6], [159, 6], [219, 8], [273, 10], [325, 10], [377, 12], [426, 12],
+  ] as [number, number][]).map(([d, t]) => [`Φ${d}x${t}`, d, t] as [string, number, number])),
+  ...kJoists(K_SERIES),
 ];
 
 export const SECTION_STANDARDS: SectionStandard[] = ['EN', 'US', 'CN'];
@@ -188,7 +250,6 @@ export function findSteelSection(designation: string): SteelSection | undefined 
   return STEEL_SECTIONS.find(s => s.designation.replace(/\s+/g, '').toUpperCase() === k);
 }
 
-export const STEEL_DENSITY = 7850;
 
 /** Type parameter values (column_type / beam_type) for a library section, in project units. */
 export function sectionTypeValues(s: SteelSection, upm = 1): Record<string, string> {

@@ -247,6 +247,7 @@ const SECTION_PARAMS: Record<string, string[]> = {
   cross: ['size_x', 'size_y', 'thickness'],
   rect_hollow: ['size_x', 'size_y', 'thickness', 'root_radius'],
   round_hollow: ['size_x', 'thickness'],
+  open_web: ['size_x', 'size_y', 'flange', 'thickness'],
 };
 
 /** Section parameters a shape doesn't use (round: size_y, flange, web, thickness, root_radius). Unknown shapes: none. */

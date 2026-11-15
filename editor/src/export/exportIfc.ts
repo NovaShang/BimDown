@@ -1048,7 +1048,7 @@ class Exporter {
     const rec = this.product({
       scope, el, type: isBeam ? 'IfcBeam' : 'IfcMember', geom: { frame, solids: [solid], axis: [start, end] },
       styles: this.styleFor(f.material, el.tableName), objectType: isBeam ? `beam:${f.section.family.id}` : 'BRACE',
-      tail: isBeam ? this.pt4('IfcBeam', 'BEAM') : this.pt4('IfcMember', 'BRACE'),
+      tail: isBeam ? this.pt4('IfcBeam', f.section.family.id === 'open_web' ? 'JOIST' : 'BEAM') : this.pt4('IfcMember', 'BRACE'),
     });
     // Member line = top of the section: cardinal point 8 (top centre).
     this.framingMaterial(rec.handle, el, f.material, centred, 8);

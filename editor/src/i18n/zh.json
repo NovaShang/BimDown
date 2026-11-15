@@ -1290,6 +1290,7 @@
   "field.Beam System": "梁系统",
   "option.Rect. Hollow": "矩形管",
   "option.Round Hollow": "圆管",
+  "option.Open-web Joist": "空腹钢搁栅",
   "type.fromLibrary": "从型钢库",
   "type.lib.standard": "标准",
   "type.lib.family": "系列",

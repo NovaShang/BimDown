@@ -82,6 +82,18 @@ export function buildClashModel(
   const addFraming = (el: Line, scope: string | undefined, dz: number) => {
     const w = num(el.attrs.size_x, el.tableName === 'beam' ? 0.3 * upm : 0.2 * upm);
     const round = sectionShape(el.attrs.shape) === 'round';
+    if ((el.attrs.shape ?? '').trim() === 'open_web') {
+      // Open-web joist: only its chords are solid (ducts and pipes run through the web)
+      const d = num(el.attrs.size_y, 0.356 * upm), f = Math.min(num(el.attrs.flange, Math.min(0.032 * upm, d * 0.12)), d / 3);
+      for (const drop of [0, d - f]) {
+        m.members!.push({
+          id: el.id, scope, table: el.tableName,
+          a: [el.start.x, el.start.y, lineZ(el, 'start') + dz - drop], b: [el.end.x, el.end.y, lineZ(el, 'end') + dz - drop],
+          shape: 'rect', w, h: f, top: true,
+        });
+      }
+      return;
+    }
     m.members!.push({
       id: el.id, scope, table: el.tableName,
       a: [el.start.x, el.start.y, lineZ(el, 'start') + dz], b: [el.end.x, el.end.y, lineZ(el, 'end') + dz],
