@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import type { EditorState, EditorAction, Tool } from '../state/editorTypes.ts';
 import { toSelectionId } from '../model/ids.ts';
+import { isLayerSelectableInView } from '../state/selectors.ts';
 import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
@@ -123,7 +124,7 @@ export function useCanvasKeyboard({
             const floor = s.project?.floors.get(s.currentLevel);
             if (floor) {
               for (const layer of floor.layers) {
-                if (s.visibleLayers.has(`${layer.discipline}/${layer.tableName}`)) {
+                if (isLayerSelectableInView(layer.discipline, layer.tableName, s)) {
                   for (const id of layer.csvRows.keys()) {
                     allIds.push(s.currentLevel ? toSelectionId(s.currentLevel, id) : id);
                   }

@@ -5,6 +5,7 @@ import type { EditorAction } from '../state/editorTypes.ts';
 import { REVERSE_PREFIX_MAP } from '../model/ids.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { useEditorState } from '../state/EditorContext.tsx';
+import { isLayerSelectableInView } from '../state/selectors.ts';
 import { copySelection, cutSelection, pasteAligned, pasteAtCursor, readClipboard, type PasteAligned } from '../state/clipboardCommands.ts';
 import {
   allPinned, createGroup, selectAllInstances, selectBySystem, selectedGroup, selectionHasSystem, setPinned, ungroup,
@@ -156,7 +157,7 @@ export default function CanvasContextMenu({
   const selectAll = () => {
     const ids: string[] = [];
     for (const [id, el] of document.elements) {
-      if (visibleLayers.has(`${el.discipline}/${el.tableName}`)) {
+      if (isLayerSelectableInView(el.discipline, el.tableName, full)) {
         ids.push(id);
       }
     }

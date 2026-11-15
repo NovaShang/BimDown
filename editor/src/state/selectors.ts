@@ -52,6 +52,14 @@ export function isBackgroundDiscipline(discipline: string, activeDiscipline: str
   return false;
 }
 
+/** Whether Select All may pick this layer: drawn in the view and not mere
+ *  background context (architecture under MEP/structure, reference grids). */
+export function isLayerSelectableInView(discipline: string, tableName: string, state: EditorState): boolean {
+  return state.visibleLayers.has(`${discipline}/${tableName}`)
+    && isLayerVisibleInView(discipline, tableName, state)
+    && !isBackgroundDiscipline(discipline, state.activeDiscipline, tableName);
+}
+
 export function getVisibleFloor(state: EditorState) {
   return state.project?.floors.get(state.currentLevel);
 }
