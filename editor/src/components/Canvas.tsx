@@ -31,6 +31,7 @@ import { getProjectUnits } from '../utils/units.ts';
 import { getContentBounds } from '../state/selectors.ts';
 import UnderlayLayer from '../underlay/UnderlayLayer.tsx';
 import UnderlayToolOverlay from '../underlay/UnderlayToolOverlay.tsx';
+import { ClashMarkers2D } from '../mep/clashView.tsx';
 import { useUnderlayStore } from '../underlay/UnderlayContext.tsx';
 
 import type { ProjectData } from '../types.ts';
@@ -571,6 +572,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <SectionMarks2D scale={scale} />
         <UnderlayToolOverlay scale={scale} />
 
+        <ClashMarkers2D scale={scale} />
         <SnapOverlay snap={activeSnap} scale={scale} />
 
         <PortDragOverlay scale={scale} />

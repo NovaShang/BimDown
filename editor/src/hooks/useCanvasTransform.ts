@@ -135,8 +135,9 @@ export function useCanvasTransform({ svgRef, containerRef, viewBox, currentLevel
     const scale = Math.min((cw - margin * 2) / (bw * svgToPixel), (ch - margin * 2) / (bh * svgToPixel));
     const cx = (minX + maxX) / 2;
     const cy = (minY + maxY) / 2;
-    const px = (cx - viewBox.x) * svgToPixel;
-    const py = (-cy - viewBox.y) * svgToPixel;
+    // The viewBox is centred in the SVG element (preserveAspectRatio meet), as in fitTransform.
+    const px = (cw - viewBox.w * svgToPixel) / 2 + (cx - viewBox.x) * svgToPixel;
+    const py = (ch - viewBox.h * svgToPixel) / 2 + (-cy - viewBox.y) * svgToPixel;
     const tx = cw / 2 - px * scale;
     const ty = ch / 2 - py * scale;
     updateTransform({ x: tx, y: ty, scale });
