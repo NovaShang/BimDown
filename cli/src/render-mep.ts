@@ -237,7 +237,9 @@ export function renderMep(dirs: string[], globalDir: string): MepRendered[] {
         const m1 = legs[main[0]], m2 = legs[main[1]];
         const big = m1.curve.w * m1.curve.h >= m2.curve.w * m2.curve.h ? m1 : m2;
         const tap = hint === 'tap' || (hint !== 'tee' && br.curve.table === 'duct' && ((br.curve.round && !big.curve.round) || br.curve.w <= 0.5 * big.curve.w));
-        kind = tap ? 'tap' : 'tee';
+        // A branch joining the main at an angle (45° drainage branch) is a wye (as the editor's fittings.ts)
+        const angled = Math.abs(dot3(br.dir, m1.dir)) > 0.3;
+        kind = tap ? 'tap' : angled || hint === 'wye' ? 'wye' : 'tee';
         const mainExt = Math.abs(br.dir[2]) > 0.5 ? big.curve.h : big.curve.w;
         if (tap) br.trim = clamp(br, mainExt / 2);
         else {

@@ -713,7 +713,23 @@ export function detectClashes(m: ClashModelIn, opts: ClashOptions = {}): Clash[]
     active.push(i);
   }
 
-  return [...found.values()].sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity]
+  // A run split where it crosses something (two segments meeting inside the
+  // obstacle) is one clash: keep the deeper of connected segments' hits on
+  // the same obstacle when they are within a section size of each other.
+  const byKey = new Map(items.map(it => [`${it.scope ?? ''}/${it.id}`, it]));
+  const itemOf = (id: string, scope?: string) => byKey.get(`${scope ?? ''}/${id}`);
+  const kept: Clash[] = [];
+  for (const c of [...found.values()].sort((x, y) => y.depth - x.depth)) {
+    const A = itemOf(c.a, c.aScope);
+    const dup = A?.cat === 'curve' && kept.some(k => {
+      if (k.b !== c.b || k.bScope !== c.bScope || k.kind !== c.kind || k.a === c.a) return false;
+      const K = itemOf(k.a, k.aScope);
+      if (!K || K.cat !== 'curve' || !connected(A, K)) return false;
+      return len(sub(k.at, c.at)) <= Math.max(A.size, K.size, tol) + 1e-6;
+    });
+    if (!dup) kept.push(c);
+  }
+  return kept.sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity]
     || (x.kind === 'clearance' ? 1 : 0) - (y.kind === 'clearance' ? 1 : 0)
     || y.depth - x.depth || x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
 }

@@ -45,6 +45,16 @@ describe('bimdown clash', () => {
     expect(clashReport(dir, { mepOnly: true }).clashes).toEqual([]);
   });
 
+  it('a run split where it crosses a beam is one clash', () => {
+    put('lv-1/beam.csv', 'id,shape,size_x,size_y,material\nbm-1,rect,0.3,0.5,concrete\n');
+    put('lv-1/beam.geojson', fc([line('bm-1', [0, 0, 3], [10, 0, 3])]));
+    put('lv-1/duct.csv', 'id,shape,size_x,size_y,system_type,from,to\ndu-1,rect,0.4,0.3,SA,,\ndu-2,rect,0.4,0.3,SA,,\n');
+    // Split at y = 0, inside the beam
+    put('lv-1/duct.geojson', fc([line('du-1', [5, -3, 2.8], [5, 0, 2.8]), line('du-2', [5, 0, 2.8], [5, 3, 2.8])]));
+    const r = clashReport(dir);
+    expect(r.clashes.filter(c => c.b === 'bm-1')).toHaveLength(1);
+  });
+
   it('crossing pipes of different systems at one height are a medium clash; a connected tee is not', () => {
     put('lv-1/mep_node.csv', 'id,system_type,kind,fitting\nmn-1,CHWS,,tee\n');
     put('lv-1/mep_node.geojson', fc([point('mn-1', [5, 8, 2.5])]));
@@ -170,8 +180,9 @@ describe('detectClashes core', () => {
       { id: 'du-7', table: 'duct', a: [27, 4.2, 3], b: [23.8, 4.2, 3], shape: 'rect', w: 0.35, h: 0.2, system: 'SA', from: 'mn-5', to: 'mn-2' },
       { id: 'du-21', table: 'duct', a: [23.8, 2.4, 3], b: [23.8, 5.4, 3], shape: 'rect', w: 0.4, h: 0.3, system: '' },
     ];
-    const got = detectClashes({ curves, hosts: [] }).map(c => [c.a, c.b, c.severity].join(':')).sort();
-    expect(got).toEqual(['du-3:du-21:medium', 'du-7:du-21:medium']);
+    // One clash, not one per trunk half: the trunk is split right where it crosses
+    const got = detectClashes({ curves, hosts: [] }).map(c => [c.b, c.severity].join(':'));
+    expect(got).toEqual(['du-21:medium']);
     // The same duct ending on the trunk (open end on its body) is a tap.
     curves[2] = { ...curves[2], b: [23.8, 4.2, 3] };
     expect(detectClashes({ curves, hosts: [] })).toEqual([]);

@@ -177,4 +177,14 @@ describe('MEP connectivity', () => {
     expect(svg).toContain('SA 400×300');
     expect(svg).toContain('data-mep="supply_air_diffuser"');
   });
+
+  it('render draws a 45° drainage branch as a wye', () => {
+    put('lv-1/mep_node.csv', 'id,system_type\nmn-1,SAN\n');
+    put('lv-1/mep_node.geojson', fc([point('mn-1', [5, 0, 0.5])]));
+    put('lv-1/pipe.csv', 'id,shape,size_x,system_type,from,to\npi-1,round,0.1,SAN,,mn-1\npi-2,round,0.1,SAN,mn-1,\npi-3,round,0.075,SAN,,mn-1\n');
+    put('lv-1/pipe.geojson', fc([line('pi-1', [0, 0, 0.5], [5, 0, 0.5]), line('pi-2', [5, 0, 0.5], [10, 0, 0.5]), line('pi-3', [3, 2, 0.5], [5, 0, 0.5])]));
+    const svg = renderLevel(dir, 'lv-1');
+    expect(svg).toContain('data-mep="wye"');
+    expect(svg).not.toContain('data-mep="tee"');
+  });
 });
