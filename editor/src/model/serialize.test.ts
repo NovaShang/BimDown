@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { authorHouse, saveHarness } from '../test/authorHarness.ts';
 import { SPEC_COLUMNS } from './specColumns.generated.ts';
-import { serializeToCsv } from './serialize.ts';
+import { cleanNumber, serializeToCsv } from './serialize.ts';
 import { loadProject } from '../utils/loader.ts';
 import { parseFloorLayers } from './parse.ts';
 import { createDocument } from './document.ts';
@@ -94,5 +94,27 @@ describe('loading a CSV with a repeated column', () => {
     const noDelete = { ...memoryDataSource({}), deleteFile: undefined };
     await persistDocument(createDocument('lv-1', [wall, op]), noDelete, new Set(['architecture/opening']), 0);
     expect(JSON.parse(noDelete.files['lv-1/opening.geojson'])).toEqual({ type: 'FeatureCollection', features: [] });
+  });
+
+  it('round runs write no size_y; numbers lose float noise', () => {
+    const run = (id: string, table: string, attrs: Record<string, string>) => ({
+      id, tableName: table, discipline: 'mep', geometry: 'spatial_line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 },
+      startZ: 0, endZ: 0, strokeWidth: 0.1, attrs: { id, ...attrs },
+    }) as unknown as CanonicalElement;
+    const pipes = serializeToCsv([run('pi-1', 'pipe', { shape: 'round', size_x: '0.1', size_y: '0.05' }), run('pi-2', 'pipe', { size_x: '0.025', size_y: '0.05' })], 'pipe');
+    const rows = pipes.split('\n').map(l => l.split(','));
+    const sy = rows[0].indexOf('size_y');
+    expect(rows[1][sy]).toBe('');
+    expect(rows[2][sy]).toBe('');
+    const ducts = serializeToCsv([run('du-1', 'duct', { shape: 'rect', size_x: '0.4', size_y: '0.3' }), run('du-2', 'duct', { shape: 'round', size_x: '0.2', size_y: '0.3' })], 'duct');
+    const d = ducts.split('\n').map(l => l.split(','));
+    expect(d[1][d[0].indexOf('size_y')]).toBe('0.3');
+    expect(d[2][d[0].indexOf('size_y')]).toBe('');
+
+    expect(cleanNumber('2.6999998092651367')).toBe('2.7');
+    expect(cleanNumber('8.5000004768')).toBe('8.5');
+    expect(cleanNumber('0.0085')).toBe('0.0085');
+    expect(cleanNumber('KZ1')).toBe('KZ1');
+    expect(cleanNumber('-12.30000001')).toBe('-12.3');
   });
 });
