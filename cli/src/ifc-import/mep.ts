@@ -5,6 +5,7 @@
  * box. Systems (mep-systems.ts) and connections (mep-topology.ts) come after.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- web-ifc lines are untyped */
+import { pipeMaterial } from './materials.js';
 import type { ImportContext, OutEl, AttrValue } from './context.js';
 import { type WorldMesh, planObb, sectionExtents } from './geometry.js';
 import { enumValue, str } from './model.js';
@@ -64,9 +65,17 @@ export function convertSegment(ctx: ImportContext, systems: Systems, id: number,
     (!prof && Math.abs(sec.width - sec.height) < 0.002 && /rund|round|circ|spiral|wickelfalz/i.test(ctx.label(id) ?? ''));
   const level = ctx.levelOf(id, Math.min(a.z, b.z));
   const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id) };
+  // Pipes: nominal size (DN / de) and material when the file states them
+  const nominal = table === 'pipe' ? ctx.model.prop(id, /^Pset_PipeSegment/, 'NominalDiameter') : null;
+  if (table === 'pipe') {
+    const m = pipeMaterial(ctx.model, id);
+    if (m) attrs.material = m;
+  }
   if (round) {
     attrs.shape = 'round';
-    attrs.size_x = r3(prof?.kind === 'circle' ? prof.r * 2 : Math.max(sec.width, sec.height));
+    attrs.size_x = typeof nominal === 'number' && nominal > 0
+      ? r3(nominal * ctx.model.scale)
+      : r3(prof?.kind === 'circle' ? prof.r * 2 : Math.max(sec.width, sec.height));
   } else {
     attrs.shape = 'rect';
     attrs.size_x = r3(sec.width);
@@ -139,6 +148,7 @@ function terminalType(ctx: ImportContext, id: number, system: string | undefined
 const EQUIPMENT_CLASS: Record<string, string> = {
   IfcBoiler: 'boiler', IfcChiller: 'chiller', IfcCoolingTower: 'cooling_tower', IfcFan: 'fan', IfcPump: 'pump',
   IfcTank: 'tank', IfcTransformer: 'transformer', IfcElectricDistributionBoard: 'panelboard', IfcElectricGenerator: 'generator',
+  IfcCoil: 'coil',
 };
 
 function equipmentType(ctx: ImportContext, id: number): string {

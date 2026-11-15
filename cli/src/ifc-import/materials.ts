@@ -231,3 +231,31 @@ export function materialGrade(model: IfcModel, id: number, material: MaterialEnu
   }
   return null;
 }
+
+/** Pipe material enum (pipe.material, size series DN / de) from the element's material name, or null. */
+const PIPE_PATTERNS: [RegExp, string][] = [
+  [/galvan|verzinkt|feuerverz/i, 'galvanized_steel'],
+  [/stainless|edelstahl|\binox|nirosta|v2a|v4a/i, 'stainless_steel'],
+  [/ductile|duktil|sphäro|sphaero/i, 'ductile_iron'],
+  [/cast.?iron|gusseisen|\bguss\b|\bsml\b/i, 'cast_iron'],
+  [/copper|kupfer|\bcu\b/i, 'copper'],
+  [/\bpex\b|pe-?x\b|vernetzt/i, 'pex'],
+  [/\bppr\b|pp-?r\b|polypropyl/i, 'ppr'],
+  [/hdpe|pe-?hd|polyethyl|\bpe\b/i, 'hdpe'],
+  [/pvc|pvc-?u|\bupvc/i, 'pvc'],
+  [/steel|stahl/i, 'steel'],
+];
+
+export function pipeMaterial(model: IfcModel, id: number): string | null {
+  const sel = materialSelect(model, id);
+  const names: string[] = [];
+  if (sel) {
+    if (sel.Name) names.push(str(sel.Name) ?? '');
+    const inner = sel.Material ? model.line(sel.Material.value ?? sel.Material) : null;
+    if (inner?.Name) names.push(str(inner.Name) ?? '');
+  }
+  const typeId = model.typeOf.get(id);
+  if (typeId) names.push(str(model.line(typeId)?.Name) ?? '');
+  for (const n of names) for (const [re, m] of PIPE_PATTERNS) if (n && re.test(n)) return m;
+  return null;
+}
