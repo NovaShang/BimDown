@@ -29,6 +29,11 @@
  * - `penetration`, low: MEP through a slab / roof / non-structural wall that
  *   no opening, slab hole or shaft covers (needs a sleeve or an opening).
  * - `clearance`, low: MEP vs MEP / structure closer than `clearance`.
+ *
+ * `tolerance` (default 5 cm) is the overlap modelling slack: hard clashes and
+ * penetrations no deeper than it are not clashes; with `minor` they are
+ * returned flagged `minor` (within tolerance). `clearance` is separate: the
+ * gap required between elements that don't overlap at all.
  */
 
 export type Vec3 = [number, number, number];
@@ -137,10 +142,12 @@ export interface ClashModelIn {
 }
 
 export interface ClashOptions {
-  /** Smallest overlap to report, model units. Default 0.01 (10 mm in metres). */
+  /** Overlaps no deeper than this are within tolerance, not clashes; model units. Default 0.05 (5 cm in metres); 0 = every overlap. */
   tolerance?: number;
-  /** MEP vs MEP / structure closer than this is a clearance clash. 0 = off (default). */
+  /** MEP vs MEP / structure closer than this (without overlapping) is a clearance clash. 0 = off (default). */
   clearance?: number;
+  /** Also return the overlaps within tolerance, flagged `minor`. */
+  minor?: boolean;
   /** Only MEP vs MEP. */
   mepOnly?: boolean;
 }
@@ -163,11 +170,15 @@ export interface Clash {
   /** Penetration depth (clearance: the gap). */
   depth: number;
   systems: string[];
+  /** Overlap within tolerance (only with `minor`); not counted as a clash. */
+  minor?: true;
 }
 
 // ─── Vectors ──────────────────────────────────────────────
 
 const EPS = 1e-9;
+/** Overlap below this is touching, not overlapping (any length unit). */
+const CONTACT = 1e-6;
 const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
 const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
 const mul = (a: Vec3, s: number): Vec3 => [a[0] * s, a[1] * s, a[2] * s];
@@ -498,7 +509,7 @@ function overlapPoint(A: Item, B: Item, grow: number): Vec3 {
 }
 
 /** A curve / equipment item against a slab: depth in z and a point over solid slab, or null. */
-function slabHit(it: Item, slab: Item, tol: number): { depth: number; at: Vec3 } | null {
+function slabHit(it: Item, slab: Item, floor: number): { depth: number; at: Vec3 } | null {
   const sl = slab.slab!;
   const s = it.solid!;
   const zc = (sl.z0 + sl.z1) / 2, hz = (sl.z1 - sl.z0) / 2;
@@ -519,27 +530,27 @@ function slabHit(it: Item, slab: Item, tol: number): { depth: number; at: Vec3 }
     }
     const za = a[2] + dz * t0, zb = a[2] + dz * t1;
     const depth = Math.min(Math.max(za, zb) + sz, sl.z1) - Math.max(Math.min(za, zb) - sz, sl.z0);
-    if (depth < tol) return null;
+    if (depth <= floor) return null;
     const pa = lerp(a, b, t0), pb = lerp(a, b, t1);
     const p: Vec2 = [pa[0], pa[1]], q: Vec2 = [pb[0], pb[1]];
     const planR = Math.max(sectionSupport(s, [1, 0, 0]), sectionSupport(s, [0, 1, 0]));
-    let best: PlanPart | null = null;
+    let best: PlanPart | null = null, bestDepth = 0;
     for (const part of planParts(p, q, sl.outer, sl.holes)) {
-      let hit = part.hole === -1;
+      let d = part.hole === -1 ? depth : 0;
       if (part.hole >= 0) {
-        // Over a hole: still a clash when the opening is too small for the section.
+        // Over a hole: still a clash when the opening is too small for the section, as deep as it bites into the edge.
         const m = (part.s0 + part.s1) / 2;
-        hit = ringDistance([p[0] + (q[0] - p[0]) * m, p[1] + (q[1] - p[1]) * m], sl.holes[part.hole]) < planR - tol;
+        d = Math.min(depth, planR - ringDistance([p[0] + (q[0] - p[0]) * m, p[1] + (q[1] - p[1]) * m], sl.holes[part.hole]));
       }
-      if (hit && (!best || part.s1 - part.s0 > best.s1 - best.s0)) best = part;
+      if (d > floor && (!best || d > bestDepth || (d === bestDepth && part.s1 - part.s0 > best.s1 - best.s0))) { best = part; bestDepth = d; }
     }
     if (!best) return null;
     const at = lerp(pa, pb, (best.s0 + best.s1) / 2);
     at[2] = clamp(at[2], sl.z0, sl.z1);
-    return { depth, at };
+    return { depth: bestDepth, at };
   }
   const depth = Math.min(it.box[5], sl.z1) - Math.max(it.box[2], sl.z0);
-  if (depth < tol) return null;
+  if (depth <= floor) return null;
   const pts: Vec3[] = [s.c];
   for (const i of [-1, 1]) for (const j of [-1, 1]) pts.push(add(add(s.c, mul(s.u[0], s.e[0] * i)), mul(s.u[1], s.e[1] * j)));
   for (const pt of pts) {
@@ -552,7 +563,7 @@ function slabHit(it: Item, slab: Item, tol: number): { depth: number; at: Vec3 }
 }
 
 /** Does a wall opening take the curve through? */
-function wallCovered(curve: Item, wall: Item, tol: number): boolean {
+function wallCovered(curve: Item, wall: Item, slack: number): boolean {
   const w = wall.wall!;
   if (w.openings.length === 0 || !curve.ends) return false;
   const iv = clipAxis(curve.ends[0], curve.ends[1], curve.solid!, wall.solid!);
@@ -561,7 +572,7 @@ function wallCovered(curve: Item, wall: Item, tol: number): boolean {
   const u = (p[0] - w.a[0]) * w.dir[0] + (p[1] - w.a[1]) * w.dir[1];
   const su = sectionSupport(curve.solid!, [w.dir[0], w.dir[1], 0]);
   const sz = sectionSupport(curve.solid!, Z);
-  return w.openings.some(o => u - su >= o.u0 - tol && u + su <= o.u1 + tol && p[2] - sz >= o.z0 - tol && p[2] + sz <= o.z1 + tol);
+  return w.openings.some(o => u - su >= o.u0 - slack && u + su <= o.u1 + slack && p[2] - sz >= o.z0 - slack && p[2] + sz <= o.z1 + slack);
 }
 
 function buildItems(m: ClashModelIn): Item[] {
@@ -648,12 +659,16 @@ const SEVERITY_ORDER: Record<ClashSeverity, number> = { high: 0, medium: 1, low:
 
 /** All clashes in the model, most severe and deepest first. */
 export function detectClashes(m: ClashModelIn, opts: ClashOptions = {}): Clash[] {
-  const tol = Math.max(0, opts.tolerance ?? 0.01);
+  const tol = Math.max(0, opts.tolerance ?? 0.05);
   const clr = Math.max(0, opts.clearance ?? 0);
+  // Overlaps deeper than `floor` and no deeper than `tol` are minor.
+  const floor = CONTACT;
   const items = buildItems(m);
   const found = new Map<string, Clash>();
 
   const record = (A: Item, B: Item, kind: ClashKind, severity: ClashSeverity, depth: number, at: Vec3) => {
+    const minor = kind !== 'clearance' && depth <= tol;
+    if (minor && !opts.minor) return;
     const key = `${A.key}|${B.key}`;
     const prev = found.get(key);
     if (prev && prev.depth >= depth) return;
@@ -661,7 +676,7 @@ export function detectClashes(m: ClashModelIn, opts: ClashOptions = {}): Clash[]
     found.set(key, {
       a: A.id, aTable: A.table, ...(A.scope !== undefined ? { aScope: A.scope } : {}),
       b: B.id, bTable: B.table, ...(B.scope !== undefined ? { bScope: B.scope } : {}),
-      severity, kind, at, depth, systems,
+      severity, kind, at, depth, systems, ...(minor ? { minor: true as const } : {}),
     });
   };
 
@@ -670,15 +685,15 @@ export function detectClashes(m: ClashModelIn, opts: ClashOptions = {}): Clash[]
     // Terminals and accessories sit in walls and floors by design (outlets, drains, fire dampers).
     if (!A.penetrates && (B.wall || B.slab)) return;
     if (B.slab) {
-      const hit = slabHit(A, B, tol);
+      const hit = slabHit(A, B, floor);
       if (hit) record(A, B, B.cat === 'hard' ? 'hard' : 'penetration', B.cat === 'hard' ? 'high' : 'low', hit.depth, hit.at);
       return;
     }
     if (isMep(B) && connected(A, B)) return;
     const depth = satDepth(A.solid!, B.solid!);
-    if (depth >= tol) {
+    if (depth > floor) {
       if (B.cat === 'soft') {
-        if (A.ends && B.wall && wallCovered(A, B, tol)) return;
+        if (A.ends && B.wall && wallCovered(A, B, floor)) return;
         record(A, B, 'penetration', 'low', depth, overlapPoint(A, B, 0));
       } else {
         record(A, B, 'hard', B.cat === 'hard' ? 'high' : 'medium', depth, overlapPoint(A, B, 0));
@@ -729,14 +744,14 @@ export function detectClashes(m: ClashModelIn, opts: ClashOptions = {}): Clash[]
     });
     if (!dup) kept.push(c);
   }
-  return kept.sort((x, y) => SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity]
+  return kept.sort((x, y) => (x.minor ? 1 : 0) - (y.minor ? 1 : 0) || SEVERITY_ORDER[x.severity] - SEVERITY_ORDER[y.severity]
     || (x.kind === 'clearance' ? 1 : 0) - (y.kind === 'clearance' ? 1 : 0)
     || y.depth - x.depth || x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
 }
 
-/** Clash count per severity. */
+/** Clash count per severity (minor overlaps within tolerance left out). */
 export function clashCounts(clashes: readonly Clash[]): Record<ClashSeverity, number> {
   const out: Record<ClashSeverity, number> = { high: 0, medium: 0, low: 0 };
-  for (const c of clashes) out[c.severity]++;
+  for (const c of clashes) if (!c.minor) out[c.severity]++;
   return out;
 }

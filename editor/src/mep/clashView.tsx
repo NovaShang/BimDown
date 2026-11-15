@@ -13,13 +13,17 @@ export interface ClashViewState {
   level: string | null;
   source: unknown;
   clashes: readonly Clash[] | null;
+  /** Tolerance of that run, mm. */
+  toleranceMm: number;
   /** Show clash markers on the plan. */
   showMarkers: boolean;
+  /** The overlaps within tolerance (`minor`) are listed and marked. */
+  showMinor: boolean;
   /** Index of the clash picked in the list. */
   active: number | null;
 }
 
-let state: ClashViewState = { level: null, source: null, clashes: null, showMarkers: true, active: null };
+let state: ClashViewState = { level: null, source: null, clashes: null, toleranceMm: 50, showMarkers: true, showMinor: false, active: null };
 const listeners = new Set<() => void>();
 
 export function getClashView(): ClashViewState {
@@ -38,6 +42,29 @@ function subscribe(fn: () => void): () => void {
 
 export function useClashView(): ClashViewState {
   return useSyncExternalStore(subscribe, getClashView, getClashView);
+}
+
+/** Clash tab inputs of a project (mm strings as typed), kept across reloads. */
+export interface ClashSettings { tolerance: string; clearance: string }
+export const DEFAULT_CLASH_SETTINGS: ClashSettings = { tolerance: '50', clearance: '0' };
+const settingsKey = (model: string) => `bimdown-clash:${model}`;
+
+export function loadClashSettings(model: string): ClashSettings {
+  try {
+    const raw = localStorage.getItem(settingsKey(model));
+    if (raw) {
+      const v = JSON.parse(raw) as Partial<ClashSettings>;
+      return {
+        tolerance: typeof v.tolerance === 'string' ? v.tolerance : DEFAULT_CLASH_SETTINGS.tolerance,
+        clearance: typeof v.clearance === 'string' ? v.clearance : DEFAULT_CLASH_SETTINGS.clearance,
+      };
+    }
+  } catch { /* unavailable storage */ }
+  return { ...DEFAULT_CLASH_SETTINGS };
+}
+
+export function saveClashSettings(model: string, v: ClashSettings): void {
+  try { localStorage.setItem(settingsKey(model), JSON.stringify(v)); } catch { /* unavailable storage */ }
 }
 
 /** Window event the plan listens to: zoom to `{ minX, minY, maxX, maxY }` (SchedulePanel ZOOM_TO_EVENT). */
@@ -67,6 +94,7 @@ export function ClashMarkers2D({ scale }: { scale: number }) {
   return (
     <g pointerEvents="none" transform="scale(1,-1)" data-testid="clash-markers">
       {view.clashes.map((c, i) => {
+        if (c.minor && !view.showMinor) return null;
         const color = SEVERITY_COLOR[c.severity];
         const active = view.active === i;
         const [x, y] = c.at;

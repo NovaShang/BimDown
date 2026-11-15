@@ -6,9 +6,9 @@ import { loadProject } from '../utils/loader.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { createDocument } from '../model/document.ts';
 import type { EditorState } from '../state/editorTypes.ts';
-import { detectClashes, type ClashCurveIn } from './clash.ts';
+import { detectClashes, clashCounts, type ClashCurveIn } from './clash.ts';
 import { buildClashModel } from './clashModel.ts';
-import { clashSectionBox, zoomPlanTo } from './clashView.tsx';
+import { clashSectionBox, loadClashSettings, saveClashSettings, zoomPlanTo } from './clashView.tsx';
 
 const clashesOf = (s: EditorState, opts = {}) => detectClashes(buildClashModel(s.document!.elements, { project: s.project, levelId: s.currentLevel }), opts);
 const pipe = (id: string, a: [number, number, number], b: [number, number, number], d: number, system: string): ClashCurveIn =>
@@ -103,6 +103,32 @@ describe('clash detection in the editor', () => {
       attrs: { id, shape: 'round', size_x: '0.15', system_type: 'SA' } });
     const els = new Map([joist, duct('du-1', 2.82), duct('du-2', 2.98)].map(e => [e.id, e])) as never;
     expect(detectClashes(buildClashModel(els, {})).map(c => c.a)).toEqual(['du-2']);
+  });
+
+  it('tolerance: 46 mm into a joist chord is minor at the default 5 cm, 60 mm clashes, 0 reports every overlap', () => {
+    const joist = { id: 'bm-1', tableName: 'beam', discipline: 'structure', geometry: 'spatial_line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, startZ: 3, endZ: 3, strokeWidth: 0.073,
+      attrs: { id: 'bm-1', shape: 'open_web', size_x: '0.073', size_y: '0.356', flange: '0.032', material: 'steel' } };
+    const duct = (id: string, x: number, z: number) => ({ id, tableName: 'duct', discipline: 'mep', geometry: 'spatial_line', start: { x, y: -3 }, end: { x, y: 3 }, startZ: z, endZ: z, strokeWidth: 0.15,
+      attrs: { id, shape: 'round', size_x: '0.15', system_type: 'SA' } });
+    // Top chord z 2.968 – 3.0; Ø150 ducts below it bite 46 and 60 mm into it.
+    const model = buildClashModel(new Map([joist, duct('du-1', 3, 2.939), duct('du-2', 7, 2.953)].map(e => [e.id, e])) as never, {});
+    expect(detectClashes(model).map(c => c.a)).toEqual(['du-2']);
+    const all = detectClashes(model, { minor: true });
+    expect(all.map(c => [c.a, !!c.minor, Math.round(c.depth * 1000)])).toEqual([['du-2', false, 60], ['du-1', true, 46]]);
+    expect(clashCounts(all)).toEqual({ high: 1, medium: 0, low: 0 });
+    expect(detectClashes(model, { tolerance: 0 }).map(c => c.a)).toEqual(['du-2', 'du-1']);
+    // Clearance is about gaps: a minor overlap does not turn into a clearance clash
+    expect(detectClashes(model, { clearance: 0.1 }).map(c => `${c.a}:${c.kind}`)).toEqual(['du-2:hard']);
+  });
+
+  it('clash tab settings are kept per project', () => {
+    const store = new Map<string, string>();
+    vi.stubGlobal('localStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => void store.set(k, v) });
+    expect(loadClashSettings('p1')).toEqual({ tolerance: '50', clearance: '0' });
+    saveClashSettings('p1', { tolerance: '20', clearance: '25' });
+    expect(loadClashSettings('p1')).toEqual({ tolerance: '20', clearance: '25' });
+    expect(loadClashSettings('p2')).toEqual({ tolerance: '50', clearance: '0' });
+    vi.unstubAllGlobals();
   });
 
   it('a picked clash zooms the plan; the 3D section box uses absolute z', () => {
