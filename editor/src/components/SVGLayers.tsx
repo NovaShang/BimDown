@@ -40,7 +40,8 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
             : undefined;
         const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isArchContext || isReferenceContext ? 'background-layer' : ''}`;
         return (
-          <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
+          // The plan flip for every element of the layer (one transform, not one wrapper per element)
+          <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle} transform="scale(1,-1)">
             {pickOrder(layer.elements).map(el => (
               <ElementNode key={el.id} element={el} />
             ))}

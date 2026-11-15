@@ -90,7 +90,7 @@ const MinimapContent = React.memo(function MinimapContent({ layers, viewBox }: {
   return (
     <svg className="block size-full" viewBox={viewBox} width={MINIMAP_W} height={MINIMAP_H}>
       {layers.map(layer => (
-        <g key={layer.key} opacity="0.6">
+        <g key={layer.key} opacity="0.6" transform="scale(1,-1)">
           {layer.elements.map(el => (
             <ElementNode key={el.id} element={el} />
           ))}

@@ -11,8 +11,10 @@ import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import { furnitureMass, type MassColor } from '../../library/furnitureLibrary.generated.ts';
 import { furniturePartGeometry } from '../../library/furniture3D.ts';
 import { effectiveMepLine } from '../../model/mepFittingRender.ts';
-import { accessoryBasis, accessoryGeometry, fittingGeometry } from '../../mep/FittingView.tsx';
-import { type Solid, type V2, type V3, length, planFrame, sub, v3 } from './frame.ts';
+import { accessoryBasis, accessoryGeometry, fittingGeometry, type AccessoryLook } from '../../mep/FittingView.tsx';
+import type { FittingInfo, FittingLeg } from '../../mep/fittings.ts';
+import { dirToWorld, sectionFrame, type V3 as M3 } from '../../mep/geom3d.ts';
+import { type Frame, type Profile, type Solid, type V2, type V3, add, cross, dot, length, normalize, planFrame, scale, sub, v3 } from './frame.ts';
 import { box, brepFromBuffer, sweep } from './geometry.ts';
 
 /** A three.js world-frame geometry as one faceted brep (consumes the geometry). */
@@ -70,6 +72,155 @@ export function mepRunSolid(el: CanonicalElement, ctx: GeometryContext): Solid |
   const r = mepRun(el, ctx);
   if (!r) return null;
   return sweep(r.start, r.end, r.round ? { kind: 'circle', r: r.sizeX / 2 } : { kind: 'rect', w: r.sizeX, d: r.sizeY });
+}
+
+const fromWorld = (d: M3): V3 => ({ x: d[0], y: -d[2], z: d[1] });
+const m3 = (v: M3): V3 => ({ x: v[0], y: v[1], z: v[2] });
+
+/** Section frame of a leg running along model `dir` (the 3D view's: width along `right`). */
+function legFrame(o: V3, dir: V3, hint?: M3): Frame {
+  const f = sectionFrame(dirToWorld([dir.x, dir.y, dir.z]), hint ? dirToWorld(hint) : undefined);
+  return { o, z: dir, x: fromWorld(f.right) };
+}
+
+function legProfile(l: FittingLeg, k = 1): Profile {
+  return l.sec.shape === 'round' ? { kind: 'circle', r: (l.sec.w * k) / 2 } : { kind: 'rect', w: l.sec.w * k, d: l.sec.h * k };
+}
+
+/**
+ * Lightweight IFC body of a passive fitting, the same shape the 3D view
+ * draws: an elbow is the section revolved about the bend axis
+ * (IfcRevolvedAreaSolid), tee / cross / wye arms, taps and caps are short
+ * extrusions; null for reducers / transitions (a small faceted loft).
+ * A large imported model has thousands of fittings: faceted breps of their
+ * swept bodies made a 13 MB IFC 81 MB.
+ */
+export function fittingIfcSolids(info: FittingInfo, levelY: number, riserRight: Map<string, M3>): Solid[] | null {
+  const c = v3(info.center[0], info.center[1], info.center[2] + levelY);
+  const hint = (l: FittingLeg) => riserRight.get(l.curveId);
+  const dirOf = (l: FittingLeg) => normalize(m3(l.dir));
+  const isHoriz = (l: FittingLeg) => Math.abs(l.dir[2]) < 0.5;
+  const straight = (l: FittingLeg, from: number, to: number, k = 1): Solid | null => {
+    if (to - from < 1e-4) return null;
+    const d = dirOf(l);
+    return { kind: 'extrude', profile: legProfile(l, k), frame: legFrame(add(c, scale(d, from)), d, hint(l)), depth: to - from };
+  };
+  const out: (Solid | null)[] = [];
+  switch (info.kind) {
+    case 'elbow': {
+      if (info.radius <= 0) return [];
+      const [a, b] = isHoriz(info.legs[0]) || !isHoriz(info.legs[1]) ? [info.legs[0], info.legs[1]] : [info.legs[1], info.legs[0]];
+      const da = dirOf(a), db = dirOf(b);
+      const defl = Math.PI - Math.acos(Math.max(-1, Math.min(1, dot(da, db))));
+      if (defl < 1e-3) return [];
+      const R = info.radius;
+      const ta = add(c, scale(da, R * Math.tan(defl / 2)));
+      const centre = add(c, scale(normalize(add(da, db)), R / Math.cos(defl / 2)));
+      const inward = normalize(sub(centre, ta));
+      let k = normalize(cross(da, db));
+      // Turn so that ta moves along the flow (−da) first
+      if (dot(cross(k, scale(inward, -1)), scale(da, -1)) < 0) k = scale(k, -1);
+      const sec = legFrame(ta, scale(da, -1), hint(a));
+      // Profile plane at ta: X towards the bend centre, Z along the flow
+      const z = scale(da, -1), x = inward, y = cross(z, x);
+      const frame: Frame = { o: ta, z, x };
+      let profile: Profile;
+      if (a.sec.shape === 'round') profile = { kind: 'circle', r: a.sec.w / 2 };
+      else {
+        const right = sec.x, up = cross(sec.z, sec.x);
+        const hw = a.sec.w / 2, hh = a.sec.h / 2;
+        const corner = (sx: number, sy: number) => {
+          const p = add(scale(right, sx * hw), scale(up, sy * hh));
+          return { x: dot(p, x), y: dot(p, y) };
+        };
+        const c0 = corner(1, 1);
+        // Section square to the bend plane (always, for drawn runs): a rectangle profile
+        if (Math.abs(Math.abs(dot(right, x)) - 1) < 1e-6 || Math.abs(dot(right, x)) < 1e-6) profile = { kind: 'rect', w: 2 * Math.abs(c0.x), d: 2 * Math.abs(c0.y) };
+        else profile = { kind: 'poly', outer: [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)] };
+      }
+      return [{ kind: 'revolve', profile, frame, axisO: { x: R, y: 0 }, axisDir: { x: dot(k, x), y: dot(k, y) }, angle: defl }];
+    }
+    case 'reducer':
+    case 'transition': {
+      const [a, b] = info.legs;
+      if (!a || !b) return null;
+      const pa = add(c, scale(dirOf(a), a.trim)), pb = add(c, scale(dirOf(b), b.trim));
+      const loft = loftSolid(pa, pb, a.sec, b.sec, hint(a) ?? hint(b));
+      return loft ? [loft] : null;
+    }
+    case 'tap': {
+      const br = info.legs.find((_, i) => !info.main || (i !== info.main[0] && i !== info.main[1]));
+      if (br) out.push(straight(br, br.trim - 0.01, br.trim + 0.05, 1.08));
+      break;
+    }
+    case 'cap': {
+      const l = info.legs[0];
+      if (l) out.push(straight(l, -0.02, 0, 1.04));
+      break;
+    }
+    case 'tee':
+    case 'cross':
+    case 'wye':
+    case 'manifold':
+      for (const l of info.legs) {
+        if (l.trim <= 1e-4) continue;
+        out.push(straight(l, 0, l.trim));
+        if (info.table === 'duct') out.push(straight(l, l.trim - 0.03, l.trim, 1.06));
+      }
+      break;
+    default:
+      return [];
+  }
+  return out.filter((x): x is Solid => !!x);
+}
+
+/**
+ * Lightweight IFC body of an inline accessory (valve, damper, meter): the run
+ * section (a little oversize) extruded over the accessory length — the 3D
+ * view's valve cones / damper blade shaft are faceted detail an IFC consumer
+ * doesn't need (hundreds of them in an imported model).
+ */
+export function accessoryIfcSolids(look: AccessoryLook, levelY: number): Solid[] {
+  const d = normalize(v3(look.dir3[0], look.dir3[1], look.dir3[2]));
+  if (length(d) < 0.5 || !(look.length > 0)) return [];
+  const centre = v3(look.at.x, look.at.y, levelY + look.z);
+  const k = look.kind.includes('damper') ? 1.08 : 1.2;
+  const profile: Profile = look.round ? { kind: 'circle', r: (look.width * k) / 2 } : { kind: 'rect', w: look.width * k, d: look.height * k };
+  return [{ kind: 'extrude', profile, frame: legFrame(add(centre, scale(d, -look.length / 2)), d), depth: look.length }];
+}
+
+/**
+ * Reducer / transition from section `sa` at `a` to `sb` at `b` as a closed
+ * brep of quads: a rectangle has 4 sides, a round section (or a rect ↔ round
+ * transition) 16 — not the 3D view's triangulated 24-32 point rings.
+ */
+function loftSolid(a: V3, b: V3, sa: FittingLeg['sec'], sb: FittingLeg['sec'], hint?: M3): Solid | null {
+  const f = sub(b, a);
+  if (length(f) < 1e-4) return null;
+  const fr = legFrame(a, normalize(f), hint);
+  const right = fr.x, up = cross(fr.z, fr.x);
+  const N = sa.shape === 'rect' && sb.shape === 'rect' ? 4 : 16;
+  const ring = (o: V3, sec: FittingLeg['sec']): V3[] => {
+    const hw = Math.max(sec.w, 0.005) / 2, hh = Math.max(sec.shape === 'round' ? sec.w : sec.h, 0.005) / 2;
+    const out: V3[] = [];
+    for (let i = 0; i < N; i++) {
+      const t = (i / N) * Math.PI * 2 + (N === 4 ? Math.PI / 4 : 0);
+      const cs = Math.cos(t), sn = Math.sin(t);
+      // rect: the corner (or edge point) at this angle; round: the circle
+      const k = sec.shape === 'round' ? hw : Math.min(hw / Math.max(Math.abs(cs), 1e-9), hh / Math.max(Math.abs(sn), 1e-9));
+      const [x, y] = N === 4 && sec.shape === 'rect' ? [Math.sign(cs) * hw, Math.sign(sn) * hh] : [cs * k, sn * k];
+      out.push(add(o, add(scale(right, x), scale(up, y))));
+    }
+    return out;
+  };
+  const ra = ring(a, sa), rb = ring(b, sb);
+  const faces: V3[][] = [];
+  for (let i = 0; i < N; i++) {
+    const j = (i + 1) % N;
+    faces.push([ra[i], ra[j], rb[j], rb[i]]);
+  }
+  faces.push([...ra].reverse(), rb);
+  return { kind: 'brep', faces };
 }
 
 /** Passive fitting body (elbow / tee / reducer …) or inline accessory body (valve / damper) of a mep_node. */

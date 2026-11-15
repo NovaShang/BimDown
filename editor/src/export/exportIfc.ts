@@ -48,7 +48,7 @@ import type { FurnitureFacts } from '../elements/furniture.tsx';
 import { MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
 import { effectiveMepLine } from '../model/mepFittingRender.ts';
 import type { MepNodeFacts } from '../elements/mep_node.tsx';
-import { furnitureSolids, mepNodeSolids } from './ifc/componentSolids.ts';
+import { furnitureSolids, accessoryIfcSolids, fittingIfcSolids, mepNodeSolids } from './ifc/componentSolids.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { systemPreset } from '../mep/systemPresets.ts';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
@@ -1494,7 +1494,8 @@ class Exporter {
     const facts = getElementModule('mep_node')?.geometry(el, ctx) as MepNodeFacts | null;
     if (!kind && (facts?.fitting || legs.length > 0)) {
       const info = facts?.fitting ?? null;
-      const body = info ? mepNodeSolids(facts) : [];
+      // Swept solids (revolved elbows, extruded arms); a faceted loft only for reducers
+      const body = info ? (fittingIfcSolids(info, facts!.levelY, facts!.riserRight) ?? mepNodeSolids(facts)) : [];
       geom = { solids: body.length > 0 ? body : fittingStubs(center, legs) };
       objectType = info?.kind ?? fittingKind(legs);
       const segTable = info?.legs[0]?.table ?? legs[0]?.seg.el.tableName ?? 'duct';
@@ -1502,7 +1503,7 @@ class Exporter {
       typing = { entity4: fitting4, predefined: fittingPredefined(objectType, fitting4) };
       if (w.ifc4) { type = fitting4; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
     } else {
-      let solids: Solid[] = facts?.accessory ? mepNodeSolids(facts) : [];
+      let solids: Solid[] = facts?.accessory ? accessoryIfcSolids(facts.accessory, facts.levelY) : [];
       if (solids.length === 0) {
         let size = num(el.attrs.size_w);
         if (!size) for (const l of legs) size = Math.max(size, l.sizeX, l.sizeY);

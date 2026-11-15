@@ -12,7 +12,7 @@ import { add, dirToWorld, elbowBody, loftBody, mergeGeometries, mul, norm, strai
 import { useMepView, isolateOpacity, inSystem } from './mepView.ts';
 import { ghostMaterial, solidMaterial } from './materials.ts';
 import { getSystemColorMaterial } from '../three/utils/bimMaterials.ts';
-import { accessorySymbol, ProblemMarkers } from './planSymbols.tsx';
+import { accessorySymbol, ProblemMarkers, polygonsPath, segmentsPath } from './planSymbols.tsx';
 
 type P = { x: number; y: number };
 
@@ -155,12 +155,9 @@ export function Fitting2D({ info, id, color, selected }: { info: FittingInfo; id
   const sw = info.table === 'duct' || info.table === 'cable_tray' ? 0.025 : 0.02;
   return (
     <g data-id={id} opacity={isolateOpacity(view, info.system)}>
-      {plan.fills.map((poly, i) => (
-        <polygon key={`f${i}`} points={poly.map(p => `${p.x},${p.y}`).join(' ')} fill={stroke + '22'} stroke="none" data-id={id} />
-      ))}
-      {plan.edges.map(([a, b], i) => (
-        <line key={`e${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={stroke} strokeWidth={sw} data-id={id} />
-      ))}
+      {/* One fill and one outline path per fitting */}
+      {plan.fills.length > 0 && <path d={polygonsPath(plan.fills)} fill={stroke + '22'} stroke="none" data-id={id} />}
+      {plan.edges.length > 0 && <path d={segmentsPath(plan.edges)} fill="none" stroke={stroke} strokeWidth={sw} data-id={id} />}
       {markers && <ProblemMarkers points={markers} />}
     </g>
   );

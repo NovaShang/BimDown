@@ -92,6 +92,72 @@ describe('IFC export vertical placement', () => {
   });
 });
 
+describe('IFC fitting bodies are light swept solids shaped like the 3D view (audit r3: 81 MB of breps)', () => {
+  it('elbows revolve, tee arms extrude; their extents match the 3D view bodies', async () => {
+    const { parseFloorLayers } = await import('../model/parse.ts');
+    const { buildGeometryContext } = await import('../adapters/svg/buildContext.ts');
+    const { getElementModule } = await import('../elements/registry.ts');
+    const { mepNodeSolids } = await import('./ifc/componentSolids.ts');
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\n',
+      // rect duct: elbow mn-1 (plan 90°), tee mn-2; round pipe: elbow mn-3 (plan 45°), riser elbow mn-4
+      'lv-1/duct.csv': 'id,number,shape,size_x,size_y,system_type,from,to\n'
+        + 'du-1,,rect,0.6,0.4,SA,,mn-1\ndu-2,,rect,0.6,0.4,SA,mn-1,mn-2\ndu-3,,rect,0.6,0.4,SA,mn-2,\ndu-4,,rect,0.4,0.3,SA,mn-2,\n',
+      'lv-1/duct.geojson': fc([
+        { type: 'Feature', properties: { id: 'du-1' }, geometry: { type: 'LineString', coordinates: [[0, 0, 3], [5, 0, 3]] } },
+        { type: 'Feature', properties: { id: 'du-2' }, geometry: { type: 'LineString', coordinates: [[5, 0, 3], [5, 6, 3]] } },
+        { type: 'Feature', properties: { id: 'du-3' }, geometry: { type: 'LineString', coordinates: [[5, 6, 3], [5, 10, 3]] } },
+        { type: 'Feature', properties: { id: 'du-4' }, geometry: { type: 'LineString', coordinates: [[5, 6, 3], [9, 6, 3]] } },
+      ]),
+      'lv-1/pipe.csv': 'id,number,shape,size_x,system_type,from,to\npi-1,,round,0.1,CHWS,,mn-3\npi-2,,round,0.1,CHWS,mn-3,mn-4\npi-3,,round,0.1,CHWS,mn-4,\n',
+      'lv-1/pipe.geojson': fc([
+        { type: 'Feature', properties: { id: 'pi-1' }, geometry: { type: 'LineString', coordinates: [[0, 20, 2], [4, 20, 2]] } },
+        { type: 'Feature', properties: { id: 'pi-2' }, geometry: { type: 'LineString', coordinates: [[4, 20, 2], [7, 23, 2]] } },
+        { type: 'Feature', properties: { id: 'pi-3' }, geometry: { type: 'LineString', coordinates: [[7, 23, 2], [7, 23, 0.5]] } },
+      ]),
+      'lv-1/mep_node.csv': 'id,system_type\nmn-1,SA\nmn-2,SA\nmn-3,CHWS\nmn-4,CHWS\n',
+      'lv-1/mep_node.geojson': fc([
+        { type: 'Feature', properties: { id: 'mn-1' }, geometry: { type: 'Point', coordinates: [5, 0, 3] } },
+        { type: 'Feature', properties: { id: 'mn-2' }, geometry: { type: 'Point', coordinates: [5, 6, 3] } },
+        { type: 'Feature', properties: { id: 'mn-3' }, geometry: { type: 'Point', coordinates: [4, 20, 2] } },
+        { type: 'Feature', properties: { id: 'mn-4' }, geometry: { type: 'Point', coordinates: [7, 23, 2] } },
+      ]),
+    };
+    const { data, ents, keys, step } = await exportFiles(files, 'IFC4');
+    expect(step).toContain('IFCREVOLVEDAREASOLID');
+    const shapeOf = (key: string) => {
+      const prod = byKey(ents, keys, key);
+      const rep = ents.get(ref(prod.args[6]))!;
+      const body = refs(rep.args[2]).map(id => ents.get(id)!).find(r => str(r.args[1]) === 'Body')!;
+      return refs(body.args[3]).map(id => ents.get(id)!.type);
+    };
+    expect(shapeOf('mep_node:mn-1')).toEqual(['IFCREVOLVEDAREASOLID']);
+    expect(shapeOf('mep_node:mn-3')).toEqual(['IFCREVOLVEDAREASOLID']);
+    expect(shapeOf('mep_node:mn-4')).toEqual(['IFCREVOLVEDAREASOLID']);
+    expect(new Set(shapeOf('mep_node:mn-2'))).toEqual(new Set(['IFCEXTRUDEDAREASOLID']));
+    expect(step).not.toContain('IFCFACETEDBREP');
+
+    // Same extents as the 3D view's (faceted) bodies
+    const project = await loadProject(memoryDataSource({ ...files }));
+    const level = project.levels[0];
+    const els = new Map(parseFloorLayers(project.floors.get('lv-1')!.layers).map(e => [e.id, e]));
+    const ctx = buildGeometryContext({ level, allLevels: project.levels, allElements: els, mepSystems: project.mepSystems, unitsPerMetre: 1 });
+    const got = await readBack(data, keys);
+    for (const id of ['mn-1', 'mn-2', 'mn-3', 'mn-4']) {
+      const facts = getElementModule('mep_node')!.geometry(els.get(id)!, ctx) as never;
+      const breps = mepNodeSolids(facts);
+      const lo = [Infinity, Infinity, Infinity], hi = [-Infinity, -Infinity, -Infinity];
+      for (const s of breps) if (s.kind === 'brep') for (const f of s.faces) for (const p of f) {
+        [p.x, p.y, p.z].forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
+      }
+      // web-ifc tessellates a revolution coarsely (its inner corner overshoots by ~2 cm on a 600 duct)
+      expectBox(got, `mep_node:${id}`, lo, hi, 1);
+      for (let k = 0; k < 3; k++) expect(Math.abs(got.get(`mep_node:${id}`)!.min[k] - lo[k]) + Math.abs(got.get(`mep_node:${id}`)!.max[k] - hi[k]), id).toBeLessThan(0.03);
+    }
+  });
+});
+
 describe('IFC export of MEP runs', () => {
   const files = {
     'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
@@ -137,8 +203,9 @@ describe('IFC export of MEP runs', () => {
     expectBox(got, 'pipe:pi-1', [5.95, 5.95, 0.5], [6.05, 6.05, 5], 2); // round riser (tessellated circle)
     expectBox(got, 'equipment:eq-1', [0, 0.5, 0], [2, 1.5, 2]);
     expectBox(got, 'terminal:tm-1', [4.7, 0.7, 2.6], [5.3, 1.3, 2.8]);
-    // Elbow: the 3D view's radiused bend from the riser top (z 2.6) round to the run (x 1.4).
-    expectBox(got, 'mep_node:mn-1', [0.8, 0.7, 2.6], [1.4, 1.3, 3.2], 3);
+    // Elbow: the 3D view's radiused bend from the riser top (z 2.6) round to the run (x 1.4),
+    // a revolved section (web-ifc tessellates the revolution: within ~2 cm).
+    expectBox(got, 'mep_node:mn-1', [0.8, 0.7, 2.6], [1.4, 1.3, 3.2], 1);
     expect(Object.fromEntries([...got].map(([n, r]) => [n, r.type]))).toEqual({
       'duct:du-1': 'IfcFlowSegment', 'duct:du-2': 'IfcFlowSegment', 'duct:du-3': 'IfcFlowSegment',
       'pipe:pi-1': 'IfcFlowSegment',
