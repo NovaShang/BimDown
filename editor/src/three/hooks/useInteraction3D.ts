@@ -70,6 +70,8 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
   // If the pointer doesn't travel past CLICK_THRESHOLD_PX it's a bare click →
   // clear the selection on release; otherwise it's an orbit drag (ignored).
   const emptyClickRef = useRef<{ x: number; y: number } | null>(null);
+  /** Orbit tool: a press on a component, selected on release unless the drag orbited. */
+  const orbitPickRef = useRef<{ x: number; y: number; down: PointerEvent; id: string } | null>(null);
 
   const toNDC = useCallback((clientX: number, clientY: number): Vector2 => {
     const rect = gl.domElement.getBoundingClientRect();
@@ -110,6 +112,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
       // Clear any stale pending deselect before this gesture starts (e.g. one
       // left over from a resize-handle drag whose move/up were guarded away).
       emptyClickRef.current = null;
+      orbitPickRef.current = null;
       if (resizeDraggingRef.current) return;
 
       const tool = stateRef.current.activeTool;
@@ -131,13 +134,9 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
 
       if (tool === 'orbit') {
         if (elementId) {
-          // Clicking a component: take the gesture so it gets SELECTED on
-          // release, but keep orbit disabled and swallow moves (see
-          // handlePointerMove) so it can't be dragged/moved directly in 3D.
-          toolOwnsGestureRef.current = true;
-          if (controlsRef.current) controlsRef.current.enabled = false;
-          const handler = getToolHandler(tool);
-          handler.onPointerDown?.(toolCtx, e as unknown as React.PointerEvent);
+          // On a component: a drag still orbits (Revit's Orbit); only a bare
+          // click selects it, resolved on release (see handlePointerUp).
+          orbitPickRef.current = { x: e.clientX, y: e.clientY, down: e, id: elementId };
         } else {
           // Empty space: let OrbitControls drive the camera, but arm a
           // bare-click deselect resolved on pointer-up.
@@ -164,6 +163,10 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
           emptyClickRef.current = null;
         }
       }
+      if (orbitPickRef.current && (
+        Math.abs(e.clientX - orbitPickRef.current.x) > CLICK_THRESHOLD_PX ||
+        Math.abs(e.clientY - orbitPickRef.current.y) > CLICK_THRESHOLD_PX
+      )) orbitPickRef.current = null;
 
       if (toolOwnsGestureRef.current) {
         // In 3D, components are select-only: swallow moves for the select/orbit
@@ -187,6 +190,16 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
     const handlePointerUp = (e: PointerEvent) => {
       if (e.button !== 0) return;
       if (resizeDraggingRef.current) return;
+
+      // Orbit tool: a bare click on a component selects it (a drag orbited)
+      const pick = orbitPickRef.current;
+      orbitPickRef.current = null;
+      if (pick && stateRef.current.activeTool === 'orbit') {
+        hitElementIdRef.current = pick.id;
+        const handler = getToolHandler('orbit');
+        handler.onPointerDown?.(toolCtx, pick.down as unknown as React.PointerEvent);
+        handler.onPointerUp?.(toolCtx, e as unknown as React.PointerEvent);
+      }
 
       // Bare click on empty space (no orbit drag) clears the selection.
       if (emptyClickRef.current) {

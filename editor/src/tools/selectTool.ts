@@ -129,7 +129,8 @@ export const hoverStack = { count: 0 };
 let hoverFrame = 0;
 
 function scheduleHover(ctx: ToolContext) {
-  if (hoverFrame || typeof requestAnimationFrame !== 'function') return;
+  // 2D plan only (the 3D view picks by ray, not by the DOM under the pointer)
+  if (hoverFrame || typeof requestAnimationFrame !== 'function' || ctx.screenToScenePoint) return;
   hoverFrame = requestAnimationFrame(() => {
     hoverFrame = 0;
     if (gesture.isDragging || !Number.isFinite(lastPointer.x)) return;
