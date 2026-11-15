@@ -43,10 +43,26 @@ export interface EmitOptions {
   source: string;
 }
 
+const DISCIPLINE_TABLES: Record<string, string[]> = {
+  mep: ['duct', 'pipe', 'cable_tray', 'conduit', 'equipment', 'terminal', 'mep_node'],
+  structure: ['structure_column', 'structure_wall', 'structure_slab', 'beam', 'brace', 'foundation'],
+  architecture: ['wall', 'curtain_wall', 'door', 'window', 'opening', 'slab', 'roof', 'ceiling', 'stair', 'ramp', 'railing', 'column', 'furniture'],
+};
+
+/** The discipline a model is about (an MEP or structural model), for the editor to open in; spaces and separators don't count. */
+export function dominantDiscipline(els: { table: string }[]): 'mep' | 'structure' | undefined {
+  const n: Record<string, number> = { mep: 0, structure: 0, architecture: 0 };
+  for (const el of els) for (const [d, ts] of Object.entries(DISCIPLINE_TABLES)) if (ts.includes(el.table)) n[d]++;
+  if (n.mep > 0 && n.mep >= 4 * (n.architecture + n.structure)) return 'mep';
+  if (n.structure > 0 && n.structure >= 2 * n.architecture && n.structure > n.mep) return 'structure';
+  return undefined;
+}
+
 export function emitFiles(ctx: ImportContext, opts: EmitOptions): Record<string, string> {
   const files: Record<string, string> = {};
   files['project_metadata.json'] = JSON.stringify({
     format_version: '3.0', units: 'm', spatial_z: 'absolute', project_name: opts.projectName, source: opts.source,
+    discipline: dominantDiscipline(ctx.out),
   }, null, 2) + '\n';
   files['global/level.csv'] = toCsv(ctx.levels.map(l => ({ id: l.id, attrs: { number: l.number, name: l.name, elevation: r3(l.elevation) } })));
   const groups = new Map<string, OutEl[]>();
