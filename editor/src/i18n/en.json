@@ -37,6 +37,7 @@
   "library.fixtureTip": "placed as a plumbing terminal with its pipe ports, ready for MEP",
   "field.error.positive": "{{field}} must be greater than 0",
   "field.error.non_negative": "{{field}} can't be negative",
+  "hover.tabNext": "Tab: next under the cursor",
   "warnings.title": "Warnings",
   "warnings.open": "Review warnings ({{count}})",
   "warnings.close": "Close",

@@ -37,6 +37,7 @@
   "library.fixtureTip": "作为带管道接口的给排水末端放置，机电可直接连接",
   "field.error.positive": "{{field}} 必须大于 0",
   "field.error.non_negative": "{{field}} 不能为负数",
+  "hover.tabNext": "Tab：切换下层图元",
   "warnings.title": "警告",
   "warnings.open": "查看警告（{{count}}）",
   "warnings.close": "关闭",

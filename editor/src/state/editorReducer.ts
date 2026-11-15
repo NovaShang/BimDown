@@ -25,6 +25,7 @@ import { EMPTY_CATALOG, reresolveTypeAttrs } from '../model/types/catalog.ts';
 import { withDefaultDrawingType } from '../model/types/drawingType.ts';
 import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
 import { followColumnMoves } from '../model/framingCascade.ts';
+import { followBoundaryWalls } from '../model/boundaryCascade.ts';
 import { followColumnMovesAbove } from '../model/framingLevels.ts';
 import { autoNumberCreated } from './numbering.ts';
 import { regenerateBeamSystem, touchedBeamSystems } from '../model/beamSystem.ts';
@@ -268,7 +269,7 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     const r = withProjectSelection(state, action as Extract<EditorAction, { ids: string[] }>);
     if (r) return r;
   }
-  const next = cascadeBeamSystems(state, coreReducer(state, action), action);
+  const next = cascadeBoundaryWalls(state, cascadeBeamSystems(state, coreReducer(state, action), action), action);
   // Any selection change ends a project-wide selection
   return next.projectSelection && next.selectedIds !== state.selectedIds ? { ...next, projectSelection: undefined } : next;
 }
@@ -310,6 +311,35 @@ function cascadeBeamSystems(prev: EditorState, next: EditorState, action: Editor
     document: { ...next.document, elements },
     history: { ...next.history, undoStack },
     lastMutation: { version, keys: [...keys] },
+  };
+}
+
+/**
+ * Wall-bounded floors / roofs / ceilings follow their walls in the same undo
+ * step (model/boundaryCascade.ts); undo / redo replay the stored patch.
+ */
+function cascadeBoundaryWalls(prev: EditorState, next: EditorState, action: EditorAction): EditorState {
+  if (action.type === 'UNDO' || action.type === 'REDO' || next.history === prev.history || !next.document || !prev.document) return next;
+  if (next.document.levelId !== prev.document.levelId) return next;
+  const cmd = next.history.undoStack[next.history.undoStack.length - 1];
+  if (!cmd || cmd.multi || cmd.level) return next;
+  const patch = followBoundaryWalls(cmd.before, cmd.after, next.document.elements, next.project?.types);
+  if (patch.size === 0) return next;
+  const elements = new Map(next.document.elements);
+  const before = new Map(cmd.before), after = new Map(cmd.after);
+  const keys = new Set(next.lastMutation?.version === next.documentVersion ? next.lastMutation.keys : []);
+  for (const [id, el] of patch) {
+    if (!before.has(id)) before.set(id, prev.document.elements.get(id) ?? null);
+    after.set(id, el);
+    elements.set(id, el);
+    keys.add(`${el.discipline}/${el.tableName}`);
+  }
+  const undoStack = [...next.history.undoStack.slice(0, -1), { ...cmd, before, after }];
+  return {
+    ...next,
+    document: { ...next.document, elements },
+    history: { ...next.history, undoStack },
+    lastMutation: { version: next.documentVersion, keys: [...keys] },
   };
 }
 

@@ -124,6 +124,22 @@ function cycleUnderPointer(ctx: ToolContext, back: boolean): boolean {
   return true;
 }
 
+/** How many elements lie under the pointer (the hover tooltip's "Tab" hint). */
+export const hoverStack = { count: 0 };
+let hoverFrame = 0;
+
+function scheduleHover(ctx: ToolContext) {
+  if (hoverFrame || typeof requestAnimationFrame !== 'function') return;
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = 0;
+    if (gesture.isDragging || !Number.isFinite(lastPointer.x)) return;
+    const picks = picksAt(ctx, lastPointer.x, lastPointer.y);
+    hoverStack.count = picks.length;
+    const id = picks[0]?.sid ?? null;
+    if (id !== ctx.getState().hoveredId) ctx.dispatch({ type: 'SET_HOVER', id });
+  });
+}
+
 export const selectTool: ToolHandler = {
   cursor: 'default',
 
@@ -224,8 +240,8 @@ export const selectTool: ToolHandler = {
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
     if (!gesture.isDragging) {
-      // Hover detection
-      // TODO: hover temporarily disabled for performance testing
+      // Hover pre-highlight (Revit): what a click would pick, once per frame
+      scheduleHover(ctx);
       return;
     }
 

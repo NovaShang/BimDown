@@ -15,7 +15,7 @@ import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
-import { pickLoop, boundaryAt, type BoundaryFace, type PickedLoop } from '../geometry/pickBoundary.ts';
+import { pickLoop, boundaryAt, loopWallIds, type BoundaryFace, type PickedLoop } from '../geometry/pickBoundary.ts';
 import { legacyEdgeSlopes, formatNumberList } from '../geometry/roofSolver.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
 
@@ -92,6 +92,13 @@ export function buildPick(state: ToolStateSnapshot, pick: Pick): Map<string, Can
     ...state.drawingAttrs,
     id,
   });
+  // Associated with the picked walls: the outline follows them (geometry/pickBoundary.ts rebuildBoundary)
+  const wallIds = loopWallIds(pick.loop);
+  if (wallIds.length >= 2) {
+    attrs.boundary_walls = wallIds.join(';');
+    attrs.boundary_face = target.tableName === 'roof' ? 'exterior' : target.tableName === 'ceiling' ? 'interior' : (state.drawingAttrs[FACE_KEY] || 'core');
+    if (target.tableName === 'roof') attrs.boundary_offset = String(Math.max(0, parseFloat(state.drawingAttrs[OVERHANG_KEY] ?? '0.5') || 0));
+  }
   const out = new Map<string, CanonicalElement>();
   if (target.tableName === 'roof') {
     const roofType = attrs.roof_type || 'hip';

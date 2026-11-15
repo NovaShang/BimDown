@@ -170,3 +170,87 @@ export function boundaryAt(loop: PickedLoop, face: BoundaryFace, types?: TypeCat
   });
   return offsetLoop(loop.edges, dist);
 }
+
+// ─── Associated boundaries (boundary_walls) ─────────────────────────────────
+// A floor / roof / ceiling made by picking walls keeps their ids
+// (`boundary_walls`), the face (`boundary_face`) and the outward offset
+// (`boundary_offset`, a roof's overhang); its outline is rebuilt from those
+// walls when they move, flip or change thickness.
+
+export const BOUNDED_TABLES = new Set(['slab', 'structure_slab', 'roof', 'ceiling']);
+
+export const boundaryWallIds = (attrs: Record<string, string>): string[] =>
+  (attrs.boundary_walls ?? '').split(';').map(s => s.trim()).filter(Boolean);
+
+/** The wall ids a picked loop runs along, in loop order. */
+export function loopWallIds(loop: PickedLoop): string[] {
+  const out: string[] = [];
+  for (const e of loop.edges) if (e.wall && !out.includes(e.wall.id)) out.push(e.wall.id);
+  return out;
+}
+
+/** A point inside a polygon: its centroid when inside, else just inside its first long edge. */
+function insidePoint(poly: Point[]): Point | null {
+  if (poly.length < 3) return null;
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const c = p.x * q.y - q.x * p.y;
+    a += c; cx += (p.x + q.x) * c; cy += (p.y + q.y) * c;
+  }
+  if (Math.abs(a) > 1e-12) {
+    const c = { x: cx / (3 * a), y: cy / (3 * a) };
+    if (pointInLoop(c, poly)) return c;
+  }
+  const sign = a >= 0 ? 1 : -1;
+  for (let i = 0; i < poly.length; i++) {
+    const p = poly[i], q = poly[(i + 1) % poly.length];
+    const l = Math.hypot(q.x - p.x, q.y - p.y);
+    if (l < 1e-6) continue;
+    const m = { x: (p.x + q.x) / 2 - sign * (q.y - p.y) / l * 0.05, y: (p.y + q.y) / 2 + sign * (q.x - p.x) / l * 0.05 };
+    if (pointInLoop(m, poly)) return m;
+  }
+  return null;
+}
+
+/**
+ * The loop of `walls` (the associated ones, as they are now) around `seed`:
+ * the face of their own network containing it, else their outer outline.
+ */
+export function loopOfWalls(walls: LineElement[], seed: Point | null): PickedLoop | null {
+  if (walls.length < 2) return null;
+  let outline = seed ? findSpaceBoundary(getSpaceFaceGraph(walls), seed) : null;
+  let outer = false;
+  if (!outline || outline.length < 3) {
+    let best: Point[] | null = null;
+    for (const loop of deriveOuterBoundaries(walls)) if (!best || Math.abs(signedArea(loop)) > Math.abs(signedArea(best))) best = loop;
+    outline = best;
+    outer = true;
+  }
+  if (!outline || outline.length < 3) return null;
+  let ring = mergeCollinear(outline);
+  if (signedArea(ring) < 0) ring = ring.slice().reverse();
+  return { outline: ring, edges: matchRoomEdges(ring, walls), outer };
+}
+
+/** Default face of a wall-bounded table. */
+export const defaultBoundaryFace = (table: string): BoundaryFace =>
+  (table === 'roof' ? 'exterior' : table === 'ceiling' ? 'interior' : 'core');
+
+/**
+ * The outline of a wall-bounded element rebuilt from its `boundary_walls`
+ * (looked up in `wallsById`), or null when they no longer close a loop.
+ */
+export function rebuildBoundary(
+  host: { tableName: string; vertices: Point[]; attrs: Record<string, string> },
+  wallsById: (id: string) => LineElement | undefined,
+  types?: TypeCatalog,
+): Point[] | null {
+  const walls = boundaryWallIds(host.attrs).map(wallsById).filter((w): w is LineElement => !!w);
+  const loop = loopOfWalls(walls, insidePoint(host.vertices));
+  if (!loop) return null;
+  const face = (BOUNDARY_FACES as string[]).includes(host.attrs.boundary_face) ? host.attrs.boundary_face as BoundaryFace : defaultBoundaryFace(host.tableName);
+  const offset = parseFloat(host.attrs.boundary_offset ?? '') || 0;
+  const out = boundaryAt(loop, face, types, offset);
+  return out && out.length >= 3 ? out : null;
+}
