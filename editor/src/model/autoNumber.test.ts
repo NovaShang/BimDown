@@ -50,6 +50,18 @@ describe('auto-numbering', () => {
     expect(assignNumbers([eq('eq-6', 'ahu')], [], { config: { 'equipment.ahu': 'AC-' } }).get('eq-6')).toBe('AC-1');
   });
 
+  it('steel members are GZ / GL / GCL; air terminals are numbered per kind; piles take the pile mark', () => {
+    const cols = [col('sc-1', 0, 0, { material: 'steel', shape: 'i_shape' }), col('sc-2', 6, 0, { material: 'steel', shape: 'i_shape' })];
+    const fps = columnFootprintsOf(cols);
+    const n = assignNumbers([...cols, beam('bm-1', [0, 0], [6, 0], { material: 'steel', shape: 'i_shape' }), beam('bm-2', [3, 0], [3, 6], { shape: 'open_web' }), beam('bm-3', [0, 0], [6, 0], { material: 'concrete' })], [], { columns: fps });
+    expect([...n.values()]).toEqual(['GZ1', 'GZ1', 'GL1', 'GCL1', 'KL1']);
+    const tm = (id: string, kind: string): PointElement => ({ id, tableName: 'terminal', discipline: 'mep', geometry: 'point', position: { x: 0, y: 0 }, width: 0.6, height: 0.6, attrs: { id, terminal_type: kind } });
+    const t = assignNumbers([tm('tm-1', 'supply_air_diffuser'), tm('tm-2', 'supply_air_diffuser'), tm('tm-3', 'return_air_grille'), tm('tm-4', 'light_fixture')], [], {});
+    expect(Object.fromEntries(t)).toEqual({ 'tm-1': 'SD-1', 'tm-2': 'SD-2', 'tm-3': 'RG-1' });
+    const pile = (id: string): PointElement => ({ id, tableName: 'foundation', discipline: 'structure', geometry: 'point', position: { x: 0, y: 0 }, width: 0.6, height: 0.6, attrs: { id, kind: 'pile', width: '0.6' } });
+    expect([...assignNumbers([pile('f-1'), pile('f-2')], [], {}).values()]).toEqual(['ZH1', 'ZH1']);
+  });
+
   it('doors are numbered per level: D101, D102 on L1; D201 on L2', () => {
     const door = (id: string) => ({ id, tableName: 'door', discipline: 'architecture', geometry: 'line', start: { x: 0, y: 0 }, end: { x: 1, y: 0 }, strokeWidth: 0.1, attrs: { id } }) as unknown as CanonicalElement;
     expect([...assignNumbers([door('d-1'), door('d-2')], [], { level: levels[0] }).values()]).toEqual(['D101', 'D102']);

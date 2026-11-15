@@ -28,7 +28,7 @@ import ClashTab from './ClashTab.tsx';
 type Tab = 'systems' | 'check' | 'circuits' | 'clash';
 type MepCurve = LineElement | SpatialLineElement;
 
-const btn = 'cursor-pointer rounded border border-border bg-transparent px-1.5 py-[1px] text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40';
+const btn = 'shrink-0 whitespace-nowrap cursor-pointer rounded border border-border bg-transparent px-1.5 py-[1px] text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40';
 
 export default function MepPanel() {
   const { t } = useTranslation();
@@ -197,7 +197,7 @@ function CheckTab({ problems, readonly, onSelect, onCap, onTransition, onDelete 
       {[...warnings, ...infos].map((p, i) => (
         <div key={i} className="flex items-start gap-1 rounded px-1.5 py-[2px] text-[10px] hover:bg-accent">
           <span className={cn('mt-[1px] shrink-0 font-bold', p.severity === 'warning' ? 'text-red-500' : 'text-amber-500')}>!</span>
-          <button type="button" className="flex-1 cursor-pointer border-none bg-transparent p-0 text-left text-muted-foreground hover:text-foreground"
+          <button type="button" className="min-w-0 flex-1 cursor-pointer border-none bg-transparent p-0 text-left text-muted-foreground hover:text-foreground"
             onClick={() => onSelect(p.id)} title={problemText(t, p)}>
             <span className="font-semibold">{t(`mep.problem.${p.code}`)}</span> · {p.id}
             <span className="block truncate opacity-70">{problemText(t, p)}</span>

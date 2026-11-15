@@ -2,11 +2,13 @@
  * Auto-numbering (marks): `number` = prefix + sequence, per category.
  *
  *   structure   KZ columns, KL frame beams (into columns at both ends),
- *               L secondary beams, ZC braces, Q walls, foundations by kind
+ *               L secondary beams (steel: GZ columns, GL frame beams, GCL
+ *               secondary beams), ZC braces, Q walls, foundations by kind
  *               (J pad, TJ strip, FB raft, CT pile cap, ZH pile). Elements of
  *               one type (or one section / size when untyped) share a mark,
  *               as structural drawings label a design type (KZ1, KL2).
- *   MEP         equipment per instance by kind: AHU-1, VAV-1, P-1, LP-1 …
+ *   MEP         equipment per instance by kind: AHU-1, VAV-1, P-1, LP-1 …;
+ *               air terminals per instance: SD-1 supply, RG-1 return, EG-1 exhaust
  *   doors       D + level number + two digits (D101, D102), per instance;
  *   windows     W101 …; rooms 101, 102 … per level.
  *
@@ -30,14 +32,26 @@ export const DEFAULT_PREFIXES: NumberingConfig = {
   'equipment.cooling_tower': 'CT-', 'equipment.fan': 'F-', 'equipment.pump': 'P-', 'equipment.transformer': 'TR-',
   'equipment.panelboard': 'LP-', 'equipment.generator': 'G-', 'equipment.water_heater': 'WH-', 'equipment.tank': 'T-',
   'equipment.other': 'EQ-', door: 'D', window: 'W', space: '',
+  'structure_column.steel': 'GZ', 'beam.steel': 'GL', 'beam.steel_secondary': 'GCL',
+  'terminal.supply_air_diffuser': 'SD-', 'terminal.return_air_grille': 'RG-', 'terminal.exhaust_air_grille': 'EG-',
 };
+
+/** Air terminal kinds that get a mark (diffuser / grille schedules). */
+const NUMBERED_TERMINALS = new Set(['supply_air_diffuser', 'return_air_grille', 'exhaust_air_grille']);
+const STEEL_SHAPES = new Set(['i_shape', 'c_shape', 'l_shape', 't_shape', 'cross', 'rect_hollow', 'round_hollow', 'open_web']);
+
+/** A steel member: steel material, or a rolled / hollow section with no material given. */
+function isSteel(el: CanonicalElement): boolean {
+  const m = (el.attrs.material ?? '').trim();
+  return m ? m === 'steel' : STEEL_SHAPES.has((el.attrs.shape ?? '').trim());
+}
 
 /** Tables whose marks are per design type (same type → same mark). */
 const BY_TYPE = new Set(['structure_column', 'beam', 'brace', 'structure_wall', 'foundation']);
 /** Tables numbered per level (level number + two digits). */
 const BY_LEVEL = new Set(['door', 'window', 'space']);
 
-export const NUMBERED_TABLES = new Set([...BY_TYPE, ...BY_LEVEL, 'equipment']);
+export const NUMBERED_TABLES = new Set([...BY_TYPE, ...BY_LEVEL, 'equipment', 'terminal']);
 
 /** Whether a beam frames into a column at both ends (a frame beam, KL) or not (a secondary beam, L). */
 function isFrameBeam(el: CanonicalElement, columns: ColumnFootprint[]): boolean {
@@ -54,7 +68,13 @@ export function numberingKey(el: CanonicalElement, columns: ColumnFootprint[] = 
   if (!NUMBERED_TABLES.has(t)) return null;
   if (t === 'foundation') return `foundation.${foundationKind(el)}`;
   if (t === 'equipment') return `equipment.${el.attrs.equipment_type || 'other'}`;
-  if (t === 'beam') return isFrameBeam(el, columns) ? 'beam' : 'beam.secondary';
+  if (t === 'terminal') return NUMBERED_TERMINALS.has(el.attrs.terminal_type) ? `terminal.${el.attrs.terminal_type}` : null;
+  if (t === 'beam') {
+    const frame = isFrameBeam(el, columns);
+    if (isSteel(el)) return frame ? 'beam.steel' : 'beam.steel_secondary';
+    return frame ? 'beam' : 'beam.secondary';
+  }
+  if (t === 'structure_column' && isSteel(el)) return 'structure_column.steel';
   return t;
 }
 

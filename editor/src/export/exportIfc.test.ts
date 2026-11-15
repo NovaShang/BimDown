@@ -137,6 +137,9 @@ describe('IFC fitting bodies are light swept solids shaped like the 3D view (aud
     expect(shapeOf('mep_node:mn-4')).toEqual(['IFCREVOLVEDAREASOLID']);
     expect(new Set(shapeOf('mep_node:mn-2'))).toEqual(new Set(['IFCEXTRUDEDAREASOLID']));
     expect(step).not.toContain('IFCFACETEDBREP');
+    // One fitting type per kind (elbow BEND, tee JUNCTION), not a single BEND type for all
+    const fitTypes = [...ents.values()].filter(e => e.type === 'IFCDUCTFITTINGTYPE').map(e => `${str(e.args[2])}:${e.args[9]}`).sort();
+    expect(fitTypes).toEqual(['Elbow (rect):.BEND.', 'Tee (rect):.JUNCTION.']);
 
     // Same extents as the 3D view's (faceted) bodies
     const project = await loadProject(memoryDataSource({ ...files }));

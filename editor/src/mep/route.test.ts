@@ -276,6 +276,19 @@ describe('vent stacks', () => {
     expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
     expect(checkDocument(h.state.document!.elements).filter(p => p.code === 'open_end').map(p => p.id).sort()).not.toContain(vent.id);
   });
+
+  it('a vent riser left open at its top (through the roof) is not an open end; its open bottom is (audit r3)', () => {
+    const h = createHarness();
+    h.pick('pipe', { system_type: 'VENT', size_x: '0.05', start_z: '1' });
+    h.click(4, 0); h.click(6, 0);
+    setAttrs(h, { start_z: '9' });
+    h.click(6, 0); // riser up to 9 m, left open
+    h.done();
+    const open = checkDocument(h.state.document!.elements).filter(p => p.code === 'open_end');
+    const riser = pipes(h.state).find(p => p.start.x === p.end.x && p.start.y === p.end.y)!;
+    expect(open.map(p => p.id)).not.toContain(riser.id);
+    expect(open).toHaveLength(1); // the horizontal's free start at x 4
+  });
 });
 
 describe('inline equipment', () => {

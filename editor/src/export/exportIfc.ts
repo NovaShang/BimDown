@@ -1431,7 +1431,8 @@ class Exporter {
     return this.w.surfaceStyle(`mep:${sys || el.tableName}`, color, 0);
   }
 
-  private exportMepProduct(scope: Scope, el: CanonicalElement, ctx: GeometryContext): void {
+  private exportMepProduct(scope: Scope, el0: CanonicalElement, ctx: GeometryContext): void {
+    let el = el0;
     this.collectSegments();
     const { w } = this;
     const t = el.tableName;
@@ -1497,10 +1498,17 @@ class Exporter {
       // Swept solids (revolved elbows, extruded arms); a faceted loft only for reducers
       const body = info ? (fittingIfcSolids(info, facts!.levelY, facts!.riserRight) ?? mepNodeSolids(facts)) : [];
       geom = { solids: body.length > 0 ? body : fittingStubs(center, legs) };
-      objectType = info?.kind ?? fittingKind(legs);
+      // The fitting's own kind (an imported family's), else the analysed one
+      objectType = (el.attrs.fitting || '').trim() || (info?.kind ?? fittingKind(legs));
       const segTable = info?.legs[0]?.table ?? legs[0]?.seg.el.tableName ?? 'duct';
       const fitting4 = (SEGMENT_4[segTable] ?? SEGMENT_4.duct)[2];
       typing = { entity4: fitting4, predefined: fittingPredefined(objectType, fitting4) };
+      // Type per analysed kind and size (elbow 600×400, tee …), not one "fitting" type for all
+      if (!el.attrs.kind && objectType && (!el.attrs.fitting || !el.attrs.size_w)) {
+        const leg = info?.legs[0];
+        const sz = (v: number | undefined) => (v ? String(Math.round(v * 1e4) / 1e4) : '');
+        el = { ...el, attrs: { ...el.attrs, fitting: el.attrs.fitting || objectType, size_w: el.attrs.size_w || sz(leg?.sec.w), size_h: el.attrs.size_h || (leg?.sec.shape === 'round' ? '' : sz(leg?.sec.h)), shape: el.attrs.shape || (leg?.sec.shape ?? '') } };
+      }
       if (w.ifc4) { type = fitting4; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
     } else {
       let solids: Solid[] = facts?.accessory ? accessoryIfcSolids(facts.accessory, facts.levelY) : [];

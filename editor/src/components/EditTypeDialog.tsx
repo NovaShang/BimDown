@@ -248,7 +248,7 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
     const shownUnit = m.kind === 'length' ? unit : m.unit;
     return (
       <div key={key} className="min-w-0">
-        <label className={LABEL}>{t(m.label, m.label)}{shownUnit ? ` (${shownUnit})` : ''}</label>
+        <label className={LABEL}>{t(m.label, m.label)}{shownUnit && <span className="normal-case"> ({shownUnit})</span>}</label>
         {m.kind === 'select' ? (
           <Select value={value} onValueChange={v => { if (v) setValue(key, v); }}>
             <SelectTrigger size="sm" className={cn(CELL_INPUT, 'justify-between')} data-testid={`type-param-${key}`}>
@@ -408,7 +408,7 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
                         <th className="w-9 pb-1 font-medium">#</th>
                         <th className="pb-1 pr-1 font-medium">{t('type.layer.function')}</th>
                         <th className="pb-1 pr-1 font-medium">{t('field.Material')}</th>
-                        <th className="w-[84px] pb-1 pr-1 font-medium">{t('field.Thickness')} ({unit})</th>
+                        <th className="w-[84px] pb-1 pr-1 font-medium">{t('field.Thickness')} <span className="normal-case">({unit})</span></th>
                         <th className="w-[72px] pb-1 pr-1 font-medium normal-case" title="W/(m·K)">λ W/(m·K)</th>
                         <th className="pb-1 pr-1 font-medium">{t('type.name')}</th>
                         <th className="w-[72px]" />

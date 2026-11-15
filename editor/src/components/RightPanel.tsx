@@ -64,6 +64,8 @@ export default function RightPanel({ selectedData, levels, offsetRight: _, reado
 
 // ─── Properties Content ──────────────────────────────────────────────────────
 
+const MEP_RUN_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray']);
+
 function PropertiesContent({ selectedData, levels, readonly }: { selectedData: Map<string, { tableName: string; discipline: string; csv: CsvRow }>; levels: Level[]; readonly?: boolean }) {
   const { t, i18n } = useTranslation();
   const dispatch = useEditorDispatch();
@@ -112,7 +114,11 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     const systemOptions = (state.project?.mepSystems ?? [])
       .filter(s => [...tables].every(tb => systemFitsTable(s, tb)))
       .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
-    return mod.propertyFields.filter(f => !mixedTables || shared(f.key)).map(f => {
+    // MEP runs: their ends carry the heights (no empty Base Offset); a round section has no Size Y
+    const mepRun = [...tables].every(tb => MEP_RUN_TABLES.has(tb));
+    const hideMep = (key: string) => mepRun && ((key === 'base_offset' && !(csv.base_offset ?? '').trim())
+      || (key === 'size_y' && [...selectedData.values()].every(d => (d.csv.shape || (d.tableName === 'pipe' || d.tableName === 'conduit' ? 'round' : 'rect')) === 'round')));
+    return mod.propertyFields.filter(f => (!mixedTables || shared(f.key)) && !hideMep(f.key)).map(f => {
       if (f.key === 'top_level_id') return { ...f, options: levelOptions };
       if (f.key === 'system_type' && systemOptions.length > 0) return { ...f, options: systemOptions };
       if (f.optionsFor) return { ...f, options: f.optionsFor(csv, i18n.language) };
@@ -211,6 +217,12 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
           instanceTable={firstData.tableName}
           typeId={typeId}
           onClose={() => setTypeDialogOpen(false)}
+          // Revit: OK with another type picked (a duplicate, one from the library) gives it to the selection
+          onApplied={id => {
+            if (!id || id === typeId || readonly) return;
+            dispatch({ type: 'SET_ELEMENT_TYPE', ids: [...selectedData.keys()], typeId: id });
+            rememberDrawingType(firstData.tableName, id);
+          }}
         />
       )}
 

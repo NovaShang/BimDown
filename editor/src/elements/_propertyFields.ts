@@ -167,6 +167,8 @@ export function resolvePropertyFields(
   const fields: PropertyField[] = [];
 
   for (const key of csvHeaders) {
+    // The panel's Type row shows and picks the type (by name, not its raw id)
+    if (key === 'type_id') continue;
     const drawing = drawingByKey.get(key);
     const global = PROPERTY_FIELD_DEFS[key];
 

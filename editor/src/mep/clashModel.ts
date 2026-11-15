@@ -199,6 +199,31 @@ export function buildClashModel(
     }
   }
 
+  // Walls and columns of lower levels that rise into this one (a double-height
+  // wall, a column through two storeys), tagged with their level as scope.
+  for (const lower of project?.levels ?? []) {
+    if (lower.id === levelId || lower.elevation >= levelElevation - 1e-6) continue;
+    const floor = project?.floors.get(lower.id);
+    if (!floor) continue;
+    let els: CanonicalElement[] = [];
+    try { els = parseFloorLayers(floor.layers.filter(l => WALL_TABLES.has(l.tableName) || COLUMN_TABLES.has(l.tableName))); } catch { /* unreadable layer */ }
+    const dz = lower.elevation - levelElevation;
+    for (const el of els) {
+      const { height, baseOffset } = resolveHeight(el.attrs, lower.elevation, elevations, 3 * upm);
+      const z0 = baseOffset + dz, z1 = baseOffset + height + dz;
+      if (z1 <= 1e-6) continue; // stops at or below this level's floor
+      if (WALL_TABLES.has(el.tableName) && el.geometry === 'line' && !(el as LineElement).arc) {
+        const w = el as LineElement;
+        const thickness = el.tableName === 'curtain_wall' ? num(w.attrs.mullion_depth, 0.1 * upm) : w.strokeWidth || num(w.attrs.thickness, 0.2 * upm);
+        m.walls!.push({ id: w.id, scope: lower.id, table: el.tableName, a: xy(w.start), b: xy(w.end), thickness, z0, z1, structural: el.tableName === 'structure_wall' });
+      } else if (COLUMN_TABLES.has(el.tableName) && el.geometry === 'point') {
+        const p = el as PointElement;
+        m.members!.push({ id: p.id, scope: lower.id, table: el.tableName, a: [p.position.x, p.position.y, z0], b: [p.position.x, p.position.y, z1],
+          shape: sectionShape(p.attrs.shape), w: p.width, h: p.height, rotation: num(p.attrs.rotation) });
+      }
+    }
+  }
+
   // The level above: its floor slab / roof and the framing under it.
   const above = levelAbove(project, levelId);
   const floor = above && project?.floors.get(above.id);

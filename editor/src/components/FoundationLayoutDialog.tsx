@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { toElementId } from '../model/ids.ts';
+import { autoNumberCreated } from '../state/numbering.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
 import { typesOfTable, typeValues, type ElementType } from '../model/types/catalog.ts';
 import { starterTypes } from '../model/types/starter.ts';
@@ -116,7 +117,8 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
     } else if (cap) {
       const { piles, replace } = pilesInCap(cap, nPiles, spacing, attrs(), taken(), doc.elements.values());
       const patches = new Map<string, CanonicalElement | null>(replace.map(id => [id, null]));
-      for (const p of piles) patches.set(p.id, p);
+      // Piles take their mark (ZH…) like placed ones (the patch path doesn't number)
+      for (const p of autoNumberCreated(state, piles)) patches.set(p.id, p);
       dispatch({ type: 'APPLY_PATCH', description: `Place ${piles.length} piles`, patches });
     }
     onClose();
@@ -124,7 +126,7 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
 
   const num = (key: string, label: string, step = 0.001) => (
     <div className="min-w-0" key={key} data-testid={`fdn-${key}`}>
-      <label className={LABEL}>{label} ({unit})</label>
+      <label className={LABEL}>{label} <span className="normal-case">({unit})</span></label>
       <NumberInput className={cn(CELL, 'text-right')} value={v[key] ?? ''} onChange={val => set(key, val)} step={step} min={0} />
     </div>
   );
