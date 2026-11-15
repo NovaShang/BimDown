@@ -15,11 +15,13 @@ import {
   type BimDownFeature,
 } from '../utils/geojson.js';
 import { injectSlabNetArea, injectVolume } from './volume.js';
+import { injectCutLength } from './cut-length.js';
 import { runQuery } from './engine.js';
 
 const INSERT_BATCH_SIZE = 500;
 /** Polygon tables whose `net_area` deducts hosted openings. */
 const SLAB_TABLES = new Set(['slab', 'structure_slab']);
+const FRAMING_TABLES = new Set(['beam', 'brace']);
 
 export async function hydrate(conn: DuckDBConnection, dir: string): Promise<string[]> {
   const registry = buildRegistry(getSpecDir());
@@ -97,8 +99,11 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
       // Furniture keeps its (overall) height in CSV: Z extent = level + base_offset + height.
       await injectZExtent(conn, name, name === 'furniture' || table.computedFields.some((f) => f.name === 'height'));
     }
-    if (!SLAB_TABLES.has(name)) await injectVolume(conn, name, unit);
+    if (!SLAB_TABLES.has(name) && !FRAMING_TABLES.has(name)) await injectVolume(conn, name, unit);
   }
+  // Framing after every table's geometry: its cut length stops at column / girder faces.
+  await injectCutLength(conn, tables);
+  for (const name of tables) if (FRAMING_TABLES.has(name)) await injectVolume(conn, name, unit);
   // Slabs last: their net area deducts the openings they host.
   const hasOpenings = tables.includes('opening');
   for (const name of tables) {

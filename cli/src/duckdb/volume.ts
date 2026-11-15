@@ -2,7 +2,8 @@
  * Computed `volume` (concrete / steel take-off) for structural tables, filled
  * after geometry, height and level ids are hydrated:
  *   structure_column   section area × height
- *   beam / brace       section area × 3D length
+ *   beam / brace       section area × cut length (3D length to the column /
+ *                      girder faces it frames into)
  *   structure_wall     length × thickness × height
  *   structure_slab     net area × thickness (`net_area`: outline − inner rings
  *                      − the slab openings hosted on it)
@@ -77,8 +78,8 @@ function volumeSql(table: string, cols: Set<string>): string | null {
       return `(${sectionAreaSql(cols)}) * ${height}`;
     case 'beam':
     case 'brace':
-      // `length` of a spatial line is already its 3D length.
-      return `(${sectionAreaSql(cols)}) * ${len}`;
+      // Cut length (between the column / girder faces, cut-length.ts), else the 3D line length.
+      return `(${sectionAreaSql(cols)}) * COALESCE(${col(cols, 'cut_length')}, ${len})`;
     case 'structure_wall':
       return `${len} * ${thick} * ${height}`;
     case 'structure_slab':

@@ -296,7 +296,7 @@ Architectural and structural elements are fully independent. `structure_column`,
 ### Section Profiles
 
 - Architecture columns use `section_profile` (rect/round).
-- Structural elements use `structural_section_profile` with engineering shapes (I, T, L, C, cross, `rect_hollow` RHS/SHS, `round_hollow` CHS; `thickness` = wall thickness), optional `root_radius` (root fillet / RHS outer corner) and `designation` (catalogue name such as HEA 300, W14X90, CHS 219.1x8, used as the IFC ProfileName). Computed `weight` (kg) on columns / beams / braces = volume × material density (steel 7850 kg/m³).
+- Structural elements use `structural_section_profile` with engineering shapes (I, T, L, C, cross, `rect_hollow` RHS/SHS, `round_hollow` CHS; `thickness` = wall thickness), optional `root_radius` (root fillet / RHS outer corner) and `designation` (catalogue name such as HEA 300, W14X90, CHS 219.1x8, used as the IFC ProfileName). Computed `weight` (kg) on columns / beams / braces = volume × material density (steel 7850 kg/m³); beams / braces use their computed `cut_length` (to the faces of the columns / girders they frame into, as the editor schedules).
 - Section attributes (`shape`, `size_x`, `size_y`) live in CSV. Point-element orientation (`rotation`) lives in GeoJSON `properties` if non-zero.
 
 ### Two Geometry Encodings (SVG and GeoJSON)

@@ -61,8 +61,12 @@ describe('hydrate: structural volume', () => {
     expect(col['sc-1']).toBeCloseTo(0.3 * 4, 3);
     expect(col['sc-2']).toBeCloseTo(Math.PI * 0.16 * 4, 3);
     const beam = await vol('beam');
-    expect(beam['bm-1']).toBeCloseTo(0.18 * 6, 3);
-    expect(beam['bm-2']).toBeCloseTo((2 * 0.2 * 0.02 + 0.36 * 0.01) * 5, 3); // 3-4-5 sloped
+    // Cut length: bm-1 stops at the faces of sc-1 (0.6 wide) and sc-2 (Ø0.8): 6 − 0.3 − 0.4 (as the editor schedules)
+    expect(beam['bm-1']).toBeCloseTo(0.18 * 5.3, 3);
+    // 3-4-5 sloped, starting inside sc-1: the first 0.3 of its 3 m plan run is in the column
+    expect(beam['bm-2']).toBeCloseTo((2 * 0.2 * 0.02 + 0.36 * 0.01) * 5 * 0.9, 3);
+    const cut = await runQuery(conn, `SELECT id, cut_length, length FROM beam ORDER BY id`);
+    expect(cut.rows.map((r) => [String(r.id), Number(r.cut_length), Number(r.length)])).toEqual([['bm-1', 5.3, 6], ['bm-2', 4.5, 5]]);
     // Inner ring (4 m²) and the hosted opening (2 m²) are deducted.
     expect((await vol('structure_slab'))['ss-1']).toBeCloseTo((100 - 4 - 2) * 0.2, 3);
     const net = await runQuery(conn, `SELECT net_area FROM structure_slab WHERE id = 'ss-1'`);
