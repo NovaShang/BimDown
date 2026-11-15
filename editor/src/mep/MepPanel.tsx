@@ -14,7 +14,7 @@ import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { isMepLineTable } from '../model/mepTopology.ts';
 import { endZ } from '../model/mepSplit.ts';
 import { checkDocument, externalMep, systemRows, systemMemberIds } from './mepModel.ts';
-import { setMepView, useMepView, type ProblemMarker } from './mepView.ts';
+import { setMepView, useMepView, UNASSIGNED, type ProblemMarker } from './mepView.ts';
 import { computeRunFlows, runHydraulics, sizeDuct, sizePipe, sizeSystem } from './calc.ts';
 import { circuitsIn, isPanel, newCircuit } from './circuits.ts';
 import type { MepProblem } from './mepCheck.ts';
@@ -59,7 +59,7 @@ export default function MepPanel() {
 
   if (!elements) return null;
   const systems = state.project?.mepSystems ?? [];
-  const colorOf = (code: string) => resolveMepSystemColor(code, systems.find(s => s.system_type === code)?.color);
+  const colorOf = (code: string) => (code === UNASSIGNED ? '#9ca3af' : resolveMepSystemColor(code, systems.find(s => s.system_type === code)?.color));
 
   return (
     <div className="glass-panel flex shrink-0 max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]" data-testid="mep-panel">
@@ -131,7 +131,9 @@ function SystemsTab({ rows, colorOf, readonly, onSelect, onSize }: {
           onMouseEnter={() => setMepView({ highlight: r.system })} onMouseLeave={() => setMepView({ highlight: null })}>
           <div className="flex items-center gap-1.5">
             <span className="size-3 shrink-0 rounded-sm border border-black/20" style={{ backgroundColor: colorOf(r.system) }} />
-            <span className="shrink-0 font-semibold text-foreground">{r.system}</span>
+            <span className={cn('shrink-0 font-semibold text-foreground', r.system === UNASSIGNED && 'italic text-muted-foreground')}>
+              {r.system === UNASSIGNED ? t('mep.systems.unassigned') : r.system}
+            </span>
             <span className="min-w-0 flex-1 truncate text-right tabular-nums text-[9px]">
               {t('mep.systems.summary', { curves: r.curves, length: r.length.toFixed(1), devices: r.devices })}
             </span>
@@ -142,7 +144,7 @@ function SystemsTab({ rows, colorOf, readonly, onSelect, onSize }: {
               onClick={() => setMepView({ isolate: view.isolate === r.system ? null : r.system })} title={t('mep.systems.isolateTip')}>
               {t('mep.systems.isolate')}
             </button>
-            {!readonly && (
+            {!readonly && r.system !== UNASSIGNED && (
               <button type="button" className={btn} onClick={() => onSize(r.system)} title={t('mep.systems.sizeTip')}>{t('mep.systems.size')}</button>
             )}
           </div>

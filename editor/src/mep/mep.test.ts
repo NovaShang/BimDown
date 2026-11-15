@@ -3,7 +3,7 @@ import { createHarness, saveHarness } from '../test/authorHarness.ts';
 import { STARTER_KEY_ATTR } from '../elements/equipment.tsx';
 import type { CanonicalElement, PointElement, SpatialLineElement } from '../model/elements.ts';
 import type { EditorState } from '../state/editorTypes.ts';
-import { checkDocument } from './mepModel.ts';
+import { checkDocument, systemMemberIds, systemRows } from './mepModel.ts';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import { analyzeFittings } from './fittings.ts';
 import { insertAccessory } from './accessoryTool.ts';
@@ -11,7 +11,7 @@ import { arrayLayout } from './arrayTool.ts';
 import { computeRunFlows, sizeDuct, sizePipe, equivalentDiameter } from './calc.ts';
 import { commitTypedLength } from './routeTool.ts';
 import { mepCrossingGaps, clipSegment } from './crossings.ts';
-import { setMepView } from './mepView.ts';
+import { setMepView, UNASSIGNED } from './mepView.ts';
 
 const els = (s: EditorState, table: string) => [...s.document!.elements.values()].filter(e => e.tableName === table);
 const warnings = (s: EditorState) => checkDocument(s.document!.elements).filter(p => p.severity === 'warning');
@@ -256,5 +256,25 @@ describe('cross-level risers', () => {
     h.click(5, 5); h.click(8, 5); h.done();
     expect(els(h.state, 'mep_node').map(n => n.id)).toContain('mn-1');
     expect(els(h.state, 'pipe').find(p => p.id === 'pi-1')!.attrs.to).toBe('mn-1');
+  });
+});
+
+describe('system browser', () => {
+  it('lists MEP elements without a system under Unassigned, last, and never walls', () => {
+    const line = (id: string, sys: string) => ({
+      id, tableName: 'duct', discipline: 'mep', geometry: 'spatial_line', start: { x: 0, y: 0 }, end: { x: 4, y: 0 }, startZ: 3, endZ: 3,
+      attrs: { system_type: sys }, strokeWidth: 0.3,
+    }) as unknown as CanonicalElement;
+    const pt = (id: string, table: string, sys: string) => ({
+      id, tableName: table, discipline: table === 'wall' ? 'architecture' : 'mep', geometry: 'point', position: { x: 0, y: 0 }, attrs: { system_type: sys },
+    }) as unknown as CanonicalElement;
+    const elements = new Map<string, CanonicalElement>([
+      ['du-1', line('du-1', 'SA')], ['du-2', line('du-2', '')], ['tm-1', pt('tm-1', 'terminal', '')],
+      ['mn-1', pt('mn-1', 'mep_node', '')], ['w-1', pt('w-1', 'wall', '')],
+    ]);
+    const rows = systemRows(elements);
+    expect(rows.map(r => r.system)).toEqual(['SA', UNASSIGNED]);
+    expect(rows[1]).toMatchObject({ curves: 1, devices: 1, ids: ['du-2', 'tm-1', 'mn-1'] });
+    expect(systemMemberIds(elements, UNASSIGNED)).toEqual(['du-2', 'tm-1', 'mn-1']);
   });
 });
