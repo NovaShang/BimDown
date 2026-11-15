@@ -87,6 +87,23 @@ describe('sheets', () => {
     for (const it of plan.drawing!.items) if (it.kind === 'path') for (const q of it.pts) expect(q.x).toBeLessThanOrEqual(2 + 1e-9);
     expect(plan.rect.w).toBeCloseTo(20, 6); // 2 m at 1:100
     expect(c.outside).toEqual(['vp-2']);
+    // N4: what reaches past the drawing area is cut there (nothing over the title strip or the border)
+    expect(c.clipped).toEqual(['vp-2']);
+    const area = c.frame.area;
+    for (const v of c.viewports) {
+      for (const it of v.drawing && v.transform ? flattenSheet({ ...c, items: [], viewports: [{ ...v, titleItems: [] }] }).items : []) {
+        if (it.kind === 'path') for (const q of it.pts) expect(q.x).toBeLessThanOrEqual(area.x + area.w + 1e-6);
+      }
+    }
+  });
+
+  it('flags viewports overlapping each other (titles included)', async () => {
+    const files = project();
+    files['global/sheet_viewport.csv'] = 'id,sheet_id,view_type,level_id,view_id,schedule,discipline,scale,x,y,title\n'
+      + 'vp-1,sh-1,plan,lv-1,,,architecture,50,150,170,\nvp-2,sh-1,section,,vw-1,,,50,170,160,\nvp-3,sh-1,plan,lv-1,,,architecture,100,320,240,\n';
+    const p = await loadProject(memoryDataSource(files));
+    const c = composeSheet(p.sheets!.sheets[0], p.sheets!, new SheetDrawings({ project: p, grids: [], lang: 'en', date: new Date(2026, 10, 7) }));
+    expect(c.overlaps.sort()).toEqual(['vp-1', 'vp-2']);
   });
 
   it('prints door schedules by type with counts, and writes one DXF per sheet in mm', async () => {

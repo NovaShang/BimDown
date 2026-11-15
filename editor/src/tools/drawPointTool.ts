@@ -1,5 +1,6 @@
 import type { ToolHandler, ToolContext } from './types.ts';
 import { autoNumberCreated } from '../state/numbering.ts';
+import { cleanNumber } from '../model/serialize.ts';
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
@@ -220,8 +221,8 @@ function placePoint(ctx: ToolContext, pt: { x: number; y: number }, clicked: { x
   const attrs: Record<string, string> = { ...mergedAttrs, id, [sxKey]: String(w) };
   // A blank Y size stays blank where it means something (round pile).
   if (mergedAttrs[syKey] !== '' || sxKey === 'size_x') attrs[syKey] = String(h);
-  if ('x' in attrs) attrs.x = String(pt.x);
-  if ('y' in attrs) attrs.y = String(pt.y);
+  if ('x' in attrs) attrs.x = cleanNumber(String(pt.x));
+  if ('y' in attrs) attrs.y = cleanNumber(String(pt.y));
 
   const element: PointElement = {
     id,

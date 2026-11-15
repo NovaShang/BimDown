@@ -20,7 +20,7 @@ import { STAIR_PART_TABLES } from '../model/stairElements.ts';
 import { checkDocument, externalMep } from '../mep/mepModel.ts';
 import { parseFloorLayers, parseLayer } from '../model/parse.ts';
 
-export type WarningKind = 'insert_overlap' | 'wall_overlap' | 'redundant_room' | 'unbounded_room' | 'stair' | 'mep';
+export type WarningKind = 'insert_overlap' | 'wall_overlap' | 'redundant_room' | 'unbounded_room' | 'stair' | 'duplicate_number' | 'mep';
 
 export interface ModelWarning {
   /** Stable key (kind + level + ids). */
@@ -159,6 +159,50 @@ export function projectWarnings(
     const warnings = levelWarnings(level, project.levels, els, upm, { global: onLevel, project });
     if (!isLive) levelCache.set(els, { project, upm, warnings });
     out.push(...warnings);
+  }
+  out.push(...duplicateNumbers(project, liveLevel, live));
+  return out;
+}
+
+/** Number groups checked for duplicates project-wide: doors (with curtain wall door panels), windows, rooms. */
+const NUMBER_GROUPS: Record<string, string> = { door: 'door', curtain_wall: 'door', window: 'window', space: 'space' };
+
+/**
+ * Marks used twice in the project (Revit "Elements have duplicate Number /
+ * Mark values"): one warning per duplicated number, on the level of its
+ * first holder, listing the holders on that level.
+ */
+export function duplicateNumbers(project: ProjectData, liveLevel?: string, live?: ReadonlyMap<string, CanonicalElement>): ModelWarning[] {
+  const seen = new Map<string, { levelId: string; id: string }[]>(); // group|number → holders
+  const add = (group: string, n: string, levelId: string, id: string) => {
+    const k = `${group}|${n}`;
+    const list = seen.get(k);
+    if (list) list.push({ levelId, id }); else seen.set(k, [{ levelId, id }]);
+  };
+  const scan = (levelId: string, els: Iterable<CanonicalElement>) => {
+    for (const el of els) {
+      const group = NUMBER_GROUPS[el.tableName];
+      if (!group) continue;
+      if (el.tableName === 'curtain_wall') {
+        for (const n of (el.attrs.door_numbers ?? '').split(';')) if (n.trim()) add(group, n.trim(), levelId, el.id);
+      } else if (el.attrs.number?.trim()) add(group, el.attrs.number.trim(), levelId, el.id);
+    }
+  };
+  for (const level of [...project.levels].sort((a, b) => a.elevation - b.elevation)) {
+    const isLive = level.id === liveLevel && !!live;
+    scan(level.id, (isLive ? live! : floorElements(project.floors.get(level.id)?.layers ?? [])).values());
+  }
+  const out: ModelWarning[] = [];
+  for (const [k, holders] of seen) {
+    if (holders.length < 2) continue;
+    const [group, number] = k.split('|');
+    const levelId = holders[0].levelId;
+    const ids = [...new Set(holders.filter(h => h.levelId === levelId).map(h => h.id))];
+    const levels = [...new Set(holders.map(h => project.levels.find(l => l.id === h.levelId)?.name ?? h.levelId))];
+    out.push({
+      key: `duplicate_number:${group}:${number}`, kind: 'duplicate_number', levelId, ids,
+      text: 'warnings.duplicateNumber', params: { number, count: holders.length, levels: levels.join(', ') },
+    });
   }
   return out;
 }

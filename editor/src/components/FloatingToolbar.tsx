@@ -253,6 +253,8 @@ function ToolGroupButton({ entries, discipline, disciplineColor, activeTable, ac
   }, [open]);
 
   const handleMainClick = useCallback(() => {
+    // The tool's drawing bar opens right above: the tooltip would cover its first fields
+    setTipOpen(false);
     onToolClick(displayEntry.table, discipline, displayEntry.variantId);
   }, [displayEntry, discipline, onToolClick]);
 

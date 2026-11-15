@@ -47,6 +47,16 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
           </g>
         );
       })}
+      {/* Room names over furniture and equipment (Revit draws room tags on top) */}
+      {layers.filter(l => l.tableName === 'space').map(layer => {
+        const isArchContext = layer.discipline === 'architecture' && activeDiscipline !== 'architecture';
+        const className = `room-labels-top ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''}`;
+        return (
+          <g key={`labels:${layer.key}`} className={className} style={isArchContext ? { pointerEvents: 'none', opacity: 0.35 } : undefined}>
+            {layer.elements.map(el => <ElementNode key={el.id} element={el} />)}
+          </g>
+        );
+      })}
     </>
   );
 });

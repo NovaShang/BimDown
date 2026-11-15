@@ -4,6 +4,8 @@ import { useCoreEditorState, useSelectionState, useEditorDispatch } from '../sta
 import type { ProcessedLayer, EditorAction } from '../state/editorTypes.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { getToolHandler } from '../tools/registry.ts';
+import { hoverStack } from '../tools/selectTool.ts';
+import { useTranslation } from 'react-i18next';
 import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
 import type { ToolContext, ToolStateSnapshot, TransformAction } from '../tools/types.ts';
 import type { SnapResult } from '../utils/snap.ts';
@@ -681,14 +683,23 @@ function HoverHighlight({ svgRef, getCanvasScale, subscribeTransform }: {
   return null;
 }
 
-/** Hover tooltip — only re-renders on hoveredId change. */
+/** Hover tooltip (pre-highlight): category and mark of what a click picks, and the Tab hint when more lies under it. */
 function HoverTooltip() {
   const { hoveredId } = useSelectionState();
+  const { t } = useTranslation();
+  const doc = useCoreEditorState().document;
   if (!hoveredId) return null;
+  const raw = toElementId(hoveredId);
+  const el = doc?.elements.get(raw);
+  const table = el?.tableName ?? REVERSE_PREFIX_MAP[raw.replace(/-\d+$/, '')];
+  const kind = table ? t(`layer.${table}`, { defaultValue: getElementType(raw) }) : getElementType(raw);
+  const mark = [el?.attrs.number, el?.attrs.name].filter(Boolean).join(' ');
   return (
-    <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 glass-panel rounded border border-border px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150">
-      <span className="text-[10px] font-normal text-muted-foreground">{getElementType(toElementId(hoveredId))}</span>
-      {toElementId(hoveredId)}
+    <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 glass-panel rounded border border-border px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150"
+      data-testid="hover-tooltip">
+      <span className={mark ? 'text-[10px] font-normal text-muted-foreground' : ''}>{kind}</span>
+      {mark}
+      {hoverStack.count > 1 && <span className="text-[10px] font-normal text-muted-foreground">· {t('hover.tabNext')}</span>}
     </div>
   );
 }

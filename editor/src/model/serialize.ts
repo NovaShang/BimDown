@@ -354,9 +354,16 @@ export function serializeToCsv(elements: CanonicalElement[], tableName: string, 
 
 const ROUND_RUN_TABLES = new Set(['duct', 'pipe', 'conduit']);
 
-/** Float noise off numeric values (2.6999998092651367 → 2.7, 25.200000000000003 → 25.2); 6 decimals kept. */
+/**
+ * Float noise off numeric values (2.6999998092651367 → 2.7, 25.200000000000003
+ * → 25.2, 2.700001 → 2.7): within 2 µm of a 0.1 mm value it snaps there,
+ * else 6 decimals are kept.
+ */
 export function cleanNumber(v: string): string {
-  return /^-?\d*\.\d{7,}$/.test(v) ? String(Number(Number(v).toFixed(6))) : v;
+  if (!/^-?\d*\.\d{6,}$/.test(v)) return v;
+  const n = Number(v);
+  const q = Number(n.toFixed(4));
+  return String(Math.abs(n - q) <= 2e-6 ? q : Number(n.toFixed(6)));
 }
 
 function getCsvHeaders(tableName: string): string[] {

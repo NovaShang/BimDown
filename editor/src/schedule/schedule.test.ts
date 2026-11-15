@@ -146,6 +146,8 @@ describe('schedules', () => {
     expect(w1.values.volume).toBeCloseTo((30 - 0.9 * 2.1) * 0.2);
     // Top level: no level above → height unknown, like `bimdown query`
     expect(rows.find(r => r.sid === 'lv-2:w-1')!.values.qheight).toBeUndefined();
+    // Mark and type lead the default columns
+    expect(cat('walls').columns.filter(c => c.defaultOn !== false).slice(0, 2).map(c => c.key)).toEqual(['number', 'type_name']);
   });
 
   it('MEP runs group by system with 3D lengths and subtotals; CSV carries totals', async () => {

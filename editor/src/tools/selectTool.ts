@@ -119,9 +119,29 @@ function cycleUnderPointer(ctx: ToolContext, back: boolean): boolean {
     tabCycle.index = (tabCycle.index + (back ? -1 : 1) + entries.length) % entries.length;
   }
   const pick = entries[tabCycle.index];
+  lastHover = pick[0];
   ctx.dispatch({ type: 'SET_HOVER', id: pick[0] });
   ctx.dispatch({ type: 'SELECT', ids: pick, exact: true });
   return true;
+}
+
+/** How many elements lie under the pointer (the hover tooltip's "Tab" hint). */
+export const hoverStack = { count: 0 };
+let hoverFrame = 0;
+let lastHover: string | null = null;
+
+function scheduleHover(ctx: ToolContext) {
+  // 2D plan only (the 3D view picks by ray, not by the DOM under the pointer)
+  if (hoverFrame || typeof requestAnimationFrame !== 'function' || ctx.screenToScenePoint) return;
+  hoverFrame = requestAnimationFrame(() => {
+    hoverFrame = 0;
+    if (gesture.isDragging || !Number.isFinite(lastPointer.x)) return;
+    const picks = picksAt(ctx, lastPointer.x, lastPointer.y);
+    hoverStack.count = picks.length;
+    const id = picks[0]?.sid ?? null;
+    // (the tool snapshot's hoveredId can lag: the canvas reads the hover-free core state)
+    if (id !== lastHover) { lastHover = id; ctx.dispatch({ type: 'SET_HOVER', id }); }
+  });
 }
 
 export const selectTool: ToolHandler = {
@@ -224,8 +244,8 @@ export const selectTool: ToolHandler = {
     lastPointer.x = e.clientX;
     lastPointer.y = e.clientY;
     if (!gesture.isDragging) {
-      // Hover detection
-      // TODO: hover temporarily disabled for performance testing
+      // Hover pre-highlight (Revit): what a click would pick, once per frame
+      scheduleHover(ctx);
       return;
     }
 

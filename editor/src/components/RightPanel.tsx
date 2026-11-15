@@ -29,6 +29,7 @@ import QuantitiesSection from './QuantitiesSection.tsx';
 import { selectedElsewhere } from '../state/selectionOps.ts';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
 import { levelLabel } from '../model/displayNames.ts';
+import { toElementId } from '../model/ids.ts';
 import { ElementWarnings } from './WarningsPanel.tsx';
 import { NON_NEGATIVE_FIELDS, POSITIVE_FIELDS, numericFieldError } from '../geometry/modelChecks.ts';
 import { showNotice } from '../state/modifyUi.ts';
@@ -158,10 +159,15 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
             <Icon name={mixedTables ? 'default' : firstData.tableName} width={15} height={15} />
           </span>
           <span className="min-w-0 flex-1 truncate text-[12px] font-semibold tracking-tight">
-            {mixedTables ? t('prop.multipleTypes') : style ? t(`display.${style.displayName}`) : firstData.tableName}
+            {mixedTables ? t('prop.multipleTypes')
+              : isSingleSelection ? t(`layer.${firstData.tableName}`, { defaultValue: style ? t(`display.${style.displayName}`) : firstData.tableName })
+              : `${style ? t(`display.${style.displayName}`) : firstData.tableName} (${selectedData.size})`}
           </span>
           {isSingleSelection && (
-            <span className="shrink-0 rounded bg-[var(--bg-input)] px-1.5 py-0.5 text-[9px] text-muted-foreground tabular-nums">{firstId}</span>
+            // The mark people use; the file id only as a fallback (full id on hover)
+            <span className="shrink-0 rounded bg-[var(--bg-input)] px-1.5 py-0.5 text-[9px] text-muted-foreground tabular-nums" title={firstId} data-testid="selection-mark">
+              {csv.number || csv.name || toElementId(firstId)}
+            </span>
           )}
         </div>
         <Button
@@ -395,7 +401,8 @@ function PropertyRow({
           <div className="contents" onBlur={dropDraft} title={draftError ? i18next.t(`field.error.${draftError}`, { field: label }) : undefined}>
             <NumberInput
               className={cn(FIELD_INPUT, draftError && 'border-destructive text-destructive ring-1 ring-destructive/40')}
-              value={draft ?? value}
+              // An unset offset is 0 (base / top / height offsets), shown as such
+              value={draft ?? (value === '' && !mixed && /_offset$/.test(f.key) ? '0' : value)}
               onChange={setNumber}
               placeholder={mixed ? mixedLabel : undefined}
               step={f.step}

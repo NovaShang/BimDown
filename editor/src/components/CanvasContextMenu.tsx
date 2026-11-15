@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useLayoutEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DocumentState } from '../model/document.ts';
 import type { EditorAction } from '../state/editorTypes.ts';
@@ -91,6 +91,15 @@ export default function CanvasContextMenu({
   const menuHeight = 520;
   const x = Math.min(menu.x, window.innerWidth - menuWidth - 8);
   const y = Math.max(8, Math.min(menu.y, window.innerHeight - menuHeight - 8));
+
+  // Measured: a long menu opened low moves up to stay inside the window
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - 8) el.style.top = `${Math.max(8, window.innerHeight - r.height - 8)}px`;
+    if (r.right > window.innerWidth - 8) el.style.left = `${Math.max(8, window.innerWidth - r.width - 8)}px`;
+  });
 
   const act = (fn: () => void) => () => { fn(); onClose(); };
 

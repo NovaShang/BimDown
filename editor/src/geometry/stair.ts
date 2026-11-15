@@ -168,6 +168,63 @@ export function pointsForGoing(points: readonly Point[], width: number, steps: n
   return [...points.slice(0, -1), { x: a.x + (b.x - a.x) * k, y: a.y + (b.y - a.y) * k }];
 }
 
+/**
+ * Walking-line clicks of a stair being drawn, fitted so every run is exactly
+ * its risers × `going` (Revit: run length locked by the tread depth; the
+ * clicks give directions and how the risers split between runs).
+ * `points` are the clicks so far plus the cursor; `required` the clicks of
+ * the stair type (2 straight, 3 L, 4 U). The first run's end click snaps to a
+ * whole number of treads (1 … steps − 1); the last click ends the remaining
+ * treads. U-stair landing exit (3rd click) keeps the landing square to run 1.
+ */
+export function fitStairPoints(points: readonly Point[], required: number, width: number, steps: number, going: number): Point[] {
+  if (points.length < 2 || !(going > 0)) return [...points];
+  const n = Math.max(2, Math.round(steps));
+  const hw = width / 2;
+  const out = [...points];
+  const s = out[0];
+  const dir = (a: Point, b: Point): Point | null => {
+    const l = Math.hypot(b.x - a.x, b.y - a.y);
+    return l < 1e-9 ? null : { x: (b.x - a.x) / l, y: (b.y - a.y) / l };
+  };
+  const at = (p: Point, u: Point, d: number): Point => ({ x: p.x + u.x * d, y: p.y + u.y * d });
+  if (required <= 2) {
+    const u = dir(s, out[1]);
+    if (u) out[1] = at(s, u, n * going);
+    return out;
+  }
+  // First run: s → corner / landing entry, a whole number of treads before the landing
+  const u0 = dir(s, out[1]);
+  if (!u0) return out;
+  const n1 = Math.min(n - 1, Math.max(1, Math.round((Math.hypot(out[1].x - s.x, out[1].y - s.y) - hw) / going)));
+  out[1] = at(s, u0, n1 * going + hw);
+  const n2 = n - n1;
+  if (required === 3) {
+    if (out.length >= 3) {
+      const u1 = dir(out[1], out[2]);
+      if (u1) out[2] = at(out[1], u1, hw + n2 * going);
+    }
+    return out;
+  }
+  // U: landing exit across run 1 (at least one run width away), then the second run back
+  if (out.length >= 3) {
+    const n0 = { x: -u0.y, y: u0.x };
+    const side = (out[2].x - out[1].x) * n0.x + (out[2].y - out[1].y) * n0.y;
+    const across = (side < 0 ? -1 : 1) * Math.max(width, Math.abs(side));
+    out[2] = at(out[1], n0, across);
+  }
+  if (out.length >= 4) {
+    const u1 = dir(out[2], out[3]);
+    if (u1) out[3] = at(out[2], u1, hw + n2 * going);
+  }
+  return out;
+}
+
+/** Default tread depth for a riser height (m): 2R + G = 630 mm, at least the minimum going. */
+export function defaultGoing(riser: number): number {
+  return Math.max(STAIR_LIMITS.goingMin, Math.round((BLONDEL_TARGET - 2 * riser) * 1000) / 1000);
+}
+
 /** The stair's repetitions from a geometry context (`levelElevation` = the stair's level). */
 export function stairRepetitionsIn(
   stair: CanonicalElement,

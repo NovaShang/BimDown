@@ -9,7 +9,7 @@
 import type { CanonicalElement, Point } from './elements.ts';
 import type { Level, ProjectUnit } from '../types.ts';
 import type { TypeCatalog } from './types/catalog.ts';
-import { expandCopySet, cloneElements, retargetLevelAttrs, type NumberPool } from './copySet.ts';
+import { expandCopySet, cloneElements, levelNumberBase, retargetLevelAttrs, type NumberPool } from './copySet.ts';
 import { elementsBounds, boundsCenter, transformElements, translation } from './transform.ts';
 
 export const CLIPBOARD_MARKER = 'bimdown/elements';
@@ -80,7 +80,11 @@ export function pasteElements(
   gridNames?: Set<string>,
 ): { elements: CanonicalElement[]; selected: string[] } {
   const source = new Map(p.elements.map(e => [e.id, e]));
-  const { clones, idMap } = cloneElements(source, source.keys(), { taken, numbers, gridNames });
+  // Pasted onto another level of the same project: level-scheme numbers move to its range
+  const from = p.levels.find(l => l.id === p.levelId), to = levels.find(l => l.id === levelId);
+  const levelBases = from && to && from.id !== to.id && levels.some(l => l.id === from.id)
+    ? { from: levelNumberBase(from), to: levelNumberBase(to) } : undefined;
+  const { clones, idMap } = cloneElements(source, source.keys(), { taken, numbers, gridNames, levelBases });
   const placed = transformElements(clones, clones.keys(), translation(offset.x, offset.y));
   const typeIds = new Set((types?.types ?? []).map(t => t.id));
   const sameLevels = p.levels.every(l => levels.some(m => m.id === l.id));

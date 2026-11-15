@@ -41,7 +41,7 @@ import { repZ, type StairRepetition } from '../geometry/stair.ts';
 import type { RailingFacts } from '../elements/railing.tsx';
 import type { RampFacts } from '../elements/ramp.tsx';
 import type { CurtainWallFacts } from '../elements/curtain_wall.tsx';
-import { curtainWallPieces } from '../elements/curtainWallLayout.ts';
+import { curtainDoors, curtainWallPieces } from '../elements/curtainWallLayout.ts';
 import type { EquipmentFacts } from '../elements/equipment.tsx';
 import type { SpaceFacts } from '../elements/space.tsx';
 import type { FurnitureFacts } from '../elements/furniture.tsx';
@@ -693,8 +693,10 @@ class Exporter {
       parts.push(part.handle);
     }
     // Door panels: an IfcDoor (frame + leaves as the 3D view) aggregated in the curtain wall.
+    const doorMarks = new Map<string, string>(curtainDoors(f.grid, el.attrs.door_numbers).map(d => [`${d.col}_${d.row}`, d.number]));
     for (const p of curtainWallPieces(f)) {
       if (p.role !== 'door') continue;
+      const mark = doorMarks.get(p.index) || `${el.attrs.number || el.attrs.name || 'CW'} door ${p.index}`;
       const operation = p.kind === 'double_door' ? 'double_swing' : 'single_swing';
       const frame = planFrame(v3(p.c.x, p.c.y, p.z0), p.angle);
       const solids = openingPartSolids(frame, doorParts({ length: p.along, height: p.h, strokeWidth: p.across, operation }), p.h);
@@ -705,7 +707,7 @@ class Exporter {
       const door = this.product({
         scope, el, key: `${rec.key}#door:${p.index}`, type: 'IfcDoor',
         geom: { frame, solids: solids.map(s => s.solid) }, styles: solids.map(s => (s.role === 'frame' ? frameStyle : leafStyle)),
-        name: `${el.attrs.number || el.id} door ${p.index}`, objectType: operation, tail,
+        name: mark, objectType: operation, tail,
         contained: false, register: false,
       });
       this.singleMaterial(door.handle, f.frameMaterial);

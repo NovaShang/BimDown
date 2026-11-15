@@ -440,3 +440,50 @@ export function curtainCorners(walls: CornerWall[]): Map<string, CornerResult> {
   }
   return out;
 }
+
+// ─── Door panel marks ────────────────────────────────────────────────────────
+// `door_numbers`: the marks of the door panels, semicolon-separated, in cell
+// order (column from the wall start, then row from the bottom). Door panels
+// are numbered with the doors (D101 …) and listed in the door schedule.
+
+export interface CurtainDoor { col: number; row: number; kind: PanelKind; width: number; height: number; number: string }
+
+export const parseDoorNumbers = (raw: string | undefined) => (raw ?? '').split(';').map(s => s.trim());
+
+/** Door panels of a grid in cell order, with their marks (empty when not numbered yet). */
+export function curtainDoors(g: CurtainGrid, doorNumbers: string | undefined): CurtainDoor[] {
+  const marks = parseDoorNumbers(doorNumbers);
+  const out: CurtainDoor[] = [];
+  for (let c = 0; c < g.kinds.length; c++) {
+    for (let r = 0; r < g.kinds[c].length; r++) {
+      const kind = g.kinds[c][r];
+      if (!isDoorKind(kind)) continue;
+      out.push({ col: c, row: r, kind, width: g.xs[c + 1] - g.xs[c], height: g.ys[r + 1] - g.ys[r], number: marks[out.length] ?? '' });
+    }
+  }
+  return out;
+}
+
+/** Marks of a curtain wall's door panels in use (non-empty). */
+export const doorNumbersInUse = (attrs: Record<string, string>) => parseDoorNumbers(attrs.door_numbers).filter(Boolean);
+
+/**
+ * `door_numbers` after an edit turned grid `before` into `after`: door panels
+ * that stay doors in the same cell keep their mark (all of them when the door
+ * count is unchanged); new door panels take `next()`.
+ */
+export function remapDoorNumbers(before: CurtainGrid, after: CurtainGrid, doorNumbers: string | undefined, next: () => string): string {
+  const was = curtainDoors(before, doorNumbers);
+  const now = curtainDoors(after, undefined);
+  if (now.length === 0) return '';
+  const kept = new Map(was.map(d => [`${d.col}:${d.row}`, d.number] as const));
+  const sameCount = was.length === now.length;
+  const used = new Set<string>();
+  const marks = now.map((d, i) => {
+    const n = sameCount ? was[i].number : kept.get(`${d.col}:${d.row}`) ?? '';
+    if (!n || used.has(n)) return '';
+    used.add(n);
+    return n;
+  });
+  return marks.map(n => n || next()).join(';');
+}

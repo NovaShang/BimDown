@@ -15,7 +15,7 @@
  */
 import '../../elements/registerAll.ts';
 import { ShapeUtils, Vector2, type BufferGeometry } from 'three';
-import type { CanonicalElement, LineElement, PolygonElement } from '../../model/elements.ts';
+import type { CanonicalElement, LineElement, Point, PolygonElement } from '../../model/elements.ts';
 import type { Level, ProjectData } from '../../types.ts';
 import type { GeometryContext } from '../../elements/archetypes.ts';
 import { getElementModule } from '../../elements/registry.ts';
@@ -69,6 +69,12 @@ export interface ViewPart {
   /** Edges always drawn when visible, 6 numbers each. */
   sharp: number[];
   smooth: SmoothEdge[];
+  /** Surface material (elevation tints). */
+  material?: string;
+  /** Walls whose two faces differ (type layers): materials on the left / right of the plan direction `axis`. */
+  faceMaterials?: { axis: Point; left: string; right: string };
+  /** Layered straight walls: centre line (plan) and the offsets (left of it) where one type layer meets the next. */
+  layerSeams?: { a: Point; b: Point; offsets: number[] };
 }
 
 const SHARP_DEG = 25;
@@ -359,7 +365,20 @@ function wallPart(id: string, el: CanonicalElement, f: LineWallFacts, ctx: Geome
     b.sharp.push(...e.sharp);
     b.smooth.push(...e.smooth);
   }
-  out.push(b.part(id, el.tableName, el.tableName === 'structure_wall' ? 'swall' : 'wall'));
+  const part = b.part(id, el.tableName, el.tableName === 'structure_wall' ? 'swall' : 'wall');
+  part.material = f.material;
+  if (f.layers && f.layers.length > 1 && !f.centerline.arc) {
+    const { start: a, end: e, length } = f.centerline;
+    const outer = f.layers.reduce((m, l) => (l.hi > m.hi ? l : m)), inner = f.layers.reduce((m, l) => (l.lo < m.lo ? l : m));
+    if (length > 0) part.faceMaterials = { axis: { x: (e.x - a.x) / length, y: (e.y - a.y) / length }, left: outer.material || f.material, right: inner.material || f.material };
+  }
+  if (f.layers && f.layers.length > 1 && !f.centerline.arc) {
+    const half = f.thickness / 2;
+    const offsets = [...new Set(f.layers.flatMap(l => [l.lo, l.hi]).map(v => Math.round(v * 1e6) / 1e6))]
+      .filter(v => v > -half + 1e-6 && v < half - 1e-6).sort((x, y) => x - y);
+    if (offsets.length) part.layerSeams = { a: f.centerline.start, b: f.centerline.end, offsets };
+  }
+  out.push(part);
   // Hosted doors / windows: their frames and leaves in the wall void
   for (const op of f.openings) {
     if (op.hostedTable === 'opening' || op.hostedTable === 'curtain_wall') continue;
@@ -425,7 +444,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
         solid = geo ? brepFromBuffer(geo) : null;
         geo?.dispose();
       }
-      push(solidsPart(id, t, 'roof', [solid ?? extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]));
+      const roofPart = solidsPart(id, t, 'roof', [solid ?? extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]);
+      if (roofPart) roofPart.material = f.material;
+      push(roofPart);
       break;
     }
     case 'foundation':
@@ -448,7 +469,8 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
       break;
     }
     case 'stair': case 'stair_run': {
-      if (t === 'stair' && hasRuns(el.id)) break;
+      // The stair line is a flight of its own unless it is the overall axis of its runs (geometry/stair.ts)
+      if (t === 'stair' && hasRuns(el.id) && !(facts as StairFacts).assembly?.ownIsRun) break;
       // Every storey of a multi-storey stair
       const f = facts as StairFacts | StairRunFacts;
       push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).flatMap(rep => stairFlightGeom(repRun(f, rep))?.solids ?? [])));

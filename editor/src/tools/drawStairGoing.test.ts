@@ -47,4 +47,33 @@ describe('stair tool: typed going, 2R+G fix, multi-storey (G7, G8)', () => {
     expect(calc.going).toBeCloseTo(0.28, 6);
     expect(calc.checks.every(c => c.ok)).toBe(true);
   });
+
+  it('U stair: every run is locked to risers × going, whatever the clicks (N2: typed 0.3 gave 339 mm)', () => {
+    const h = createHarness(LEVELS);
+    h.pick('stair', { stair_type: 'half_turn', width: '1.3', step_count: '18', [STAIR_GOING_KEY]: '0.3' });
+    // The audit's clicks: up 3.7 m, across, back down
+    h.click(9.25, 5.8); h.click(9.25, 9.5); h.click(10.75, 9.5); h.click(10.75, 5.8);
+    h.done();
+    const els = [...h.state.document!.elements.values()];
+    const stair = els.find(e => e.tableName === 'stair')!;
+    const calc = stairCalc(assembleStair(stair, els.filter(e => e.attrs.host_id === stair.id)))!;
+    const asm = assembleStair(stair, els.filter(e => e.attrs.host_id === stair.id));
+    expect(asm.runs).toHaveLength(2);
+    for (const r of asm.runs) expect(r.length / r.stepCount).toBeCloseTo(0.3, 6);
+    expect(asm.runs.reduce((n, r) => n + r.stepCount, 0)).toBe(18);
+    expect(calc.going).toBeCloseTo(0.3, 6);
+    expect(2 * calc.riser + calc.going).toBeCloseTo(0.633, 3);
+  });
+
+  it('without a typed going the runs take the default for the riser (2R + G = 630 mm)', () => {
+    const h = createHarness(LEVELS);
+    h.pick('stair', { stair_type: 'quarter_turn', width: '1.2', step_count: '18' });
+    h.click(0, 0); h.click(3.3, 0); h.click(3.3, 4);
+    h.done();
+    const els = [...h.state.document!.elements.values()];
+    const stair = els.find(e => e.tableName === 'stair')!;
+    const asm = assembleStair(stair, els.filter(e => e.attrs.host_id === stair.id));
+    for (const r of asm.runs) expect(r.length / r.stepCount).toBeCloseTo(0.297, 6);
+    expect(stairCalc(asm)!.checks.every(c => c.ok)).toBe(true);
+  });
 });

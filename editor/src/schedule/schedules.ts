@@ -20,6 +20,7 @@ import { FOUNDATION_KIND_OPTIONS, MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OP
 import { drawingLabel, drawingLang, type DrawingLang } from '../export/drawing/labels.ts';
 import { typeOfElement, type TypeCatalog } from '../model/types/catalog.ts';
 import { foundationKind } from '../elements/foundation.tsx';
+import { curtainDoors, curtainGrid } from '../elements/curtainWallLayout.ts';
 import { unitsPerMetreOf } from '../utils/units.ts';
 
 export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count' | 'weight';
@@ -92,8 +93,9 @@ export const SCHEDULES: ScheduleCategory[] = [
       C('height', 'schedule.col.height', 'length'), C('base_offset', 'schedule.col.sill', 'length'), MATERIAL, COUNT],
   },
   {
+    // Mark and type first, as Revit's wall schedule (the type names the build-up)
     key: 'walls', label: 'schedule.walls', tables: ['wall', 'structure_wall', 'curtain_wall'], groupBy: '',
-    columns: [NUMBER, LEVEL, CATEGORY, { ...TYPE_NAME, defaultOn: false }, MATERIAL, { ...GRADE, defaultOn: false }, C('thickness', 'schedule.col.thickness', 'length'),
+    columns: [NUMBER, TYPE_NAME, LEVEL, CATEGORY, MATERIAL, { ...GRADE, defaultOn: false }, C('thickness', 'schedule.col.thickness', 'length'),
       C('length', 'schedule.col.length', 'length', true, true), C('qheight', 'schedule.col.height', 'length'),
       C('area', 'schedule.col.netArea', 'area', true, true), C('gross_area', 'schedule.col.grossArea', 'area', false, true),
       C('volume', 'schedule.col.volume', 'volume', true, true), COUNT],
@@ -306,6 +308,7 @@ export function scheduleRows(
       if (mep) Object.assign(values, mep);
       rows.push({ sid: `${level.id}:${el.id}`, id: el.id, levelId: level.id, table: el.tableName, values });
     }
+    if (cat.key === 'doors') rows.push(...curtainDoorRows(elements, level, allLevels, context, upm, unit, displayName, lang, project.types));
   }
   // Multi-storey elements in global/ count once, on their base level
   for (const el of global) {
@@ -319,6 +322,32 @@ export function scheduleRows(
     rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values });
   }
   return rows;
+}
+
+/** Door schedule rows of curtain wall door panels (one per panel, selecting its curtain wall). */
+function curtainDoorRows(elements: CanonicalElement[], level: Level, levels: Level[], context: CanonicalElement[], upm: number, unit: ProjectUnit,
+  displayName: (table: string) => string, lang: DrawingLang, types?: TypeCatalog): ScheduleRow[] {
+  const out: ScheduleRow[] = [];
+  for (const el of elements) {
+    if (el.tableName !== 'curtain_wall' || !el.attrs.panels?.includes('door')) continue;
+    const q = elementQuantities(el, level, levels, context, upm);
+    if (!q.length || !q.height) continue;
+    const doors = curtainDoors(curtainGrid(el.attrs, q.length, q.height), el.attrs.door_numbers);
+    const base = rowValues(el, level, {}, unit, displayName, lang, types, context);
+    // Type: the curtain wall's type (the door panel belongs to it); host: the curtain wall
+    const typeName = typeOfElement(el, types)?.name || displayName('curtain_wall');
+    const host = el.attrs.number || displayName('curtain_wall');
+    doors.forEach((d, i) => {
+      out.push({
+        sid: `${level.id}:${el.id}`, id: `${el.id}#door${i}`, levelId: level.id, table: 'curtain_wall',
+        values: {
+          ...base, number: d.number, host, type_name: typeName, width: d.width, height: d.height,
+          operation: operationLabel('door', d.kind === 'double_door' ? 'double_swing' : 'single_swing', lang), material: base.material, count: 1,
+        },
+      });
+    });
+  }
+  return out;
 }
 
 export type SortState = { key: string; dir: 1 | -1 } | null;

@@ -15,7 +15,7 @@ import type { CanonicalElement, PointElement, Point } from './elements.ts';
 import { ANNOTATION_TABLES } from '../annotation/model.ts';
 import { parseRef } from '../annotation/geometry.ts';
 import { generateId } from './ids.ts';
-import { cloneElements, expandCopySet, groupMembers } from './copySet.ts';
+import { cloneElements, expandCopySet, groupMembers, RENUMBER_TABLES } from './copySet.ts';
 import {
   boundsCenter, compose, elementsBounds, invert, mirrorAcross, rotationAbout, transformElements, translation, type Xform,
 } from './transform.ts';
@@ -229,8 +229,14 @@ export function propagateGroupEdit(
   const { clones, idMap } = cloneElements(edited, nowIds, { taken, preset });
   const placed = transformElements(clones, clones.keys(), compose(TB, invert(TA)));
   for (const [src, id] of idMap) {
-    const el = placed.get(id);
-    if (el && edited.get(src)?.attrs.group_id === editedRowId) placed.set(id, { ...el, attrs: { ...el.attrs, group_id: target.rowId } });
+    let el = placed.get(id);
+    if (!el) continue;
+    if (edited.get(src)?.attrs.group_id === editedRowId) el = { ...el, attrs: { ...el.attrs, group_id: target.rowId } };
+    // Each instance keeps its own door / window / room marks
+    const was = target.elements.get(id);
+    if (was && RENUMBER_TABLES.has(el.tableName) && (was.attrs.number ?? '') !== (el.attrs.number ?? '')) el = { ...el, attrs: { ...el.attrs, number: was.attrs.number ?? '' } };
+    if (was && el.tableName === 'curtain_wall' && was.attrs.door_numbers && was.attrs.door_numbers !== el.attrs.door_numbers) el = { ...el, attrs: { ...el.attrs, door_numbers: was.attrs.door_numbers } };
+    placed.set(id, el);
   }
   for (const [id, el] of placed) patch.set(id, el);
   // Old members the edit removed

@@ -298,6 +298,11 @@ export default function SheetsPanel({ onClose }: { onClose: () => void }) {
                   {t('sheets.vpOutside')}
                 </div>
               )}
+              {composed?.overlaps.includes(vp.id) && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-700 dark:text-amber-400" data-testid="viewport-overlap">
+                  {t('sheets.vpOverlap')}
+                </div>
+              )}
               {(vp.type === 'plan' || vp.type === 'section' || vp.type === 'elevation') && (
                 <TextField label={t('sheets.crop')} hint={t('sheets.cropHint')} testId="viewport-crop" disabled={readonly}
                   value={vp.crop ? [vp.crop.minX, vp.crop.minY, vp.crop.maxX, vp.crop.maxY].map(n => String(Math.round(n * 1000) / 1000)).join(', ') : ''}
@@ -319,11 +324,11 @@ export default function SheetsPanel({ onClose }: { onClose: () => void }) {
                   {t('sheets.removeViewport')}
                 </button>
               )}
-              <button className={cn(BTN, 'justify-center')} onClick={() => setSelectedVp(null)}>{t('sheets.views')} →</button>
             </div>
-          ) : (
-            <>
-              <div>
+          ) : null}
+          {/* The views stay listed under the viewport properties: drop one view after another */}
+          <>
+              <div className={cn(vp && sheet && 'mt-1 border-t border-border/60 pt-2')} data-testid="views-palette">
                 <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{t('sheets.views')}</span>
                 <p className="text-[10px] text-muted-foreground">{t('sheets.viewsHint')}</p>
               </div>
@@ -345,8 +350,7 @@ export default function SheetsPanel({ onClose }: { onClose: () => void }) {
                   })}
                 </div>
               ))}
-            </>
-          )}
+          </>
         </div>
       </div>
 
@@ -453,7 +457,7 @@ function SheetCanvas({ composed, selected, readonly, onSelect, onMove, onDrop }:
         <DrawingItemsSvg items={pv.paperItems} layers={pv.paperLayers} pm={1} />
         <DrawingItemsSvg items={pv.titleItems} layers={pv.paperLayers} pm={1} />
         <rect x={r.x - 2} y={r.y - 2} width={r.w + 4} height={r.h + 4}
-          fill="rgba(58,123,255,0.001)" stroke={sel ? '#3a7bff' : composed.outside.includes(pv.vp.id) ? '#d97706' : 'transparent'} strokeWidth={0.6} strokeDasharray="3 2"
+          fill="rgba(58,123,255,0.001)" stroke={sel ? '#3a7bff' : composed.outside.includes(pv.vp.id) || composed.overlaps.includes(pv.vp.id) ? '#d97706' : 'transparent'} strokeWidth={0.6} strokeDasharray="3 2"
           className={readonly ? 'cursor-pointer' : 'cursor-move'}
           onPointerDown={e => onPointerDown(e, pv.vp.id)} />
       </g>

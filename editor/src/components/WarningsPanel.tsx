@@ -17,7 +17,7 @@ export const WARNINGS_TOGGLE_EVENT = 'bimdown:toggle-warnings';
 /** The elements a row selects: a redundant room alone (its properties show the warning), else all involved. */
 const selectIds = (w: ModelWarning) => (w.kind === 'redundant_room' ? [w.ids[0]] : w.ids);
 
-const KIND_ORDER: WarningKind[] = ['insert_overlap', 'wall_overlap', 'redundant_room', 'unbounded_room', 'stair', 'mep'];
+const KIND_ORDER: WarningKind[] = ['insert_overlap', 'wall_overlap', 'redundant_room', 'unbounded_room', 'stair', 'duplicate_number', 'mep'];
 
 /**
  * Live project warnings (warnings/modelWarnings.ts), recomputed shortly after
