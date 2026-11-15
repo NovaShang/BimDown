@@ -189,7 +189,7 @@ function placePoint(ctx: ToolContext, pt: { x: number; y: number }, clicked: { x
     let at = pt;
     const mount = starter.wall_mounted && doc ? wallMount(clicked, doc, starter.default_size.d) : null;
     if (mount) { at = mount.point; rotationOverride = mount.rotation; }
-    const elements = materializeStarter(starter, at, levelId, existing, rotationOverride, da.base_offset);
+    const elements = materializeStarter(starter, at, levelId, existing, rotationOverride, da.base_offset, state.project?.mepSystems.map(s => s.system_type));
     ctx.dispatch({
       type: 'CREATE_ELEMENTS',
       elements,

@@ -649,6 +649,34 @@ describe('IFC export of the building', () => {
     }
   });
 
+  it('one IFC system per declared system: untagged lights join LTG / PWR, DHWS ports join DHW (audit r3)', async () => {
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\n',
+      'global/mep_system.csv': 'id,system_type,name,color,discipline\nsys-1,PWR,Power,,electrical\nsys-2,LTG,Lighting,,electrical\nsys-3,DHW,Domestic Hot Water,,plumbing\n',
+      'lv-1/terminal.csv': 'id,number,terminal_type,system_type\ntm-1,,light_fixture,\ntm-2,,power_outlet,\ntm-3,,lavatory,DHWS\n',
+      'lv-1/terminal.geojson': fc([
+        { type: 'Feature', properties: { id: 'tm-1' }, geometry: { type: 'Point', coordinates: [2, 2] } },
+        { type: 'Feature', properties: { id: 'tm-2' }, geometry: { type: 'Point', coordinates: [3, 2] } },
+        { type: 'Feature', properties: { id: 'tm-3' }, geometry: { type: 'Point', coordinates: [4, 2] } },
+      ]),
+    };
+    for (const schema of ['IFC2X3', 'IFC4'] as const) {
+      const { ents, keys } = await exportFiles(files, schema);
+      const all = [...ents.values()];
+      const systems = all.filter(e => e.type === (schema === 'IFC4' ? 'IFCDISTRIBUTIONSYSTEM' : 'IFCSYSTEM'));
+      expect(systems.map(s => str(s.args[2])).sort()).toEqual(['Domestic Hot Water', 'Lighting', 'Power']);
+      const membersOf = (name: string) => {
+        const s = systems.find(x => str(x.args[2]) === name)!;
+        const rel = all.find(e => e.type === 'IFCRELASSIGNSTOGROUP' && ref(e.args[6]) === s.id);
+        return rel ? refs(rel.args[4]).map(id => keys.get(id)) : [];
+      };
+      expect(membersOf('Lighting')).toEqual(['terminal:tm-1']);
+      expect(membersOf('Power')).toEqual(['terminal:tm-2']);
+      expect(membersOf('Domestic Hot Water')).toEqual(['terminal:tm-3']);
+    }
+  });
+
   it('writes the layered wall U-value (EN ISO 6946) and wall / door types', async () => {
     const files = {
       'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),

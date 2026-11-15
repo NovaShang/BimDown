@@ -14,6 +14,7 @@
  * before rotation). Outward direction (`dir`) is a unit vector in the host
  * local frame.
  */
+import { systemPreset } from '../mep/systemPresets.ts';
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { generateId } from '../model/ids.ts';
@@ -397,10 +398,14 @@ export function getStarter(key: string | undefined | null): EquipmentStarter | n
   return equipmentStarters.find((s) => s.key === key) ?? null;
 }
 
-/** Resolve a starter's port `system_role` to an actual `system_type` tag.
- *  Returns the role's default tag when no project-side mapping is available. */
-export function resolveSystemTag(role: string): string {
-  return ROLE_TO_SYSTEM_TAG[role] ?? role.toUpperCase();
+/** Resolve a starter's port `system_role` to an actual `system_type` tag:
+ *  the project's own code for that system when it has one under another
+ *  spelling (DHW for the role's DHWS, VENT for V), else the role's default tag. */
+export function resolveSystemTag(role: string, projectCodes?: readonly string[]): string {
+  const tag = ROLE_TO_SYSTEM_TAG[role] ?? role.toUpperCase();
+  if (!projectCodes?.length || projectCodes.includes(tag)) return tag;
+  const preset = systemPreset(tag);
+  return (preset && projectCodes.find(c => systemPreset(c) === preset)) || tag;
 }
 
 /** Materialize a starter at the given world-space position.
@@ -418,6 +423,8 @@ export function materializeStarter(
   rotationDegOverride?: number,
   /** Height above the level (the toolbar's Base Offset); default from the table. */
   baseOffset?: string,
+  /** The project's mep_system codes: ports take the project's spelling of their system. */
+  projectCodes?: readonly string[],
 ): CanonicalElement[] {
   const out: CanonicalElement[] = [];
 
@@ -442,7 +449,7 @@ export function materializeStarter(
   // A host whose ports are all on one system joins it (a supply diffuser is
   // on SA), so it is coloured and filtered with that system.
   const roles = new Set(starter.ports.filter(p => p.domain !== 'electrical').map(p => p.system_role));
-  if (!hostAttrs.system_type && roles.size >= 1) hostAttrs.system_type = [...roles].map(resolveSystemTag).join(',');
+  if (!hostAttrs.system_type && roles.size >= 1) hostAttrs.system_type = [...roles].map(r => resolveSystemTag(r, projectCodes)).join(',');
   // Drop the __starter_key sentinel from the persisted attrs.
   delete hostAttrs.__starter_key;
 
@@ -477,7 +484,7 @@ export function materializeStarter(
       shape: port.shape,
       size_w: String(port.size_w),
       size_h: port.size_h !== undefined ? String(port.size_h) : '',
-      system_type: resolveSystemTag(port.system_role),
+      system_type: resolveSystemTag(port.system_role, projectCodes),
       flow_dir: port.flow_dir,
       domain: port.domain,
     };

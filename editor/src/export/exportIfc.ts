@@ -50,6 +50,7 @@ import { effectiveMepLine } from '../model/mepFittingRender.ts';
 import type { MepNodeFacts } from '../elements/mep_node.tsx';
 import { furnitureSolids, mepNodeSolids } from './ifc/componentSolids.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
+import { systemPreset } from '../mep/systemPresets.ts';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
 import { layersUValue } from '../model/types/thermal.ts';
 import { steelWeightPerMetre } from '../families/sections/steelLibrary.ts';
@@ -222,8 +223,8 @@ const DEFAULT_PREDEFINED: Record<string, string> = {
 
 /** Electrical terminals without a system tag join these systems (IFC4 IfcDistributionSystemEnum by name). */
 const ELECTRICAL_SYSTEM: Record<string, string> = {
-  light_fixture: 'LIGHTING', emergency_light: 'LIGHTING',
-  power_outlet: 'POWER', switch: 'POWER', junction_box: 'POWER', data_outlet: 'DATA',
+  light_fixture: 'LTG', emergency_light: 'LTG',
+  power_outlet: 'PWR', switch: 'PWR', junction_box: 'PWR', data_outlet: 'DATA',
 };
 
 /** A void cut into a wall for a hosted door / window / opening. */
@@ -1708,11 +1709,21 @@ class Exporter {
       }
     }
     const defs: SystemDef[] = [...this.project.mepSystems];
-    for (const sys of this.systemMembers.keys()) {
-      if (!defs.some(d => d.system_type === sys)) {
+    // A tag joins the declared system of that code, or of another spelling of
+    // it (DHWS ports on a DHW system, untagged lights on LTG); only tags no
+    // system declares make a system of their own.
+    const members = new Map<string, H[]>();
+    for (const [sys, list] of this.systemMembers) {
+      let d = defs.find(x => x.system_type === sys);
+      const preset = d ? undefined : systemPreset(sys);
+      if (!d && preset) d = defs.find(x => systemPreset(x.system_type) === preset);
+      if (!d) {
         const electrical = Object.values(ELECTRICAL_SYSTEM).includes(sys);
-        defs.push({ id: `sys:${sys}`, system_type: sys, name: electrical ? cap(sys) : sys, color: '', discipline: electrical ? 'electrical' : '' });
+        d = { id: `sys:${sys}`, system_type: sys, name: preset?.en ?? (electrical ? cap(sys) : sys), color: '', discipline: preset?.discipline ?? (electrical ? 'electrical' : '') };
+        defs.push(d);
       }
+      const into = members.get(d.system_type);
+      if (into) into.push(...list); else members.set(d.system_type, [...list]);
     }
     const assigned = new Set<string>();
     for (const d of defs) {
@@ -1723,10 +1734,10 @@ class Exporter {
         : w.add('IfcSystem', w.guid(`system:${d.id}`), w.ownerHistory, name, null, w.label(d.system_type));
       w.add('IfcRelServicesBuildings', w.guid(this.relKey('services')), w.ownerHistory, null, null, handle, [this.building]);
       // Sub-systems sharing a tag: members go to the first.
-      const members = assigned.has(d.system_type) ? [] : this.systemMembers.get(d.system_type) ?? [];
+      const group = assigned.has(d.system_type) ? [] : members.get(d.system_type) ?? [];
       assigned.add(d.system_type);
-      if (members.length > 0) {
-        w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, members, null, handle);
+      if (group.length > 0) {
+        w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, group, null, handle);
       }
     }
   }

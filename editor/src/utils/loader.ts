@@ -422,6 +422,8 @@ function deriveMepSystems(
   globalLayers: LayerData[],
 ): SystemDef[] {
   const have = new Set(existing.map(s => s.system_type.trim()).filter(Boolean));
+  // Another spelling of a declared library system (DHWS on a DHW project) is that system, not a new one
+  const declaredPresets = new Set(existing.map(s => systemPreset(s.system_type)).filter(Boolean));
   const seen = new Set<string>();
   const found: string[] = [];
   const scan = (layers: LayerData[]) => {
@@ -432,7 +434,7 @@ function deriveMepSystems(
         if (!raw) continue;
         for (const part of raw.split(',')) {
           const v = part.trim();
-          if (!v || have.has(v) || seen.has(v)) continue;
+          if (!v || have.has(v) || seen.has(v) || declaredPresets.has(systemPreset(v))) continue;
           seen.add(v);
           found.push(v);
         }

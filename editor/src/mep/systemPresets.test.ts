@@ -91,3 +91,32 @@ describe('MEP system presets', () => {
     expect(MEP_SYSTEM_PRESETS.map(p => p.color)).toContain(by.XYZ.color);
   });
 });
+
+describe('one spelling per system (audit r3: lavatory DHWS ports on a DHW library system made a ghost system)', () => {
+  it('a placed fixture takes the project\'s spelling of its systems; without one, the default tag', async () => {
+    const { getStarter, materializeStarter } = await import('../elements/equipment_starters.ts');
+    const lav = getStarter('lavatory')!;
+    const tags = (codes?: string[]) => materializeStarter(lav, { x: 0, y: 0 }, 'lv-1', new Set(), undefined, undefined, codes)
+      .filter(e => e.tableName === 'connector').map(e => e.attrs.system_type).sort();
+    expect(tags()).toContain('DHWS');
+    const onDhw = tags(['DCW', 'DHW', 'SAN', 'VENT']);
+    expect(onDhw).toContain('DHW');
+    expect(onDhw).not.toContain('DHWS');
+    expect(onDhw).not.toContain('V');
+  });
+
+  it('a model tagging DHWS on a project declaring DHW gets no extra system; isolating DHW shows those elements', async () => {
+    const { inSystem } = await import('./mepView.ts');
+    const f = { ...files() };
+    f['global/mep_system.csv'] = 'id,system_type,name,color,discipline\nsys-1,DHW,Domestic Hot Water,,plumbing\n';
+    f['lv-1/pipe.csv'] = 'id,shape,size_x,system_type\npi-1,round,0.02,DHWS\n';
+    f['lv-1/pipe.geojson'] = JSON.stringify({ type: 'FeatureCollection', features: [
+      { type: 'Feature', properties: { id: 'pi-1' }, geometry: { type: 'LineString', coordinates: [[0, 3, 3], [4, 3, 3]] } },
+    ] });
+    const { memoryDataSource } = await import('../test/memoryDataSource.ts');
+    const project = await loadProject(memoryDataSource(f));
+    expect(project.mepSystems.map(s => s.system_type)).toEqual(['DHW']);
+    expect(inSystem('DHWS', 'DHW')).toBe(true);
+    expect(inSystem('DCW', 'DHW')).toBe(false);
+  });
+});
