@@ -62,7 +62,7 @@ function zOverlap(a0: number | undefined, a1: number | undefined, b0: number | u
 }
 
 /** Pairs of inserts on the same host whose spans along it overlap by more than `tol`. */
-export function insertOverlaps(inserts: CheckInsert[], tol: number): ModelProblem[] {
+export function insertOverlaps(inserts: CheckInsert[], tol: number, unit = 'm'): ModelProblem[] {
   const out: ModelProblem[] = [];
   const byHost = new Map<string, CheckInsert[]>();
   for (const e of inserts) {
@@ -87,7 +87,7 @@ export function insertOverlaps(inserts: CheckInsert[], tol: number): ModelProble
         if (!zOverlap(a.sill, aTop, b.sill, bTop, tol)) continue;
         out.push({
           code: 'insert_overlap', scope: a.scope, ids: [a.id, b.id], tables: [a.table, b.table], hostId: a.hostId, overlap,
-          message: `${a.id} and ${b.id} overlap on ${a.hostId} (${a.id}: ${fmt(aLo)}–${fmt(aHi)}m, ${b.id}: ${fmt(bLo)}–${fmt(bHi)}m)`,
+          message: `${a.id} and ${b.id} overlap on ${a.hostId} (${a.id}: ${fmt(aLo)}–${fmt(aHi)} ${unit}, ${b.id}: ${fmt(bLo)}–${fmt(bHi)} ${unit})`,
         });
       }
     }
@@ -103,7 +103,7 @@ const PARALLEL_SIN = 0.02;
  * overlap"): parallel, one's centre line inside the other's thickness, and
  * running side by side for more than `minOverlap`.
  */
-export function wallOverlaps(walls: CheckWall[], tol: number, minOverlap = tol * 10): ModelProblem[] {
+export function wallOverlaps(walls: CheckWall[], tol: number, minOverlap = tol * 10, unit = 'm'): ModelProblem[] {
   const out: ModelProblem[] = [];
   const items = walls
     .map(w => {
@@ -133,7 +133,7 @@ export function wallOverlaps(walls: CheckWall[], tol: number, minOverlap = tol *
       out.push({
         code: 'wall_overlap', scope: A.w.scope, ids: [A.w.id, B.w.id], tables: [A.w.table, B.w.table], overlap: hi - lo,
         at: { x: A.w.a.x + A.ux * m, y: A.w.a.y + A.uy * m },
-        message: `${A.w.id} and ${B.w.id} overlap for ${fmt(hi - lo)}m — one wall inside the other; delete or shorten one (room boundaries and quantities count both)`,
+        message: `${A.w.id} and ${B.w.id} overlap for ${fmt(hi - lo)} ${unit} — one wall inside the other; delete or shorten one (room boundaries and quantities count both)`,
       });
     }
   }
