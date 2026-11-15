@@ -875,6 +875,7 @@
   "mep.msg.self_loop": "{{table}} {{id}} starts and ends on the same connection ({{ref}})",
   "mep.msg.open_end": "{{table}} {{id}} has an open end ({{side}} is empty)",
   "mep.msg.dangling_ref": "{{table}} {{id}}.{{side}} = \"{{ref}}\" references a missing element",
+  "mep.msg.external_ref": "{{table}} {{id}} connects to {{ref}} on another level",
   "mep.msg.node_far": "{{table}} {{id}}.{{side}} references {{host}} but ends {{d}} away from it",
   "mep.msg.dangling_port": "{{table}} {{id}}.{{side}} = \"{{ref}}\": {{host}} has no port \"{{port}}\"",
   "mep.msg.port_far": "{{table}} {{id}}.{{side}} references {{ref}} but its nearest end is {{d}} from the port: move the end onto the port",

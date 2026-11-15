@@ -875,6 +875,7 @@
   "mep.msg.self_loop": "{{table}} {{id}} 首尾接在同一连接上（{{ref}}）",
   "mep.msg.open_end": "{{table}} {{id}} 有开口端（{{side}} 为空）",
   "mep.msg.dangling_ref": "{{table}} {{id}}.{{side}} = \"{{ref}}\" 引用的构件不存在",
+  "mep.msg.external_ref": "{{table}} {{id}} 连到其他楼层的 {{ref}}",
   "mep.msg.node_far": "{{table}} {{id}}.{{side}} 引用 {{host}}，但端点离它 {{d}}",
   "mep.msg.dangling_port": "{{table}} {{id}}.{{side}} = \"{{ref}}\"：{{host}} 没有端口 \"{{port}}\"",
   "mep.msg.port_far": "{{table}} {{id}}.{{side}} 引用 {{ref}}，但最近端点离端口 {{d}}：把端点移到端口上",
