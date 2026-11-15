@@ -30,3 +30,8 @@ fields:
     type: float
     computed: true
     description: Material volume (section × length / height, area × thickness), hydrated at query time.
+
+  - name: net_area
+    type: float
+    computed: true
+    description: Plan area net of inner rings and of the Polygon openings hosted on this slab, hydrated at query time.

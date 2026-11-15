@@ -34,7 +34,7 @@ public static class StructureTableExporters
             ["function", "thickness"],
             e =>
             {
-                var fields = new Dictionary<string, string?> { ["function"] = "floor" };
+                var fields = new Dictionary<string, string?> { ["function"] = SlabFunction(e) };
                 var thickness = e.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble();
                 fields["thickness"] = thickness is { } t ? UnitConverter.FormatDouble(UnitConverter.Length(t)) : null;
                 return fields;
@@ -45,6 +45,25 @@ public static class StructureTableExporters
             var structural = e.get_Parameter(BuiltInParameter.FLOOR_PARAM_IS_STRUCTURAL)?.AsInteger();
             return structural == 1;
         });
+
+    /// <summary>
+    /// "roof" for a floor that closes the building, else "floor": an explicit IFC
+    /// export class (Export to IFC As = IfcRoof / IfcSlab.ROOF), a type named as a
+    /// roof, or a slab on the top level of the model.
+    /// </summary>
+    public static string SlabFunction(Element e)
+    {
+        var ifcAs = $"{ParameterUtils.FindStringParameterByNames(e, "IfcExportAs", "Export to IFC As")} {ParameterUtils.FindStringParameterByNames(e, "IfcExportType", "Type IFC Predefined Type", "IFC Predefined Type")}";
+        if (ifcAs.Contains("ROOF", StringComparison.OrdinalIgnoreCase)) return "roof";
+        var typeName = e.Document.GetElement(e.GetTypeId())?.Name ?? "";
+        if (typeName.Contains("roof", StringComparison.OrdinalIgnoreCase) || typeName.Contains("屋面") || typeName.Contains("屋顶")) return "roof";
+        if (e.Document.GetElement(e.LevelId) is Level level)
+        {
+            var top = new FilteredElementCollector(e.Document).OfClass(typeof(Level)).Cast<Level>().Max(l => l.Elevation);
+            if (Math.Abs(level.Elevation - top) < 1e-6) return "roof";
+        }
+        return "floor";
+    }
 
     public static ITableExporter Beam() => new TableExporter(
         "beam",

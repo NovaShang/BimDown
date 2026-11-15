@@ -12,7 +12,7 @@ export { ID_PREFIXES };
 export const TYPE_TABLES = new Set([
   'wall_type', 'slab_type', 'roof_type', 'ceiling_type',
   'door_type', 'window_type', 'curtain_wall_type',
-  'column_type', 'beam_type', 'furniture_type', 'railing_type',
+  'column_type', 'beam_type', 'furniture_type', 'railing_type', 'foundation_type',
 ]);
 
 /** Type tables whose build-up is a stack of type_layer rows. */

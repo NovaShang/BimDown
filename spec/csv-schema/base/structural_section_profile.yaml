@@ -15,6 +15,13 @@ description: >
     l_shape: size_x = leg X length, size_y = leg Y length, thickness = leg thk
     c_shape: size_x = flange width, size_y = total depth, flange + web thicknesses
     cross:   size_x = arm length X, size_y = arm length Y, thickness = arm thk
+    rect_hollow:  size_x = width, size_y = depth, thickness = wall thk,
+                  root_radius = outer corner radius (RHS / SHS / rectangular HSS)
+    round_hollow: size_x = outside diameter, thickness = wall thk (CHS / round HSS)
+
+  `designation` names a catalogue section (HEA 300, W14X90, HSS8X8X1/2,
+  CHS 219.1x8); tools use it as the IFC ProfileName. Steel weight per metre =
+  section area (root fillets / rounded corners included) × 7850 kg/m³.
 
 fields:
   - name: shape
@@ -28,6 +35,8 @@ fields:
       - cross
       - i_shape
       - c_shape
+      - rect_hollow
+      - round_hollow
 
   - name: size_x
     type: float
@@ -45,4 +54,12 @@ fields:
 
   - name: thickness
     type: float
-    description: Leg / arm thickness — used by l_shape / cross.
+    description: Leg / arm thickness — used by l_shape / cross; wall thickness of rect_hollow / round_hollow.
+
+  - name: root_radius
+    type: float
+    description: Root fillet radius of i_shape / t_shape / c_shape / l_shape (web-flange or leg junction); outer corner radius of rect_hollow. Empty = sharp.
+
+  - name: designation
+    type: string
+    description: Catalogue section designation, e.g. HEA 300, IPE 300, W14X90, HSS8X8X1/2, CHS 219.1x8. Used as the IFC ProfileName.

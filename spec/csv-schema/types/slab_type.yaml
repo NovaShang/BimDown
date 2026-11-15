@@ -3,4 +3,7 @@ bases:
   - layered_type
 type_of: [slab, structure_slab]
 
-fields: []
+fields:
+  - name: material_grade
+    type: string
+    description: Strength grade structure_slab instances inherit, e.g. C30.

@@ -1,0 +1,36 @@
+name: foundation_type
+bases:
+  - element_type
+  - materialized
+type_of: [foundation]
+description: >
+  Foundation type (Revit isolated / wall / pile families): kind and sizes
+  shared by the foundations that reference it, e.g. "Pad 2000 x 2000 x 600 C30"
+  or "Bored pile Ø600 x 15 m".
+
+fields:
+  - name: kind
+    type: enum
+    values:
+      - pad
+      - strip
+      - raft
+      - pile_cap
+      - pile
+    description: Foundation kind the type's instances inherit (empty = from geometry).
+
+  - name: width
+    type: float
+    description: Pad size along X / pile diameter / strip width.
+
+  - name: length
+    type: float
+    description: Pad size along Y (empty = width); rectangular pile size along Y.
+
+  - name: thickness
+    type: float
+    description: Depth below the top face (pile = pile length).
+
+  - name: material_grade
+    type: string
+    description: Strength grade, e.g. C30.

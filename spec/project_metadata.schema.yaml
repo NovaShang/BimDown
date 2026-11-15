@@ -60,3 +60,10 @@ fields:
       Discipline the editor opens the project in, e.g. "mep" for an imported
       MEP model (written by `import-ifc` for MEP / structural models).
       Default architecture.
+  - name: numbering
+    type: object
+    description: |
+      Auto-numbering (marks) per table: table name → prefix, e.g.
+      {"structure_column": "KZ", "beam": "KL", "foundation": "J", "equipment": "AHU-"}.
+      Tools that number elements write `number` = prefix + 1, 2, 3 … (doors and
+      rooms: level number + sequence). Missing tables use the tool defaults.

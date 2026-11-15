@@ -105,6 +105,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `beam`             | Spatial line | `LineString` 3D | Structural beam |
 | `brace`            | Spatial line | `LineString` 3D | Structural brace |
 | `foundation`       | Mixed      | `Point`/`LineString`/`Polygon` 2D | Unified foundation (geometry type chooses form) |
+| `beam_system`      | Polygon    | `Polygon` 2D | Associative infill beams across a bay: `spacing`, `direction`, `type_id`; its beams carry `beam_system_id` and are regenerated when it changes |
 
 ### MEP
 
@@ -270,6 +271,7 @@ All elements use prefixed short IDs: `{prefix}-{n}`. Counters are 1-based per ta
 | `wall_type` / `slab_type` / `roof_type` / `ceiling_type` | `wt` / `slt` / `rot` / `clt` | `wt-ext-concrete-eps` |
 | `door_type` / `window_type` / `curtain_wall_type` | `dt` / `wnt` / `cwt` | `dt-single-900` |
 | `column_type` / `beam_type` | `colt` / `bmt` | `bmt-steel-ipe-300` |
+| `foundation_type` | `fdt` | `fdt-pad-2000` |
 | `furniture_type` | `fut` | `fut-desk-1600` |
 | `railing_type` | `rlt` | `rlt-steel-1000` |
 | `type_layer` | `tl` | `tl-1` |
@@ -294,7 +296,7 @@ Architectural and structural elements are fully independent. `structure_column`,
 ### Section Profiles
 
 - Architecture columns use `section_profile` (rect/round).
-- Structural elements use `structural_section_profile` with engineering shapes (I, T, L, C, cross).
+- Structural elements use `structural_section_profile` with engineering shapes (I, T, L, C, cross, `rect_hollow` RHS/SHS, `round_hollow` CHS; `thickness` = wall thickness), optional `root_radius` (root fillet / RHS outer corner) and `designation` (catalogue name such as HEA 300, W14X90, CHS 219.1x8, used as the IFC ProfileName). Computed `weight` (kg) on columns / beams / braces = volume × material density (steel 7850 kg/m³).
 - Section attributes (`shape`, `size_x`, `size_y`) live in CSV. Point-element orientation (`rotation`) lives in GeoJSON `properties` if non-zero.
 
 ### Two Geometry Encodings (SVG and GeoJSON)
@@ -331,7 +333,9 @@ Rather than separate types for isolated/strip/raft foundations, a single `founda
 
 The top face is level + `base_offset`; the body hangs down by `thickness` (a pile's length).
 
-Structural tables also carry an optional `material_grade` (C30, Q355, GL24h…) next to `material`, and `structure_slab.span_direction` (degrees CCW from +X) marks a one-way slab or deck. `volume` is computed at query time for structural tables.
+Structural tables also carry an optional `material_grade` (C30, Q355, GL24h…) next to `material`, and `structure_slab.span_direction` (degrees CCW from +X) marks a one-way slab or deck. `volume` is computed at query time for structural tables; slabs also get `net_area` (inner rings and hosted Polygon openings deducted), and slab volume uses it.
+
+Marks (`number`) can be generated per category; `project_metadata.json` `numbering` maps a table (or `table.kind`: `foundation.pile`, `equipment.ahu`, `beam.secondary`) to its prefix.
 
 ### Opening: Wall and Slab Voids
 
@@ -443,8 +447,9 @@ Like Revit family types: a named set of defaults that many elements share. All t
 | `door_type` | `door` | `width`, `height`, `operation`, `material`; type-only `frame_width`, `u_value`, `shgc`, `vt` |
 | `window_type` | `window` | same as `door_type` |
 | `curtain_wall_type` | `curtain_wall` | `u_spacing`, `v_spacing`, `panel_material`, `solid_material`, `mullion_width`, `mullion_depth`, `mullion_profile`, `material`; type-only thermal |
-| `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `material` |
+| `column_type` | `column`, `structure_column` | `shape`, `size_x`, `size_y`, `flange`, `web`, `thickness`, `root_radius`, `designation`, `material`, `material_grade` |
 | `beam_type` | `beam`, `brace` | same as `column_type` |
+| `foundation_type` | `foundation` | `kind`, `width`, `length`, `thickness`, `material`, `material_grade` |
 | `furniture_type` | `furniture` | `family`, `variant`, `size_x`, `size_y`, `height` |
 | `railing_type` | `railing` | `height`, `baluster_spacing`, `material`; type-only `top_rail_shape`, `top_rail_size`, `infill` (balusters/glass/none), `baluster_size` |
 

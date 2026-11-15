@@ -6,7 +6,7 @@ export const ID_PREFIXES: Record<string, string> = {
   ramp: 'rp', railing: 'rl', room_separator: 'rs',
   curtain_wall: 'cw', roof: 'ro', ceiling: 'cl', opening: 'op',
   structure_wall: 'sw', structure_column: 'sc', structure_slab: 'ss',
-  beam: 'bm', brace: 'br', foundation: 'f',
+  beam: 'bm', brace: 'br', foundation: 'f', beam_system: 'bs',
   duct: 'du', pipe: 'pi', cable_tray: 'ct', conduit: 'co',
   equipment: 'eq', terminal: 'tm', mep_node: 'mn',
   connector: 'cn', circuit: 'ci',
@@ -17,6 +17,7 @@ export const ID_PREFIXES: Record<string, string> = {
   wall_type: 'wt', slab_type: 'slt', roof_type: 'rot', ceiling_type: 'clt',
   door_type: 'dt', window_type: 'wnt', curtain_wall_type: 'cwt',
   column_type: 'colt', beam_type: 'bmt', furniture_type: 'fut', railing_type: 'rlt',
+  foundation_type: 'fdt',
   type_layer: 'tl',
   // Annotations
   dimension: 'dm', text_note: 'tx', tag: 'tg',

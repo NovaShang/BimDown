@@ -38,7 +38,7 @@ public static class ArchitectureTableExporters
                 var fields = new Dictionary<string, string?>();
                 if (e is Floor floor)
                 {
-                    fields["function"] = "floor";
+                    fields["function"] = StructureTableExporters.SlabFunction(floor);
                     var thickness = floor.get_Parameter(BuiltInParameter.FLOOR_ATTR_THICKNESS_PARAM)?.AsDouble();
                     fields["thickness"] = thickness is { } t ? UnitConverter.FormatDouble(UnitConverter.Length(t)) : null;
                 }

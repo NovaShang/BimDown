@@ -19,3 +19,8 @@ fields:
     type: float
     computed: true
     description: Material volume (section × length / height, area × thickness), hydrated at query time.
+
+  - name: weight
+    type: float
+    computed: true
+    description: Mass in kg (volume × material density, steel 7850 kg/m³), hydrated at query time.

@@ -1,4 +1,4 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { DuckDBConnection } from '@duckdb/node-api';
 import { buildRegistry, getSpecDir, GEOJSON_FILE_NAMES, SPATIAL_3D_TABLES, LAYERED_TYPE_TABLES } from '../schema/registry.js';
@@ -14,15 +14,21 @@ import {
   featureId,
   type BimDownFeature,
 } from '../utils/geojson.js';
-import { injectVolume } from './volume.js';
+import { injectSlabNetArea, injectVolume } from './volume.js';
 import { runQuery } from './engine.js';
 
 const INSERT_BATCH_SIZE = 500;
+/** Polygon tables whose `net_area` deducts hosted openings. */
+const SLAB_TABLES = new Set(['slab', 'structure_slab']);
 
 export async function hydrate(conn: DuckDBConnection, dir: string): Promise<string[]> {
   const registry = buildRegistry(getSpecDir());
   const layout = discoverLayout(dir);
   const tables: string[] = [];
+  let unit: string | undefined;
+  try {
+    unit = JSON.parse(readFileSync(join(dir, 'project_metadata.json'), 'utf-8')).units;
+  } catch { /* no metadata: metres */ }
 
   const allDirs = [
     { name: 'global', path: layout.globalDir },
@@ -91,7 +97,14 @@ export async function hydrate(conn: DuckDBConnection, dir: string): Promise<stri
       // Furniture keeps its (overall) height in CSV: Z extent = level + base_offset + height.
       await injectZExtent(conn, name, name === 'furniture' || table.computedFields.some((f) => f.name === 'height'));
     }
-    await injectVolume(conn, name);
+    if (!SLAB_TABLES.has(name)) await injectVolume(conn, name, unit);
+  }
+  // Slabs last: their net area deducts the openings they host.
+  const hasOpenings = tables.includes('opening');
+  for (const name of tables) {
+    if (!SLAB_TABLES.has(name)) continue;
+    await injectSlabNetArea(conn, name, hasOpenings);
+    await injectVolume(conn, name, unit);
   }
 
   return tables;

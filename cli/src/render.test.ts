@@ -75,4 +75,30 @@ describe('renderLevel', () => {
     expect(lineOf('ss-1').match(/M /g)).toHaveLength(2);
     expect(svg.indexOf('id="f-1"')).toBeLessThan(svg.indexOf('id="ss-1"'));
   });
+
+  it('draws steel and hollow sections at their outline and the slab span arrow', () => {
+    const lv = setup();
+    const fcOf = (features: unknown[]) => JSON.stringify({ type: 'FeatureCollection', features });
+    const pt = (id: string, c: number[]) => ({ type: 'Feature', properties: { id }, geometry: { type: 'Point', coordinates: c } });
+    writeFileSync(join(testDir, 'global', 'column_type.csv'), 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\n'
+      + 'colt-1,CHS 219.1x8,,steel,round_hollow,0.2191,,,,0.008,,CHS 219.1x8,S355\n');
+    writeFileSync(join(lv, 'structure_column.csv'), 'id,number,shape,size_x,size_y,flange,web,thickness,type_id\n'
+      + 'sc-1,,i_shape,0.3,0.29,0.014,0.0085,,\nsc-2,,rect_hollow,0.2,0.2,,,0.01,\nsc-3,,,,,,,,colt-1\n');
+    writeFileSync(join(lv, 'structure_column.geojson'), fcOf([pt('sc-1', [0, 0]), pt('sc-2', [5, 0]), pt('sc-3', [10, 0])]));
+    writeFileSync(join(lv, 'structure_slab.csv'), 'id,number,thickness,span_direction\nss-1,,0.2,90\n');
+    writeFileSync(join(lv, 'structure_slab.geojson'), fcOf([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [
+      [[0, 0], [10, 0], [10, 5], [0, 5], [0, 0]]] } }]));
+    const svg = renderLevel(testDir, 'lv-1');
+    const lineOf = (id: string) => svg.split('\n').find((l) => l.includes(`id="${id}"`))!;
+    // I: 12-point outline; RHS and CHS (typed): outer + inner ring, even-odd
+    expect(lineOf('sc-1').match(/ L /g)).toHaveLength(11);
+    expect(lineOf('sc-2').match(/M /g)).toHaveLength(2);
+    expect(lineOf('sc-2')).toContain('fill-rule="evenodd"');
+    expect(lineOf('sc-3').match(/M /g)).toHaveLength(2);
+    expect(lineOf('sc-3')).toContain('M 10.11,0');
+    // Span arrow along +Y through the centroid (5, 2.5)
+    const span = lineOf('ss-1-span');
+    expect(span).toContain('M 5,1.5 L 5,3.5');
+  });
 });
+

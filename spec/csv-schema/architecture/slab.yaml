@@ -18,3 +18,8 @@ fields:
     type: reference
     reference: slab_type
     description: Optional slab_type id. Empty type parameters (thickness, material) inherit the type's value; a set value overrides it for this element.
+
+  - name: net_area
+    type: float
+    computed: true
+    description: Plan area net of inner rings and of the Polygon openings hosted on this slab, hydrated at query time.

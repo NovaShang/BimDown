@@ -22,7 +22,7 @@ const ROOT_NOTE_FILE = /^(LICEN[CS]E|COPYING|NOTICE|README|CREDITS)(\.(txt|md))?
 const MIN_FORMAT_VERSION = 2;
 
 /** Fields of project_metadata.json — keep in sync with spec/project_metadata.schema.yaml. */
-export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'project_number', 'client', 'address', 'units', 'source', 'spatial_z', 'discipline'];
+export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'project_number', 'client', 'address', 'units', 'source', 'spatial_z', 'discipline', 'numbering'];
 
 export function validateStructure(dir: string): string[] {
   const issues: string[] = [];
@@ -156,6 +156,12 @@ export function validateStructure(dir: string): string[] {
         }
         if (metadata.spatial_z !== undefined && metadata.spatial_z !== 'absolute') {
           issues.push(`project_metadata.json  invalid "spatial_z": ${JSON.stringify(metadata.spatial_z)} — must be "absolute"`);
+        }
+        if (metadata.numbering !== undefined) {
+          const nb = metadata.numbering;
+          if (typeof nb !== 'object' || nb === null || Array.isArray(nb) || Object.values(nb).some((v) => typeof v !== 'string')) {
+            issues.push('project_metadata.json  invalid "numbering" — must be an object of table name → prefix string');
+          }
         }
         if (metadata.units !== undefined) {
           const validUnits = ['m', 'ft', 'in', 'mm'];

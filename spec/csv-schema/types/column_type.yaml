@@ -6,4 +6,7 @@ bases:
 type_of: [column, structure_column]
 description: Section profile type. An architectural column accepts only the rect and round shapes.
 
-fields: []
+fields:
+  - name: material_grade
+    type: string
+    description: Strength grade the type's instances inherit, e.g. C40 (concrete), Q355 / S355 / A992 (steel), GL24h (timber).
