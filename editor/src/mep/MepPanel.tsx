@@ -23,8 +23,9 @@ import { reservedIds } from './reservedIds.ts';
 import { transitionAtPort } from './transitions.ts';
 import { panelLabel } from '../schedule/mepSchedules.ts';
 import { drawingLang } from '../export/drawing/labels.ts';
+import ClashTab from './ClashTab.tsx';
 
-type Tab = 'systems' | 'check' | 'circuits';
+type Tab = 'systems' | 'check' | 'circuits' | 'clash';
 type MepCurve = LineElement | SpatialLineElement;
 
 const btn = 'cursor-pointer rounded border border-border bg-transparent px-1.5 py-[1px] text-[10px] text-muted-foreground hover:bg-accent hover:text-foreground disabled:opacity-40';
@@ -68,7 +69,7 @@ export default function MepPanel() {
   return (
     <div className="glass-panel flex shrink-0 max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]" data-testid="mep-panel">
       <div className="flex shrink-0 flex-wrap items-center gap-1 px-3 pb-1 pt-2">
-        {(['systems', 'check', 'circuits'] as Tab[]).map(k => (
+        {(['systems', 'check', 'circuits', 'clash'] as Tab[]).map(k => (
           <button key={k} type="button" onClick={() => setTab(k)}
             className={cn('shrink-0 cursor-pointer whitespace-nowrap rounded border-none px-2 py-[2px] text-[10px] font-semibold uppercase tracking-[0.06em]',
               tab === k ? 'bg-accent text-foreground' : 'bg-transparent text-muted-foreground hover:text-foreground')}>
@@ -124,6 +125,7 @@ export default function MepPanel() {
             onCreate={c => dispatch({ type: 'CREATE_ELEMENTS', elements: [c], description: 'New circuit', selectPrimary: false })}
             onAssign={(ids, circuitId) => dispatch({ type: 'UPDATE_ATTRS_MANY', ids, attrs: { circuit_id: circuitId } })} />
         )}
+        {tab === 'clash' && <ClashTab />}
         <SelectedRun elements={elements} selectedIds={selectedIds} readonly={readonly}
           onApply={el => dispatch({ type: 'APPLY_PATCH', patches: new Map([[el.id, el]]), description: 'Apply suggested size' })} />
       </div>
