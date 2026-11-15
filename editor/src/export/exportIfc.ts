@@ -121,6 +121,7 @@ const EQUIPMENT_4: Record<string, [string, string]> = {
   vav: ['IfcAirTerminalBox', 'VARIABLEFLOWPRESSUREDEPENDANT'],
   chiller: ['IfcChiller', 'NOTDEFINED'], boiler: ['IfcBoiler', 'NOTDEFINED'],
   cooling_tower: ['IfcCoolingTower', 'NOTDEFINED'], fan: ['IfcFan', 'NOTDEFINED'], pump: ['IfcPump', 'NOTDEFINED'],
+  coil: ['IfcCoil', 'NOTDEFINED'],
   transformer: ['IfcTransformer', 'NOTDEFINED'], panelboard: ['IfcElectricDistributionBoard', 'NOTDEFINED'],
   generator: ['IfcElectricGenerator', 'NOTDEFINED'], water_heater: ['IfcBoiler', 'WATER'], tank: ['IfcTank', 'NOTDEFINED'],
 };

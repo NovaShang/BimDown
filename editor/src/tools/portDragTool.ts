@@ -13,18 +13,16 @@
  * users don't pick "port drag" from the toolbar; they just grab a port.
  */
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
-import type { MepCurveElement } from '../utils/pipeBodyHit.ts';
 import type { ToolContext } from './types.ts';
 import { gatherConnectorSnapPoints } from '../utils/connectorSnap.ts';
-import { orthoRoute, materialiseRoute } from '../utils/orthoRoute.ts';
+import { orthoRoute } from '../utils/orthoRoute.ts';
+import { continueRoute, endRoute, isGravitySystem, rememberedRouteAttrs, startRoute, DEFAULT_DRAIN_SLOPE, SLOPE_KEY, type RouteApi } from '../mep/routeTool.ts';
+import { getDefaultDrawingAttrs } from '../model/drawingSchema.ts';
+import type { DrawingState } from '../state/editorTypes.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { findPipeBodyHit, type PipeBodyHit } from '../utils/pipeBodyHit.ts';
-import { generateId } from '../model/ids.ts';
-import { reservedIds } from '../mep/reservedIds.ts';
-import { defaultAttrs } from '../model/defaults.ts';
-import { splitCurveAt } from '../model/mepSplit.ts';
 
 interface PortDragState {
   /** True while the gesture is in flight. */
@@ -240,183 +238,81 @@ export function updatePortDrag(ctx: ToolContext, e: React.PointerEvent): void {
   notify();
 }
 
-/** Resolve the gesture on pointer-up. Materialises a pipe run when the
- *  cursor landed on a valid target; otherwise quietly cancels. */
+/** Resolve the gesture on pointer-up. Materialises a run through the MEP
+ *  router (same heights, rise / drop, slope, transitions and tees as the
+ *  routing tool) along an orthogonal polyline; otherwise quietly cancels. */
 export function finishPortDrag(ctx: ToolContext): void {
   if (!state.active) return;
-
-  const snap = ctx.getState();
-  const elements = snap.document?.elements;
-
-  // ─── Case 1: T-junction — cursor on another pipe's body ─────────────────
-  if (state.pipeHit && elements && !state.targetRef) {
-    // Single id-allocation pool: split-target + new-downstream + new-node +
-    // every pipe / elbow that materialiseRoute is about to mint must all
-    // pull from the same set so two distinct rows never share an id.
-    const existingIds = reservedIds(elements);
-    const patch = buildTJunctionPatch(state.pipeHit, existingIds);
-    if (patch) {
-      const polyline = orthoRoute(state.origin, state.pipeHit.point, {
-        sourceDir: state.outwardDir,
-      });
-      if (polyline.length >= 2) {
-        const created = materialiseRoute(polyline, {
-          tableName: state.pipeTable,
-          discipline: 'mep',
-          z: state.z,
-          endZ: patch.z,
-          fromRef: state.fromRef,
-          toRef: patch.newNodeId,
-          systemType: state.systemType,
-          shape: state.shape || (state.pipeTable === 'pipe' ? 'round' : 'rect'),
-          sizeX: state.sizeX || '0.05',
-          sizeY: state.sizeY || state.sizeX || '0.05',
-          levelId: state.levelId,
-        }, existingIds);
-
-        const patches = new Map<string, CanonicalElement | null>();
-        patches.set(patch.originalPipeId, patch.updatedOriginal);
-        patches.set(patch.newDownstreamId, patch.newDownstream);
-        patches.set(patch.newNodeId, patch.newNode);
-        for (const el of created) patches.set(el.id, el);
-
-        ctx.dispatch({
-          type: 'APPLY_PATCH',
-          description: 'Insert T-junction',
-          patches,
-        });
-      }
-    }
-    reset();
-    return;
-  }
-
+  const elements = ctx.getState().document?.elements;
   let polyline: Point[] | null = null;
-  let toRef: string | null = null;
-  let targetZ: number | undefined;
+  let toRef: string | undefined;
 
   if (state.targetRef && elements) {
-    // Determine target outward dir for orthoRoute hint.
     const targetCp = gatherConnectorSnapPoints(elements).find((cp) => cp.portRef === state.targetRef);
-    polyline = orthoRoute(state.origin, state.cursor, {
+    polyline = orthoRoute(state.origin, targetCp ? targetCp.pos : state.cursor, {
       sourceDir: state.outwardDir,
       targetDir: targetCp ? { x: targetCp.dir.x, y: targetCp.dir.y } : undefined,
     });
-    // Snap polyline's terminal vertex to the target port's true position.
-    if (targetCp && polyline.length >= 2) {
-      polyline[polyline.length - 1] = { x: targetCp.pos.x, y: targetCp.pos.y };
-      // Adjust the bend to stay axis-aligned with the corrected endpoint.
-      if (polyline.length === 3) {
-        const firstAxis = Math.abs(polyline[1].x - polyline[0].x) > Math.abs(polyline[1].y - polyline[0].y) ? 'h' : 'v';
-        polyline[1] = firstAxis === 'h'
-          ? { x: polyline[2].x, y: polyline[0].y }
-          : { x: polyline[0].x, y: polyline[2].y };
-      }
-    }
     toRef = state.targetRef;
-    targetZ = targetCp?.z;
+  } else if (state.pipeHit && elements) {
+    // T-junction: the router tees into the run's body (with a rise / drop to its height).
+    polyline = orthoRoute(state.origin, state.pipeHit.point, { sourceDir: state.outwardDir });
   } else {
-    // Cursor on empty space: create an open-ended pipe to where the user
-    // released. Any drag at all (>= 1 mm) qualifies — the gesture itself
-    // has already passed selectTool's MOVE_THRESHOLD check, so we only
-    // reject the degenerate "pointer-up without a single move event" case.
-    const dx = state.cursor.x - state.origin.x;
-    const dy = state.cursor.y - state.origin.y;
-    if (Math.hypot(dx, dy) < 0.001) {
-      reset();
-      return;
-    }
+    // Cursor on empty space: an open-ended run to where the user released.
+    if (Math.hypot(state.cursor.x - state.origin.x, state.cursor.y - state.origin.y) < 0.001) { reset(); return; }
     polyline = orthoRoute(state.origin, state.cursor, { sourceDir: state.outwardDir });
   }
-
-  if (!polyline || polyline.length < 2) {
-    reset();
-    return;
-  }
-
-  const existingIds = new Set(elements?.keys() ?? []);
-  const created = materialiseRoute(polyline, {
-    tableName: state.pipeTable,
-    discipline: 'mep',
-    z: state.z,
-    endZ: targetZ,
-    fromRef: state.fromRef,
-    toRef,
-    systemType: state.systemType,
-    shape: state.shape || (state.pipeTable === 'pipe' ? 'round' : 'rect'),
-    sizeX: state.sizeX || '0.05',
-    sizeY: state.sizeY || state.sizeX || '0.05',
-    levelId: state.levelId,
-  }, existingIds);
-
-  if (created.length > 0) {
-    ctx.dispatch({
-      type: 'CREATE_ELEMENTS',
-      elements: created,
-      description: 'Draw pipe from port',
-      selectPrimary: false,
-    });
-  }
+  if (polyline && polyline.length >= 2) routeAlong(ctx, polyline, toRef);
   reset();
 }
 
-/** Build the three-row patch that converts a pipe body hit into a T-junction.
- *  Returns null if the pipe shouldn't be split (e.g. degenerate hit). */
-interface TJunctionPatch {
-  originalPipeId: string;
-  updatedOriginal: MepCurveElement;
-  newDownstreamId: string;
-  newDownstream: MepCurveElement;
-  newNodeId: string;
-  newNode: PointElement;
-  /** Height of the tee (the run's height there). */
-  z: number;
-}
-
-function buildTJunctionPatch(
-  hit: PipeBodyHit,
-  existingIds: Set<string>,
-): TJunctionPatch | null {
-  const original = hit.pipe;
-  const newNodeId = generateId('mep_node', existingIds);
-  existingIds.add(newNodeId);
-  const newPipeId = generateId(original.tableName, existingIds);
-  existingIds.add(newPipeId);
-
-  const splitPoint = hit.point;
-
-  // Upstream half retains the original id (so external references survive
-  // the undo/redo round-trip cleanly); the downstream half is a new row.
-  // Both keep the run's slope (split height interpolated).
-  const { upstream: updatedOriginal, downstream: newDownstream, z } = splitCurveAt(original, splitPoint, newNodeId, newPipeId);
-
-  const baseNodeAttrs = defaultAttrs('mep_node', /* level inferred from pipe row */ '');
-  const newNode: PointElement = {
-    id: newNodeId,
-    tableName: 'mep_node',
-    discipline: original.discipline,
-    geometry: 'point',
-    position: { x: splitPoint.x, y: splitPoint.y },
-    width: 0,
-    height: 0,
-    attrs: {
-      ...baseNodeAttrs,
-      id: newNodeId,
-      system_type: original.attrs.system_type ?? '',
-      kind: '',
-      base_offset: String(z),
+/**
+ * Drive the router (mep/routeTool.ts) along `polyline` from the source port
+ * on a scratch drawing state, then create everything in one undo step.
+ */
+function routeAlong(ctx: ToolContext, polyline: Point[], toRef: string | undefined): void {
+  const table = state.pipeTable;
+  const remembered = rememberedRouteAttrs(table);
+  const live = ctx.getState();
+  const attrs: Record<string, string> = {
+    ...getDefaultDrawingAttrs(table, live.currentLevel, live.project?.levels),
+    system_type: state.systemType,
+    shape: state.shape || (table === 'pipe' || table === 'conduit' ? 'round' : 'rect'),
+    size_x: state.sizeX || '0.05',
+    size_y: state.sizeY || state.sizeX || '0.05',
+    start_z: String(state.z),
+  };
+  // Drainage keeps falling at the slope last used for pipes.
+  if (table === 'pipe' && isGravitySystem(state.systemType)) attrs[SLOPE_KEY] = remembered[SLOPE_KEY] || String(DEFAULT_DRAIN_SLOPE);
+  const scratch: { drawingAttrs: Record<string, string>; drawingState: DrawingState | null } = { drawingAttrs: attrs, drawingState: null };
+  const created: CanonicalElement[] = [];
+  const api: RouteApi = {
+    dispatch: (a) => {
+      if (a.type === 'SET_DRAWING_ATTRS') scratch.drawingAttrs = a.attrs;
+      else if (a.type === 'SET_DRAWING_STATE') scratch.drawingState = a.state;
+      else if (a.type === 'CREATE_ELEMENTS') created.push(...a.elements);
+      else ctx.dispatch(a);
+    },
+    getState: () => {
+      const s = ctx.getState();
+      const doc = s.document;
+      const elements = new Map(doc?.elements ?? []);
+      for (const el of created) elements.set(el.id, el);
+      return {
+        ...s, document: doc ? { ...doc, elements } : doc,
+        drawingTarget: { tableName: table, discipline: 'mep' },
+        drawingAttrs: scratch.drawingAttrs, drawingState: scratch.drawingState,
+      };
     },
   };
-
-  return {
-    originalPipeId: original.id,
-    updatedOriginal,
-    newDownstreamId: newPipeId,
-    newDownstream,
-    newNodeId,
-    newNode,
-    z,
-  };
+  startRoute(api, polyline[0], state.fromRef);
+  for (let i = 1; i < polyline.length && scratch.drawingState?.points.length; i++) {
+    continueRoute(api, polyline[i], i === polyline.length - 1 ? toRef : undefined);
+  }
+  endRoute();
+  if (created.length > 0) {
+    ctx.dispatch({ type: 'CREATE_ELEMENTS', elements: created, description: 'Draw run from port', selectPrimary: false });
+  }
 }
 
 export function cancelPortDrag(): void {

@@ -13,6 +13,9 @@ import { cn } from '../lib/utils';
 import AddLevelDialog from './AddLevelDialog.tsx';
 import ConfirmDialog from './ConfirmDialog.tsx';
 import MepSystemDialog from './MepSystemDialog.tsx';
+import MepSystemPresetsDialog from './MepSystemPresetsDialog.tsx';
+import { usedSystemCodes } from '../mep/systemPresets.ts';
+import { collectLevels } from '../schedule/quantities.ts';
 import MepPanel from '../mep/MepPanel.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { formatElevation, getProjectUnits } from '../utils/units.ts';
@@ -182,6 +185,13 @@ export default function LeftPanel({
   /** When non-null, opens the MEP system dialog. `null` slot is the add path;
    *  passing an existing SystemDef opens it in edit mode. */
   const [mepSystemDialog, setMepSystemDialog] = useState<{ open: boolean; initial?: SystemDef }>({ open: false });
+  /** System library picker; holds the system codes the model uses while open. */
+  const [presetCodes, setPresetCodes] = useState<Set<string> | null>(null);
+  const openPresets = () => {
+    if (!project) return;
+    const { levels, global } = collectLevels(project, editorState.document?.levelId, editorState.document?.elements);
+    setPresetCodes(usedSystemCodes([...global, ...levels.flatMap(l => l.elements)]));
+  };
 
   // Persist any change to MEP systems via the data source. Dispatch updates
   // local state immediately so the legend re-renders before the file write
@@ -351,6 +361,16 @@ export default function LeftPanel({
               <span className="text-[9px] text-muted-foreground tabular-nums">{mepSystems.length}</span>
               {!readonly && (
                 <button
+                  className="flex h-4 cursor-pointer items-center justify-center rounded border-none bg-transparent px-1 text-[9px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={openPresets}
+                  title={t('panel.mepSystem.presetsHint')}
+                  data-testid="mep-system-presets-open"
+                >
+                  {t('panel.mepSystem.presets')}
+                </button>
+              )}
+              {!readonly && (
+                <button
                   className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   onClick={() => setMepSystemDialog({ open: true })}
                   title={t('panel.addMepSystem', 'Add system')}
@@ -364,6 +384,10 @@ export default function LeftPanel({
             {mepSystems.length === 0 ? (
               <div className="px-2 py-3 text-center text-[10px] text-muted-foreground/70">
                 {t('panel.mepSystem.empty', 'No systems yet — click + to add one.')}
+                {!readonly && (
+                  <button type="button" className="mt-1 block w-full cursor-pointer border-none bg-transparent p-0 text-[10px] text-[var(--color-accent)] hover:underline"
+                    onClick={openPresets}>{t('panel.mepSystem.addPresets')}</button>
+                )}
               </div>
             ) : (
               <div className="flex flex-col gap-px">
@@ -417,6 +441,14 @@ export default function LeftPanel({
         initial={mepSystemDialog.initial}
         onClose={() => setMepSystemDialog({ open: false })}
         onConfirm={handleMepSystemSubmit}
+        existing={mepSystems}
+      />
+      <MepSystemPresetsDialog
+        open={presetCodes !== null}
+        onClose={() => setPresetCodes(null)}
+        existing={mepSystems}
+        usedCodes={presetCodes ?? new Set()}
+        onAdd={rows => saveMepSystems([...mepSystems, ...rows])}
       />
 
       {/* Add Level Dialog */}

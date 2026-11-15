@@ -8,6 +8,7 @@ import { Button } from './ui/button';
 import { Separator } from './ui/separator';
 import { Icon } from './Icons.tsx';
 import { LevelSelect } from './LevelSelect.tsx';
+import { MepSizeInput, isMepSizeField } from '../mep/MepSizeInput.tsx';
 import { NumberInput } from './NumberInput.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
@@ -153,6 +154,9 @@ export default function DrawingPropertiesBar() {
                 ))}
               </SelectContent>
             </Select>
+          ) : isMepSizeField(target.tableName, f.key) ? (
+            <MepSizeInput table={target.tableName} sizeKey={f.key} attrs={attrs} value={attrs[f.key] ?? ''} unit={projectUnit}
+              onChange={v => handleChange(f.key, v)} className={`${fieldInputClass} w-[60px]`} />
           ) : f.type === 'number' ? (
             <div className="flex items-center gap-1">
               <NumberInput

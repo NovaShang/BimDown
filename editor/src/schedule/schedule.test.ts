@@ -78,7 +78,7 @@ describe('schedules', () => {
     const rows = (k: string) => scheduleRows(cat(k), state.project!, 'm', name, 'lv-1', state.document!.elements);
     const circuits = rows('circuits');
     expect(circuits.map(r => [r.id, r.values.panel, r.values.devices, r.values.load_w])).toEqual([['ci-1', 'DB-1', 2, 100], ['ci-2', 'DB-1', 0, 0]]);
-    expect(rows('accessories').map(r => [r.id, r.values.kind])).toEqual([['mn-2', 'gate_valve']]);
+    expect(rows('accessories').map(r => [r.id, r.values.kind])).toEqual([['mn-2', 'Gate Valve']]);
     expect(rows('mep').find(r => r.id === 'pi-1')!.values.insulation).toBe(0.025);
   });
 

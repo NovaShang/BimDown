@@ -21,7 +21,7 @@
  */
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement } from './elements.ts';
 import { generateId } from './ids.ts';
-import { isMepLineTable } from './mepTopology.ts';
+import { isMepLineTable, systemsJoin } from './mepTopology.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { findPipeBodyHit } from '../utils/pipeBodyHit.ts';
 import { endZ, isVertical, splitCurveAt, zAt } from './mepSplit.ts';
@@ -186,7 +186,7 @@ export function bondEndpoints(
           // but never bond to each other, nor a duct to a pipe.
           if (entry.id === candidateId) continue;
           if (entry.table !== live.tableName) continue;
-          if (entry.sysType !== sysType) continue;
+          if (!systemsJoin(entry.sysType, sysType)) continue;
           if (distSq(entry.pos, endpoint) > tolSq || Math.abs(entry.z - z) > tol) continue;
           matches.push({ id: entry.id, side: entry.side });
         }
@@ -195,7 +195,7 @@ export function bondEndpoints(
       let existingNodeId: string | null = null;
       if (reuseExisting) {
         for (const m of meps) {
-          if (m.sysType && sysType && m.sysType !== sysType) continue;
+          if (m.sysType && sysType && !systemsJoin(m.sysType, sysType)) continue;
           if (distSq(m.pos, endpoint) <= tolSq && Math.abs(m.z - z) <= tol) {
             existingNodeId = m.id;
             break;

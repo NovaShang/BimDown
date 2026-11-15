@@ -13,7 +13,7 @@ describe('schedule settings', () => {
 
   it('survive a reload, per project', () => {
     expect(loadScheduleSettings('office')).toEqual({ configs: {} });
-    const cfg = { columns: ['number', 'volume'], groupBy: 'type', sort: null };
+    const cfg = { columns: ['number', 'volume'], groupBy: 'type', sort: null, itemize: true };
     saveScheduleSettings('office', { catKey: 'columns', configs: { columns: cfg } });
     expect(loadScheduleSettings('office')).toEqual({ catKey: 'columns', configs: { columns: cfg } });
     expect(loadScheduleSettings('duplex')).toEqual({ configs: {} });

@@ -7,7 +7,7 @@
 import { useEffect, useSyncExternalStore } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
-import { commitTypedLength, getRouteSnapshot, isRouting, setTypedLength, subscribeRoute, SLOPE_KEY } from './routeTool.ts';
+import { commitTypedLength, getRouteSnapshot, isRouteTool, isRouting, setTypedLength, subscribeRoute, ORTHO_KEY, SLOPE_KEY } from './routeTool.ts';
 import { ARRAY_PIPE_KEY, SPACING_KEY, arrayLayout } from './arrayTool.ts';
 import type { EditorAction, EditorState } from '../state/editorTypes.ts';
 
@@ -17,6 +17,20 @@ export default function MepOverlay() {
   const dispatch = useEditorDispatch();
   const route = useSyncExternalStore(subscribeRoute, getRouteSnapshot, getRouteSnapshot);
   const routing = isRouting(state);
+  const armed = isRouteTool(state) && !state.readonly;
+
+  // F8 flips ortho (as in CAD) while the routing tool is armed.
+  useEffect(() => {
+    if (!armed) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'F8') return;
+      const da = stateRef.current.drawingAttrs;
+      dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...da, [ORTHO_KEY]: da[ORTHO_KEY] === 'false' ? 'true' : 'false' } });
+      e.preventDefault();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [armed, dispatch]);
 
   // Capture digits before the canvas shortcuts see them.
   useEffect(() => {
@@ -50,7 +64,7 @@ export default function MepOverlay() {
   stateRef.current = state;
   const target = state.drawingTarget;
   const isArray = target?.tableName === 'terminal' && target.variantId === 'array';
-  if (!routing && !isArray) return null;
+  if (!routing && !isArray && !armed) return null;
 
   if (isArray) {
     const da = state.drawingAttrs;
@@ -76,12 +90,20 @@ export default function MepOverlay() {
   const wanted = parseFloat(state.drawingAttrs.start_z ?? '');
   const pending = Number.isFinite(route.z) && Number.isFinite(wanted) && Math.abs(wanted - route.z) > 1e-3;
   const slope = parseFloat(state.drawingAttrs[SLOPE_KEY] || '0') || 0;
+  const ortho = state.drawingAttrs[ORTHO_KEY] !== 'false';
+  const toggleOrtho = () => dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...state.drawingAttrs, [ORTHO_KEY]: ortho ? 'false' : 'true' } });
   return (
     <div className="pointer-events-none absolute bottom-[124px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-3 glass-panel rounded-[10px] border border-border px-3 py-[5px] text-[11px] shadow-[var(--shadow-panel)]" data-testid="mep-route-hud">
-      <span className="tabular-nums text-muted-foreground">{t('mep.route.height', { z: Number.isFinite(route.z) ? route.z.toFixed(2) : '—' })}</span>
+      <button type="button" data-testid="mep-ortho" aria-pressed={ortho} title={t('mep.route.orthoTip')} onClick={toggleOrtho}
+        className={`pointer-events-auto cursor-pointer rounded border border-border px-1.5 py-[1px] text-[10px] font-semibold ${ortho ? 'bg-accent text-foreground' : 'bg-transparent text-muted-foreground'}`}>
+        {ortho ? t('mep.route.ortho') : t('mep.route.free')}
+      </button>
+      <span className="tabular-nums text-muted-foreground">{t('mep.route.height', { z: Number.isFinite(route.z) && routing ? route.z.toFixed(2) : '—' })}</span>
       {pending && <span className="tabular-nums text-amber-600">{wanted > route.z ? t('mep.route.rise', { z: wanted.toFixed(2) }) : t('mep.route.drop', { z: wanted.toFixed(2) })}</span>}
       {target?.tableName === 'pipe' && slope !== 0 && <span className="tabular-nums text-muted-foreground">{t('mep.route.slope', { s: slope })}</span>}
-      <span className="tabular-nums text-foreground">{route.typed ? t('mep.route.typed', { l: route.typed }) : t('mep.route.typeHint')}</span>
+      {routing
+        ? <span className="tabular-nums text-foreground">{route.typed ? t('mep.route.typed', { l: route.typed }) : t('mep.route.typeHint')}</span>
+        : <span className="text-muted-foreground">{t('mep.route.startHint')}</span>}
     </div>
   );
 }

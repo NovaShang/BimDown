@@ -8,6 +8,7 @@
  * support (Step 6 Part B) will extend WallFacts-style facts to expose
  * connector slots when the schema lands.
  */
+import { formatMepSize } from '../mep/sizes.ts';
 import type { ReactNode } from 'react';
 import type { GeometryContext } from './archetypes.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
@@ -25,6 +26,7 @@ import { analyzeFittings, continuesStraight, curveZ } from '../mep/fittings.ts';
 import { mepCrossingGaps } from '../mep/crossings.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { MepLine2D, MepLine3D } from '../mep/MepLineView.tsx';
+import { systemPreset } from '../mep/systemPresets.ts';
 
 export interface MepLineFacts {
   id: string;
@@ -267,7 +269,7 @@ export function mepLineGeometry(
       const o = ctx.elementById(other);
       return !!o && o.tableName === table && (o.attrs.system_type || '') === systemType
         && o.attrs.size_x === ln.attrs.size_x && (o.attrs.size_y || '') === (ln.attrs.size_y || '');
-    }) ? '' : mepSizeLabel(table, systemType, shape, sizeX, sizeY),
+    }) ? '' : mepSizeLabel(table, systemType, shape, sizeX, sizeY, { material: ln.attrs.material, unitsPerMetre: ctx.unitsPerMetre }),
     slope: !vertical && horLen > 0 ? (endZ - startZ) / horLen : 0,
     riser: vertical ? riserDirection(el as LineElement | SpatialLineElement, rawZ, fittings) : null,
     insulation: parseFloat(ln.attrs.insulation_thickness || '0') || 0,
@@ -302,19 +304,11 @@ function riserDirection(
   return z.endZ >= z.startZ ? 'up' : 'down';
 }
 
-const DN_SIZES = [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300, 350, 400, 450, 500, 600];
-
-/** Plan tag text: "SA 600×400", "CHWS DN100", "Ø200". Sizes in mm. */
-export function mepSizeLabel(table: string, system: string, shape: string, sizeX: number, sizeY: number): string {
-  const mm = (v: number) => Math.round(v * 1000);
-  let size: string;
-  if (shape === 'round') {
-    const d = mm(sizeX);
-    const dn = table === 'pipe' ? DN_SIZES.find(n => Math.abs(n - d) <= Math.max(2, n * 0.12)) : undefined;
-    size = dn ? `DN${dn}` : `Ø${d}`;
-  } else {
-    size = `${mm(sizeX)}×${mm(sizeY)}`;
-  }
+/** Plan tag text: "SA 600×400", "CHWS DN100", "DCW de32", "Ø200" (mm; inches in imperial projects). Sizes in project units. */
+export function mepSizeLabel(table: string, system: string, shape: string, sizeX: number, sizeY: number, opts: { material?: string; unitsPerMetre?: number } = {}): string {
+  const upm = opts.unitsPerMetre ?? 1;
+  const unit = upm === 1000 ? 'mm' : Math.abs(upm - 1 / 0.3048) < 1e-6 ? 'ft' : Math.abs(upm - 1 / 0.0254) < 1e-6 ? 'in' : 'm';
+  const size = formatMepSize(table, shape, sizeX / upm, sizeY / upm, { material: opts.material, unit });
   return system.trim() ? `${system.trim()} ${size}` : size;
 }
 
@@ -353,8 +347,9 @@ function buildVerticalRiserFootprint(
   ];
 }
 
-/** Curated colors for the canonical MEP system_type abbreviations (see
- *  agent-skill/references/bim-modeling.md). Anything not in this table falls
+/** Curated colors for other MEP system_type abbreviations (see
+ *  agent-skill/references/bim-modeling.md); the system library codes
+ *  (mep/systemPresets.ts) take their preset colour first. Anything not in this table falls
  *  back to a deterministic hash of system_type below — so the user always sees
  *  a consistent color per system, even before a project-level system table
  *  exists. */
@@ -390,8 +385,9 @@ function hashSystemColor(s: string): string {
  *    1. Project-level `mep_system.csv` row whose `system_type` matches and has
  *       a non-empty `color` (passed in as `projectOverride`, pre-resolved by
  *       `mepLineGeometry` via `ctx.projectSystems()`).
- *    2. Editor's curated `SYSTEM_COLORS` table.
- *    3. Deterministic hash of `system_type`.
+ *    2. The system library preset (mep/systemPresets.ts, aliases included).
+ *    3. Editor's curated `SYSTEM_COLORS` table.
+ *    4. Deterministic hash of `system_type`.
  *  Empty `systemType` short-circuits to the caller's `fallback` color. */
 /** Public wrapper around `resolveSystemColor` for UI callers (e.g. the
  *  MEP Systems legend in LeftPanel) that need to render the same color the
@@ -404,6 +400,8 @@ function resolveSystemColor(systemType: string, fallback: string, projectOverrid
   const key = systemType.trim();
   if (!key) return fallback;
   if (projectOverride && projectOverride.trim()) return projectOverride.trim();
+  const preset = systemPreset(key);
+  if (preset) return preset.color;
   if (key in SYSTEM_COLORS) return SYSTEM_COLORS[key];
   return hashSystemColor(key);
 }

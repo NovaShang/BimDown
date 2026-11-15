@@ -45,6 +45,8 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, e
         id: c.id, table: c.tableName,
         a: [c.start.x, c.start.y, endZ(c, 'start')], b: [c.end.x, c.end.y, endZ(c, 'end')],
         from: c.attrs.from ?? '', to: c.attrs.to ?? '', system: (c.attrs.system_type ?? '').trim(),
+        shape: c.attrs.shape || (c.tableName === 'duct' || c.tableName === 'cable_tray' ? 'rect' : 'round'),
+        w: num(c.attrs.size_x), h: num(c.attrs.size_y),
       });
     } else if ((el.tableName === 'equipment' || el.tableName === 'terminal' || el.tableName === 'mep_node') && el.geometry === 'point') {
       const p = el as PointElement;
@@ -53,6 +55,7 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, e
         id: p.id, table: el.tableName, pos: [p.position.x, p.position.y, num(p.attrs.base_offset)],
         kind: (p.attrs.kind ?? '').trim(), fitting: (p.attrs.fitting ?? '').trim(),
         system: (p.attrs.system_type ?? '').trim(), circuitId: (p.attrs.circuit_id ?? '').trim(), load: num(p.attrs.load),
+        flow: num(p.attrs.flow),
       });
     } else if (el.tableName === 'circuit') {
       m.circuits!.push({ id: el.id, hostId: el.hostId || el.attrs.host_id || '', number: el.attrs.number || '', voltage: num(el.attrs.voltage), rating: num(el.attrs.rating) });
@@ -70,7 +73,10 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, e
       host.position.y + ox * Math.sin(rot) + oy * Math.cos(rot),
       num(host.attrs.base_offset) + oz,
     ];
-    m.ports.push({ hostId, name: el.attrs.name, pos, system: (el.attrs.system_type ?? '').trim(), domain: (el.attrs.domain ?? '').trim() });
+    m.ports.push({
+      hostId, name: el.attrs.name, pos, system: (el.attrs.system_type ?? '').trim(), domain: (el.attrs.domain ?? '').trim(),
+      shape: (el.attrs.shape ?? '').trim(), w: num(el.attrs.size_w), h: num(el.attrs.size_h), flowDir: (el.attrs.flow_dir ?? '').trim(),
+    });
   }
   return m;
 }

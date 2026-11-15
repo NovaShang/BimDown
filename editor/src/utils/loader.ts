@@ -8,6 +8,7 @@ import { sectionsFromRows, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
 import { sheetSetFromRows, SHEET_CSV_PATH, VIEWPORT_CSV_PATH } from '../sheets/sheetsIO.ts';
 import type { SheetSet } from '../sheets/sheetTypes.ts';
 import type { SectionDef, ViewsAction } from '../views/viewTypes.ts';
+import { defaultSystemColor, systemPreset } from '../mep/systemPresets.ts';
 
 const VALID_UNITS: ReadonlySet<ProjectUnit> = new Set(['m', 'ft', 'in', 'mm']);
 
@@ -402,12 +403,6 @@ export async function loadViewAnnotations(ds: DataSource): Promise<LayerData[]> 
 /** MEP tables that carry a `system_type` tag. */
 const MEP_SYSTEM_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray', 'terminal', 'equipment', 'mep_node']);
 
-/** Distinct, readable palette cycled when auto-assigning colors to systems. */
-const SYSTEM_PALETTE = [
-  '#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899',
-  '#06b6d4', '#84cc16', '#f97316', '#6366f1', '#14b8a6', '#eab308',
-];
-
 function disciplineForSystem(name: string): string {
   const s = name.toLowerCase();
   if (/\bair\b|hvac|chilled|condenser|refriger|exhaust|supply|return/.test(s)) return 'hvac';
@@ -418,7 +413,9 @@ function disciplineForSystem(name: string): string {
 
 /** Derive SystemDefs for system_type values present on MEP elements but not
  *  already declared. Equipment carries a comma-joined list of port systems, so
- *  values are split on commas. Deterministic (sorted) so colors are stable. */
+ *  values are split on commas. Library codes (mep/systemPresets.ts) take the
+ *  preset discipline / colour; others the next unused colour.
+ *  Deterministic (sorted) so colors are stable. */
 function deriveMepSystems(
   existing: SystemDef[],
   floors: Map<string, FloorData>,
@@ -445,13 +442,18 @@ function deriveMepSystems(
   for (const f of floors.values()) scan(f.layers);
   scan(globalLayers);
   found.sort();
-  return found.map((v, i) => ({
-    id: `sys-auto-${i + 1}`,
-    system_type: v,
-    name: v,
-    color: SYSTEM_PALETTE[i % SYSTEM_PALETTE.length],
-    discipline: disciplineForSystem(v),
-  }));
+  const out: SystemDef[] = [];
+  found.forEach((v, i) => {
+    const preset = systemPreset(v);
+    out.push({
+      id: `sys-auto-${i + 1}`,
+      system_type: v,
+      name: v,
+      color: defaultSystemColor(v, [...existing, ...out]),
+      discipline: preset?.discipline ?? disciplineForSystem(v),
+    });
+  });
+  return out;
 }
 
 /** Load `global/mep_system.csv` if present. Returns [] when the file is
