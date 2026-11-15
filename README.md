@@ -73,7 +73,7 @@ npm install -g bimdown-cli
 ### Project Management
 
 ```bash
-bimdown init ./my-project               # create a new BimDown project
+bimdown init ./my-project               # create a new BimDown project (--units m|mm|ft|in, default m)
 bimdown build ./my-project               # validate & compute boundaries (writes fixes and space.geojson)
 bimdown validate ./my-project            # the same checks, read-only
 bimdown info ./my-project                # print project summary (levels, element counts)
@@ -100,7 +100,7 @@ bimdown query ./my-project "SELECT * FROM wall" --json
 ### Schema Inspection
 
 ```bash
-bimdown schema              # list all element types and their fields
+bimdown schema              # index of all element types (one line each)
 bimdown schema wall          # show fields for a specific element type
 ```
 

@@ -2,10 +2,9 @@ import { Command } from 'commander';
 import { resolve } from 'node:path';
 import { build, validateOnly } from './build/index.js';
 import { buildRegistry, getSpecDir } from './schema/registry.js';
-import { furnitureCatalogLines } from './furniture/catalog-text.js';
+import { schemaIndexLines, schemaTableLines } from './schema/schema-text.js';
 import { discoverLayout, listFiles } from './utils/fs.js';
 import { readCsv } from './utils/csv.js';
-import { typeParamFields } from './catalog/index.js';
 import { existsSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
@@ -322,47 +321,25 @@ program
 // ─── schema ─────────────────────────────────────────────
 program
   .command('schema')
-  .argument('[table]', 'Table name (omit for all tables)')
-  .description('Print resolved schema for a table or all tables')
-  .action((table?: string) => {
+  .argument('[table]', 'Table name (omit for a compact index of all tables)')
+  .option('--all', 'Print the full schema of every table (long)')
+  .description('Print the full schema of a table, or an index of all tables')
+  .action((table: string | undefined, opts: { all?: boolean }) => {
     const registry = buildRegistry(getSpecDir());
+    if (!table && !opts.all) {
+      for (const l of schemaIndexLines(registry)) console.log(l);
+      return;
+    }
 
     const tables = table ? [table] : [...registry.keys()].sort();
     for (const t of tables) {
       const resolved = registry.get(t);
       if (!resolved) {
-        console.error(`Unknown table: ${t}`);
+        console.error(`Unknown table: ${t}. Run \`bimdown schema\` for the list of tables.`);
         process.exitCode = 1;
         return;
       }
-
-      console.log(`── ${resolved.name} (prefix: ${resolved.prefix}) ──`);
-      if (resolved.hostType) {
-        console.log(`  host_type: ${resolved.hostType}`);
-      }
-      if (resolved.typeOf) {
-        console.log(`  type of: ${resolved.typeOf.join(', ')} (global/ only; instances inherit shared fields they leave empty)`);
-      }
-      if (resolved.typeTable) {
-        console.log(`  type_id → ${resolved.typeTable}: empty shared fields inherit the type's values`);
-      }
-      const typeParams = new Set(resolved.typeTable ? typeParamFields(t) : []);
-      console.log('  CSV fields:');
-      for (const f of resolved.csvFields) {
-        const tags: string[] = [];
-        if (f.required) tags.push(typeParams.has(f.name) ? 'required unless type_id gives it' : 'required');
-        if (f.type === 'reference') tags.push(`ref:${f.reference}`);
-        if (f.type === 'enum') tags.push(`enum:[${f.values?.join('|')}]`);
-        const tagStr = tags.length > 0 ? `  (${tags.join(', ')})` : '';
-        console.log(`    ${f.name}: ${f.type}${tagStr}`);
-      }
-      if (resolved.computedFields.length > 0) {
-        console.log('  Computed fields:');
-        for (const f of resolved.computedFields) {
-          console.log(`    ${f.name}: ${f.type}`);
-        }
-      }
-      if (t === 'furniture') for (const l of furnitureCatalogLines()) console.log(l);
+      for (const l of schemaTableLines(resolved)) console.log(l);
       console.log();
     }
   });
@@ -371,11 +348,17 @@ program
 program
   .command('init')
   .argument('<dir>', 'BimDown project directory')
+  .option('--units <units>', 'Project units: m, mm, ft or in (starter types are scaled to them)', 'm')
   .description('Initialize a new BimDown project structure')
-  .action(async (dir: string) => {
+  .action(async (dir: string, opts: { units: string }) => {
     const absDir = resolve(dir);
-    const { initProject } = await import('./commands/init.js');
-    initProject(absDir);
+    const { initProject, PROJECT_UNITS } = await import('./commands/init.js');
+    if (!(PROJECT_UNITS as string[]).includes(opts.units)) {
+      console.error(`Unknown units "${opts.units}" (use ${PROJECT_UNITS.join(', ')})`);
+      process.exitCode = 1;
+      return;
+    }
+    initProject(absDir, { units: opts.units as any });
   });
 
 // ─── diff ───────────────────────────────────────────────

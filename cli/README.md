@@ -70,11 +70,12 @@ node dist/index.js info ../sample_data/architectural
 
 ### `bimdown schema [table]`
 
-Print the resolved schema for a table (or all tables), showing CSV fields, computed fields, types, and constraints.
+Print the resolved schema for a table, showing CSV fields, computed fields, types, and constraints. Without a table it prints a short index (one line per table with its key fields); `--all` prints every table in full.
 
 ```bash
 node dist/index.js schema wall
-node dist/index.js schema        # all tables
+node dist/index.js schema        # index of all tables
+node dist/index.js schema --all  # every table in full
 ```
 
 ### `bimdown import-ifc <file.ifc> <outdir>`

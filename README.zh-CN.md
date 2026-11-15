@@ -73,7 +73,7 @@ npm install -g bimdown-cli
 ### 项目管理
 
 ```bash
-bimdown init ./my-project               # 创建新的 BimDown 项目
+bimdown init ./my-project               # 创建新的 BimDown 项目(--units m|mm|ft|in,缺省 m)
 bimdown build ./my-project               # 验证并计算边界（会写入修正和 space.geojson）
 bimdown validate ./my-project            # 同样的检查，只读
 bimdown info ./my-project                # 打印项目概要（楼层、构件数量）
@@ -100,7 +100,7 @@ bimdown query ./my-project "SELECT * FROM wall" --json
 ### Schema 查看
 
 ```bash
-bimdown schema              # 列出所有构件类型及其字段
+bimdown schema              # 所有构件类型的索引(每类一行)
 bimdown schema wall          # 查看特定构件类型的字段
 ```
 
