@@ -12,7 +12,7 @@
  * gets a Revit-style title: detail number, name, scale. Annotation sizes are
  * paper sizes, so dimensions and notes read the same at 1:50 and 1:200.
  */
-import { cropDrawing } from './crop.ts';
+import { cropDrawing, cropItems } from './crop.ts';
 import type { CanonicalElement, Point } from '../../model/elements.ts';
 import type { GridData, ProjectData } from '../../types.ts';
 import { LAYER_STYLES } from '../../types.ts';
@@ -300,6 +300,10 @@ export interface ComposedSheet {
   viewports: PlacedViewport[];
   /** Viewports (ids) that reach past the drawing frame. */
   outside: string[];
+  /** Viewports (ids) overlapping another one (with titles). */
+  overlaps: string[];
+  /** Viewports (ids) whose drawing is cut at the drawing area (border / title strip). */
+  clipped: string[];
 }
 
 function boxToRect(b: Box): Rect { return { x: b.minX, y: b.minY, w: b.maxX - b.minX, h: b.maxY - b.minY }; }
@@ -565,6 +569,7 @@ export function composeSheet(sheet: SheetDef, set: SheetSet, drawings: SheetDraw
   const placements = viewPlacements(set);
   const F = sheetFrame(sheet.paper);
   const viewports: PlacedViewport[] = [];
+  const clipped: string[] = [];
   const systems = new Map<string, LegendEntry>();
   let detail = 0;
   const own = set.viewports.filter(v => v.sheetId === sheet.id);
@@ -572,7 +577,7 @@ export function composeSheet(sheet: SheetDef, set: SheetSet, drawings: SheetDraw
     if (vp.type === 'schedule' || vp.type === 'legend') continue;
     const full = drawings.drawing(vp, vp.scale, placements);
     // Crop region: only that box of the view
-    const d = full && vp.crop ? cropDrawing(full, vp.crop) : full;
+    let d = full && vp.crop ? cropDrawing(full, vp.crop) : full;
     detail++;
     if (d) for (const l of d.legend) systems.set(l.label, l);
     let rect: Rect = { x: vp.x - 30, y: vp.y - 20, w: 60, h: 40 };
@@ -582,6 +587,16 @@ export function composeSheet(sheet: SheetDef, set: SheetSet, drawings: SheetDraw
       transform = { pm: d.pm, center, at: { x: vp.x, y: vp.y } };
       const w = (d.bounds.maxX - d.bounds.minX) / d.pm, h = (d.bounds.maxY - d.bounds.minY) / d.pm;
       rect = { x: vp.x - w / 2, y: vp.y - h / 2, w, h };
+      // Nothing prints over the border or the title strip: the view is clipped to the drawing area
+      const clip = intersect(rect, F.area);
+      if (!clip) { d = { ...d, items: [] }; clipped.push(vp.id); }
+      else if (clip.w < rect.w - 1e-6 || clip.h < rect.h - 1e-6) {
+        const t = transform;
+        const toModel = (x: number, y: number) => ({ x: t.center.x + (x - t.at.x) * t.pm, y: t.center.y + (y - t.at.y) * t.pm });
+        const a = toModel(clip.x, clip.y), b = toModel(clip.x + clip.w, clip.y + clip.h);
+        d = { ...d, items: cropItems(d.items, { minX: a.x, minY: a.y, maxX: b.x, maxY: b.y }) };
+        clipped.push(vp.id);
+      }
     }
     const title = viewName(vp, d, ctx);
     const t = titleBlockOf(rect, detail, title, `1:${vp.scale}`, F.k);
@@ -617,7 +632,34 @@ export function composeSheet(sheet: SheetDef, set: SheetSet, drawings: SheetDraw
     const x1 = Math.max(v.rect.x + v.rect.w, b?.maxX ?? -Infinity), y1 = Math.max(v.rect.y + v.rect.h, b?.maxY ?? -Infinity);
     return x0 < fr.x - 0.5 || y0 < fr.y - 0.5 || x1 > fr.x + fr.w + 0.5 || y1 > fr.y + fr.h + 0.5;
   }).map(v => v.vp.id);
-  return { sheet, frame: F, items: [...border.items, ...tb.items], layers, viewports, outside };
+  return { sheet, frame: F, items: [...border.items, ...tb.items], layers, viewports, outside, overlaps: viewportOverlaps(viewports), clipped };
+}
+
+function intersect(a: Rect, b: Rect): Rect | null {
+  const x0 = Math.max(a.x, b.x), y0 = Math.max(a.y, b.y);
+  const x1 = Math.min(a.x + a.w, b.x + b.w), y1 = Math.min(a.y + a.h, b.y + b.h);
+  return x1 > x0 && y1 > y0 ? { x: x0, y: y0, w: x1 - x0, h: y1 - y0 } : null;
+}
+
+/** Paper extent of a viewport with its title. */
+function extentOf(v: PlacedViewport): Rect {
+  const b = itemsBounds(v.titleItems);
+  if (!b) return v.rect;
+  const x0 = Math.min(v.rect.x, b.minX), y0 = Math.min(v.rect.y, b.minY);
+  return { x: x0, y: y0, w: Math.max(v.rect.x + v.rect.w, b.maxX) - x0, h: Math.max(v.rect.y + v.rect.h, b.maxY) - y0 };
+}
+
+/** Viewports (ids) whose extent (title included) overlaps another one by more than 1 mm. */
+export function viewportOverlaps(viewports: PlacedViewport[]): string[] {
+  const out = new Set<string>();
+  const ext = viewports.map(extentOf);
+  for (let i = 0; i < viewports.length; i++) {
+    for (let j = i + 1; j < viewports.length; j++) {
+      const r = intersect(ext[i], ext[j]);
+      if (r && r.w > 1 && r.h > 1) { out.add(viewports[i].vp.id); out.add(viewports[j].vp.id); }
+    }
+  }
+  return [...out];
 }
 
 /** Every item of a composed sheet in paper mm (for PDF / DXF), and the layers they use. */

@@ -992,6 +992,7 @@
   "sheets.vpTitle": "Title",
   "sheets.crop": "Crop region",
   "sheets.cropHint": "min x, min y, max x, max y of the view (model units); empty = the whole view",
+  "sheets.vpOverlap": "This view overlaps another view on the sheet: move one of them apart",
   "sheets.vpOutside": "This view reaches past the drawing area: move it, crop it or pick a smaller scale",
   "sheets.vpTitleHint": "Empty = view name",
   "sheets.removeViewport": "Remove from sheet",
