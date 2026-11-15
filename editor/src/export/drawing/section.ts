@@ -36,6 +36,7 @@ const L = (name: string, color: string, aci: number, weight: number, dash: Drawi
 export const VIEW_LAYERS = {
   cut:      L('A-SECT-MCUT', '#000000', 7, 0.5,  'solid',  'Section: material cut outline'),
   cutPatt:  L('A-SECT-PATT', '#4d4d4d', 8, 0.05, 'solid',  'Section: cut poché'),
+  layerSeam: L('A-SECT-LAYR', '#ffffff', 7, 0.13, 'solid', 'Section: compound wall layer seams (1:50 and finer)'),
   sCutPatt: L('S-SECT-PATT', '#1f1f1f', 7, 0.05, 'solid',  'Section: structural cut poché'),
   beyond:   L('A-SECT-MBND', '#1a1a1a', 7, 0.18, 'solid',  'Section: material beyond'),
   elev:     L('A-ELEV-OTLN', '#1a1a1a', 7, 0.18, 'solid',  'Elevation: outlines'),
@@ -485,6 +486,41 @@ class Out {
   }
 }
 
+/**
+ * Where a wall's layer seams cross the cut (view x): the cut plane meets the
+ * centre line at P; a seam `o` left of the centre line lies o / (right·n)
+ * along the view from P. Empty when the plane misses the wall or runs along it.
+ */
+export function layerSeamXs(seams: NonNullable<ViewPart['layerSeams']>, b: Basis, d0: number): number[] {
+  const { a, b: e } = seams;
+  const L = Math.hypot(e.x - a.x, e.y - a.y);
+  if (L < 1e-9) return [];
+  const u = { x: (e.x - a.x) / L, y: (e.y - a.y) / L };
+  const n = { x: -u.y, y: u.x };
+  const du = u.x * b.dir.x + u.y * b.dir.y;
+  const rn = n.x * b.right.x + n.y * b.right.y;
+  if (Math.abs(du) < 1e-6 || Math.abs(rn) < 1e-3) return [];
+  const s = (d0 - (a.x * b.dir.x + a.y * b.dir.y)) / du;
+  if (s < -1e-6 || s > L + 1e-6) return [];
+  const xP = (a.x + u.x * s) * b.right.x + (a.y + u.y * s) * b.right.y;
+  return seams.offsets.map(o => xP + o / rn);
+}
+
+/** Spans of the vertical line at `x` inside the rings (even-odd). */
+function verticalInside(rings: Point[][], x: number): [number, number][] {
+  const ys: number[] = [];
+  for (const r of rings) {
+    for (let i = 0; i < r.length; i++) {
+      const p = r[i], q = r[(i + 1) % r.length];
+      if ((p.x <= x && q.x > x) || (q.x <= x && p.x > x)) ys.push(p.y + ((x - p.x) / (q.x - p.x)) * (q.y - p.y));
+    }
+  }
+  ys.sort((m, k) => m - k);
+  const out: [number, number][] = [];
+  for (let i = 0; i + 1 < ys.length; i += 2) if (ys[i + 1] - ys[i] > 1e-9) out.push([ys[i], ys[i + 1]]);
+  return out;
+}
+
 /** Section / elevation drawing at 1:`scale`; null when the view doesn't exist. */
 export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: ViewRenderOptions = {}): ViewDrawing | null {
   const sections = src.project.sections ?? [];
@@ -614,6 +650,21 @@ export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: V
     const weight = CUT_WEIGHT[cls];
     for (const ring of [...outer, ...holes]) {
       out.front.push({ kind: 'path', layer: cutLayer, pts: ring, closed: true, ...(weight ? { weight } : {}) });
+    }
+  }
+
+  // 1:50 and finer: the layers of compound walls inside their cut poché (Revit's medium detail)
+  if (d0 != null && scale <= 50) {
+    const wallRings = cutLoops.filter(c => c.cls === 'wall' || c.cls === 'swall').flatMap(c => [...c.outer, ...c.holes]);
+    const seamLayer = out.layer(VIEW_LAYERS.layerSeam);
+    for (const part of src.parts) {
+      const seams = part.layerSeams;
+      if (!seams || !wallRings.length) continue;
+      for (const x of layerSeamXs(seams, basis, d0)) {
+        for (const [y0, y1] of verticalInside(wallRings, x)) {
+          out.front.push({ kind: 'path', layer: seamLayer, pts: [{ x, y: y0 }, { x, y: y1 }], closed: false });
+        }
+      }
     }
   }
 
