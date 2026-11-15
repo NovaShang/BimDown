@@ -8,8 +8,9 @@ import { Separator } from './ui/separator';
 import { cn } from '../lib/utils';
 import { getProjectUnits } from '../utils/units.ts';
 import { Icon } from './Icons.tsx';
+import { WARNINGS_TOGGLE_EVENT, WarnIcon } from './WarningsPanel.tsx';
 
-export default function TopBar() {
+export default function TopBar({ warningCount = 0 }: { warningCount?: number }) {
   const { t } = useTranslation();
   const state = useEditorState();
   const { viewMode, activeDiscipline, showArchContext } = state;
@@ -108,6 +109,24 @@ export default function TopBar() {
       >
         <Icon name="schedule" width={15} height={15} />
         <span className="max-md:hidden">{t('schedule.short')}</span>
+      </button>
+
+      {/* Warnings (Review Warnings): count badge, opens the warnings panel */}
+      <button
+        className={cn(
+          'relative flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] transition-all hover:bg-accent hover:text-foreground',
+          warningCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+        )}
+        onClick={() => window.dispatchEvent(new CustomEvent(WARNINGS_TOGGLE_EVENT))}
+        title={t('warnings.open', { count: warningCount })}
+        data-testid="open-warnings"
+      >
+        <WarnIcon />
+        {warningCount > 0 && (
+          <span data-testid="warnings-badge" className="min-w-4 rounded-full bg-amber-500 px-1 text-center text-[9px] font-semibold leading-4 text-white tabular-nums">
+            {warningCount > 99 ? '99+' : warningCount}
+          </span>
+        )}
       </button>
 
       {/* Sheets (title block + placed views, PDF / DXF sheet sets) */}

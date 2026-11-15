@@ -23,6 +23,7 @@ import { getProjectUnits, getUnitSuffix, unitsPerMetreOf } from '../utils/units.
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { NumberInput } from './NumberInput.tsx';
+import { numericFieldError } from '../geometry/modelChecks.ts';
 import { countTypeUsage } from '../state/typeEdits.ts';
 import { cn } from '../lib/utils';
 import { typeLabel } from '../model/displayNames.ts';
@@ -151,6 +152,12 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
     if (layered && sel.layers.length === 0) return t('type.error.layers');
     if (layered && sel.layers.some(l => !(l.thickness > 0))) return t('type.error.thickness');
     if ((def.table === 'door_type' || def.table === 'window_type') && !(Number(sel.values.width) > 0)) return t('type.error.width');
+    // Sign rules shared with `bimdown validate` (geometry/modelChecks.ts)
+    for (const [k, v] of Object.entries(sel.values)) {
+      const err = numericFieldError(k, v);
+      if (err) return t(`field.error.${err}`, { field: t(paramMeta(def.table, k).label, k) });
+    }
+    if (sel.layers.some(l => l.conductivity !== undefined && !(l.conductivity > 0))) return t('field.error.positive', { field: 'λ' });
     return null;
   })();
 

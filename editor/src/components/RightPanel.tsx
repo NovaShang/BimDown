@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import i18next from 'i18next';
 import type { Level, CsvRow } from '../types.ts';
 import { LAYER_STYLES } from '../types.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
@@ -23,10 +24,14 @@ import LineLengthRow from './LineLengthRow.tsx';
 import { TypeSelect } from './TypeSelect.tsx';
 import EditTypeDialog from './EditTypeDialog.tsx';
 import { findType, isTypedTable, typeParamState, typeValues } from '../model/types/catalog.ts';
+import { rememberDrawingType } from '../model/types/drawingType.ts';
 import QuantitiesSection from './QuantitiesSection.tsx';
 import { selectedElsewhere } from '../state/selectionOps.ts';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
 import { levelLabel } from '../model/displayNames.ts';
+import { ElementWarnings } from './WarningsPanel.tsx';
+import { NON_NEGATIVE_FIELDS, POSITIVE_FIELDS, numericFieldError } from '../geometry/modelChecks.ts';
+import { showNotice } from '../state/modifyUi.ts';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -183,7 +188,11 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
             instanceTable={firstData.tableName}
             value={typeId}
             mixed={selectedTypeIds.size > 1}
-            onChange={id => dispatch({ type: 'SET_ELEMENT_TYPE', ids: [...selectedData.keys()], typeId: id })}
+            onChange={id => {
+              dispatch({ type: 'SET_ELEMENT_TYPE', ids: [...selectedData.keys()], typeId: id });
+              // Revit: the next placement of this category starts with the type last used
+              rememberDrawingType(firstData.tableName, id);
+            }}
             triggerClassName={cn(FIELD_SELECT, 'text-left')}
             disabled={readonly}
           />
@@ -215,6 +224,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
 
       {/* Property groups */}
       <ScrollArea className="min-h-0 flex-1">
+        {isSingleSelection && <ElementWarnings id={firstId} />}
         {isSingleSelection && <LineLengthRow id={firstId} editable={!readonly} inputClass={FIELD_INPUT} />}
         {isSingleSelection && <ModulePropertyPanel id={firstId} table={firstData.tableName} editable={!readonly && editableSelection} />}
         <div className="py-0.5">
@@ -307,6 +317,27 @@ function PropertyRow({
   // interpreted as the project unit per BimDown's store-as-displayed model.
   const renderedUnit = f.unit === 'm' ? getUnitSuffix(projectUnit).trim() : f.unit;
   const mixedLabel = t('prop.mixed', 'Mixed');
+  // Sign rules (thickness, widths… > 0, geometry/modelChecks.ts, as `bimdown
+  // validate`): a breaking value stays a local draft, shown in red, and is
+  // dropped when the field loses focus — it never reaches the model.
+  const [draft, setDraft] = useState<string | null>(null);
+  const draftRef = useRef<string | null>(null);
+  const draftError = draft !== null ? numericFieldError(f.key, draft) : null;
+  const setNumber = (v: string) => {
+    // Breaking values, and half-typed ones ("-", "."), stay local until they are valid
+    const partial = v.trim() !== '' && !Number.isFinite(Number(v));
+    if (numericFieldError(f.key, v) || (partial && (POSITIVE_FIELDS.has(f.key) || NON_NEGATIVE_FIELDS.has(f.key)))) { draftRef.current = v; setDraft(v); return; }
+    draftRef.current = null;
+    setDraft(null);
+    onChange(f.key, v);
+  };
+  const dropDraft = () => {
+    if (draftRef.current === null) return;
+    const err = numericFieldError(f.key, draftRef.current);
+    if (err) showNotice(`field.error.${err}`, { field: label });
+    draftRef.current = null;
+    setDraft(null);
+  };
 
   return (
     <div className="-mx-1 flex items-center gap-2 rounded-md px-1 py-[3px] transition-colors hover:bg-foreground/[0.03]">
@@ -361,11 +392,11 @@ function PropertyRow({
           <MepSizeInput table={table!} sizeKey={f.key} attrs={rowAttrs ?? {}} value={value} unit={projectUnit}
             onChange={v => onChange(f.key, v)} className={FIELD_INPUT} />
         ) : f.type === 'number' ? (
-          <>
+          <div className="contents" onBlur={dropDraft} title={draftError ? i18next.t(`field.error.${draftError}`, { field: label }) : undefined}>
             <NumberInput
-              className={FIELD_INPUT}
-              value={value}
-              onChange={v => onChange(f.key, v)}
+              className={cn(FIELD_INPUT, draftError && 'border-destructive text-destructive ring-1 ring-destructive/40')}
+              value={draft ?? value}
+              onChange={setNumber}
               placeholder={mixed ? mixedLabel : undefined}
               step={f.step}
               min={f.min}
@@ -373,7 +404,7 @@ function PropertyRow({
               parseImperial={f.unit === 'm' && (projectUnit === 'ft' || projectUnit === 'in') ? projectUnit : undefined}
             />
             <span className="w-3 shrink-0 select-none text-left text-[9px] text-muted-foreground/60">{renderedUnit ?? ''}</span>
-          </>
+          </div>
         ) : (
           <Input
             className={FIELD_INPUT}

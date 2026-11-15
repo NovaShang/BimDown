@@ -309,6 +309,11 @@ export function tagDefaultPosition(host: CanonicalElement, lookup: Lookup, unit:
   return elementAnchor(host);
 }
 
+/** Font size of a tag line relative to the tag size: a room tag's first line (the name) big, the rest (number, area) small. */
+export function tagLineScale(room: boolean, i: number): number {
+  return room ? (i === 0 ? 1.25 : 0.8) : 1;
+}
+
 /** Tag size estimate (model units) for hit boxes and the PDF. */
 export function tagBox(lines: string[], room: boolean, unit: ProjectUnit = currentUnit, scale: number = currentScale): { w: number; h: number; size: number } {
   const size = paper(room ? 2.4 : 2.0, unit, scale);

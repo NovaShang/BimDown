@@ -19,6 +19,7 @@ import {
   type CornerPost, type CornerWall, type CurtainGrid, type CwPiece, type EndMullion, type MullionSpec,
 } from './curtainWallLayout.ts';
 import CurtainWallPanel from './CurtainWallPanel.tsx';
+import { curtainWallSpan } from '../geometry/curtainEmbed.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 
@@ -47,18 +48,9 @@ function resolveLevelHeight(
   attrs: Record<string, string>,
   levelElevation: number,
   levelElevations: Map<string, number>,
+  unitsPerMetre: number,
 ): { height: number; baseOffset: number } {
-  const baseOffset = parseFloat(attrs.base_offset || '0') || 0;
-  const topLevelId = attrs.top_level_id;
-  if (topLevelId && levelElevations.has(topLevelId)) {
-    const topEl = levelElevations.get(topLevelId)!;
-    const topOff = parseFloat(attrs.top_offset || '0') || 0;
-    return {
-      height: Math.max(0.01, (topEl + topOff) - (levelElevation + baseOffset)),
-      baseOffset,
-    };
-  }
-  return { height: DEFAULT_HEIGHT, baseOffset };
+  return curtainWallSpan(attrs, levelElevation, levelElevations, DEFAULT_HEIGHT * unitsPerMetre);
 }
 
 /** Corner joins of every curtain wall in scope, once per geometry pass. */
@@ -67,7 +59,7 @@ function cornersOf(ctx: GeometryContext) {
     const walls: CornerWall[] = [];
     for (const el of ctx.elementsByTable('curtain_wall')) {
       if (el.geometry !== 'line' && el.geometry !== 'spatial_line') continue;
-      const { height, baseOffset } = resolveLevelHeight(el.attrs, ctx.levelElevation, ctx.levelElevations);
+      const { height, baseOffset } = resolveLevelHeight(el.attrs, ctx.levelElevation, ctx.levelElevations, ctx.unitsPerMetre);
       walls.push({
         id: el.id, start: el.start, end: el.end,
         baseY: ctx.levelElevation + baseOffset, height, mullion: mullionSpec(el.attrs),
@@ -172,7 +164,7 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     const dy = ln.end.y - ln.start.y;
     const len = Math.sqrt(dx * dx + dy * dy);
     if (len < 0.001) return null;
-    const { height, baseOffset } = resolveLevelHeight(ln.attrs, ctx.levelElevation, ctx.levelElevations);
+    const { height, baseOffset } = resolveLevelHeight(ln.attrs, ctx.levelElevation, ctx.levelElevations, ctx.unitsPerMetre);
     const baseY = ctx.levelElevation + baseOffset;
     const grid = curtainGrid(ln.attrs, len, height);
 

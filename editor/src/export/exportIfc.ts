@@ -661,7 +661,9 @@ class Exporter {
         w.label(`${op.hostedId} opening`), null, w.label('Opening'), placement, shape, w.ident(op.hostedId),
         ...this.pt4('IfcOpeningElement', 'OPENING'));
       w.add('IfcRelVoidsElement', w.guid(this.relKey('voids')), w.ownerHistory, null, null, rec.handle, handle);
-      this.voids.set(`${scope.id}/${op.hostedId}`, { host: rec, op, frame, thickness: f.thickness, handle, placement });
+      // An embedded curtain wall may cut several walls: one void per host, keyed by both.
+      const key = op.hostedTable === 'curtain_wall' ? `${scope.id}/${op.hostedId}@${el.id}` : `${scope.id}/${op.hostedId}`;
+      this.voids.set(key, { host: rec, op, frame, thickness: f.thickness, handle, placement });
       const hosted = op.hostedTable === 'opening' ? scope.elements.find(e => e.id === op.hostedId && e.tableName === 'opening') : undefined;
       if (hosted) this.bimdownPset({ ...rec, key: `${rec.key}#void:${op.hostedId}`, el: hosted, handle });
     }
@@ -710,6 +712,12 @@ class Exporter {
       parts.push(door.handle);
     }
     if (parts.length > 0) this.aggregates.push({ whole: rec.handle, parts });
+    // Embedded in walls (Revit "Automatically Embed"): the curtain wall fills each host's void.
+    for (const [k, v] of this.voids) {
+      if (v.op.hostedTable === 'curtain_wall' && k.startsWith(`${scope.id}/${el.id}@`)) {
+        w.add('IfcRelFillsElement', w.guid(this.relKey('fills')), w.ownerHistory, null, null, v.handle, rec.handle);
+      }
+    }
     this.pset(rec, 'Pset_CurtainWallCommon', {
       Reference: w.ident(el.attrs.number), IsExternal: w.bool(!!rec.external), ThermalTransmittance: this.typeUValue(el),
     });
@@ -1213,6 +1221,8 @@ class Exporter {
     const { w, S } = this;
     const level = scope.storey.level;
     const levelElevations = new Map(this.project.levels.map(l => [l.id, l.elevation]));
+    // Redundant rooms (a second seed in an occupied area, area 0) are not exported, as Revit.
+    const occupied = new Set<V2[]>();
     for (const el of scope.elements) {
       if (el.tableName !== 'space') continue;
       let polygon: V2[] | null = null;
@@ -1220,6 +1230,8 @@ class Exporter {
       if (el.geometry === 'point') {
         anchor = (el as PointElement).position;
         polygon = pickSpaceFace(anchor, scope.faces)?.polygon ?? null;
+        if (polygon && occupied.has(polygon)) continue;
+        if (polygon) occupied.add(polygon);
       } else {
         const facts = spaceMod.geometry(el, scope.ctx) as SpaceFacts | null;
         if (!facts?.vertices) continue;
@@ -1299,7 +1311,7 @@ class Exporter {
         const rect = [{ x: lo, y: z0 }, { x: hi, y: z0 }, { x: hi, y: z1 }, { x: lo, y: z1 }];
         holes.push(rect);
         const filler = this.rec(scope.id, v.op.hostedId);
-        if (filler && (filler.table === 'door' || filler.table === 'window')) fills.push({ key: `${space.key}#sb:${i}:${filler.el.id}`, rec: filler, rect });
+        if (filler && (filler.table === 'door' || filler.table === 'window' || filler.table === 'curtain_wall')) fills.push({ key: `${space.key}#sb:${i}:${filler.el.id}`, rec: filler, rect });
       }
       const outer = [{ x: 0, y: 0 }, { x: L, y: 0 }, { x: L, y: height }, { x: 0, y: height }];
       boundary(`${space.key}#sb:${i}`, wallRec.handle, plane, outer, holes, physical, !!wallRec.external);

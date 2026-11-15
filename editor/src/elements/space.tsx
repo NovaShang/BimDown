@@ -9,7 +9,7 @@ import { getSpaceFaceGraph, findSpaceBoundary, BOUNDARY_TABLES } from '../geomet
 // imports this module — and the host (e.g. the BimClaw web app) has its
 // own merged resources, so a second init wipes them out.
 import i18n from 'i18next';
-import { boundaryWallsFromCtx, roomAreasOf } from '../annotation/rooms.ts';
+import { boundaryWallsFromCtx, redundantRoomsFromCtx, roomAreasOf } from '../annotation/rooms.ts';
 import { formatArea } from '../annotation/geometry.ts';
 
 /** Vertical offset (in model units) between the seed and the rendered name
@@ -29,6 +29,8 @@ export interface SpaceFacts {
   area?: number;
   /** A tag labels this room — the plain label steps aside. */
   tagged?: boolean;
+  /** Redundant room (annotation/rooms.ts): the room already occupying this area. */
+  redundantOf?: string;
 }
 
 /** Rooms that have a tag on this level (one scan per render pass). */
@@ -99,7 +101,12 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         // on the seed (not the polygon centroid) so the label, the move
         // handle and the user's click point all line up — moving the seed
         // visually moves everything together.
-        return { id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name, area: roomAreasOf(derived, boundaryWallsFromCtx(ctx)).area, tagged: taggedRooms(ctx).has(el.id) };
+        const redundantOf = redundantRoomsFromCtx(ctx).get(el.id);
+        return {
+          id: el.id, kind: 'polygon', anchor: pt.position, vertices: derived, number, name,
+          area: redundantOf ? 0 : roomAreasOf(derived, boundaryWallsFromCtx(ctx)).area, tagged: taggedRooms(ctx).has(el.id),
+          ...(redundantOf ? { redundantOf } : {}),
+        };
       }
       return { id: el.id, kind: 'point', anchor: pt.position, number, name, tagged: taggedRooms(ctx).has(el.id) };
     }
@@ -142,36 +149,45 @@ export const spaceModule: ElementModule<SpaceFacts> = {
       />
     ) : null;
 
+    // Redundant room (Revit): a second room in an occupied area — flagged, area 0.
+    const redundant = facts.redundantOf ? (() => {
+      const { x, y } = facts.anchor;
+      const ry = y + NAME_LABEL_OFFSET;
+      return (
+        <g>
+          <circle cx={x} cy={y} r={0.18} fill="none" stroke="#dc2626" strokeWidth={0.04} />
+          <text x={x} y={ry} textAnchor="middle" dominantBaseline="central"
+            fontSize={0.2} fontFamily="Inter, sans-serif" fontWeight={600} fill="#dc2626"
+            transform={`translate(${x},${ry}) scale(1,-1) translate(${-x},${-ry})`}>
+            {i18n.t('space.redundant', { defaultValue: 'Redundant room' })}
+          </text>
+        </g>
+      );
+    })() : null;
+
     if ((!facts.number && !facts.name) || facts.tagged) {
-      return <g data-id={facts.id}>{outline}{marker}</g>;
+      return <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
     }
     const { x, y } = facts.anchor;
-    const areaY = y - NAME_LABEL_OFFSET - (facts.name ? 0.32 : 0);
+    // Revit room tag style: the name big, the number small under it, then the area
+    const big = facts.name || facts.number;
+    const small = facts.name ? facts.number : '';
+    const areaY = y - NAME_LABEL_OFFSET - (small ? 0.3 : 0);
+    const label = (text: string, ty: number, size: number, weight: number, fill: string) => (
+      <text x={x} y={ty} textAnchor="middle" dominantBaseline="central"
+        fontSize={size} fontFamily="Inter, sans-serif" fontWeight={weight} fill={fill}
+        transform={`translate(${x},${ty}) scale(1,-1) translate(${-x},${-ty})`}>
+        {text}
+      </text>
+    );
     return (
       <g data-id={facts.id}>
         {outline}
         {marker}
-        {facts.number && (
-          <text x={x} y={y} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.4} fontFamily="Inter, sans-serif" fontWeight={700} fill="#3a86ff"
-            transform={`translate(${x},${y}) scale(1,-1) translate(${-x},${-y})`}>
-            {facts.number}
-          </text>
-        )}
-        {facts.name && (
-          <text x={x} y={y - NAME_LABEL_OFFSET} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.22} fontFamily="Inter, sans-serif" fontWeight={500} fill="#5a9fff"
-            transform={`translate(${x},${y - NAME_LABEL_OFFSET}) scale(1,-1) translate(${-x},${-(y - NAME_LABEL_OFFSET)})`}>
-            {facts.name}
-          </text>
-        )}
-        {facts.area !== undefined && facts.area > 0 && (
-          <text x={x} y={areaY} textAnchor="middle" dominantBaseline="central"
-            fontSize={0.18} fontFamily="Inter, sans-serif" fill="#7aa7ff"
-            transform={`translate(${x},${areaY}) scale(1,-1) translate(${-x},${-areaY})`}>
-            {formatArea(facts.area)}
-          </text>
-        )}
+        {redundant}
+        {label(big, y, 0.36, 700, '#3a86ff')}
+        {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
+        {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
       </g>
     );
   },

@@ -362,7 +362,7 @@ function wallPart(id: string, el: CanonicalElement, f: LineWallFacts, ctx: Geome
   out.push(b.part(id, el.tableName, el.tableName === 'structure_wall' ? 'swall' : 'wall'));
   // Hosted doors / windows: their frames and leaves in the wall void
   for (const op of f.openings) {
-    if (op.hostedTable === 'opening') continue;
+    if (op.hostedTable === 'opening' || op.hostedTable === 'curtain_wall') continue;
     const hosted = ctx.elementById(op.hostedId);
     if (!hosted) continue;
     const frame = wallOpeningFrame(f, op.position, op.sillHeight);

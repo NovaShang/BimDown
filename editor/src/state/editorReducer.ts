@@ -1205,11 +1205,11 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
       // Re-resolve hosted elements when their host wall is resized: each keeps
       // its distance from the end that stayed put.
       if ((resized.geometry === 'line' || resized.geometry === 'spatial_line') && el.tableName !== 'stair') {
-        rehostChildren(next, el as LineElement, resized as LineElement);
+        rehostChildren(next, el as LineElement, resized as LineElement, action.hostedBefore);
       }
       // Wall joins: corner neighbours follow a dragged end, tees stay on the body.
       const joinTouched = applyReshapeJoins(
-        state.document.elements, next, el, action.preview ? action.wallJoins ?? [] : action.wallJoins,
+        state.document.elements, next, el, action.preview ? action.wallJoins ?? [] : action.wallJoins, action.hostedBefore,
       );
 
       // Topology cascade (reverse of MOVE_ELEMENTS' host case):

@@ -310,7 +310,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
                 (changes as { attrs: Record<string, string> }).attrs = { from: '' };
               }
             }
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current, hostedBefore: hostedBeforeRef.current });
           }, { endpointSide: 'start' })}
         />
         <circle
@@ -326,7 +326,7 @@ export default function ResizeHandles({ element, svgRef, scale, onSnap }: Resize
                 (changes as { attrs: Record<string, string> }).attrs = { to: '' };
               }
             }
-            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current });
+            dispatch({ type: 'RESIZE_ELEMENT', id: element.id, preview: true, changes, wallJoins: joinsRef.current, hostedBefore: hostedBeforeRef.current });
           }, { endpointSide: 'end' })}
         />
         {/* Arc midpoint handle, gated by the element type's `supportsArc`

@@ -14,8 +14,8 @@ import { layerBands } from './layerBands.ts';
 import { deriveOuterBoundaries, getSpaceFaceGraph, findSpaceBoundary } from './spaceBoundary.ts';
 import { matchRoomEdges, signedArea, type RoomEdge } from './roomArea.ts';
 
-export type BoundaryFace = 'interior' | 'core' | 'centerline' | 'exterior';
-export const BOUNDARY_FACES: BoundaryFace[] = ['interior', 'core', 'centerline', 'exterior'];
+export type BoundaryFace = 'interior' | 'core' | 'centerline' | 'core_exterior' | 'exterior';
+export const BOUNDARY_FACES: BoundaryFace[] = ['interior', 'core', 'centerline', 'core_exterior', 'exterior'];
 
 export interface PickedLoop {
   /** Centre-line loop, counter-clockwise (inside on the left). */
@@ -115,13 +115,17 @@ export function faceDistance(face: BoundaryFace, wall: LineElement | null, roomO
     case 'centerline': return 0;
     case 'exterior': return -half;
     case 'interior': return half;
-    case 'core': {
+    case 'core':
+    case 'core_exterior': {
       const layers = resolvedLayers(wall, types);
       const core = layers ? layerBands(layers, wall.strokeWidth).filter(b => b.function === 'core') : [];
-      if (core.length === 0) return half;
+      // No layers: the whole wall is core
+      if (core.length === 0) return face === 'core' ? half : -half;
       const lo = Math.min(...core.map(b => b.lo)), hi = Math.max(...core.map(b => b.hi));
       // The core face on the inside: left normal offsets, inside on the left → hi.
-      return roomOnLeft ? hi : -lo;
+      // core_exterior (Revit "Extend into wall (to core)"): the core's outer face.
+      if (face === 'core') return roomOnLeft ? hi : -lo;
+      return roomOnLeft ? lo : -hi;
     }
   }
 }

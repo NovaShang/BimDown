@@ -10,10 +10,10 @@ import type { CanonicalElement, Point } from '../model/elements.ts';
 import type { ProjectUnit } from '../types.ts';
 import { isAnnotationTable, isTagPinned, isViewAnnotation, textNoteSize } from '../annotation/model.ts';
 import {
-  resolveDimension, formatDimension, readableAngle, tagLines, tagDefaultPosition, tagBox, elementAnchor,
+  resolveDimension, formatDimension, readableAngle, tagLines, tagDefaultPosition, tagBox, tagLineScale, elementAnchor,
   metre, draft, add, sub, mul, mid, len, type Lookup,
 } from '../annotation/geometry.ts';
-import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
+import { boundaryWalls, redundantRooms, roomPolygon } from '../annotation/rooms.ts';
 import { roomAreas } from '../geometry/roomArea.ts';
 import { textNoteLines } from '../elements/text_note.tsx';
 import { registerPlanAnnotator, type PlanAnnotator } from './drawing/annotations.ts';
@@ -40,6 +40,9 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit,
   const lookup: Lookup = id => byId.get(id);
   const m = draft(unit, scale);
   const walls = boundaryWalls(elements);
+  // Redundant rooms (a second seed in an occupied area) tag no area
+  let redundantMemo: Map<string, string> | null = null;
+  const redundant = () => (redundantMemo ??= redundantRooms(elements, walls));
   const sw = 0.02 * m;
 
   for (const el of elements) {
@@ -79,7 +82,7 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit,
       if (!host) continue;
       const room = host.tableName === 'space';
       const poly = room ? roomPolygon(host, walls) : null;
-      const lines = tagLines(host, el.attrs.content, poly ? roomAreas(poly, walls, metre(unit)).area : null, unit);
+      const lines = tagLines(host, el.attrs.content, poly ? (redundant().has(host.id) ? 0 : roomAreas(poly, walls, metre(unit)).area) : null, unit);
       const pos = isTagPinned(el) ? el.position : tagDefaultPosition(host, lookup, unit, scale);
       const box = tagBox(lines, room, unit, scale);
       const anchor = elementAnchor(host);
@@ -87,7 +90,7 @@ export function drawAnnotations(elements: CanonicalElement[], unit: ProjectUnit,
       if (!room) out.boxes.push({ center: pos, w: box.w, h: box.h, width: 0.015 * m });
       lines.forEach((text, i) => {
         const dy = ((lines.length - 1) / 2 - i) * box.size * 1.25;
-        out.texts.push({ at: { x: pos.x, y: pos.y + dy }, text, size: room && i === 0 ? box.size * 1.1 : box.size, angle: 0, bold: i === 0 });
+        out.texts.push({ at: { x: pos.x, y: pos.y + dy }, text, size: box.size * tagLineScale(room, i), angle: 0, bold: i === 0 });
       });
     }
   }

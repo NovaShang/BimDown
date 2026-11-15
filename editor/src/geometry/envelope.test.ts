@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import '../elements/registerAll.ts';
 import type { CanonicalElement, LineElement, PolygonElement, Point } from '../model/elements.ts';
 import { pickLoop, boundaryAt } from './pickBoundary.ts';
+import { starterCatalog } from '../model/types/starter.ts';
 import { attachSurface, wallTopPieces, maxTop } from './attach.ts';
 import { insertVertexChanges, removeVertexChanges } from './polygonEdit.ts';
 import { signedArea } from './roofSolver.ts';
@@ -42,6 +43,22 @@ describe('pick boundary (floor / roof / ceiling by walls)', () => {
     // Roof: exterior face + 0.5 m overhang.
     expect(area(boundaryAt(loop, 'exterior', undefined, 0.5))).toBeCloseTo(11.2 * 9.2);
     expect(boundaryAt(loop, 'exterior')!.length).toBe(4);
+  });
+
+  it('core outer face: the floor runs into the wall up to its core (Revit "Extend into wall (to core)")', () => {
+    const types = starterCatalog();
+    // Drawn clockwise: the type's exterior (first) layer faces out
+    const t = { type_id: 'wt-ext-concrete-eps' };
+    const cw = [
+      wall('w-1', { x: 0, y: 0 }, { x: 0, y: 8 }, 0.325, t), wall('w-2', { x: 0, y: 8 }, { x: 10, y: 8 }, 0.325, t),
+      wall('w-3', { x: 10, y: 8 }, { x: 10, y: 0 }, 0.325, t), wall('w-4', { x: 10, y: 0 }, { x: 0, y: 0 }, 0.325, t),
+    ];
+    const loop = pickLoop({ x: 5, y: 0.05 }, cw)!;
+    // 10 mm render + 100 mm EPS outside a 200 mm core: core outer face 52.5 mm outside the centre line
+    expect(area(boundaryAt(loop, 'core_exterior', types))).toBeCloseTo(10.105 * 8.105, 6);
+    expect(area(boundaryAt(loop, 'core', types))).toBeCloseTo(9.705 * 7.705, 6);
+    // Untyped walls are all core: the outer face is the exterior face
+    expect(area(boundaryAt(pickLoop({ x: 5, y: 0.05 }, box)!, 'core_exterior'))).toBeCloseTo(10.2 * 8.2);
   });
 
   it('a click inside a room picks that room at its wall faces', () => {

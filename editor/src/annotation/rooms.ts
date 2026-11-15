@@ -8,7 +8,7 @@
  */
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
 import type { GeometryContext } from '../elements/archetypes.ts';
-import { deriveSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
+import { deriveSpaceBoundary, findSpaceBoundary, getSpaceFaceGraph, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
 import { roomAreas, type RoomAreas } from '../geometry/roomArea.ts';
 import { metre } from './geometry.ts';
 
@@ -70,9 +70,37 @@ export function roomPolygonFromCtx(space: CanonicalElement, ctx: GeometryContext
   return poly && poly.length >= 3 ? poly : null;
 }
 
+/**
+ * Redundant rooms (Revit): a room whose seed lies in an enclosed area that an
+ * earlier room (element order = space.csv order) already occupies. Maps each
+ * redundant room to that earlier room; its area is 0, so the area counts once.
+ * Same rule as `bimdown build` (space.geojson `redundant`).
+ */
+export function redundantRooms(spaces: Iterable<CanonicalElement>, walls: LineElement[]): Map<string, string> {
+  const out = new Map<string, string>();
+  const list = [...spaces].filter(s => s.tableName === 'space' && s.geometry === 'point');
+  if (list.length < 2) return out;
+  const graph = getSpaceFaceGraph(walls);
+  const owner = new Map<Point[], string>();
+  for (const s of list) {
+    const poly = findSpaceBoundary(graph, (s as { position: Point }).position);
+    if (!poly) continue;
+    const first = owner.get(poly);
+    if (first) out.set(s.id, first);
+    else owner.set(poly, s.id);
+  }
+  return out;
+}
+
+/** redundantRooms of the context's level, memoised per render pass. */
+export function redundantRoomsFromCtx(ctx: GeometryContext): Map<string, string> {
+  return ctx.memo('space-redundant', () => redundantRooms(ctx.elementsByTable('space'), boundaryWallsFromCtx(ctx)));
+}
+
 /** Net area of a room for tags and labels (memoised per render pass), or null without an outline. */
 export function roomNetAreaFromCtx(space: CanonicalElement, ctx: GeometryContext): number | null {
   const poly = roomPolygonFromCtx(space, ctx);
   if (!poly) return null;
+  if (redundantRoomsFromCtx(ctx).has(space.id)) return 0;
   return ctx.memo<number>(`space-net-area:${space.id}`, () => roomAreasOf(poly, boundaryWallsFromCtx(ctx)).area);
 }

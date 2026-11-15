@@ -7,6 +7,7 @@ import { renderZIndexForTable } from '../model/tableRegistry.ts';
 import { computeBounds, type CanonicalElement, type Point } from '../model/elements.ts';
 import { gridsToElements } from '../utils/gridBridge.ts';
 import { GRID_BUBBLE_RADIUS } from '../elements/grid.tsx';
+import { isSanitaryFixture } from '../elements/equipment_starters.ts';
 
 /** Check if a discipline should be visible given current discipline filter settings. */
 export function isDisciplineVisible(discipline: string, state: EditorState): boolean {
@@ -28,6 +29,18 @@ export const STRUCTURE_IN_ARCH_TABLES = new Set(['structure_column', 'structure_
 /** Architecture tables the structure view treats as its own (openings cut
  *  structural walls and slabs; the structure toolbar places them too). */
 export const ARCH_SHARED_WITH_STRUCTURE = new Set(['opening']);
+
+/** The architecture view also shows the sanitary fixtures among the MEP
+ *  terminals (only those elements of the layer, see isElementVisibleInView). */
+export function archShowsFixtures(discipline: string, tableName: string, state: Pick<EditorState, 'activeDiscipline'>): boolean {
+  return discipline === 'mep' && tableName === 'terminal' && state.activeDiscipline === 'architecture';
+}
+
+/** Element-level view filter: the layer rule, plus sanitary fixtures in the architecture view. */
+export function isElementVisibleInView(el: CanonicalElement, state: EditorState): boolean {
+  if (isLayerVisibleInView(el.discipline, el.tableName, state)) return true;
+  return archShowsFixtures(el.discipline, el.tableName, state) && isSanitaryFixture(el);
+}
 
 export function isLayerVisibleInView(discipline: string, tableName: string, state: EditorState): boolean {
   if (isDisciplineVisible(discipline, state)) return true;
@@ -82,13 +95,15 @@ export function getProcessedLayers(state: EditorState): ProcessedLayer[] {
   );
 
   const result = orderedLayers
-    .filter(l => isLayerVisibleInView(l.discipline, l.tableName, state) && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
+    .filter(l => (isLayerVisibleInView(l.discipline, l.tableName, state) || archShowsFixtures(l.discipline, l.tableName, state))
+      && state.visibleLayers.has(`${l.discipline}/${l.tableName}`))
     .map(l => ({
       key: `${l.discipline}/${l.tableName}`,
       tableName: l.tableName,
       discipline: l.discipline,
-      elements: parseLayer(l),
-    }));
+      elements: isLayerVisibleInView(l.discipline, l.tableName, state) ? parseLayer(l) : parseLayer(l).filter(isSanitaryFixture),
+    }))
+    .filter(l => l.elements.length > 0 || isLayerVisibleInView(l.discipline, l.tableName, state));
 
   appendGlobalLayers(state, result);
   return result;
@@ -360,7 +375,12 @@ export function getProcessedLayersFromDocument(state: EditorState): ProcessedLay
     const groupElements = groups.get(key)!;
     if (!state.visibleLayers.has(key)) continue;
     const [discipline, tableName] = key.split('/');
-    if (!isLayerVisibleInView(discipline, tableName, state)) continue;
+    if (!isLayerVisibleInView(discipline, tableName, state)) {
+      // Sanitary fixtures (MEP terminals) in the architecture view
+      const fixtures = archShowsFixtures(discipline, tableName, state) ? groupElements.filter(isSanitaryFixture) : [];
+      if (fixtures.length > 0) result.push({ key, tableName, discipline, elements: fixtures });
+      continue;
+    }
     result.push({
       key,
       tableName,
