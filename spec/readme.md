@@ -483,7 +483,7 @@ w-1,wt-ext-concrete-eps,
 w-2,wt-ext-concrete-eps,0.35
 ```
 
-New projects start with a metric starter catalog ([`starter-types/global/`](starter-types/global/)): concrete, ETICS, brick cavity, timber frame and stud walls; floor, ground floor and roof build-ups; ceilings; single/double/sliding doors; casement/fixed/sliding/tilt-and-turn windows; concrete/steel/timber column and beam sections. `bimdown query` returns effective values (`SELECT thickness FROM wall` includes inherited ones) and type tables join directly: `SELECT w.id, t.name FROM wall w JOIN wall_type t ON w.type_id = t.id`.
+New projects start with a starter catalog ([`starter-types/global/`](starter-types/global/), metric; `bimdown init --units` and the editor scale its lengths to the project units): concrete, ETICS, brick cavity, timber frame and stud walls; floor, ground floor and roof build-ups; ceilings; single/double/sliding doors; casement/fixed/sliding/tilt-and-turn windows; concrete/steel/timber column and beam sections. `bimdown query` returns effective values (`SELECT thickness FROM wall` includes inherited ones) and type tables join directly: `SELECT w.id, t.name FROM wall w JOIN wall_type t ON w.type_id = t.id`.
 
 ### Format Versioning
 
