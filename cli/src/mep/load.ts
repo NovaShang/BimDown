@@ -17,12 +17,12 @@ export interface LoadedMep extends MepModelIn {
   rowOf: Map<string, Record<string, string>>;
 }
 
-function num(v: unknown, fallback = 0): number {
+export function num(v: unknown, fallback = 0): number {
   const n = parseFloat(String(v ?? ''));
   return Number.isFinite(n) ? n : fallback;
 }
 
-function levelElevations(dir: string): Map<string, number> {
+export function levelElevations(dir: string): Map<string, number> {
   const out = new Map<string, number>();
   const p = join(dir, 'global', 'level.csv');
   if (!existsSync(p)) return out;
@@ -30,7 +30,7 @@ function levelElevations(dir: string): Map<string, number> {
   return out;
 }
 
-function featuresById(path: string): Map<string, BimDownFeature> {
+export function featuresById(path: string): Map<string, BimDownFeature> {
   const map = new Map<string, BimDownFeature>();
   if (!existsSync(path)) return map;
   try {
