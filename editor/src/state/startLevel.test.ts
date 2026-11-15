@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import '../elements/registerAll.ts';
 import { loadProject } from '../utils/loader.ts';
-import { pickStartLevel } from './startLevel.ts';
+import { pickStartDiscipline, pickStartLevel } from './startLevel.ts';
 import { memoryDataSource, fc } from '../test/memoryDataSource.ts';
 
 const wall = (id: string) => ({
@@ -47,5 +47,32 @@ describe('pickStartLevel', () => {
   it('is empty when no floor has content', async () => {
     const p = await loadProject(memoryDataSource(levels('lv-1,1,L1,0\n')));
     expect(pickStartLevel(p)).toBe('');
+  });
+});
+
+const duct = (id: string) => ({
+  [`${id}/duct.csv`]: 'id,shape,size_x,size_y\ndu-1,rect,0.4,0.3\n',
+  [`${id}/duct.geojson`]: fc([{ type: 'Feature', properties: { id: 'du-1' },
+    geometry: { type: 'LineString', coordinates: [[0, 0, 3], [4, 0, 3]] } }]),
+});
+const space = (id: string) => ({ [`${id}/space.csv`]: 'id,name,x,y\nsp-1,Office,1,1\n' });
+
+describe('pickStartDiscipline', () => {
+  it('follows the project metadata hint', async () => {
+    const p = await loadProject(memoryDataSource({
+      ...levels('lv-1,1,L1,0\n'), ...wall('lv-1'), 'project_metadata.json': '{"format_version":"3.0","discipline":"mep"}',
+    }));
+    expect(pickStartDiscipline(p)).toBe('mep');
+  });
+
+  it('opens an MEP-only model (rooms aside) in MEP, a structural one in structure, anything with architecture in architecture', async () => {
+    const mep = await loadProject(memoryDataSource({ ...levels('lv-1,1,L1,0\n'), ...duct('lv-1'), ...space('lv-1') }));
+    expect(pickStartDiscipline(mep)).toBe('mep');
+    const struct = await loadProject(memoryDataSource({ ...levels('lv-1,1,L1,0\n'), ...footing('lv-1') }));
+    expect(pickStartDiscipline(struct)).toBe('structure');
+    const arch = await loadProject(memoryDataSource({ ...levels('lv-1,1,L1,0\n'), ...duct('lv-1'), ...wall('lv-1') }));
+    expect(pickStartDiscipline(arch)).toBe('architecture');
+    const empty = await loadProject(memoryDataSource(levels('lv-1,1,L1,0\n')));
+    expect(pickStartDiscipline(empty)).toBe('architecture');
   });
 });

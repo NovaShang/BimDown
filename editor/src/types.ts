@@ -41,6 +41,8 @@ export interface ProjectMetadata {
   source?: string;
   /** `'absolute'` when the project declares spec-absolute spatial Z (see loader). */
   spatial_z?: string;
+  /** Discipline to open in (`architecture` / `structure` / `mep`), e.g. written by IFC import for an MEP model. */
+  discipline?: string;
 }
 
 /** One row of the project-level `global/mep_system.csv` lookup table. Lets users
