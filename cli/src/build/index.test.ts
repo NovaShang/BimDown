@@ -55,7 +55,7 @@ describe('build — room issues', () => {
     const overlaps = result.warnings.filter((w) => w.includes(' overlap '));
     expect(overlaps.some((w) => w.includes('d-1 and d-2 overlap on w-1'))).toBe(true);
     expect(overlaps.some((w) => w.includes('wn-1'))).toBe(false);
-    expect(overlaps.some((w) => w.includes('w-1 and w-5 overlap for 5.000m'))).toBe(true);
+    expect(overlaps.some((w) => w.includes('w-1 and w-5 overlap for 5.000 m'))).toBe(true);
     expect(overlaps.some((w) => w.includes('w-6'))).toBe(false);
   });
 });

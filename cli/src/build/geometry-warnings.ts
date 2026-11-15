@@ -2,6 +2,7 @@ import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
 import { discoverLayout } from '../utils/fs.js';
+import { projectUnits } from '../utils/units.js';
 import { readCsv } from '../utils/csv.js';
 import { effectiveRows } from '../catalog/index.js';
 import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
@@ -15,6 +16,8 @@ const BOUNDARY_TABLES = ['wall', 'structure_wall', 'curtain_wall', 'room_separat
 export function validateGeometry(dir: string): string[] {
   const warnings: string[] = [];
   const layout = discoverLayout(dir);
+  // Distances in messages are in the project's units
+  const unit = projectUnits(dir);
 
   const allDirs = [
     { name: 'global', path: layout.globalDir },
@@ -48,16 +51,16 @@ export function validateGeometry(dir: string): string[] {
     if (!existsSync(d.path)) continue;
 
     // A. Line connectivity
-    warnings.push(...validateLineConnectivity(d));
+    warnings.push(...validateLineConnectivity(d, unit));
 
     // B. Hosted bounds
-    warnings.push(...validateHostedBounds(d, wallGeometries));
+    warnings.push(...validateHostedBounds(d, wallGeometries, unit));
 
     // C. Hosted overlap
-    warnings.push(...validateHostedOverlap(d));
+    warnings.push(...validateHostedOverlap(d, unit));
 
     // D. Overlapping walls
-    warnings.push(...validateWallOverlap(d));
+    warnings.push(...validateWallOverlap(d, unit));
   }
 
   return warnings;
@@ -74,7 +77,7 @@ const COLUMN_TABLES = ['column', 'structure_column'];
  * body (T-junction at the centre line or at the face, within that wall's half thickness), or ends on a
  * column. Only ends that touch nothing are reported — those are the gaps that keep rooms from closing.
  */
-function validateLineConnectivity(levelDir: { name: string; path: string }): string[] {
+function validateLineConnectivity(levelDir: { name: string; path: string }, unit: string): string[] {
   const warnings: string[] = [];
 
   interface Endpoint { x: number; y: number; side: 'start' | 'end'; elementId: string; table: string }
@@ -159,7 +162,7 @@ function validateLineConnectivity(levelDir: { name: string; path: string }): str
       const d = Math.hypot(other.x - ep.x, other.y - ep.y);
       if (d < nearestDist) { nearestDist = d; nearestId = other.elementId; nearestSide = other.side; }
     }
-    const nearestInfo = nearestDist < Infinity ? ` (nearest: ${nearestId} ${nearestSide}, distance ${nearestDist.toFixed(3)}m)` : '';
+    const nearestInfo = nearestDist < Infinity ? ` (nearest: ${nearestId} ${nearestSide}, distance ${nearestDist.toFixed(3)} ${unit})` : '';
     warnings.push(
       `[warn] ${levelDir.name}/${ep.table}.geojson  ${ep.elementId} ${ep.side} (${ep.x.toFixed(3)}, ${ep.y.toFixed(3)}) has no connected line element${nearestInfo}`,
     );
@@ -185,6 +188,7 @@ function pointNearSegment(px: number, py: number, ax: number, ay: number, bx: nu
 function validateHostedBounds(
   levelDir: { name: string; path: string },
   wallGeometries: Map<string, { length: number }>,
+  unit: string,
 ): string[] {
   const warnings: string[] = [];
 
@@ -207,12 +211,12 @@ function validateHostedBounds(
       const halfWidth = width / 2;
       if (position - halfWidth < -TOLERANCE) {
         warnings.push(
-          `[warn] ${levelDir.name}/${tableName}.csv:${i + 2}  ${row.id} extends before host ${hostId} start: position(${position}) - width/2(${halfWidth.toFixed(3)}) = ${(position - halfWidth).toFixed(3)}m`,
+          `[warn] ${levelDir.name}/${tableName}.csv:${i + 2}  ${row.id} extends before host ${hostId} start: position(${position}) - width/2(${halfWidth.toFixed(3)}) = ${(position - halfWidth).toFixed(3)} ${unit}`,
         );
       }
       if (position + halfWidth > wallGeo.length + TOLERANCE) {
         warnings.push(
-          `[warn] ${levelDir.name}/${tableName}.csv:${i + 2}  ${row.id} extends past host ${hostId} end: position(${position}) + width/2(${halfWidth.toFixed(3)}) = ${(position + halfWidth).toFixed(3)}m > wall length ${wallGeo.length.toFixed(3)}m`,
+          `[warn] ${levelDir.name}/${tableName}.csv:${i + 2}  ${row.id} extends past host ${hostId} end: position(${position}) + width/2(${halfWidth.toFixed(3)}) = ${(position + halfWidth).toFixed(3)} ${unit} > wall length ${wallGeo.length.toFixed(3)} ${unit}`,
         );
       }
     }
@@ -228,7 +232,7 @@ const INSERT_DEFAULTS: Record<string, { sill: number; height: number }> = {
   door: { sill: 0, height: 2.1 }, window: { sill: 0.9, height: 1.2 }, opening: { sill: 0, height: 2.1 },
 };
 
-function validateHostedOverlap(levelDir: { name: string; path: string }): string[] {
+function validateHostedOverlap(levelDir: { name: string; path: string }, unit: string): string[] {
   const inserts: CheckInsert[] = [];
   for (const tableName of ['door', 'window', 'opening']) {
     const csvPath = join(levelDir.path, `${tableName}.csv`);
@@ -244,12 +248,12 @@ function validateHostedOverlap(levelDir: { name: string; path: string }): string
       inserts.push({ id: row.id, scope: levelDir.name, table: tableName, hostId: row.host_id, position, width, sill, height });
     }
   }
-  return insertOverlaps(inserts, TOLERANCE).map((p) => `[warn] ${levelDir.name}/  ${p.message}`);
+  return insertOverlaps(inserts, TOLERANCE, unit).map((p) => `[warn] ${levelDir.name}/  ${p.message}`);
 }
 
 // ─── D. Overlapping walls ───────────────────────────────
 
-function validateWallOverlap(levelDir: { name: string; path: string }): string[] {
+function validateWallOverlap(levelDir: { name: string; path: string }, unit: string): string[] {
   const walls: CheckWall[] = [];
   for (const table of ['wall', 'structure_wall']) {
     const geomName = GEOJSON_FILE_NAMES[table];
@@ -270,5 +274,5 @@ function validateWallOverlap(levelDir: { name: string; path: string }): string[]
       }
     } catch { /* skip */ }
   }
-  return wallOverlaps(walls, TOLERANCE).map((p) => `[warn] ${levelDir.name}/  ${p.message}`);
+  return wallOverlaps(walls, TOLERANCE, TOLERANCE * 10, unit).map((p) => `[warn] ${levelDir.name}/  ${p.message}`);
 }
