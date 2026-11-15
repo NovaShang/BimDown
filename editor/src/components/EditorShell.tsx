@@ -466,7 +466,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         {/* Selection actions dock under the view bar, away from the model, so
             they never cover the element next to the selection (a shift-click
             there used to hit Copy) */}
-        {selectionContent && (
+        {selectionContent && !(!state.readonly && isSnapInteraction(state.activeTool, state.drawingState)) && (
           <div data-testid="selection-bar" className="absolute left-1/2 top-[60px] z-30 -translate-x-1/2 max-md:top-[108px]">{selectionContent}</div>
         )}
         {!state.readonly && <DrawingPropertiesBar />}
