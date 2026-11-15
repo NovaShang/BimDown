@@ -30,7 +30,7 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   mesh: { csv: ['id', 'category', 'name', 'level_id', 'mesh_file', 'x', 'y', 'z', 'rotation'], geojson: [] },
   model_group: { csv: ['id', 'name', 'x', 'y', 'rotation', 'mirrored'], geojson: [] },
   opening: { csv: ['id', 'number', 'base_offset', 'mesh_file', 'group_id', 'pinned', 'host_id', 'position', 'width', 'height', 'shape', 'top_level_id', 'top_offset'], geojson: [] },
-  pipe: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'shape', 'size_x', 'size_y', 'system_type', 'from', 'to', 'insulation_thickness'], geojson: ['base_offset'] },
+  pipe: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'shape', 'size_x', 'size_y', 'system_type', 'from', 'to', 'insulation_thickness', 'material'], geojson: ['base_offset'] },
   railing: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'material', 'height', 'type_id', 'host_id', 'side', 'baluster_spacing'], geojson: ['base_offset'] },
   railing_type: { csv: ['id', 'name', 'description', 'material', 'height', 'top_rail_shape', 'top_rail_size', 'infill', 'baluster_spacing', 'baluster_size'], geojson: [] },
   ramp: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'width'], geojson: ['base_offset'] },

@@ -142,6 +142,9 @@ export function authorHouse(): Harness {
   // drop and stub into the basin's hot inlet).
   h.pick('equipment', { __starter_key: 'fcu_chw_2pipe' }); h.click(3, 6); h.done();
   h.pick('terminal', { __starter_key: 'diffuser_supply' }); h.click(1, 3); h.done();
+  // The FCU's 200 L/s all goes to this one diffuser (no flow-balance warning).
+  const diffuser = [...h.state.document!.elements.values()].find(e => e.attrs.terminal_type === 'supply_air_diffuser')!;
+  h.dispatch({ type: 'UPDATE_ATTRS', id: diffuser.id, attrs: { flow: '200' } });
   h.pick('duct'); h.click(2.5, 6); h.click(1, 6); h.click(1, 3); h.done();
   h.pick('equipment', { __starter_key: 'water_heater' }); h.click(8, 2); h.done();
   h.pick('terminal', { __starter_key: 'lavatory' }); h.click(7.95, 6); h.done();
