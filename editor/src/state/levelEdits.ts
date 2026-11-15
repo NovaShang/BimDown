@@ -22,7 +22,7 @@ import type { FloorData, LayerData, Level } from '../types.ts';
 import type { EditCommand } from '../model/history.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
-import { addNumbers, cloneElements, expandCopySet, retargetLevelAttrs, RENUMBER_TABLES, type NumberPool } from '../model/copySet.ts';
+import { addNumbers, cloneElements, expandCopySet, levelNumberBase, retargetLevelAttrs, RENUMBER_TABLES, type NumberPool } from '../model/copySet.ts';
 import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
 
@@ -65,17 +65,15 @@ export function levelElements(state: EditorState, levelId: string): Map<string, 
   return m;
 }
 
-/** Room and door numbers in use across the project (the open level from the live document). */
+/** Room, door and window numbers in use across the project (the open level from the live document). */
 export function projectNumbers(s: { project: ProjectData | null; document: DocumentState | null }): NumberPool {
   const pool: NumberPool = new Map();
   const open = s.document?.levelId;
-  if (s.document) addNumbers(pool, [...s.document.elements.values()].map(e => ({ tableName: e.tableName, number: e.attrs.number })));
-  for (const [levelId, floor] of s.project?.floors ?? []) {
-    if (levelId === open) continue;
-    for (const layer of floor.layers) {
-      if (!RENUMBER_TABLES.has(layer.tableName)) continue;
-      addNumbers(pool, [...layer.csvRows.values()].map(r => ({ tableName: layer.tableName, number: r.number })));
-    }
+  if (s.document) addNumbers(pool, [...s.document.elements.values()].map(e => ({ tableName: e.tableName, number: e.attrs.number, door_numbers: e.attrs.door_numbers })));
+  const layers = [...[...(s.project?.floors ?? [])].filter(([levelId]) => levelId !== open).flatMap(([, f]) => f.layers), ...(s.project?.globalLayers ?? [])];
+  for (const layer of layers) {
+    if (!RENUMBER_TABLES.has(layer.tableName) && layer.tableName !== 'curtain_wall') continue;
+    addNumbers(pool, [...layer.csvRows.values()].map(r => ({ tableName: layer.tableName, number: r.number, door_numbers: r.door_numbers })));
   }
   return pool;
 }
@@ -297,7 +295,8 @@ export function copyToLevelsPatches(
   const top = [...levels].sort((a, b) => b.elevation - a.elevation)[0]?.id;
   for (const to of targets) {
     const taken = takenIds(state, to);
-    const { clones } = cloneElements(source, set, { taken, numbers });
+    const levelBases = { from: levelNumberBase(levels.find(l => l.id === fromLevel)), to: levelNumberBase(levels.find(l => l.id === to)) };
+    const { clones } = cloneElements(source, set, { taken, numbers, levelBases });
     const patch: ElementPatch = new Map();
     for (const [id, el] of clones) {
       let attrs = retargetLevelAttrs(el.attrs, fromLevel, to, sourceLevels ?? levels);
@@ -317,7 +316,9 @@ export function duplicateLevelPatches(state: EditorState, levelId: string, targe
   const taken = new Set<string>();
   for (const gl of state.project?.globalLayers ?? []) for (const id of gl.csvRows.keys()) taken.add(id);
   for (const g of state.grids) taken.add(g.id);
-  const { clones } = cloneElements(source, source.keys(), { taken });
+  // Rooms, doors and windows of the new level take its numbers (D101 → D201), never ones in use
+  const levelBases = { from: levelNumberBase(levels.find(l => l.id === levelId)), to: levelNumberBase(target) };
+  const { clones } = cloneElements(source, source.keys(), { taken, numbers: projectNumbers(state), levelBases });
   const patch: ElementPatch = new Map();
   for (const [id, el] of clones) {
     const attrs = retargetLevelAttrs(el.attrs, levelId, target.id, levels);

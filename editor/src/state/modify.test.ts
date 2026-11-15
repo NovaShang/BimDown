@@ -211,6 +211,29 @@ describe('levels', () => {
     expect(levelElements(h.state, 'lv-3').size).toBe(3);
   });
 
+  it('copies to levels take that level\'s numbers: doors, windows and rooms stay unique project-wide', () => {
+    const h = room();
+    h.pick('window'); h.click(4, 4); h.done();
+    const num = (lv: string, t: string) => [...levelElements(h.state, lv).values()].filter(e => e.tableName === t).map(e => e.attrs.number).sort();
+    expect(num('lv-1', 'door')).toEqual(['D101']);
+    expect(num('lv-1', 'window')).toEqual(['W101']);
+    h.dispatch({ type: 'COPY_TO_LEVELS', ids: ['w-1', 'w-3'], levelIds: ['lv-2', 'lv-3'] });
+    expect(num('lv-2', 'door')).toEqual(['D201']);
+    expect(num('lv-2', 'window')).toEqual(['W201']);
+    expect(num('lv-3', 'window')).toEqual(['W301']);
+    // Copied again: the next free in the level's range, never a number in use
+    h.dispatch({ type: 'COPY_TO_LEVELS', ids: ['w-3'], levelIds: ['lv-2'] });
+    expect(num('lv-2', 'window')).toEqual(['W201', 'W202']);
+  });
+
+  it('duplicate level renumbers doors and windows to the new level', () => {
+    const h = room();
+    h.pick('window'); h.click(4, 4); h.done();
+    h.dispatch({ type: 'DUPLICATE_LEVEL', levelId: 'lv-1', level: { id: 'lv-4', number: '4', name: 'Level 4', elevation: 9 } });
+    const els = parseFloorLayers(h.state.project!.floors.get('lv-4')!.layers);
+    expect(els.filter(e => e.tableName === 'door' || e.tableName === 'window').map(e => e.attrs.number).sort()).toEqual(['D401', 'W401']);
+  });
+
   it('a wall copied up keeps its top constraint one storey up', () => {
     const h = room();
     h.dispatch({ type: 'UPDATE_ATTRS', id: 'w-1', attrs: { top_level_id: 'lv-2' } });

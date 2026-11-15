@@ -52,14 +52,20 @@ function mepNodeTravels(elements: ReadonlyMap<string, CanonicalElement>, set: Re
   return copied >= 2 || (copied >= 1 && copied === all);
 }
 
-/** Tables whose copies take the next free number (rooms, doors). */
-export const RENUMBER_TABLES = new Set(['space', 'door']);
+/** Tables whose copies take the next free number (rooms, doors, windows). */
+export const RENUMBER_TABLES = new Set(['space', 'door', 'window']);
 
 /** Numbers in use per table (RENUMBER_TABLES only). */
 export type NumberPool = Map<string, Set<string>>;
 
-export function addNumbers(pool: NumberPool, rows: Iterable<{ tableName: string; number?: string }>): NumberPool {
+export function addNumbers(pool: NumberPool, rows: Iterable<{ tableName: string; number?: string; door_numbers?: string }>): NumberPool {
   for (const r of rows) {
+    if (r.tableName === 'curtain_wall' && r.door_numbers) {
+      let set = pool.get('door');
+      if (!set) pool.set('door', set = new Set());
+      for (const n of r.door_numbers.split(';')) if (n.trim()) set.add(n.trim());
+      continue;
+    }
     const n = (r.number ?? '').trim();
     if (!n || !RENUMBER_TABLES.has(r.tableName)) continue;
     let set = pool.get(r.tableName);
@@ -76,6 +82,34 @@ export function nextFreeNumber(n: string, used: ReadonlySet<string>): string {
     const c = m ? `${m[1]}${String(i).padStart(m[2].length, '0')}${m[3]}` : `${n}-${i}`;
     if (!used.has(c)) return c;
   }
+}
+
+/** Level-based base of a level number: 1 → 100, 2 → 200 (model/autoNumber.ts); 0 when not a positive number. */
+export function levelNumberBase(level: Pick<Level, 'number'> | undefined): number {
+  const n = parseInt(level?.number ?? '', 10);
+  return Number.isFinite(n) && n > 0 ? n * 100 : 0;
+}
+
+/**
+ * The number of a copy moved from the level with base `fromBase` to the one
+ * with `toBase` (D104 on level 1 → D204 on level 2), when `n` follows the
+ * level scheme and that number is free; else the next free after `n`.
+ */
+export function levelShiftedNumber(n: string, used: ReadonlySet<string>, fromBase: number, toBase: number): string {
+  const m = /^(.*?)(\d+)(\D*)$/.exec(n);
+  if (m && fromBase > 0 && toBase > 0 && fromBase !== toBase) {
+    const seq = parseInt(m[2], 10);
+    if (seq > fromBase && seq < fromBase + 100) {
+      const c = `${m[1]}${seq - fromBase + toBase}${m[3]}`;
+      if (!used.has(c)) return c;
+      // Taken on the target level: the next free in its range (D2xx)
+      for (let i = toBase + 1; i < toBase + 100; i++) {
+        const d = `${m[1]}${i}${m[3]}`;
+        if (!used.has(d)) return d;
+      }
+    }
+  }
+  return nextFreeNumber(n, used);
 }
 
 /** A–Z, AA, AB… (bijective base 26) ↔ 1, 2, 3… */
@@ -150,8 +184,10 @@ export interface CloneOptions {
   keepOutsideRefs?: boolean;
   /** Ids to give particular copies (source id → id); the rest are generated. */
   preset?: ReadonlyMap<string, string>;
-  /** Numbers in use: copied rooms and doors take the next free one (and add it). */
+  /** Numbers in use: copied rooms, doors and windows take the next free one (and add it). */
   numbers?: NumberPool;
+  /** Copies go to another level: level-scheme numbers move to its range (D101 → D201). */
+  levelBases?: { from: number; to: number };
   /** Grid names in use where the copies go (default: the grids of `elements`).
    *  Copied grids always take the next free name: two axes can't share one. */
   gridNames?: Set<string>;
@@ -202,8 +238,22 @@ export function cloneElements(
     if (opts.numbers && RENUMBER_TABLES.has(el.tableName) && attrs.number?.trim()) {
       let used = opts.numbers.get(el.tableName);
       if (!used) opts.numbers.set(el.tableName, used = new Set());
-      attrs.number = nextFreeNumber(attrs.number.trim(), used);
+      attrs.number = opts.levelBases
+        ? levelShiftedNumber(attrs.number.trim(), used, opts.levelBases.from, opts.levelBases.to)
+        : nextFreeNumber(attrs.number.trim(), used);
       used.add(attrs.number);
+    }
+    // Curtain wall door panels are numbered with the doors
+    if (opts.numbers && el.tableName === 'curtain_wall' && attrs.door_numbers?.trim()) {
+      let used = opts.numbers.get('door');
+      if (!used) opts.numbers.set('door', used = new Set());
+      attrs.door_numbers = attrs.door_numbers.split(';').map(raw => {
+        const n = raw.trim();
+        if (!n) return '';
+        const m = opts.levelBases ? levelShiftedNumber(n, used!, opts.levelBases.from, opts.levelBases.to) : nextFreeNumber(n, used!);
+        used!.add(m);
+        return m;
+      }).join(';');
     }
     if (el.tableName === 'grid') {
       gridPool ??= gridNames(elements.values());

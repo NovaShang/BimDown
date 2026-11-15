@@ -50,6 +50,8 @@
   "warnings.kind.redundant_room": "多余房间",
   "warnings.kind.unbounded_room": "未闭合房间",
   "warnings.kind.stair": "楼梯",
+  "warnings.kind.duplicate_number": "编号重复",
+  "warnings.duplicateNumber": "编号 {{number}} 被使用了 {{count}} 次（{{levels}}）",
   "warnings.kind.mep": "机电连接",
   "warnings.insertOverlap": "{{a}} 与 {{b}} 在墙 {{host}} 上重叠（{{overlap}} m）",
   "warnings.wallOverlap": "墙 {{a}} 与 {{b}} 重叠（{{overlap}} m）",

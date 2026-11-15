@@ -50,6 +50,8 @@
   "warnings.kind.redundant_room": "Redundant rooms",
   "warnings.kind.unbounded_room": "Unbounded rooms",
   "warnings.kind.stair": "Stairs",
+  "warnings.kind.duplicate_number": "Duplicate numbers",
+  "warnings.duplicateNumber": "Number {{number}} is used {{count}} times ({{levels}})",
   "warnings.kind.mep": "MEP connectivity",
   "warnings.insertOverlap": "{{a}} and {{b}} overlap on wall {{host}} ({{overlap}} m)",
   "warnings.wallOverlap": "Walls {{a}} and {{b}} overlap ({{overlap}} m)",

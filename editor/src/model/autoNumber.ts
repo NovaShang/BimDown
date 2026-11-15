@@ -19,6 +19,7 @@ import type { Level } from '../types.ts';
 import { typeOfElement, type TypeCatalog } from './types/catalog.ts';
 import { elementTypeSig } from '../export/ifc/typeObjects.ts';
 import { foundationKind } from '../elements/foundation.tsx';
+import { doorNumbersInUse } from '../elements/curtainWallLayout.ts';
 import { COLUMN_TABLES, columnFootprint, insideFootprint, type ColumnFootprint } from '../elements/_framing.ts';
 
 export type NumberingConfig = Record<string, string>;
@@ -70,7 +71,7 @@ function seqOf(n: string, prefix: string): number {
 }
 
 /** Level-based base number: level number × 100 (L1 → 100, L2 → 200); basement B1 → 0 … */
-function levelBase(level: Level | undefined): number {
+export function levelBase(level: Level | undefined): number {
   const n = parseInt(level?.number ?? '', 10);
   return Number.isFinite(n) && n > 0 ? n * 100 : 0;
 }
@@ -114,6 +115,14 @@ export function assignNumbers(
     return keyCache.get(el)!;
   };
   for (const el of existing) {
+    // Curtain wall door panels are numbered with the doors
+    if (el.tableName === 'curtain_wall') {
+      const prefix = prefixFor('door', ctx.config);
+      let set = used.get(prefix);
+      if (!set) used.set(prefix, set = new Set());
+      for (const n of doorNumbersInUse(el.attrs)) set.add(n);
+      continue;
+    }
     const n = (el.attrs.number ?? '').trim();
     const key = keyOf(el);
     if (!n || !key || targetIds.has(el.id)) continue;
@@ -129,14 +138,7 @@ export function assignNumbers(
   const next = (prefix: string, base = 0) => {
     let set = used.get(prefix);
     if (!set) used.set(prefix, set = new Set());
-    let max = base;
-    for (const n of set) {
-      const s = seqOf(n, prefix);
-      if (Number.isFinite(s) && s > max && (base === 0 || s < base + 100)) max = s;
-    }
-    const v = `${prefix}${max + 1}`;
-    set.add(v);
-    return v;
+    return nextSequenceNumber(prefix, set, base);
   };
   for (const el of targets) {
     const key = keyOf(el);
@@ -152,6 +154,29 @@ export function assignNumbers(
     } else {
       out.set(el.id, next(prefix));
     }
+  }
+  return out;
+}
+
+/** The next mark after the highest `prefix` + sequence in `used` (within base…base+99 when `base` is set); added to `used`. */
+export function nextSequenceNumber(prefix: string, used: Set<string>, base = 0): string {
+  let max = base;
+  for (const n of used) {
+    const s = seqOf(n, prefix);
+    if (Number.isFinite(s) && s > max && (base === 0 || s < base + 100)) max = s;
+  }
+  let v = `${prefix}${max + 1}`;
+  for (let i = max + 2; used.has(v); i++) v = `${prefix}${i}`;
+  used.add(v);
+  return v;
+}
+
+/** Marks of the doors on every level and of curtain wall door panels (for numbering a new door panel). */
+export function doorNumberPool(elements: Iterable<CanonicalElement>): Set<string> {
+  const out = new Set<string>();
+  for (const el of elements) {
+    if (el.tableName === 'door' && el.attrs.number?.trim()) out.add(el.attrs.number.trim());
+    else if (el.tableName === 'curtain_wall') for (const n of doorNumbersInUse(el.attrs)) out.add(n);
   }
   return out;
 }

@@ -7,7 +7,7 @@ import type { EditorState } from './editorTypes.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { parseFloorLayers, parseLayer } from '../model/parse.ts';
 import {
-  assignNumbers, columnFootprintsOf, numberingKey, NUMBERED_TABLES, planOrder, type NumberingConfig,
+  assignNumbers, columnFootprintsOf, doorNumberPool, levelBase, nextSequenceNumber, prefixFor, numberingKey, NUMBERED_TABLES, planOrder, type NumberingConfig,
 } from '../model/autoNumber.ts';
 import { levelElements, type LevelPatches } from './levelEdits.ts';
 import { unitsPerMetreOf } from '../utils/units.ts';
@@ -48,6 +48,24 @@ export function autoNumberCreated<T extends CanonicalElement>(state: NumberingSt
     const n = numbers.get(e.id);
     return n ? ({ ...e, attrs: { ...e.attrs, number: n } } as T) : e;
   });
+}
+
+/** A source of new door marks on the open level (D1xx after every door / curtain wall door in the project). */
+export function doorNumberSource(state: NumberingState): () => string {
+  const doc = state.document;
+  const used = doorNumberPool([...(doc?.elements.values() ?? []), ...numberedElsewhere(state, doc?.levelId ?? ''), ...curtainWallsElsewhere(state, doc?.levelId ?? '')]);
+  const level = state.project?.levels.find(l => l.id === doc?.levelId);
+  const prefix = prefixFor('door', state.project?.metadata.numbering);
+  return () => nextSequenceNumber(prefix, used, levelBase(level));
+}
+
+function curtainWallsElsewhere(state: NumberingState, except: string): CanonicalElement[] {
+  const out: CanonicalElement[] = [];
+  for (const [levelId, floor] of state.project?.floors ?? []) {
+    if (levelId !== except) out.push(...parseFloorLayers(floor.layers.filter(l => l.tableName === 'curtain_wall')));
+  }
+  for (const gl of state.project?.globalLayers ?? []) if (gl.tableName === 'curtain_wall') out.push(...parseLayer(gl));
+  return out;
 }
 
 export type RenumberScope = 'selection' | 'level' | 'project';

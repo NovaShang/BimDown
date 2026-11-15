@@ -15,8 +15,9 @@ import { MATERIAL_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
 import { cn } from '../lib/utils';
 import {
   DEFAULT_MULLION, DEFAULT_SOLID_MATERIAL, PANEL_KINDS, curtainGrid, insertGridLine, moveGridLine,
-  removeGridLine, setPanelKinds, uniformGrid, type GridAxis, type PanelKind,
+  remapDoorNumbers, removeGridLine, setPanelKinds, uniformGrid, type GridAxis, type PanelKind,
 } from './curtainWallLayout.ts';
+import { doorNumberSource } from '../state/numbering.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 const DIAGRAM_W = 200;
@@ -54,7 +55,14 @@ export default function CurtainWallPanel({ element, editable }: PropertyPanelPro
   const cols = grid.xs.length - 1, rows = grid.ys.length - 1;
   const cells = selected.filter(c => c.col < cols && c.row < rows);
   const apply = (patch: Record<string, string> | null) => {
-    if (patch && editable) dispatch({ type: 'UPDATE_ATTRS', id: element.id, attrs: patch });
+    if (!patch || !editable) return;
+    // Door panels carry door marks (door_numbers): kept per cell, new door panels numbered
+    if (patch.panels !== undefined || patch.v_grids !== undefined || patch.u_grids !== undefined) {
+      const after = curtainGrid({ ...attrs, ...patch }, length, height);
+      const marks = remapDoorNumbers(grid, after, attrs.door_numbers, doorNumberSource(state));
+      if (marks !== (attrs.door_numbers ?? '')) patch = { ...patch, door_numbers: marks };
+    }
+    dispatch({ type: 'UPDATE_ATTRS', id: element.id, attrs: patch });
   };
 
   // Elevation diagram, bottom row at the bottom.
