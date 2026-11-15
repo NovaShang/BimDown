@@ -59,12 +59,14 @@ function memberAttrs(ctx: ImportContext, id: number, table: 'column' | 'structur
   const section = resolveSection(measured, extents, [ft.type, t ? str(model.line(t)?.Name) ?? undefined : undefined, ft.family, str(model.line(id)?.ObjectType) ?? undefined]);
   // A catalogue steel section (or an open-web joist) without an IFC material is steel
   const material = elementMaterial(model, id) ?? (section.designation || section.kind === 'joist' ? 'steel' : null);
-  const cols = sectionColumns(section, table === 'column');
+  // The grade goes on the type (the first instance's); an instance keeps one only where it differs
+  const grade = table === 'column' ? undefined : materialGrade(model, id, material) ?? undefined;
+  const cols = { ...sectionColumns(section, table === 'column'), ...(grade ? { material_grade: grade } : {}) };
   const typeTable = table === 'column' || table === 'structure_column' ? 'column_type' : 'beam_type';
   const { typeId, attrs } = sectionType(ctx, typeTable, ft, cols, material ?? undefined, section.designation);
   return {
     section,
-    attrs: { number: numberOf(ctx, id, ft), type_id: typeId, ...attrs, material_grade: table === 'column' ? undefined : materialGrade(model, id, material) ?? undefined },
+    attrs: { number: numberOf(ctx, id, ft), type_id: typeId, ...attrs },
   };
 }
 

@@ -265,13 +265,15 @@ describe('import-ifc structural sections, types and grades', () => {
       expect(b.type_id).toBe(beamTypes[0].id);
       expect(b.number ?? '').toBe('');
       expect(b.shape ?? '').toBe('');
-      expect(b.material_grade).toBe('345 MPa');
+      expect(b.material_grade ?? '').toBe(''); // on the type (inherited)
     }
+    expect(beamTypes[0].material_grade).toBe('345 MPa');
     const colTypes = new Map([...table(files, 'column_type').values()].map(t => [t.name, t]));
     expect(colTypes.get('HSS152X152X9.5')).toMatchObject({ shape: 'rect_hollow', size_x: '0.152', size_y: '0.152', thickness: '0.0095', material: 'steel' });
     expect(colTypes.get('400 x 400mm')).toMatchObject({ shape: 'rect', size_x: '0.4', material: 'concrete' });
     const cols = [...table(files, 'structure_column').values()];
-    expect(cols.map(c => c.material_grade).sort()).toEqual(['345 MPa', 'C30/37']);
+    expect(cols.map(c => c.material_grade ?? '')).toEqual(['', '']);
+    expect([...colTypes.values()].map(t => t.material_grade).sort()).toEqual(['345 MPa', 'C30/37']);
     const dir = writeProject(files);
     try { expect(build(dir).issues).toEqual([]); } finally { rmSync(dir, { recursive: true, force: true }); }
   });
