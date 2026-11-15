@@ -1048,7 +1048,7 @@
   "modify.placeCenter": "Place centre",
   "modify.angle": "Angle",
   "modify.copy": "Copy",
-  "modify.renumber": "Renumber rooms / doors",
+  "modify.renumber": "Renumber rooms / doors / windows",
   "modify.pickAxis": "Pick axis",
   "modify.drawAxis": "Draw axis",
   "modify.linear": "Linear",

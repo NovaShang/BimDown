@@ -334,12 +334,14 @@ function curtainDoorRows(elements: CanonicalElement[], level: Level, levels: Lev
     if (!q.length || !q.height) continue;
     const doors = curtainDoors(curtainGrid(el.attrs, q.length, q.height), el.attrs.door_numbers);
     const base = rowValues(el, level, {}, unit, displayName, lang, types, context);
-    const host = [el.attrs.number, typeOfElement(el, types)?.name].filter(Boolean).join(' · ') || displayName('curtain_wall');
+    // Type: the curtain wall's type (the door panel belongs to it); host: the curtain wall
+    const typeName = typeOfElement(el, types)?.name || displayName('curtain_wall');
+    const host = el.attrs.number || displayName('curtain_wall');
     doors.forEach((d, i) => {
       out.push({
         sid: `${level.id}:${el.id}`, id: `${el.id}#door${i}`, levelId: level.id, table: 'curtain_wall',
         values: {
-          ...base, number: d.number, host, type_name: displayName('curtain_wall'), width: d.width, height: d.height,
+          ...base, number: d.number, host, type_name: typeName, width: d.width, height: d.height,
           operation: operationLabel('door', d.kind === 'double_door' ? 'double_swing' : 'single_swing', lang), material: base.material, count: 1,
         },
       });

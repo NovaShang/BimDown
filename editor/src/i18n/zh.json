@@ -1048,7 +1048,7 @@
   "modify.placeCenter": "放置中心",
   "modify.angle": "角度",
   "modify.copy": "复制",
-  "modify.renumber": "房间 / 门重新编号",
+  "modify.renumber": "房间 / 门 / 窗重新编号",
   "modify.pickAxis": "拾取轴",
   "modify.drawAxis": "绘制轴",
   "modify.linear": "线性",
