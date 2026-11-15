@@ -79,7 +79,7 @@ Spatial 3D `LineString` (start point at bottom of run, end point at top). CSV: `
 ### curtain_wall, ceiling, roof
 - Curtain wall: line element like wall. Even grid: `v_grid_count` columns × `u_grid_count` rows (cell counts).
 - Uneven grid: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, `;`-separated (`1.5;3.3;4.8`); they override the counts.
-- Panels: `panels` = `col:row=kind;…` (0-based from start / bottom, `*` = all), kinds `glass` (default), `solid` (spandrel, `solid_material`), `door`, `double_door`, `empty`. E.g. `*:1=solid;2:0=door`.
+- Panels: `panels` = `col:row=kind;…` (0-based from start / bottom, `*` = all), kinds `glass` (default), `solid` (spandrel, `solid_material`), `door`, `double_door`, `empty`. E.g. `*:1=solid;2:0=door`. 幕墙门编号：`door_numbers` `D105;…`，按单元顺序。门 / 窗 / 房间编号全项目唯一（build 会警告）：N 层用 D/W N01…
 - A curtain wall door: make the bottom-row cell the door width (`v_grids`) and door height (first `u_grids`), set it `door`; don't host a `door` row on it. Mullions: `mullion_width`/`mullion_depth`/`mullion_profile` (rect/round).
 - Ceiling: polygon, `height_offset` above level
 - Roof: polygon, `roof_type` (flat/gable/hip/shed/mansard), `slope` in degrees. Top floor only.
