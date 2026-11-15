@@ -26,6 +26,8 @@ export interface BeamFacts {
   footprint2D: Point[];
   /** 3D body ends (0..1 along start→end): cut back at the faces of the primary beams it frames into. */
   body?: [number, number];
+  /** Part of start→end (0..1) the member really spans: cut back at girder and column faces (quantities). */
+  span?: [number, number];
   number: string;
 }
 
@@ -167,7 +169,8 @@ export const beamModule: ElementModule<BeamFacts> = {
     // Secondary beams stop at the side faces of the girders they frame into (plan and 3D).
     const body = trimAtBeams(ln.id, ln.start, ln.end, (startZ + endZ) / 2, beamSegments(ctx));
     const [c0, c1] = trimAtColumns(ln.start, ln.end, columnFootprints(ctx));
-    const footprint2D = framingStrip(ln.start, ln.end, planWidth, Math.max(c0, body[0]), Math.min(c1, body[1]));
+    const span: [number, number] = [Math.max(c0, body[0]), Math.min(c1, body[1])];
+    const footprint2D = framingStrip(ln.start, ln.end, planWidth, span[0], span[1]);
     return {
       id: ln.id,
       start: ln.start, end: ln.end,
@@ -177,6 +180,7 @@ export const beamModule: ElementModule<BeamFacts> = {
       material: ln.attrs.material || 'steel',
       footprint2D,
       body,
+      span,
       number: tagText(ln.attrs),
     };
   },

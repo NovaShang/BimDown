@@ -170,3 +170,27 @@ describe('schedules', () => {
     expect(await zip.file('xl/workbook.xml')!.async('string')).toContain('name="Rooms"');
   });
 });
+
+describe('structural take-off from geometry', () => {
+  it('framing counts between the girder faces; slabs deduct the shafts through them', async () => {
+    const f = files();
+    f['global/level.csv'] = 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3\nlv-3,3,L3,6\n';
+    // Girders along y at x = 0 and 6 (0.3 wide), a secondary beam between them on their centre lines
+    f['lv-2/beam.csv'] = 'id,number,shape,size_x,size_y,material\nbm-1,,rect,0.3,0.6,concrete\nbm-2,,rect,0.3,0.6,concrete\nbm-3,,rect,0.2,0.4,concrete\n';
+    f['lv-2/beam.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'bm-1' }, geometry: { type: 'LineString', coordinates: [[0, -1, 3], [0, 6, 3]] } },
+      { type: 'Feature', properties: { id: 'bm-2' }, geometry: { type: 'LineString', coordinates: [[6, -1, 3], [6, 6, 3]] } },
+      { type: 'Feature', properties: { id: 'bm-3' }, geometry: { type: 'LineString', coordinates: [[0, 2, 3], [6, 2, 3]] } },
+    ]);
+    f['lv-2/slab.csv'] = 'id,number,thickness\nsl-9,,0.2\n';
+    f['lv-2/slab.geojson'] = fc([{ type: 'Feature', properties: { id: 'sl-9' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 8], [0, 8], [0, 0]]] } }]);
+    f['lv-1/opening.csv'] = 'id,host_id,top_level_id,base_offset\nop-9,,lv-3,0\n';
+    f['lv-1/opening.geojson'] = fc([{ type: 'Feature', properties: { id: 'op-9' }, geometry: { type: 'Polygon', coordinates: [[[4, 4], [5, 4], [5, 5], [4, 5], [4, 4]]] } }]);
+    const { state } = await load(f);
+    const rows = (k: string) => scheduleRows(cat(k), state.project!, 'm', name, 'lv-1', state.document!.elements);
+    const beam = rows('framing').find(r => r.id === 'bm-3')!;
+    expect(beam.values.length).toBeCloseTo(5.7, 6);
+    const slab = rows('slabs').find(r => r.id === 'sl-9')!;
+    expect(slab.values.area).toBeCloseTo(79, 6);
+  });
+});

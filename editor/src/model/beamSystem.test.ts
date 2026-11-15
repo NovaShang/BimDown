@@ -54,6 +54,10 @@ describe('associative beam systems', () => {
     // Another type: every beam follows
     state = editorReducer(state, { type: 'UPDATE_ATTRS', id: 'lv-1:bs-1', attrs: { type_id: 'bmt-2' } });
     expect(beamsOf(state).every(b => b.attrs.size_y === '0.6' && b.attrs.type_id === 'bmt-2')).toBe(true);
+    // The type picker (SET_ELEMENT_TYPE on the system) does the same
+    state = editorReducer(state, { type: 'SET_ELEMENT_TYPE', ids: ['lv-1:bs-1'], typeId: 'bmt-1' });
+    expect(beamsOf(state).every(b => b.attrs.type_id === 'bmt-1')).toBe(true);
+    state = editorReducer(state, { type: 'UNDO' });
     // Turn 90°: beams along X
     state = editorReducer(state, { type: 'UPDATE_ATTRS', id: 'lv-1:bs-1', attrs: { direction: '0' } });
     expect(beamsOf(state).every(b => Math.abs(b.start.y - b.end.y) < 1e-9)).toBe(true);

@@ -4,6 +4,10 @@
  * Schedule view: rows across all levels, sorting, grouping with subtotals,
  * totals, CSV text.
  */
+import type { GeometryContext } from '../elements/archetypes.ts';
+import { getElementModule } from '../elements/registry.ts';
+import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
+import { buildCrossLevelIndex } from '../model/crossLevel.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import type { Level, ProjectData, ProjectUnit } from '../types.ts';
 import { collectLevels, elementQuantities } from './quantities.ts';
@@ -255,6 +259,8 @@ function furnitureValues(el: CanonicalElement, rooms: LevelRoom[], lang: Drawing
   };
 }
 
+const FACTS_TABLES = new Set(['beam', 'brace', 'slab', 'structure_slab']);
+
 /** All rows of a schedule across every level. */
 export function scheduleRows(
   cat: ScheduleCategory, project: ProjectData, unit: ProjectUnit,
@@ -275,11 +281,24 @@ export function scheduleRows(
     return r;
   };
   const upm = unitsPerMetreOf(unit);
+  // Geometry facts where quantities need them (framing trimmed at girders / columns, shafts through slabs)
+  let crossLevel: ReturnType<typeof buildCrossLevelIndex> | undefined;
+  const ctxCache = new Map<string, GeometryContext>();
+  const factsOf = (el: CanonicalElement, level: Level, context: CanonicalElement[]): unknown => {
+    if (!FACTS_TABLES.has(el.tableName)) return undefined;
+    let ctx = ctxCache.get(level.id);
+    if (!ctx) {
+      crossLevel ??= buildCrossLevelIndex(project, liveLevel && live ? { levelId: liveLevel, elements: live } : undefined);
+      ctx = buildGeometryContext({ level, allLevels, allElements: new Map(context.map(e => [e.id, e])), mepSystems: project.mepSystems, types: project.types, unitsPerMetre: upm, crossLevel });
+      ctxCache.set(level.id, ctx);
+    }
+    try { return getElementModule(el.tableName)?.geometry(el, ctx) ?? undefined; } catch { return undefined; }
+  };
   for (const { level, elements } of levels) {
     const context = [...elements, ...global];
     for (const el of elements) {
       if (!tables.has(el.tableName)) continue;
-      const q = elementQuantities(el, level, allLevels, context, upm);
+      const q = elementQuantities(el, level, allLevels, context, upm, factsOf(el, level, context));
       const values = rowValues(el, level, q, unit, displayName, lang, project.types, context);
       if (cat.filter && !cat.filter(el)) continue;
       if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context), lang));

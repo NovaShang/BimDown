@@ -141,6 +141,8 @@ function embeddedCurtainArea(wall: CanonicalElement, wallHeight: number, level: 
  */
 export function elementQuantities(
   el: CanonicalElement, level: Level, levels: Level[], context: CanonicalElement[], upm = 1,
+  /** The element's geometry facts when known: trimmed framing span, shafts through slabs. */
+  facts?: unknown,
 ): ElementQuantities {
   const q: ElementQuantities = {};
   const thickness = parseFloat(el.attrs.thickness ?? '');
@@ -181,9 +183,19 @@ export function elementQuantities(
     // Polygon slabs / rafts: area net of their holes.
     if (s.area !== undefined && el.geometry === 'polygon') q.area = s.area;
   }
-  // Slabs: hosted floor openings deducted (gross = outline − inner rings).
+  // Framing: the length between the girder / column faces it frames into
+  const span = (facts as { span?: [number, number] } | undefined)?.span;
+  if ((el.tableName === 'beam' || el.tableName === 'brace') && span && q.length !== undefined) {
+    const k = Math.max(0, Math.min(1, span[1]) - Math.max(0, span[0]));
+    if (k < 1 - 1e-9) {
+      q.length *= k;
+      if (q.volume !== undefined) q.volume *= k;
+    }
+  }
+  // Slabs: hosted floor openings and shafts through them deducted (gross = outline − inner rings).
   if (DEDUCT_OPENINGS.has(el.tableName) && q.area !== undefined) {
-    const cut = hostedOpeningArea(el, context);
+    const shafts = (facts as { shaftHoles?: Point[][] } | undefined)?.shaftHoles ?? [];
+    const cut = hostedOpeningArea(el, context) + shafts.reduce((a, h) => a + ringArea(h), 0);
     if (cut > 0) {
       q.gross_area = q.area;
       q.area = Math.max(0, q.area - cut);
