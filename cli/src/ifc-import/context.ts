@@ -152,6 +152,19 @@ export class ImportContext {
     return this.levelAtZ(zMin ?? 0);
   }
 
+  /**
+   * Level of a horizontal MEP run at height `z`: its storey, unless the run
+   * lies outside that storey's height band (below its floor, or at / above
+   * the next level) — then the level its elevation falls in (Revit models
+   * often host a ceiling-void duct on the storey above).
+   */
+  levelOfRun(productId: number, z: number): number {
+    const lv = this.levelOf(productId, z);
+    const floor = this.elevation(lv);
+    const next = this.levels.filter(l => l.elevation > floor + 1e-6).reduce((m, l) => Math.min(m, l.elevation), Infinity);
+    return z < floor - 0.05 || z >= next - 0.05 ? this.levelAtZ(z) : lv;
+  }
+
   levelAtZ(z: number): number {
     let best = 0;
     for (const l of this.levels) if (l.elevation <= z + 0.05) best = l.index;

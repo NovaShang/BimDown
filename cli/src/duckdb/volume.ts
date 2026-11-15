@@ -2,7 +2,8 @@
  * Computed `volume` (concrete / steel take-off) for structural tables, filled
  * after geometry, height and level ids are hydrated:
  *   structure_column   section area × height
- *   beam / brace       section area × 3D length
+ *   beam / brace       section area × cut length (3D length to the column /
+ *                      girder faces it frames into)
  *   structure_wall     length × thickness × height
  *   structure_slab     net area × thickness (`net_area`: outline − inner rings
  *                      − the slab openings hosted on it)
@@ -64,6 +65,8 @@ function sectionAreaSql(cols: Set<string>): string {
     WHEN 'cross' THEN COALESCE(${th}, least(${w(0.15)}, ${d(0.15)}) * 0.25) * (${w(0.15)} + ${d(0.15)} - COALESCE(${th}, least(${w(0.15)}, ${d(0.15)}) * 0.25))
     WHEN 'rect_hollow' THEN ${w(0.2)} * ${d(0.2)} - greatest(${w(0.2)} - 2 * ${rhT}, 0) * greatest(${d(0.2)} - 2 * ${rhT}, 0)
       - (4 - pi()) * (power(${rhRo}, 2) - power(${rhRi}, 2))
+    WHEN 'open_web' THEN 4.6 * least(COALESCE(${th}, 0.0035), least(COALESCE(${fl}, least(0.032, ${d(0.356)} * 0.12)), ${d(0.356)} / 3) / 2, ${w(0.073)} / 4)
+      * (${w(0.073)} / 2 + least(COALESCE(${fl}, least(0.032, ${d(0.356)} * 0.12)), ${d(0.356)} / 3) - least(COALESCE(${th}, 0.0035), least(COALESCE(${fl}, least(0.032, ${d(0.356)} * 0.12)), ${d(0.356)} / 3) / 2, ${w(0.073)} / 4))
     WHEN 'round_hollow' THEN pi() / 4 * (power(${w(0.2)}, 2) - power(greatest(${w(0.2)} - 2 * ${chsT}, 0), 2))
     ELSE ${w(0.3)} * ${d(0.3)}
   END`;
@@ -77,8 +80,8 @@ function volumeSql(table: string, cols: Set<string>): string | null {
       return `(${sectionAreaSql(cols)}) * ${height}`;
     case 'beam':
     case 'brace':
-      // `length` of a spatial line is already its 3D length.
-      return `(${sectionAreaSql(cols)}) * ${len}`;
+      // Cut length (between the column / girder faces, cut-length.ts), else the 3D line length.
+      return `(${sectionAreaSql(cols)}) * COALESCE(${col(cols, 'cut_length')}, ${len})`;
     case 'structure_wall':
       return `${len} * ${thick} * ${height}`;
     case 'structure_slab':

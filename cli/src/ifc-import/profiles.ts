@@ -15,7 +15,7 @@ import type { Profile } from './representation.js';
 import { type V2, polygonArea, r3 } from './math.js';
 import { findSteelSection, type SteelSection } from '../sections/steel-sections.js';
 
-export type SectionKind = 'rect' | 'round' | 'i' | 't' | 'l' | 'c' | 'rhs' | 'chs';
+export type SectionKind = 'rect' | 'round' | 'i' | 't' | 'l' | 'c' | 'rhs' | 'chs' | 'joist';
 
 export interface Section {
   kind: SectionKind;
@@ -35,10 +35,10 @@ export interface Section {
 
 /** Schema `shape` per section kind. */
 export const SHAPE_OF: Record<SectionKind, string> = {
-  rect: 'rect', round: 'round', i: 'i_shape', t: 't_shape', l: 'l_shape', c: 'c_shape', rhs: 'rect_hollow', chs: 'round_hollow',
+  rect: 'rect', round: 'round', i: 'i_shape', t: 't_shape', l: 'l_shape', c: 'c_shape', rhs: 'rect_hollow', chs: 'round_hollow', joist: 'open_web',
 };
 
-const KIND_OF: Record<SteelSection['shape'], SectionKind> = { i_shape: 'i', c_shape: 'c', l_shape: 'l', rect_hollow: 'rhs', round_hollow: 'chs' };
+const KIND_OF: Record<SteelSection['shape'], SectionKind> = { i_shape: 'i', c_shape: 'c', l_shape: 'l', rect_hollow: 'rhs', round_hollow: 'chs', open_web: 'joist' };
 
 /** The steel section library entry of a designation (HEA200 = "HEA 200", W14X90, CHS 219.1x8 …) as a section, or null. */
 export function librarySection(designation: string, kind?: SectionKind): Section | null {
@@ -71,6 +71,9 @@ export interface Designation {
 
 // First match wins.
 export const DESIGNATIONS: Designation[] = [
+  // Open-web steel joists: SJI K / KCS / LH / DLH series (14K1, 18LH05) or a bar-joist family name
+  { re: /\b(\d{1,2})(?:KCS|K|LH|DLH)\d{1,2}\b/i, kind: 'joist', dims: m => ({ depth: unit(n(m[1]), true) }) },
+  { re: /bar\s?joist|open[\s-]?web|joist girder|空腹|桁架梁/i, kind: 'joist' },
   // Hollow: HSS B×H×t (rect) or D×t (round), CHS / RHS / SHS, Chinese 方管 / 圆管
   { re: new RegExp(`\\bHSS\\s?${NUM}${X}${NUM}${X}${NUM}`, 'i'), kind: 'rhs', dims: m => {
     const imp = n(m[1]) <= 40;
@@ -216,10 +219,13 @@ export function resolveSection(measured: Section | null, extents: { x: number; y
       // Plain outline or none: the name says what it is
       s = { kind: des.kind, width: des.dims.width ?? s.width, depth: des.dims.depth ?? s.depth, ...des.dims };
     } else if ((s.kind === 'rhs' || s.kind === 'chs' || s.kind === 'l') && !s.thickness && des.dims.thickness) s.thickness = des.dims.thickness;
-    s.designation = des.designation;
+    // A family keyword ("Bar Joist") names the kind, not a catalogue section
+    if (/\d/.test(des.designation)) s.designation = des.designation;
   }
   return s;
 }
+
+const r4 = (v: number) => Math.round(v * 1e4) / 1e4;
 
 /** structural_section_profile columns of a section (`rectOnly`: architectural columns take rect / round). */
 export function sectionColumns(s: Section, rectOnly = false): Record<string, AttrValue> {
@@ -229,10 +235,11 @@ export function sectionColumns(s: Section, rectOnly = false): Record<string, Att
   const shape = SHAPE_OF[s.kind];
   const out: Record<string, AttrValue> = { shape, size_x: r3(s.width) };
   if (shape !== 'round') out.size_y = r3(s.depth);
-  if (s.flange) out.flange = r3(s.flange);
-  if (s.web) out.web = r3(s.web);
-  if (s.thickness) out.thickness = r3(s.thickness);
-  if (s.rootRadius) out.root_radius = r3(s.rootRadius);
+  // Plate thicknesses to 0.1 mm (CHS 114.3x6.3, a joist chord's 3.5 mm): they drive the weight
+  if (s.flange) out.flange = r4(s.flange);
+  if (s.web) out.web = r4(s.web);
+  if (s.thickness) out.thickness = r4(s.thickness);
+  if (s.rootRadius) out.root_radius = r4(s.rootRadius);
   if (s.designation) out.designation = s.designation;
   return out;
 }

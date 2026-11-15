@@ -7,7 +7,8 @@ const LEAD = ['id', 'number', 'name', 'type_id', 'host_id', 'base_level_id', 'to
 
 function fmt(v: AttrValue): string {
   if (v === null || v === undefined) return '';
-  if (typeof v === 'number') return Number.isFinite(v) ? String(r3(v)) : '';
+  // mm precision, finer for plate thicknesses (CHS 6.3, a joist chord's 3.5 mm): they drive the steel weight
+  if (typeof v === 'number') return Number.isFinite(v) ? String(Math.abs(v) < 0.05 ? Math.round(v * 1e5) / 1e5 : r3(v)) : '';
   return String(v).replace(/[\r\n]+/g, ' ').trim();
 }
 
