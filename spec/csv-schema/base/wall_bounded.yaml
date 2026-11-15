@@ -1,0 +1,21 @@
+name: wall_bounded
+abstract: true
+
+fields:
+  - name: boundary_walls
+    type: string
+    description: "Revit \"Pick Walls\" association: ids of the walls (same level or global) whose loop is this element's boundary, semicolon-separated (e.g. `w-1;w-2;w-3;w-4`). Set → the polygon is derived: editors rebuild it from these walls at `boundary_face` (+ `boundary_offset` outward) when a wall moves, flips or changes thickness; editing the polygon itself clears it. Empty = a sketched boundary."
+
+  - name: boundary_face
+    type: enum
+    values:
+      - interior
+      - core
+      - centerline
+      - core_exterior
+      - exterior
+    description: Wall face the derived boundary follows (with boundary_walls). Default core for floors, exterior for roofs, interior for ceilings.
+
+  - name: boundary_offset
+    type: float
+    description: Extra outward offset of the derived boundary in meters (a roof's overhang). Default 0.

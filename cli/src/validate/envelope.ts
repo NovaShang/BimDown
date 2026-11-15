@@ -12,6 +12,9 @@ import type { IdRegistry } from './ids.js';
 interface Entry { path: string; tableName: string; data: CsvData }
 
 const ATTACH_TARGETS = new Set(['roof', 'slab', 'structure_slab']);
+/** Tables whose outline may be associated with walls (`boundary_walls`), and what they may list. */
+const BOUNDED = new Set(['slab', 'structure_slab', 'roof', 'ceiling']);
+const BOUNDING = new Set(['wall', 'structure_wall', 'curtain_wall', 'room_separator']);
 
 /** Features of `<dir>/<file>.geojson` by id (empty when missing / unreadable). */
 function features(dirPath: string, file: string): Map<string, BimDownFeature> {
@@ -72,6 +75,16 @@ export function validateEnvelope(
         const t = ids.allIds.get(target);
         if (t && !ATTACH_TARGETS.has(t.table)) {
           issues.push(`${at(i)}  top_attach_id "${target}" is a ${t.table}; a wall top attaches to a roof, slab or structure_slab`);
+        }
+      });
+    }
+    if (BOUNDED.has(e.tableName)) {
+      // boundary_walls: the walls (same level or global) the outline was picked from
+      e.data.rows.forEach((row, i) => {
+        for (const id of (row.boundary_walls ?? '').split(';').map(s => s.trim()).filter(Boolean)) {
+          const t = ids.ids.get(`${levelDir}/${id}`) ?? ids.ids.get(`global/${id}`);
+          if (!t) issues.push(`${at(i)}  boundary_walls: "${id}" is not a wall on ${levelDir} or in global/`);
+          else if (!BOUNDING.has(t.table)) issues.push(`${at(i)}  boundary_walls: "${id}" is a ${t.table}; list walls, curtain walls or room separators`);
         }
       });
     }

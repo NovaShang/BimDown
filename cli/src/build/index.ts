@@ -10,6 +10,7 @@ import { snapEndpoints, type SnapRecord } from './snap-endpoints.js';
 import { typeWarnings } from '../catalog/index.js';
 import { mepErrors, mepWarnings } from '../mep/index.js';
 import { groupWarningsForDir } from './group-warnings.js';
+import { numberWarnings } from './number-warnings.js';
 import { curtainWallWarnings } from '../validate/curtain-wall.js';
 import { validateStairs } from '../validate/stairs.js';
 
@@ -36,7 +37,7 @@ export function build(dir: string): BuildResult {
   const issues = [...resolveIssues, ...validate(dir)];
 
   // 2. Geometry warnings (connectivity, hosted bounds, overlap)
-  const warnings = [...validateGeometry(dir), ...typeWarnings(dir), ...groupWarningsForDir(dir), ...curtainWallWarnings(dir), ...validateStairs(dir).warnings];
+  const warnings = [...validateGeometry(dir), ...typeWarnings(dir), ...groupWarningsForDir(dir), ...curtainWallWarnings(dir), ...validateStairs(dir).warnings, ...numberWarnings(dir)];
 
   // 2b. MEP connectivity (open ends, misplaced port refs, system mismatches);
   // a reference to a missing element or port is an error

@@ -33,6 +33,10 @@ fields:
     type: string
     description: "Panel overrides, semicolon-separated `col:row=kind` (0-based; col counted from the wall start, row from the bottom; `*` = every col or row; later entries win). Kinds: glass, solid, door, double_door, empty. Unlisted cells are glass."
 
+  - name: door_numbers
+    type: string
+    description: "Marks of the door / double_door panels, semicolon-separated, in cell order (column from the wall start, then row from the bottom), e.g. `D105;D106`. Numbered with the doors (unique project-wide); listed in door schedules and as the IfcDoor name."
+
   - name: mullion_width
     type: float
     description: Mullion face width along the wall in meters (round profile → diameter). Default 0.05.

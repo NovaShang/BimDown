@@ -57,6 +57,16 @@ describe('validate / render — roofs, wall attach, shafts', () => {
     expect(issues).toMatch(/extrusion roof needs profile/);
   });
 
+  it('checks boundary_walls (floors / roofs picked from walls)', () => {
+    project({ ...valid, 'lv-1/slab.csv': 'id,thickness,boundary_walls,boundary_face\nsl-2,0.2,w-1,core\n' });
+    expect(validate(testDir)).toEqual([]);
+    project({ ...valid, 'lv-1/slab.csv': 'id,thickness,boundary_walls,boundary_face\nsl-2,0.2,w-1;w-9;op-1,middle\n' });
+    const issues = validate(testDir).join('\n');
+    expect(issues).toMatch(/boundary_walls: "w-9" is not a wall on lv-1/);
+    expect(issues).toMatch(/boundary_walls: "op-1" is a opening/);
+    expect(issues).toMatch(/boundary_face/);
+  });
+
   it('renders roof ridges, valleys and slope arrows, and shafts on the levels they cross', () => {
     project(valid);
     const roof = renderLevel(testDir, 'lv-2');

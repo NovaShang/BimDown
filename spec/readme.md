@@ -217,6 +217,7 @@ In the **SVG encoding** (2D-only), the same two modes apply but Z always lives i
 | `hosted_element`             | `host_id` (CSV reference), `position` (CSV float, meters along host start) |
 | `vertical_span`              | `base_level_id`, `top_level_id` (CSV FKs), `top_offset` (GeoJSON property), `height` (computed) |
 | `materialized`               | `material` (CSV enum) |
+| `wall_bounded`               | `boundary_walls`, `boundary_face`, `boundary_offset` (CSV; slab, structure_slab, roof, ceiling) |
 | `section_profile`            | `shape` (CSV enum rect/round), `size_x`, `size_y` (CSV) |
 | `structural_section_profile` | `shape` (CSV enum rect/round/i/t/l/c/cross), `size_x`, `size_y` (CSV) |
 | `mep_system`                 | `system_type` (CSV string) |
@@ -363,6 +364,8 @@ id,thickness,top_level_id,top_attach_id
 w-1,0.2,lv-3,ro-1
 ```
 
+**Boundaries picked from walls.** A slab, structure_slab, roof or ceiling with `boundary_walls` (`w-1;w-2;…`, walls / curtain walls / room separators on its level or in global/) keeps its outline associated with those walls (Revit "Pick Walls"): the polygon is still stored, but editors rebuild it from the walls' loop at `boundary_face` (interior, core, centerline, core_exterior, exterior; default core, roofs exterior, ceilings interior) moved out by `boundary_offset` (a roof's overhang) whenever one of the walls moves, flips or changes thickness. Editing the polygon directly clears `boundary_walls`. `validate` checks the ids.
+
 ### Stairs and Railings
 
 A stair is assembled from components, like Revit's stair by component:
@@ -426,7 +429,7 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 A curtain wall is a grid of cells: columns along the wall (col 0 at the start), rows up from the base (row 0 at the bottom).
 - **Uniform**: `v_grid_count` columns × `u_grid_count` rows (or a line every `v_spacing` / `u_spacing` when the count is empty; default 3 × 3).
 - **Explicit**: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, semicolon-separated (`1.2;2.4;3.9`); they override the counts. Lines must lie inside the wall.
-- **Panels**: `panels` = `col:row=kind` overrides, `;`-separated, `*` = every col / row (`*:0=solid;1:0=door`). Kinds: `glass` (default, `panel_material`), `solid` (opaque spandrel, `solid_material`), `door`, `double_door` (hinged on the cell's start side, swinging to the wall's left; no bottom transom), `empty` (mullions only).
+- **Panels**: `panels` = `col:row=kind` overrides, `;`-separated, `*` = every col / row (`*:0=solid;1:0=door`). Kinds: `glass` (default, `panel_material`), `solid` (opaque spandrel, `solid_material`), `door`, `double_door` (hinged on the cell's start side, swinging to the wall's left; no bottom transom), `empty` (mullions only). Door panel marks: `door_numbers` = `D105;D106`, one per door panel in cell order (column from the start, then row); they share the door numbering (unique project-wide).
 - **Mullions**: `mullion_width` (along the wall; Ø when round), `mullion_depth`, `mullion_profile` (`rect`/`round`, interior members only), all type parameters. Two curtain walls meeting at an endpoint share one corner mullion.
 - **Embedded** (Revit "Automatically Embed"): a straight curtain wall drawn along a straight wall or structure_wall (parallel within ~1°, both ends inside the wall's thickness) cuts that wall over the overlap, from the curtain wall's base to its top; exporters write it as an opening in the host filled by the curtain wall. Derived, nothing stored: move or delete the curtain wall and the host follows. To keep both, offset the curtain wall out of the wall.
 

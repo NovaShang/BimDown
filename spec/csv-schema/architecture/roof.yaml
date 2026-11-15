@@ -2,6 +2,7 @@ name: roof
 bases:
   - polygon_element
   - materialized
+  - wall_bounded
 
 fields:
   - name: roof_type

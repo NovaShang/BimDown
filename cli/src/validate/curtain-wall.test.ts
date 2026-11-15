@@ -70,6 +70,17 @@ describe('validate / build — curtain wall grids and panels', () => {
     expect(w.some((x) => x.includes('row 0'))).toBe(true);
   });
 
+  it('door panel marks: extra marks warn; a mark shared with a door warns as a duplicate number', () => {
+    project('id,number,top_level_id,v_grid_count,u_grid_count,panels,door_numbers\ncw-1,,lv-2,3,2,1:0=door,D101;D102\n');
+    writeFileSync(join(testDir, 'lv-1', 'wall.csv'), 'id,number,thickness\nw-1,,0.2\n');
+    writeFileSync(join(testDir, 'lv-1', 'wall.geojson'), fc([{ type: 'Feature', properties: { id: 'w-1' }, geometry: { type: 'LineString', coordinates: [[0, 5], [8, 5]] } }]));
+    writeFileSync(join(testDir, 'lv-1', 'door.csv'), 'id,number,host_id,position,width,height\nd-1,D101,w-1,2,0.9,2.1\n');
+    expect(validate(testDir)).toEqual([]);
+    const w = build(testDir).warnings;
+    expect(w.some((x) => x.includes('door_numbers lists 2 marks for 1 door panel'))).toBe(true);
+    expect(w.some((x) => x.includes('door number "D101" is used 2 times'))).toBe(true);
+  });
+
   it('renders grid ticks and door swings', () => {
     project('id,number,v_grids,panels\ncw-1,,1.5;3.3,1:0=door\n');
     const svg = renderLevel(testDir, 'lv-1');

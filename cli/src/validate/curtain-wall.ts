@@ -12,7 +12,7 @@ import { discoverLayout } from '../utils/fs.js';
 import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
 import { effectiveRows } from '../catalog/index.js';
 import { GEOJSON_FILE_NAMES } from '../schema/registry.js';
-import { PANEL_KINDS, gridLines, parseNumberList, parsePanels } from '../curtain-grid.js';
+import { PANEL_KINDS, gridLines, cellKinds, parseNumberList, parsePanels } from '../curtain-grid.js';
 
 const LIST_FIELDS = ['v_grids', 'u_grids'] as const;
 
@@ -94,6 +94,13 @@ export function curtainWallWarnings(dir: string): string[] {
         } else if ((r.kind === 'door' || r.kind === 'double_door') && r.row !== 0) {
           warnings.push(`${at}  panels ${r.col}:${r.row}=${r.kind}: doors belong in row 0 (the bottom row)`);
         }
+      }
+      // door_numbers: one mark per door panel, in cell order
+      const marks = (row.door_numbers ?? '').split(';').filter(s => s.trim());
+      if (marks.length > 0 && Number.isFinite(rowsN)) {
+        const kinds = cellKinds(rules, cols, rowsN);
+        const doors = kinds.flat().filter(k => k === 'door' || k === 'double_door').length;
+        if (marks.length > doors) warnings.push(`${at}  door_numbers lists ${marks.length} marks for ${doors} door panel(s) (extra marks ignored)`);
       }
     });
   }
