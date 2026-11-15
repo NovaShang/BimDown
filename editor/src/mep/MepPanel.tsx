@@ -67,7 +67,7 @@ export default function MepPanel() {
   const colorOf = (code: string) => (code === UNASSIGNED ? '#9ca3af' : resolveMepSystemColor(code, systems.find(s => s.system_type === code)?.color));
 
   return (
-    <div className="glass-panel flex shrink-0 max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]" data-testid="mep-panel">
+    <div className="glass-panel flex min-h-[6.5rem] shrink max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]" data-testid="mep-panel">
       <div className="flex shrink-0 flex-wrap items-center gap-1 px-3 pb-1 pt-2">
         {(['systems', 'check', 'circuits', 'clash'] as Tab[]).map(k => (
           <button key={k} type="button" onClick={() => setTab(k)}
