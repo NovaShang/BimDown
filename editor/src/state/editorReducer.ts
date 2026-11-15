@@ -12,7 +12,7 @@ import { collectMepBranch, isMepLineTable } from '../model/mepTopology.ts';
 import { bondEndpoints } from '../model/bondEndpoints.ts';
 import { externalNodeRefs } from '../mep/externalRefs.ts';
 import { parsePortRef } from '../utils/portRef.ts';
-import { serializeToGeoJson, groupByLayer } from '../model/serialize.ts';
+import { serializeToGeoJson, groupByLayer, cleanNumber } from '../model/serialize.ts';
 import type { EditCommand, LevelSnapshot } from '../model/history.ts';
 import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
@@ -1788,8 +1788,8 @@ function moveElement(el: CanonicalElement, dx: number, dy: number): CanonicalEle
       const newPos = { x: el.position.x + dx, y: el.position.y + dy };
       // Sync x/y attrs for tables that persist position via CSV columns (space).
       const attrs = { ...el.attrs };
-      if ('x' in attrs) attrs.x = String(newPos.x);
-      if ('y' in attrs) attrs.y = String(newPos.y);
+      if ('x' in attrs) attrs.x = cleanNumber(String(newPos.x));
+      if ('y' in attrs) attrs.y = cleanNumber(String(newPos.y));
       return { ...el, position: newPos, attrs };
     }
     case 'polygon':

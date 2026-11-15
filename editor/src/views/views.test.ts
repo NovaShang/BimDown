@@ -33,6 +33,11 @@ describe('section rows (global/view.csv)', () => {
     ])).toEqual([]);
   });
 
+  it('writes line ends to the millimetre (no 13.488762)', () => {
+    const csv = sectionsToCsv([{ id: 'vw-1', name: 'A', start: { x: 9, y: -2.5 }, end: { x: 9.0000004, y: 13.488762 } }]);
+    expect(csv.split('\n')[1]).toBe('vw-1,A,section,9,-2.5,9,13.489,');
+  });
+
   it('numbers new sections', () => {
     expect(nextSectionId([A])).toBe('vw-2');
     expect(nextSectionName([A])).toBe('B');

@@ -116,5 +116,9 @@ describe('loading a CSV with a repeated column', () => {
     expect(cleanNumber('0.0085')).toBe('0.0085');
     expect(cleanNumber('KZ1')).toBe('KZ1');
     expect(cleanNumber('-12.30000001')).toBe('-12.3');
+    // Low items: 6-decimal noise snaps too, real micro-values are kept
+    expect(cleanNumber('2.700001')).toBe('2.7');
+    expect(cleanNumber('14.900001')).toBe('14.9');
+    expect(cleanNumber('13.488762')).toBe('13.488762');
   });
 });

@@ -23,7 +23,8 @@ export function sectionsFromRows(rows: CsvRow[]): SectionDef[] {
   return out;
 }
 
-const num = (v: number) => String(Math.round(v * 1e6) / 1e6);
+/** Section line ends to the millimetre (a click 13.488762 m away is 13.489). */
+const num = (v: number) => String(Math.round(v * 1e3) / 1e3);
 function csvEscape(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
