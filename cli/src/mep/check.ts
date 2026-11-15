@@ -210,6 +210,9 @@ export function checkMep(model: MepModelIn): MepProblem[] {
       const end = i === 0 ? fromEnd : toEnd;
       const r = parsed[i];
       if (!r) {
+        // A vent stack's open top (through the roof) is meant to be open
+        const other = i === 0 ? toEnd : fromEnd;
+        if (VENT.test((c.system ?? '').split(',')[0].trim()) && end[2] - other[2] > 2 * Math.hypot(end[0] - other[0], end[1] - other[1])) continue;
         out.push({ severity: 'warning', code: 'open_end', id: c.id, scope: c.scope, table: c.table, system: c.system,
           message: `${c.table} ${fmtId(c.id)} has an open end (${side} is empty)`, at: end,
           key: 'open_end', vars: { table: c.table, id: c.id, side } });
