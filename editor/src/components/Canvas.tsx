@@ -36,6 +36,7 @@ import UnderlayLayer from '../underlay/UnderlayLayer.tsx';
 import LevelUnderlay2D from './LevelUnderlay2D.tsx';
 import UnderlayToolOverlay from '../underlay/UnderlayToolOverlay.tsx';
 import { ClashMarkers2D } from '../mep/clashView.tsx';
+import { WarningMarkers2D } from './WarningsPanel.tsx';
 import { useUnderlayStore } from '../underlay/UnderlayContext.tsx';
 
 import type { ProjectData } from '../types.ts';
@@ -593,6 +594,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <UnderlayToolOverlay scale={scale} />
 
         <ClashMarkers2D scale={scale} />
+        <WarningMarkers2D scale={scale} />
         <SnapOverlay snap={activeSnap} scale={scale} />
 
         <PortDragOverlay scale={scale} />

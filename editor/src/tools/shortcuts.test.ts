@@ -48,4 +48,14 @@ describe('shortcut table', () => {
     seq.onKey('r', idle, 1000);
     expect(seq.onKey('m', idle, 1100)?.shortcut.keys).toBe('RM');
   });
+
+  it('Space and R turn a furniture placement the same way (one rotation attribute)', async () => {
+    const { rotatePlacement } = await import('./placementRotate.ts');
+    const acts: { type: string; attrs?: Record<string, string> }[] = [];
+    const placing = { activeTool: 'draw_point', drawingTarget: { tableName: 'furniture', discipline: 'architecture' }, drawingAttrs: { rotation: '90' } } as unknown as EditorState;
+    expect(rotatePlacement(placing, a => acts.push(a as never))).toBe(true);
+    expect(acts[0].attrs!.rotation).toBe('180');
+    expect(SINGLE_KEYS.some(k => k.keys === 'Space' && k.context === 'placing')).toBe(true);
+    expect([...claimedKeys(placing)]).not.toContain(' ');
+  });
 });

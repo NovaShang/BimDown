@@ -7,7 +7,16 @@ import { parseImperialLength } from '../utils/units';
 
 interface NumberInputProps {
   value: string;
-  onChange: (value: string) => void;
+  /** Live: every valid keystroke (properties, drawing bar). */
+  onChange?: (value: string) => void;
+  /** Commit mode instead: Enter / blur commits (Esc reverts), for values that
+   *  drive geometry (typing "2.4" must not apply 2, then 2.4). Commits finite
+   *  numbers > 0, or '' with `allowEmpty`. */
+  onCommit?: (value: string) => void;
+  allowEmpty?: boolean;
+  disabled?: boolean;
+  title?: string;
+  testId?: string;
   step?: number;
   min?: number;
   max?: number;
@@ -47,7 +56,18 @@ export function formatForDisplay(raw: string): string {
   return String(Number(n.toFixed(MAX_DECIMALS)));
 }
 
-export function NumberInput({ value, onChange, step = 1, min, max, className, parseImperial, placeholder }: NumberInputProps) {
+export function NumberInput({ value, onChange: onLive, onCommit, allowEmpty, disabled, title, testId, step = 1, min, max, className, parseImperial, placeholder }: NumberInputProps) {
+  const commitMode = !!onCommit;
+  // Commit mode: a value only reaches the model through `commitValue`.
+  const commitValue = useCallback((raw: string) => {
+    if (!onCommit) return;
+    const d = raw.trim();
+    if (d === value.trim()) return;
+    if (d === '') { if (allowEmpty) onCommit(''); return; }
+    const n = Number(d.replace(',', '.'));
+    if (Number.isFinite(n) && n > 0) onCommit(String(n));
+  }, [onCommit, value, allowEmpty]);
+  const onChange = useCallback((v: string) => { if (onCommit) commitValue(v); else onLive?.(v); }, [onCommit, commitValue, onLive]);
   const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   const debounceTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -90,24 +110,34 @@ export function NumberInput({ value, onChange, step = 1, min, max, className, pa
     return () => el.removeEventListener('wheel', handler);
   }, []);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'ArrowUp') { e.preventDefault(); nudge(1); }
     if (e.key === 'ArrowDown') { e.preventDefault(); nudge(-1); }
-  }, [nudge]);
+    if (commitMode) {
+      e.stopPropagation();
+      if (e.key === 'Enter') e.currentTarget.blur();
+      if (e.key === 'Escape') { setPendingValue(null); e.currentTarget.blur(); }
+    }
+  }, [nudge, commitMode]);
 
   const handleChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
     const v = e.target.value;
-    if (parseImperial) {
+    if (parseImperial || commitMode) {
       // Defer parse to blur so the user can keep typing `5'-6"` without us
       // rejecting intermediate states. Pending string drives the display.
       setPendingValue(v);
       return;
     }
     if (v === '' || v === '-' || !isNaN(Number(v))) onChange(v);
-  }, [onChange, parseImperial]);
+  }, [onChange, parseImperial, commitMode]);
 
   const handleBlur = useCallback(() => {
     setFocused(false);
+    if (commitMode && !parseImperial) {
+      if (pendingValue != null) commitValue(pendingValue);
+      setPendingValue(null);
+      return;
+    }
     if (parseImperial && pendingValue != null) {
       const parsed = parseImperialLength(pendingValue, parseImperial);
       if (parsed != null && Number.isFinite(parsed)) {
@@ -115,7 +145,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className, pa
       }
       setPendingValue(null);
     }
-  }, [parseImperial, pendingValue, onChange]);
+  }, [parseImperial, pendingValue, onChange, commitMode, commitValue]);
 
   // While editing (focused), show whatever the user has typed verbatim;
   // otherwise drop float artifacts (never round to the step).
@@ -132,6 +162,9 @@ export function NumberInput({ value, onChange, step = 1, min, max, className, pa
             inputMode="decimal"
             value={displayValue}
             placeholder={placeholder}
+            disabled={disabled}
+            title={title}
+            data-testid={testId}
             onChange={handleChange}
             onKeyDown={handleKeyDown}
             onFocus={() => setFocused(true)}

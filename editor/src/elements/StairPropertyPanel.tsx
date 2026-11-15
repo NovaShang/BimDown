@@ -17,7 +17,7 @@ import { STAIR_PART_TABLES, stairRailingElement } from '../model/stairElements.t
 import { generateId } from '../model/ids.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { STAIR_GOING_KEY, clicksRequired, stairSpan } from '../tools/drawStairTool.ts';
-import { CommitNumberInput } from '../components/CommitNumberInput.tsx';
+
 import { cn } from '../lib/utils';
 
 const ROW = 'flex items-center gap-2 px-3 py-[3px] text-[11px]';
@@ -99,7 +99,7 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
           <div className={ROW}>
             <span className={LABEL}>{t('stair.calc.risers')}</span>
             {single && editable ? (
-              <CommitNumberInput className={INPUT} value={String(calc.risers)} testId="stair-risers"
+              <NumberInput className={INPUT} value={String(calc.risers)} testId="stair-risers"
                 onCommit={v => {
                   const n = Math.round(parseFloat(v));
                   // Same run length: the going follows the riser count
@@ -116,7 +116,7 @@ export default function StairPropertyPanel({ element, editable }: PropertyPanelP
             <span className={LABEL}>{t('stair.calc.going')}</span>
             {single && editable ? (
               <>
-                <CommitNumberInput className={INPUT} value={String(Math.round(calc.going * 1000))} testId="stair-going"
+                <NumberInput className={INPUT} value={String(Math.round(calc.going * 1000))} testId="stair-going"
                   title={t('stair.calc.goingEditTip')}
                   onCommit={v => reshape(calc.risers, parseFloat(v) / 1000, 'Stair going')} />
                 <span className="text-[10px] text-muted-foreground">mm</span>
@@ -259,11 +259,11 @@ export function StairDrawHint() {
   return (
     <div className="flex items-center gap-1.5" data-testid="stair-draw-calc">
       <label className="text-[10px] text-muted-foreground" title={t('stair.calc.riserTip')}>{t('stair.calc.riserLabel')}</label>
-      <CommitNumberInput className={cn(BAR_INPUT, !c.riserOk && 'border-amber-500')} value={fmtLen(c.riser)} testId="stair-draw-riser"
+      <NumberInput className={cn(BAR_INPUT, !c.riserOk && 'border-amber-500')} value={fmtLen(c.riser)} testId="stair-draw-riser"
         title={c.riserOk ? undefined : t('stair.calc.riserWarn', { value: mm(c.riser), min: mm(L.riserMin), max: mm(L.riserMax) })}
         onCommit={v => set({ step_count: String(Math.max(1, Math.round(c.rise / (parseFloat(v) / c.upm)))) })} />
       <label className="text-[10px] text-muted-foreground" title={t('stair.calc.goingTip')}>{t('stair.calc.going')}</label>
-      <CommitNumberInput className={cn(BAR_INPUT, !c.goingOk && 'border-amber-500')} value={da[STAIR_GOING_KEY] ?? ''} allowEmpty
+      <NumberInput className={cn(BAR_INPUT, !c.goingOk && 'border-amber-500')} value={da[STAIR_GOING_KEY] ?? ''} allowEmpty
         placeholder={c.going !== null && !(parseFloat(da[STAIR_GOING_KEY] ?? '') > 0) ? fmtLen(c.going) : t('stair.calc.auto')}
         testId="stair-draw-going" title={t('stair.calc.goingTip')}
         onCommit={v => set({ [STAIR_GOING_KEY]: v })} />

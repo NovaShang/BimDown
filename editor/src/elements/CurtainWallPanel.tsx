@@ -10,7 +10,7 @@ import { Plus, X } from 'lucide-react';
 import type { PropertyPanelProps } from './archetypes.ts';
 import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { Select, SelectTrigger, SelectContent, SelectItem } from '../components/ui/select';
-import { CommitNumberInput } from '../components/CommitNumberInput.tsx';
+import { NumberInput } from '../components/NumberInput.tsx';
 import { MATERIAL_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
 import { cn } from '../lib/utils';
 import {
@@ -97,7 +97,7 @@ export default function CurtainWallPanel({ element, editable }: PropertyPanelPro
         <div className="flex flex-wrap gap-1">
           {lines.map((v, i) => (
             <div key={`${axis}${i}`} className="flex items-center">
-              <CommitNumberInput className={INPUT} value={String(Math.round(v * 1000) / 1000)} disabled={!editable} testId={`cw-${axis}-line-${i}`}
+              <NumberInput className={INPUT} value={String(Math.round(v * 1000) / 1000)} disabled={!editable} testId={`cw-${axis}-line-${i}`}
                 onCommit={val => apply(moveGridLine(grid, axis, i, parseFloat(val)))} />
               <button type="button" className="inline-flex size-4 items-center justify-center text-muted-foreground hover:text-foreground disabled:opacity-30"
                 title={t('cw.remove')} aria-label={t('cw.remove')} disabled={!editable}
@@ -168,10 +168,10 @@ export default function CurtainWallPanel({ element, editable }: PropertyPanelPro
       <div className={SECTION}>{t('cw.mullions')}</div>
       <div className="grid grid-cols-[1fr_auto] items-center gap-x-2 gap-y-1 text-[10px] text-muted-foreground">
         <span>{t('cw.mullionWidth')}</span>
-        <CommitNumberInput className={INPUT} value={attrs.mullion_width ?? ''} placeholder={String(DEFAULT_MULLION)} allowEmpty disabled={!editable}
+        <NumberInput className={INPUT} value={attrs.mullion_width ?? ''} placeholder={String(DEFAULT_MULLION)} allowEmpty disabled={!editable}
           onCommit={v => apply({ mullion_width: v })} />
         <span>{t('cw.mullionDepth')}</span>
-        <CommitNumberInput className={INPUT} value={attrs.mullion_depth ?? ''} placeholder={String(DEFAULT_MULLION)} allowEmpty disabled={!editable}
+        <NumberInput className={INPUT} value={attrs.mullion_depth ?? ''} placeholder={String(DEFAULT_MULLION)} allowEmpty disabled={!editable}
           onCommit={v => apply({ mullion_depth: v })} />
         <span>{t('cw.mullionProfile')}</span>
         <Select value={attrs.mullion_profile || 'rect'} onValueChange={v => { if (v) apply({ mullion_profile: v }); }} disabled={!editable}>

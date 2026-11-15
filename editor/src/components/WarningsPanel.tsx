@@ -52,6 +52,53 @@ function subscribe(l: () => void) {
   return () => { listeners.delete(l); };
 }
 
+// Plan markers are on while the warnings panel is open.
+let markersOn = false;
+function setMarkersOn(v: boolean) {
+  markersOn = v;
+  for (const l of listeners) l();
+}
+
+/** Where a warning sits in plan: its own point, else the middle of its elements. */
+export function warningPoint(w: ModelWarning, elements: ReadonlyMap<string, CanonicalElement> | undefined): { x: number; y: number } | null {
+  if (w.at) return w.at;
+  let n = 0, x = 0, y = 0;
+  for (const id of w.ids) {
+    const el = elements?.get(id);
+    if (!el) continue;
+    const b = elementBounds(el);
+    x += (b.minX + b.maxX) / 2; y += (b.minY + b.maxY) / 2; n++;
+  }
+  return n ? { x: x / n, y: y / n } : null;
+}
+
+/** Warning markers on the plan of the open level (SVG, model coordinates; ~10 px on screen via `scale`). */
+export function WarningMarkers2D({ scale }: { scale: number }) {
+  const all = useSyncExternalStore(subscribe, () => current);
+  const on = useSyncExternalStore(subscribe, () => markersOn);
+  const state = useEditorState();
+  const doc = state.document;
+  if (!on || !doc) return null;
+  const r = 10 / (15 * Math.max(scale, 1e-3));
+  const marks = all.filter(w => w.levelId === doc.levelId).map(w => ({ w, p: warningPoint(w, doc.elements) })).filter(m => m.p);
+  if (marks.length === 0) return null;
+  return (
+    <g pointerEvents="none" transform="scale(1,-1)" data-testid="warning-markers">
+      {marks.map(({ w, p }) => {
+        // Same frame as the clash markers: model y up inside the flipped group
+        const { x, y } = p!;
+        return (
+          <g key={w.key}>
+            <path d={`M ${x} ${y + r} L ${x + r * 0.95} ${y - r * 0.7} L ${x - r * 0.95} ${y - r * 0.7} Z`} fill="#f59e0b" fillOpacity={0.25} stroke="#d97706" strokeWidth={r * 0.18} />
+            <line x1={x} y1={y + r * 0.45} x2={x} y2={y - r * 0.15} stroke="#b45309" strokeWidth={r * 0.2} />
+            <circle cx={x} cy={y - r * 0.42} r={r * 0.11} fill="#b45309" />
+          </g>
+        );
+      })}
+    </g>
+  );
+}
+
 /** The selected element's warnings, shown at the top of the properties panel. */
 export function ElementWarnings({ id }: { id: string }) {
   const { t } = useTranslation();
@@ -86,6 +133,7 @@ export default function WarningsPanel({ warnings, onClose }: { warnings: ModelWa
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
+  useEffect(() => { setMarkersOn(true); return () => setMarkersOn(false); }, []);
   const levelName = (id: string) => {
     const l = state.project?.levels.find(x => x.id === id);
     return l ? (l.name || l.number || l.id) : id;
