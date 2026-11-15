@@ -1,6 +1,6 @@
 import { Command } from 'commander';
 import { resolve } from 'node:path';
-import { build } from './build/index.js';
+import { build, validateOnly } from './build/index.js';
 import { buildRegistry, getSpecDir } from './schema/registry.js';
 import { furnitureCatalogLines } from './furniture/catalog-text.js';
 import { discoverLayout, listFiles } from './utils/fs.js';
@@ -21,9 +21,9 @@ program
 // ─── build ──────────────────────────────────────────────
 const WARN_LIST_LIMIT = 20;
 
-function runBuild(dir: string, opts: { verbose?: boolean } = {}) {
+function runBuild(dir: string, opts: { verbose?: boolean } = {}, readOnly = false) {
   const absDir = resolve(dir);
-  const result = build(absDir);
+  const result = readOnly ? validateOnly(absDir) : build(absDir);
 
   if (result.issues.length > 0) {
     for (const issue of result.issues) {
@@ -60,7 +60,9 @@ function runBuild(dir: string, opts: { verbose?: boolean } = {}) {
   }
 
   if (result.snaps.length > 0) {
-    console.log(`Snapped ${result.snaps.length} endpoint(s) closer than 5 cm:`);
+    console.log(readOnly
+      ? `${result.snaps.length} endpoint(s) closer than 5 cm (build snaps them):`
+      : `Snapped ${result.snaps.length} endpoint(s) closer than 5 cm:`);
     const shown = opts.verbose ? result.snaps : result.snaps.slice(0, WARN_LIST_LIMIT);
     for (const s of shown) {
       console.log(`  ${s.level}/${s.table} ${s.elementId} ${s.side} (${s.from.x.toFixed(3)}, ${s.from.y.toFixed(3)}) -> (${s.to.x.toFixed(3)}, ${s.to.y.toFixed(3)})`);
@@ -68,7 +70,7 @@ function runBuild(dir: string, opts: { verbose?: boolean } = {}) {
     if (shown.length < result.snaps.length) console.log(`  ... ${result.snaps.length - shown.length} more`);
   }
 
-  if (result.artifacts.length > 0) {
+  if (result.artifacts.length > 0 && !readOnly) {
     console.log(`\nGenerated: ${result.artifacts.join(', ')}`);
   }
 
@@ -88,8 +90,8 @@ program
   .command('validate')
   .argument('<dir>', 'BimDown project directory')
   .option('--verbose', 'List every warning and snapped endpoint')
-  .description('Alias for build')
-  .action((dir: string, opts: { verbose?: boolean }) => runBuild(dir, opts));
+  .description('Check a BimDown project like build, without writing anything')
+  .action((dir: string, opts: { verbose?: boolean }) => runBuild(dir, opts, true));
 
 // ─── query ──────────────────────────────────────────────
 program

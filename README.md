@@ -74,7 +74,8 @@ npm install -g bimdown-cli
 
 ```bash
 bimdown init ./my-project               # create a new BimDown project
-bimdown build ./my-project               # validate & compute boundaries (alias: validate)
+bimdown build ./my-project               # validate & compute boundaries (writes fixes and space.geojson)
+bimdown validate ./my-project            # the same checks, read-only
 bimdown info ./my-project                # print project summary (levels, element counts)
 ```
 

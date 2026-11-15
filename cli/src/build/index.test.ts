@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { build } from './index.js';
+import { build, validateOnly } from './index.js';
 
 const testDir = join(__dirname, 'test-build');
 
@@ -41,5 +41,29 @@ describe('build — room issues', () => {
     expect(result.issues).toEqual([]);
     expect(result.roomIssues).toEqual([{ kind: 'shared', level: 'lv-1', spaceIds: ['sp-1', 'sp-2'] }]);
     expect(result.warnings.some((w) => w.includes('sp-1, sp-2 share one enclosed area'))).toBe(true);
+  });
+});
+
+describe('validate is read-only', () => {
+  afterEach(() => {
+    if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true });
+  });
+
+  it('reports what build reports, writes nothing', () => {
+    if (existsSync(testDir)) rmSync(testDir, { recursive: true, force: true });
+    const lv = setup();
+    writeFileSync(join(lv, 'space.csv'), 'id,number,x,y,name\nsp-1,,2.5,1,A\n');
+    // A wall end 3 cm off its corner: build snaps it
+    writeFileSync(join(lv, 'wall.geojson'), readFileSync(join(lv, 'wall.geojson'), 'utf-8').replace('[0,5],[0,0]', '[0,5],[0.03,0]'));
+    const snapshot = () => Object.fromEntries(readdirSync(lv).map(f => [f, readFileSync(join(lv, f), 'utf-8')]));
+    const before = snapshot();
+    const v = validateOnly(testDir);
+    expect(snapshot()).toEqual(before);
+    expect(existsSync(join(lv, 'space.geojson'))).toBe(false);
+    const b = build(testDir);
+    expect(v.issues).toEqual(b.issues);
+    expect(v.warnings).toEqual(b.warnings);
+    expect(v.snaps.length).toBe(b.snaps.length);
+    expect(existsSync(join(lv, 'space.geojson'))).toBe(true);
   });
 });

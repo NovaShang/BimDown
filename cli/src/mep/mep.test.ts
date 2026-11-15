@@ -73,6 +73,16 @@ describe('MEP connectivity', () => {
     expect(codes).toContain('disconnected_device');
   });
 
+  it('a reference to a missing port or element is a build error, not a warning', () => {
+    office();
+    put('lv-1/duct.csv', readFileSync(join(dir, 'lv-1/duct.csv'), 'utf-8')
+      .replace('du-5,rect,0.4,0.3,SA,,', 'du-5,rect,0.4,0.3,SA,,tm-2:foo')
+      .replace('du-7,rect,0.4,0.3,SA,,', 'du-7,rect,0.4,0.3,SA,,tm-9:inlet'));
+    const r = build(dir);
+    expect(r.issues.filter(i => i.includes('[dangling_ref]')).length).toBe(2);
+    expect(r.warnings.some(w => w.includes('[dangling_ref]'))).toBe(false);
+  });
+
   it('ids are per level: a ref resolves in its own level first', () => {
     const m = checkMep({
       curves: [{ id: 'pi-1', scope: 'lv-2', table: 'pipe', a: [0, 0, 7], b: [1, 0, 7], from: 'mn-1', to: '', system: 'DCW' }],
