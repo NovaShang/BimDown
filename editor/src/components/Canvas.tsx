@@ -695,7 +695,7 @@ function HoverTooltip() {
   const kind = table ? t(`layer.${table}`, { defaultValue: getElementType(raw) }) : getElementType(raw);
   const mark = [el?.attrs.number, el?.attrs.name].filter(Boolean).join(' ');
   return (
-    <div className="pointer-events-none absolute bottom-14 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 glass-panel rounded border border-border px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150"
+    <div className="pointer-events-none absolute bottom-24 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1.5 glass-panel rounded border border-border px-2.5 py-1 text-[11px] font-medium tabular-nums animate-in fade-in slide-in-from-bottom-1 duration-150"
       data-testid="hover-tooltip">
       <span className={mark ? 'text-[10px] font-normal text-muted-foreground' : ''}>{kind}</span>
       {mark}

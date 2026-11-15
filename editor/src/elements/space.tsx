@@ -185,9 +185,12 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         {outline}
         {marker}
         {redundant}
-        {label(big, y, 0.36, 700, '#3a86ff')}
-        {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
-        {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
+        {/* Drawn again over furniture and equipment (SVGLayers' room label pass) */}
+        <g className="room-label">
+          {label(big, y, 0.36, 700, '#3a86ff')}
+          {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
+          {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
+        </g>
       </g>
     );
   },
