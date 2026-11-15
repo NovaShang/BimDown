@@ -79,7 +79,8 @@ export const drawStairTool: ToolHandler = {
     // The last click's run is as long as the typed going needs
     let cursor = snap.point;
     if (points.length === clicksRequired(state.drawingAttrs.stair_type) - 1) {
-      cursor = withTypedGoing(state, [...points, cursor]).at(-1)!;
+      const fitted = withTypedGoing(state, [...points, cursor]);
+      cursor = fitted[fitted.length - 1];
     }
     ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points, cursor } });
     ctx.setSnap(snap);
