@@ -61,6 +61,14 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
     });
   };
 
+  // Esc closes (the canvas keeps focus while the dialog is open)
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); onClose(); } };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
+  }, [open, onClose]);
+
   useEffect(() => {
     if (!open) return;
     setV(mode === 'piles' ? { count: '4', spacing: String(1.8 * upm), width: String(0.6 * upm), thickness: String(15 * upm), material: 'concrete' }
