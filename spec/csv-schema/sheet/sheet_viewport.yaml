@@ -64,3 +64,23 @@ fields:
   - name: title
     type: string
     description: Viewport title under the view. Empty = the view's name (e.g. "Level 2 Plan").
+
+  - name: crop_min_x
+    type: float
+    description: |
+      Crop region of a drawing viewport, in the view's own model coordinates
+      (plan X / Y; sections and elevations: distance along the view and
+      elevation), project units. All four set = only that box is drawn; empty
+      = the whole view.
+
+  - name: crop_min_y
+    type: float
+    description: Crop region, minimum Y (see crop_min_x).
+
+  - name: crop_max_x
+    type: float
+    description: Crop region, maximum X (see crop_min_x).
+
+  - name: crop_max_y
+    type: float
+    description: Crop region, maximum Y (see crop_min_x).
