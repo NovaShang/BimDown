@@ -4,7 +4,9 @@
  *     given width × length × depth), top at the column base;
  *   - piles inside a pile cap by count and spacing (2 in line, 3 in a
  *     triangle, 4 square, 5 square + centre, 6 as 2 × 3, 9 as 3 × 3),
- *     aligned with the cap's longest edge.
+ *     aligned with the cap's longest edge, checked against the pile edge
+ *     distance (`pileEdgeCheck`, `maxPileSpacing`);
+ *   - pile caps with their piles under selected columns (`capsUnderColumns`).
  */
 import type { CanonicalElement, Point, PointElement, PolygonElement } from './elements.ts';
 import { generateId } from './ids.ts';
@@ -122,18 +124,127 @@ export function pilesInCap(
   existing: Iterable<CanonicalElement> = [],
 ): { piles: PointElement[]; replace: string[] } {
   const ids = new Set(takenIds);
-  const c = centroid(cap.vertices);
-  const ang = longestEdgeAngle(cap.vertices);
-  const cos = Math.cos(ang), sin = Math.sin(ang);
   const capTop = parseFloat(cap.attrs.base_offset || '0') || 0;
   const capT = parseFloat(cap.attrs.thickness || '1') || 1;
   const base = { kind: 'pile', ...attrs, base_offset: String(round3(capTop - capT)) };
-  const piles = pilePattern(count, spacing).map(p => pointFoundation(
-    { x: c.x + p.x * cos - p.y * sin, y: c.y + p.x * sin + p.y * cos }, base, ids));
+  const piles = capPilePositions(cap.vertices, count, spacing).map(p => pointFoundation(p, base, ids));
   const replace = [...existing]
     .filter(e => e.tableName === 'foundation' && e.geometry === 'point' && foundationKind(e) === 'pile' && insidePolygon(e.position, cap.vertices))
     .map(e => e.id);
   return { piles, replace };
+}
+
+/**
+ * Least pile-centre to cap-edge distance (JGJ 94 4.2.3 / GB 50007 8.5.3):
+ * at least the pile diameter, and the pile's outer edge at least 150 mm in.
+ */
+export function pileEdgeMin(diameter: number, upm = 1): number {
+  return Math.max(diameter, diameter / 2 + 0.15 * upm);
+}
+
+function segDist(p: Point, a: Point, b: Point): number {
+  const dx = b.x - a.x, dy = b.y - a.y, l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2)) : 0;
+  return Math.hypot(p.x - a.x - t * dx, p.y - a.y - t * dy);
+}
+
+/** Signed distance of `p` to a polygon's boundary: positive inside, negative outside. */
+export function edgeDistance(p: Point, vs: readonly Point[]): number {
+  let d = Infinity;
+  for (let i = 0; i < vs.length; i++) d = Math.min(d, segDist(p, vs[i], vs[(i + 1) % vs.length]));
+  return insidePolygon(p, vs) ? d : -d;
+}
+
+/** Edge-distance check of piles in a cap: the worst (least) signed centre-to-edge distance and the required one. */
+export function pileEdgeCheck(cap: readonly Point[], piles: readonly Point[], diameter: number, upm = 1): { least: number; required: number; ok: boolean; outside: number } {
+  const required = pileEdgeMin(diameter, upm);
+  let least = Infinity, outside = 0;
+  for (const p of piles) {
+    const d = edgeDistance(p, cap);
+    if (d < 0) outside++;
+    least = Math.min(least, d);
+  }
+  return { least, required, ok: least >= required - 1e-6, outside };
+}
+
+/** Pile centres of `pilesInCap` (same centring / alignment), without making elements. */
+export function capPilePositions(cap: readonly Point[], count: number, spacing: number): Point[] {
+  const c = centroid(cap);
+  const ang = longestEdgeAngle(cap);
+  const cos = Math.cos(ang), sin = Math.sin(ang);
+  return pilePattern(count, spacing).map(p => ({ x: c.x + p.x * cos - p.y * sin, y: c.y + p.x * sin + p.y * cos }));
+}
+
+/**
+ * Largest spacing (rounded down to 10 mm) at which `count` piles of `diameter`
+ * keep the edge distance in the cap; 0 when even touching piles don't fit.
+ */
+export function maxPileSpacing(cap: readonly Point[], count: number, diameter: number, upm = 1): number {
+  const fits = (s: number) => pileEdgeCheck(cap, capPilePositions(cap, count, s), diameter, upm).ok;
+  if (count <= 1) return 0;
+  let lo = 0, hi = 0;
+  for (const v of cap) for (const w of cap) hi = Math.max(hi, Math.hypot(v.x - w.x, v.y - w.y));
+  if (!fits(diameter)) return 0;
+  lo = diameter;
+  for (let i = 0; i < 40; i++) { const m = (lo + hi) / 2; if (fits(m)) lo = m; else hi = m; }
+  const step = 0.01 * upm;
+  return Math.floor(lo / step + 1e-9) * step;
+}
+
+/** Rectangle (local, centred) of a cap holding `count` piles at `spacing` with the edge distance. */
+export function capSizeFor(count: number, spacing: number, diameter: number, upm = 1): { x: number; y: number } {
+  const pts = pilePattern(count, spacing);
+  const e = pileEdgeMin(diameter, upm);
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  // Centre the box on the pattern (a triangle's centroid isn't its box centre)
+  return { x: round3(Math.max(...xs) - Math.min(...xs) + 2 * e), y: round3(Math.max(...ys) - Math.min(...ys) + 2 * e) };
+}
+
+/**
+ * Pile caps under columns, each with its piles (Revit-style batch by
+ * column): a rectangular cap sized for `count` piles at `spacing` with the
+ * edge distance, turned with the column, top at the column base; the piles
+ * hang from its underside. Columns already standing in a cap are skipped.
+ */
+export function capsUnderColumns(
+  columns: readonly CanonicalElement[],
+  existing: Iterable<CanonicalElement>,
+  count: number,
+  spacing: number,
+  capAttrs: Record<string, string>,
+  pileAttrs: Record<string, string>,
+  takenIds: Iterable<string>,
+  upm = 1,
+): CanonicalElement[] {
+  const ids = new Set(takenIds);
+  const caps = [...existing].filter((e): e is PolygonElement => e.tableName === 'foundation' && e.geometry === 'polygon' && foundationKind(e) === 'pile_cap');
+  const d = parseFloat(pileAttrs.width || '') || 0.6 * upm;
+  const size = capSizeFor(count, spacing, d, upm);
+  const pts = pilePattern(count, spacing);
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  const off = { x: (Math.max(...xs) + Math.min(...xs)) / 2, y: (Math.max(...ys) + Math.min(...ys)) / 2 };
+  const out: CanonicalElement[] = [];
+  for (const c of columns) {
+    if (c.geometry !== 'point') continue;
+    if (caps.some(cap => insidePolygon(c.position, cap.vertices))) continue;
+    const ang = (parseFloat(c.attrs.rotation || '0') || 0) * Math.PI / 180;
+    const cos = Math.cos(ang), sin = Math.sin(ang);
+    const at = (x: number, y: number): Point => ({ x: round3(c.position.x + x * cos - y * sin), y: round3(c.position.y + x * sin + y * cos) });
+    const hx = size.x / 2, hy = size.y / 2;
+    const id = generateId('foundation', ids);
+    ids.add(id);
+    const top = c.attrs.base_offset || '0';
+    const cap: PolygonElement = {
+      id, tableName: 'foundation', discipline: 'structure', geometry: 'polygon',
+      vertices: [at(-hx, -hy), at(hx, -hy), at(hx, hy), at(-hx, hy)],
+      attrs: { thickness: String(1 * upm), material: 'concrete', ...capAttrs, kind: 'pile_cap', base_offset: top, id },
+    };
+    out.push(cap);
+    const capT = parseFloat(cap.attrs.thickness) || upm;
+    const base = { kind: 'pile', ...pileAttrs, base_offset: String(round3((parseFloat(top) || 0) - capT)) };
+    for (const p of pts) out.push(pointFoundation(at(p.x - off.x, p.y - off.y), base, ids));
+  }
+  return out;
 }
 
 function insidePolygon(p: Point, vs: readonly Point[]): boolean {

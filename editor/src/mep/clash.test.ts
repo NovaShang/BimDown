@@ -77,6 +77,34 @@ describe('clash detection in the editor', () => {
     expect(riser.at[2]).toBeLessThanOrEqual(3.5 + 1e-6);
   });
 
+  it('a wall of the level below rising into this one clashes; one stopping at the floor does not (audit r3)', async () => {
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,4\nlv-3,3,L3,8\n',
+      // w-1 spans two storeys (lv-1 → lv-3), w-2 stops at lv-2
+      'lv-1/structure_wall.csv': 'id,number,thickness,top_level_id\nw-1,,0.3,lv-3\nw-2,,0.3,lv-2\n',
+      'lv-1/structure_wall.geojson': fc([
+        { type: 'Feature', properties: { id: 'w-1' }, geometry: { type: 'LineString', coordinates: [[5, 0], [5, 10]] } },
+        { type: 'Feature', properties: { id: 'w-2' }, geometry: { type: 'LineString', coordinates: [[8, 0], [8, 10]] } },
+      ]),
+      'lv-2/duct.csv': 'id,shape,size_x,size_y,system_type\ndu-1,rect,0.4,0.3,SA\n',
+      'lv-2/duct.geojson': fc([{ type: 'Feature', properties: { id: 'du-1' }, geometry: { type: 'LineString', coordinates: [[0, 5, 6.5], [10, 5, 6.5]] } }]),
+    };
+    const project = await loadProject(memoryDataSource(files));
+    const els = new Map(parseFloorLayers(project.floors.get('lv-2')!.layers).map(e => [e.id, e]));
+    const clashes = detectClashes(buildClashModel(createDocument('lv-2', [...els.values()]).elements, { project, levelId: 'lv-2' }));
+    expect(clashes.map(c => `${c.a}>${c.b}@${c.bScope}:${c.severity}`)).toEqual(['du-1>w-1@lv-1:high']);
+  });
+
+  it('a duct through an open-web joist web is clear; through its chord it clashes', () => {
+    const joist = { id: 'bm-1', tableName: 'beam', discipline: 'structure', geometry: 'spatial_line', start: { x: 0, y: 0 }, end: { x: 10, y: 0 }, startZ: 3, endZ: 3, strokeWidth: 0.073,
+      attrs: { id: 'bm-1', shape: 'open_web', size_x: '0.073', size_y: '0.356', flange: '0.032', material: 'steel' } };
+    const duct = (id: string, z: number) => ({ id, tableName: 'duct', discipline: 'mep', geometry: 'spatial_line', start: { x: 5, y: -3 }, end: { x: 5, y: 3 }, startZ: z, endZ: z, strokeWidth: 0.15,
+      attrs: { id, shape: 'round', size_x: '0.15', system_type: 'SA' } });
+    const els = new Map([joist, duct('du-1', 2.82), duct('du-2', 2.98)].map(e => [e.id, e])) as never;
+    expect(detectClashes(buildClashModel(els, {})).map(c => c.a)).toEqual(['du-2']);
+  });
+
   it('a picked clash zooms the plan; the 3D section box uses absolute z', () => {
     vi.stubGlobal('window', new EventTarget());
     let got: unknown = null;

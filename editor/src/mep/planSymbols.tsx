@@ -12,6 +12,28 @@ import type { ProblemMarker } from './mepView.ts';
 type P = { x: number; y: number };
 
 /** Text that reads left-to-right along `dir`, centred on (x, y). */
+type Pt = { x: number; y: number };
+const fx = (v: number) => String(Math.round(v * 1e4) / 1e4);
+
+/** SVG path data of separate segments ("M a L b M c L d …"): one DOM node for many edges. */
+export function segmentsPath(segs: readonly (readonly [Pt, Pt])[]): string {
+  let d = '';
+  for (const [a, b] of segs) d += `M${fx(a.x)} ${fx(a.y)}L${fx(b.x)} ${fx(b.y)}`;
+  return d;
+}
+
+/** SVG path data of closed polygons (one subpath each). */
+export function polygonsPath(polys: readonly (readonly Pt[])[]): string {
+  let d = '';
+  for (const poly of polys) {
+    if (poly.length < 3) continue;
+    d += `M${fx(poly[0].x)} ${fx(poly[0].y)}`;
+    for (let i = 1; i < poly.length; i++) d += `L${fx(poly[i].x)} ${fx(poly[i].y)}`;
+    d += 'Z';
+  }
+  return d;
+}
+
 export function PlanText({ x, y, dir, size, color, text, weight = 500 }: {
   x: number; y: number; dir?: P; size: number; color: string; text: string; weight?: number;
 }) {

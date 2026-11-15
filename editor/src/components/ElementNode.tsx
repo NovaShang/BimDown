@@ -92,5 +92,7 @@ const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected,
   };
   const result = mod.draw2D(facts, drawCtx);
   if (result === null || result === undefined) return null;
-  return <g transform="scale(1,-1)" className={display === 'overhead' ? 'vr-overhead' : undefined}>{result}</g>;
+  // The plan flip (scale(1,-1)) is on the layer group (SVGLayers / Minimap):
+  // no wrapper per element unless it draws overhead (dashed).
+  return display === 'overhead' ? <g className="vr-overhead">{result}</g> : result;
 });

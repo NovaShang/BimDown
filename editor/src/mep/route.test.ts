@@ -96,6 +96,45 @@ describe('vertical tap into a run above / below (tap + drop)', () => {
     expect(ducts(h.state).some(d => (d.attrs.to ?? '').startsWith(`${t.id}:`))).toBe(true);
     expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
   });
+
+  // audit r3: a grille 0.15 m off a 350 mm trunk's centre line got a sloping duct (24.2,6.6,6.75)->(24.2,6.45,7.0)
+  const vertOrLevel = (d: SpatialLineElement) =>
+    (Math.abs(d.start.x - d.end.x) < 1e-6 && Math.abs(d.start.y - d.end.y) < 1e-6) || Math.abs(d.startZ - d.endZ) < 1e-6;
+  it('a grille slightly off the trunk centre line: rise, jog under the centre line, rise (no sloping duct)', () => {
+    const h = createHarness();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.35', size_y: '0.2', shape: 'rect' });
+    h.click(0, 6.45); h.click(30, 6.45);
+    h.done();
+    h.pick('terminal', { [STARTER_KEY_ATTR]: 'grille_return' });
+    h.click(16, 6.6);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.4', size_y: '0.4', shape: 'rect' });
+    h.click(16, 6.6); h.click(16, 6.6);
+    const ds = ducts(h.state);
+    expect(ds.filter(d => !vertOrLevel(d))).toEqual([]);
+    const branch = ds.filter(d => d.attrs.size_x === '0.4');
+    expect(branch).toHaveLength(3);
+    expect(branch[0].attrs.from).toMatch(/^tm-\d+:outlet$/);
+    // the tee is on the trunk centre line
+    expect(branch[2].end).toEqual({ x: 16, y: 6.45 });
+    expect(branch[2].endZ).toBe(3);
+    expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
+  });
+
+  it('from the trunk down into a grille slightly off its centre line: no sloping duct either', () => {
+    const h = createHarness();
+    h.pick('terminal', { [STARTER_KEY_ATTR]: 'grille_return' });
+    h.click(16, 6.6);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.35', size_y: '0.2', shape: 'rect' });
+    h.click(0, 6.45); h.click(30, 6.45);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.4', size_y: '0.4', shape: 'rect' });
+    h.click(16.3, 6.5); h.click(16.3, 6.5);
+    const t = els(h.state, 'terminal')[0];
+    expect(ducts(h.state).some(d => (d.attrs.to ?? '').startsWith(`${t.id}:`))).toBe(true);
+    expect(ducts(h.state).filter(d => !vertOrLevel(d))).toEqual([]);
+  });
 });
 
 describe('ortho routing', () => {
@@ -236,6 +275,19 @@ describe('vent stacks', () => {
     expect(vent.attrs.from).toMatch(/^mn-/); // teed into the main
     expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
     expect(checkDocument(h.state.document!.elements).filter(p => p.code === 'open_end').map(p => p.id).sort()).not.toContain(vent.id);
+  });
+
+  it('a vent riser left open at its top (through the roof) is not an open end; its open bottom is (audit r3)', () => {
+    const h = createHarness();
+    h.pick('pipe', { system_type: 'VENT', size_x: '0.05', start_z: '1' });
+    h.click(4, 0); h.click(6, 0);
+    setAttrs(h, { start_z: '9' });
+    h.click(6, 0); // riser up to 9 m, left open
+    h.done();
+    const open = checkDocument(h.state.document!.elements).filter(p => p.code === 'open_end');
+    const riser = pipes(h.state).find(p => p.start.x === p.end.x && p.start.y === p.end.y)!;
+    expect(open.map(p => p.id)).not.toContain(riser.id);
+    expect(open).toHaveLength(1); // the horizontal's free start at x 4
   });
 });
 

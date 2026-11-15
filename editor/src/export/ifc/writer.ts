@@ -180,6 +180,11 @@ export class IfcWriter {
       return this.add('IfcExtrudedAreaSolid', this.profile(s.profile), this.axis3(f),
         this.dir({ x: 0, y: 0, z: 1 }), this.plen(s.depth));
     }
+    if (s.kind === 'revolve') {
+      const f = relFrame(local, s.frame);
+      const axis = this.add('IfcAxis1Placement', this.pt({ x: s.axisO.x, y: s.axisO.y, z: 0 }), this.dir({ x: s.axisDir.x, y: s.axisDir.y, z: 0 }));
+      return this.add('IfcRevolvedAreaSolid', this.profile(s.profile), this.axis3(f), axis, new this.S.IfcPlaneAngleMeasure(clean(s.angle)));
+    }
     const pointIds = new Map<string, H>();
     const point = (p: V3) => {
       const l = toLocal(local, p);
@@ -212,7 +217,7 @@ export class IfcWriter {
         const style = Array.isArray(styles) ? styles[i] : styles;
         if (style) this.styleItem(item, style);
       });
-      const type = solids.every(s => s.kind === 'extrude') ? 'SweptSolid' : solids.every(s => s.kind === 'brep') ? 'Brep' : 'SolidModel';
+      const type = solids.every(s => s.kind === 'extrude' || s.kind === 'revolve') ? 'SweptSolid' : solids.every(s => s.kind === 'brep') ? 'Brep' : 'SolidModel';
       reps.push(this.add('IfcShapeRepresentation', this.bodyContext, this.label('Body'), this.label(type), items));
     }
     if (reps.length === 0) return null;

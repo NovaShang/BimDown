@@ -1,6 +1,6 @@
 /**
  * Built-in section families: rect, round, i_shape, t_shape, l_shape, c_shape,
- * cross, rect_hollow, round_hollow. Each owns its parameter list, plan
+ * cross, rect_hollow, round_hollow, open_web. Each owns its parameter list, plan
  * outline, and 3D shape spec. `root_radius` (I/T/L/C root fillets, RHS outer
  * corners) counts in the area (steel weight per metre) and the IFC profile.
  *
@@ -380,6 +380,45 @@ const round_hollow: SectionFamily = {
   },
 };
 
+/** open_web area: two double-angle chords + 15 % web rods (spec structural_section_profile; steelSections.ts OPEN_WEB_K). */
+const OPEN_WEB_K = 4.6;
+
+/**
+ * Open-web steel joist (K / LH bar joist): top and bottom chords (double
+ * angles, `flange` deep) joined by a rod web. The 3D body is an I with a
+ * rod-thin web; clash checks see only the chords (mep/clashModel.ts).
+ */
+const open_web: SectionFamily = {
+  id: 'open_web',
+  label: 'Open-web Joist',
+  params: [
+    { key: 'size_x', label: 'Chord Width', default: 0.073, unit: 'm', min: 0.02, step: 0.005 },
+    { key: 'size_y', label: 'Depth', default: 0.356, unit: 'm', min: 0.1, step: 0.01 },
+    { key: 'flange', label: 'Chord Depth', default: 0.032, unit: 'm', min: 0.01, step: 0.001 },
+    { key: 'thickness', label: 'Chord Thk', default: 0.0035, unit: 'm', min: 0.001, step: 0.0005 },
+  ],
+  resolveParams(attrs) {
+    const w = attrNum(attrs, 'size_x', 0.073);
+    const d = attrNum(attrs, 'size_y', 0.356);
+    const f = Math.min(attrNum(attrs, 'flange', Math.min(0.032, d * 0.12)), d / 3);
+    const t = Math.min(attrNum(attrs, 'thickness', 0.0035), f / 2, w / 4);
+    return { size_x: w, size_y: d, flange: f, thickness: t };
+  },
+  outline2D(p) {
+    const hw = p.size_x / 2, hd = p.size_y / 2;
+    return [{ x: -hw, y: -hd }, { x: hw, y: -hd }, { x: hw, y: hd }, { x: -hw, y: hd }];
+  },
+  area(p) {
+    return OPEN_WEB_K * p.thickness * (p.size_x / 2 + p.flange - p.thickness);
+  },
+  shape3D(p) {
+    return { kind: 'i', width: p.size_x, depth: p.size_y, flange: p.flange, web: Math.max(0.012, 2 * p.thickness) };
+  },
+  bbox(p) {
+    return { w: p.size_x, d: p.size_y };
+  },
+};
+
 registerSectionFamily(rect);
 registerSectionFamily(round);
 registerSectionFamily(i_shape);
@@ -389,3 +428,4 @@ registerSectionFamily(c_shape);
 registerSectionFamily(cross);
 registerSectionFamily(rect_hollow);
 registerSectionFamily(round_hollow);
+registerSectionFamily(open_web);

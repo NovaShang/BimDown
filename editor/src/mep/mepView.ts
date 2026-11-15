@@ -4,6 +4,7 @@
  * circuit wiring. Kept outside the editor reducer (it is view-only and never
  * saved); renderers subscribe through `useMepView`.
  */
+import { systemPreset } from './systemPresets.ts';
 import { useSyncExternalStore } from 'react';
 
 export interface ProblemMarker { x: number; y: number; severity: 'warning' | 'info' }
@@ -62,7 +63,9 @@ export const UNASSIGNED = '\u0000unassigned';
 export function inSystem(systemType: string | undefined, sys: string): boolean {
   if (sys === UNASSIGNED) return !(systemType ?? '').trim();
   if (!systemType) return false;
-  return systemType.split(',').some(s => s.trim() === sys);
+  // Another spelling of the same library system (DHWS ports on DHW) is in it too
+  const preset = systemPreset(sys);
+  return systemType.split(',').some(s => s.trim() === sys || (!!preset && systemPreset(s) === preset));
 }
 
 /** Opacity for an element under the current isolate setting. */

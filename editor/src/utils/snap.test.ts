@@ -48,3 +48,41 @@ describe('snap spatial index', () => {
     }
   });
 });
+
+describe('round-value snaps stay at the click (audit r3: cap clicked at (20.4, 24.0) landed at (20, 24.3))', () => {
+  // The audit's grid: 1-4 at x = 0 / 7.2 / 14.4 / 21.6, A-D at y = 0 / 8.4 / 16.8 / 25.2; ~21 px per metre
+  const grids = [
+    ...[0, 7.2, 14.4, 21.6].map((x, i) => ({ id: `gr-${i + 1}`, number: String(i + 1), x1: x, y1: 27.5, x2: x, y2: -2.5 })),
+    ...[0, 8.4, 16.8, 25.2].map((y, i) => ({ id: `gr-${i + 5}`, number: 'ABCD'[i], x1: -2.5, y1: y, x2: 25, y2: y })),
+  ];
+  const px = 1 / 21;
+  const snap = (p: Point, anchor?: Point) => computeSnap(p, px, new Map(), undefined, anchor, undefined, grids).point;
+
+  it('a free click is not pulled to round distances off a far grid', () => {
+    expect(snap({ x: 20.4, y: 24.0 })).toEqual({ x: 20.4, y: 24.0 });
+    expect(snap({ x: 20.4, y: 15.6 })).toEqual({ x: 20.4, y: 15.6 });
+  });
+
+  it('a segment keeps its clicked length (2.4 m is not rounded to 2.5 m)', () => {
+    const p = snap({ x: 22.8, y: 24.0 }, { x: 20.4, y: 24.0 });
+    expect(p.x).toBeCloseTo(22.8, 9);
+    expect(p.y).toBeCloseTo(24.0, 9);
+  });
+
+  it('a click within a pixel or two of a round value still lands on it', () => {
+    // 1.01 m off grid 4 rounds to 1.0; 2.49 m long rounds to 2.5
+    expect(snap({ x: 20.59, y: 20 }).x).toBeCloseTo(20.6, 9);
+    const p = snap({ x: 22.89, y: 24.0 }, { x: 20.4, y: 24.0 });
+    expect(p.x).toBeCloseTo(22.9, 9);
+  });
+
+  it('aligning with a far point captures only a few pixels either side', () => {
+    const term = new Map<string, CanonicalElement>([['t-1', { id: 't-1', tableName: 'terminal', discipline: 'mep', geometry: 'point', position: { x: 10, y: 2 }, width: 0.3, height: 0.3, attrs: {} } as CanonicalElement]]);
+    // 0.15 m (~3 px) off the terminal's X, 10 m away along Y: aligned
+    expect(computeSnap({ x: 10.15, y: 12 }, px, term).point.x).toBe(10);
+    // 0.3 m (~6 px) off: not pulled
+    expect(computeSnap({ x: 10.3, y: 12 }, px, term).point.x).toBe(10.3);
+    // right next to it the full 10 px still applies
+    expect(computeSnap({ x: 10.4, y: 2.1 }, px, term).point).toEqual({ x: 10, y: 2 });
+  });
+});

@@ -17,7 +17,7 @@ import { uprightAxisQuaternion } from '../three/utils/memberAxis.ts';
 import { clipPolygon, clipSegment } from './crossings.ts';
 import { useMepView, isolateOpacity, inSystem } from './mepView.ts';
 import { ghostMaterial, insulationMaterial, flexMaterial } from './materials.ts';
-import { ProblemMarkers, PlanText } from './planSymbols.tsx';
+import { ProblemMarkers, PlanText, polygonsPath, segmentsPath } from './planSymbols.tsx';
 
 type P = { x: number; y: number };
 
@@ -46,9 +46,7 @@ export function MepLine2D({ facts, fill, stroke, strokeWidth, selected }: {
       <g data-id={facts.id} opacity={opacity}>
         {highlighted && <polygon points={points} fill="none" stroke={color} strokeWidth={0.12} strokeOpacity={0.35} />}
         <polygon points={points} fill={fillColor} stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" data-id={facts.id} />
-        {sym.map(([a, b], i) => (
-          <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={strokeWidth * 0.8} data-id={facts.id} />
-        ))}
+        {sym.length > 0 && <path d={segmentsPath(sym)} stroke={color} strokeWidth={strokeWidth * 0.8} data-id={facts.id} />}
         {markers && <ProblemMarkers points={markers} />}
       </g>
     );
@@ -119,12 +117,9 @@ export function MepLine2D({ facts, fill, stroke, strokeWidth, selected }: {
         <line x1={facts.start.x} y1={facts.start.y} x2={facts.end.x} y2={facts.end.y}
           stroke={color} strokeWidth={facts.sizeX + 0.2} strokeOpacity={0.25} strokeLinecap="round" />
       )}
-      {fills.map((poly, i) => (
-        <polygon key={`f${i}`} points={poly.map(p => `${p.x},${p.y}`).join(' ')} fill={fillColor} stroke="none" data-id={facts.id} />
-      ))}
-      {edges.map(([a, b], i) => (
-        <line key={`e${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={color} strokeWidth={strokeWidth} strokeLinecap="butt" data-id={facts.id} />
-      ))}
+      {/* One fill and one outline path per run (a large imported model has thousands of runs) */}
+      {fills.length > 0 && <path d={polygonsPath(fills)} fill={fillColor} stroke="none" data-id={facts.id} />}
+      {edges.length > 0 && <path d={segmentsPath(edges)} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="butt" data-id={facts.id} />}
       {extras}
       {markers && <ProblemMarkers points={markers} />}
     </g>

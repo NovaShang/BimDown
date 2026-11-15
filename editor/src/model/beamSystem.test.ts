@@ -45,7 +45,7 @@ describe('associative beam systems', () => {
     expect(els[0].tableName).toBe('beam_system');
     state = editorReducer(state, { type: 'CREATE_ELEMENTS', elements: els, description: 'Place beam system', selectPrimary: false });
     expect(beamsOf(state)).toHaveLength(4);
-    expect(beamsOf(state).every(b => b.attrs.number === 'L1')).toBe(true);
+    expect(beamsOf(state).every(b => b.attrs.number === 'GCL1')).toBe(true); // steel secondary beams
 
     // Wider spacing: fewer beams, same ids reused
     state = editorReducer(state, { type: 'UPDATE_ATTRS', id: 'lv-1:bs-1', attrs: { spacing: '3' } });

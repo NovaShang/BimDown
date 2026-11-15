@@ -37,6 +37,8 @@ interface ArrayOpts {
   levelId: string;
   baseOffset: string;
   withPipe: boolean;
+  /** The project's mep_system codes (ports take the project's spelling). */
+  projectCodes?: readonly string[];
   /** Branch / main / drop pipe sizes and height above the heads. */
   pipe?: { branch: number; main: number; drop: number; rise: number; system: string };
 }
@@ -48,7 +50,7 @@ export function buildArray(layout: ArrayLayout, opts: ArrayOpts, existingIds: Se
   const port = opts.starter.ports[0];
   for (const y of layout.ys) {
     for (const x of layout.xs) {
-      const els = materializeStarter(opts.starter, { x, y }, opts.levelId, existingIds, undefined, opts.baseOffset);
+      const els = materializeStarter(opts.starter, { x, y }, opts.levelId, existingIds, undefined, opts.baseOffset, opts.projectCodes);
       out.push(...els);
       const host = els[0];
       if (port) heads.push({ x, y, ref: `${host.id}:${port.name}`, z: (parseFloat(host.attrs.base_offset || '0') || 0) + port.offset[2] });
@@ -105,6 +107,7 @@ export function arrayPointerDown(ctx: ToolContext, e: React.PointerEvent): void 
   const elements = buildArray(layout, {
     starter, levelId: resolveNextLevelId(state), baseOffset: starterBaseOffset(starter, da.base_offset), withPipe,
     pipe: { branch: 0.032, main: 0.05, drop: 0.025, rise: 0.35, system: 'FP' },
+    projectCodes: state.project?.mepSystems.map(s => s.system_type),
   }, ids);
   ctx.dispatch({ type: 'CREATE_ELEMENTS', elements, description: `Array ${layout.xs.length}×${layout.ys.length}`, selectPrimary: false });
   ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });

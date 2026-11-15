@@ -124,6 +124,7 @@ export const STRUCTURAL_SHAPE_OPTIONS: DrawingField['options'] = [
   { value: 'cross', label: 'Cross' },
   { value: 'rect_hollow', label: 'Rect. Hollow' },
   { value: 'round_hollow', label: 'Round Hollow' },
+  { value: 'open_web', label: 'Open-web Joist' },
 ];
 
 export const SLAB_FUNCTION_OPTIONS: DrawingField['options'] = [

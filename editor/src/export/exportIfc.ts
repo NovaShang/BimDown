@@ -48,8 +48,9 @@ import type { FurnitureFacts } from '../elements/furniture.tsx';
 import { MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
 import { effectiveMepLine } from '../model/mepFittingRender.ts';
 import type { MepNodeFacts } from '../elements/mep_node.tsx';
-import { furnitureSolids, mepNodeSolids } from './ifc/componentSolids.ts';
+import { furnitureSolids, accessoryIfcSolids, fittingIfcSolids, mepNodeSolids } from './ifc/componentSolids.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
+import { systemPreset } from '../mep/systemPresets.ts';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
 import { layersUValue } from '../model/types/thermal.ts';
 import { steelWeightPerMetre } from '../families/sections/steelLibrary.ts';
@@ -222,8 +223,8 @@ const DEFAULT_PREDEFINED: Record<string, string> = {
 
 /** Electrical terminals without a system tag join these systems (IFC4 IfcDistributionSystemEnum by name). */
 const ELECTRICAL_SYSTEM: Record<string, string> = {
-  light_fixture: 'LIGHTING', emergency_light: 'LIGHTING',
-  power_outlet: 'POWER', switch: 'POWER', junction_box: 'POWER', data_outlet: 'DATA',
+  light_fixture: 'LTG', emergency_light: 'LTG',
+  power_outlet: 'PWR', switch: 'PWR', junction_box: 'PWR', data_outlet: 'DATA',
 };
 
 /** A void cut into a wall for a hosted door / window / opening. */
@@ -1049,7 +1050,7 @@ class Exporter {
     const rec = this.product({
       scope, el, type: isBeam ? 'IfcBeam' : 'IfcMember', geom: { frame, solids: [solid], axis: [start, end] },
       styles: this.styleFor(f.material, el.tableName), objectType: isBeam ? `beam:${f.section.family.id}` : 'BRACE',
-      tail: isBeam ? this.pt4('IfcBeam', 'BEAM') : this.pt4('IfcMember', 'BRACE'),
+      tail: isBeam ? this.pt4('IfcBeam', f.section.family.id === 'open_web' ? 'JOIST' : 'BEAM') : this.pt4('IfcMember', 'BRACE'),
     });
     // Member line = top of the section: cardinal point 8 (top centre).
     this.framingMaterial(rec.handle, el, f.material, centred, 8);
@@ -1432,7 +1433,8 @@ class Exporter {
     return this.w.surfaceStyle(`mep:${sys || el.tableName}`, color, 0);
   }
 
-  private exportMepProduct(scope: Scope, el: CanonicalElement, ctx: GeometryContext): void {
+  private exportMepProduct(scope: Scope, el0: CanonicalElement, ctx: GeometryContext): void {
+    let el = el0;
     this.collectSegments();
     const { w } = this;
     const t = el.tableName;
@@ -1495,15 +1497,23 @@ class Exporter {
     const facts = getElementModule('mep_node')?.geometry(el, ctx) as MepNodeFacts | null;
     if (!kind && (facts?.fitting || legs.length > 0)) {
       const info = facts?.fitting ?? null;
-      const body = info ? mepNodeSolids(facts) : [];
+      // Swept solids (revolved elbows, extruded arms); a faceted loft only for reducers
+      const body = info ? (fittingIfcSolids(info, facts!.levelY, facts!.riserRight) ?? mepNodeSolids(facts)) : [];
       geom = { solids: body.length > 0 ? body : fittingStubs(center, legs) };
-      objectType = info?.kind ?? fittingKind(legs);
+      // The fitting's own kind (an imported family's), else the analysed one
+      objectType = (el.attrs.fitting || '').trim() || (info?.kind ?? fittingKind(legs));
       const segTable = info?.legs[0]?.table ?? legs[0]?.seg.el.tableName ?? 'duct';
       const fitting4 = (SEGMENT_4[segTable] ?? SEGMENT_4.duct)[2];
       typing = { entity4: fitting4, predefined: fittingPredefined(objectType, fitting4) };
+      // Type per analysed kind and size (elbow 600×400, tee …), not one "fitting" type for all
+      if (!el.attrs.kind && objectType && (!el.attrs.fitting || !el.attrs.size_w)) {
+        const leg = info?.legs[0];
+        const sz = (v: number | undefined) => (v ? String(Math.round(v * 1e4) / 1e4) : '');
+        el = { ...el, attrs: { ...el.attrs, fitting: el.attrs.fitting || objectType, size_w: el.attrs.size_w || sz(leg?.sec.w), size_h: el.attrs.size_h || (leg?.sec.shape === 'round' ? '' : sz(leg?.sec.h)), shape: el.attrs.shape || (leg?.sec.shape ?? '') } };
+      }
       if (w.ifc4) { type = fitting4; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
     } else {
-      let solids: Solid[] = facts?.accessory ? mepNodeSolids(facts) : [];
+      let solids: Solid[] = facts?.accessory ? accessoryIfcSolids(facts.accessory, facts.levelY) : [];
       if (solids.length === 0) {
         let size = num(el.attrs.size_w);
         if (!size) for (const l of legs) size = Math.max(size, l.sizeX, l.sizeY);
@@ -1710,11 +1720,21 @@ class Exporter {
       }
     }
     const defs: SystemDef[] = [...this.project.mepSystems];
-    for (const sys of this.systemMembers.keys()) {
-      if (!defs.some(d => d.system_type === sys)) {
+    // A tag joins the declared system of that code, or of another spelling of
+    // it (DHWS ports on a DHW system, untagged lights on LTG); only tags no
+    // system declares make a system of their own.
+    const members = new Map<string, H[]>();
+    for (const [sys, list] of this.systemMembers) {
+      let d = defs.find(x => x.system_type === sys);
+      const preset = d ? undefined : systemPreset(sys);
+      if (!d && preset) d = defs.find(x => systemPreset(x.system_type) === preset);
+      if (!d) {
         const electrical = Object.values(ELECTRICAL_SYSTEM).includes(sys);
-        defs.push({ id: `sys:${sys}`, system_type: sys, name: electrical ? cap(sys) : sys, color: '', discipline: electrical ? 'electrical' : '' });
+        d = { id: `sys:${sys}`, system_type: sys, name: preset?.en ?? (electrical ? cap(sys) : sys), color: '', discipline: preset?.discipline ?? (electrical ? 'electrical' : '') };
+        defs.push(d);
       }
+      const into = members.get(d.system_type);
+      if (into) into.push(...list); else members.set(d.system_type, [...list]);
     }
     const assigned = new Set<string>();
     for (const d of defs) {
@@ -1725,10 +1745,10 @@ class Exporter {
         : w.add('IfcSystem', w.guid(`system:${d.id}`), w.ownerHistory, name, null, w.label(d.system_type));
       w.add('IfcRelServicesBuildings', w.guid(this.relKey('services')), w.ownerHistory, null, null, handle, [this.building]);
       // Sub-systems sharing a tag: members go to the first.
-      const members = assigned.has(d.system_type) ? [] : this.systemMembers.get(d.system_type) ?? [];
+      const group = assigned.has(d.system_type) ? [] : members.get(d.system_type) ?? [];
       assigned.add(d.system_type);
-      if (members.length > 0) {
-        w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, members, null, handle);
+      if (group.length > 0) {
+        w.add('IfcRelAssignsToGroup', w.guid(this.relKey('group')), w.ownerHistory, null, null, group, null, handle);
       }
     }
   }
@@ -2028,7 +2048,7 @@ function zRangeOf(solids: Solid[]): [number, number] | undefined {
   for (const s of solids) {
     if (s.kind === 'brep') {
       for (const f of s.faces) for (const p of f) { lo = Math.min(lo, p.z); hi = Math.max(hi, p.z); }
-    } else if (Math.abs(s.frame.z.z) > 0.999) {
+    } else if (s.kind === 'extrude' && Math.abs(s.frame.z.z) > 0.999) {
       lo = Math.min(lo, s.frame.o.z, s.frame.o.z + s.depth * s.frame.z.z);
       hi = Math.max(hi, s.frame.o.z, s.frame.o.z + s.depth * s.frame.z.z);
     }

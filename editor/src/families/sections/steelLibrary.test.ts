@@ -13,6 +13,10 @@ const TABULATED: [string, number][] = [
   ['W14X90', 90 * 1.488], ['W24X55', 55 * 1.488], ['HSS8X8X1/2', 13.5 * 0.00064516 * 7850], ['HSS6.625X0.280', 5.2 * 0.00064516 * 7850],
   ['C12X20.7', 20.7 * 1.488], ['L4X4X1/2', 12.8 * 1.488],
   ['HN400x200x8x13', 65.4], ['HW300x300x10x15', 93.0],
+  // GB/T 706 channel / angle, GB/T 6728 tube (cold formed), GB/T 8162 round tube
+  ['[20a', 22.6], ['[32a', 38.1], ['L100x10', 15.1], ['L63x6', 5.72], ['□200x200x8', 46.5], ['Φ219x8', 41.6],
+  // SJI K-series joists (lb/ft × 1.488)
+  ['14K1', 5.2 * 1.488], ['18K5', 7.7 * 1.488], ['24K9', 12.0 * 1.488],
 ];
 
 describe('steel section library', () => {
@@ -33,7 +37,8 @@ describe('steel section library', () => {
       expect(sectionArea(v)).toBeGreaterThan(0);
     }
     expect(sectionFamilies('EN')).toEqual(['HEA', 'HEB', 'IPE', 'UPN', 'RHS', 'SHS', 'CHS', 'L']);
-    expect(sectionFamilies('US')).toEqual(['W', 'HSS rectangular', 'HSS round', 'C', 'L']);
+    expect(sectionFamilies('US')).toEqual(['W', 'HSS rectangular', 'HSS round', 'C', 'L', 'K joist']);
+    expect(sectionFamilies('CN')).toEqual(['HW', 'HM', 'HN', '[', 'L', '□', 'Φ']);
   });
 
   it('type values are in project units and weight follows them', () => {

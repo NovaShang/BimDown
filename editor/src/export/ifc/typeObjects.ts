@@ -80,8 +80,12 @@ export function elementTypeSig(el: CanonicalElement, catalog: TypeCatalog | unde
       return { key: k(a.terminal_type, a.family, a.type), name: mepTypeName(el, undefined, upm) ?? cap(a.terminal_type || 'terminal') };
     case 'mep_node': {
       const kind = a.kind || a.fitting || 'fitting';
+      // A passive fitting's type is its kind (elbow, tee …) and family, as Revit's fitting
+      // families: the size is the instance's. An imported one keeps its family / type name.
+      const family = [a.family, a.type].filter(Boolean).join(': ');
+      if (!a.kind) return { key: family ? k(kind, a.family, a.type) : k(kind, a.shape), name: family || `${cap(kind)}${a.shape ? ` (${a.shape})` : ''}` };
       const size = join(mm(a.size_w, upm), mm(a.size_h, upm));
-      return { key: k(kind, a.size_w, a.size_h, a.shape), name: mepTypeName(el, undefined, upm) ?? `${cap(kind)} ${size}`.trim() };
+      return { key: k(kind, a.size_w, a.size_h, a.shape, a.family, a.type), name: family ? `${family} ${size}`.trim() : mepTypeName(el, undefined, upm) ?? `${cap(kind)} ${size}`.trim() };
     }
   }
   return null;

@@ -293,8 +293,8 @@ export default function LeftPanel({
         </div>
       </div>
 
-      {/* Layers */}
-      <div className="glass-panel flex min-h-0 shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+      {/* Layers: never squeezed below ~4 rows by the panels under it (MEP view) */}
+      <div data-testid="layers-panel" className="glass-panel flex min-h-[7.5rem] shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
         <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
         </div>
@@ -352,7 +352,7 @@ export default function LeftPanel({
       {/* MEP Systems Legend + editor. Header "+" adds a new system; each row
           has hover-revealed edit / delete actions. */}
       {showMepSystemsPanel && (
-        <div className="glass-panel flex shrink-0 max-h-[30%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+        <div className="glass-panel flex min-h-[5rem] shrink max-h-[30%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
           <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
             <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
               {t('panel.mepSystems', 'MEP Systems')}

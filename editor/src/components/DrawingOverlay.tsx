@@ -512,6 +512,11 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
         {cursor && (
           <circle cx={cursor.x} cy={cursor.y} r={0.24 / scale} fill="#4fc3f7" opacity="0.6" />
         )}
+        {/* Typed vertex: X / Y (first), length / angle or ΔX / ΔY from the last vertex */}
+        {drawingState.typed && (cursor || points.length > 0) && (
+          <g transform="scale(1,-1)"><TypedBadge at={points.length ? points[points.length - 1] : cursor!} typed={drawingState.typed} scale={scale}
+            labels={points.length === 0 ? ['X', 'Y'] : drawingState.typed.relative ? ['ΔX', 'ΔY'] : ['L', '∠']} /></g>
+        )}
       </g>
     );
   }

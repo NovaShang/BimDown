@@ -26,6 +26,9 @@ export type Profile =
 export type Solid =
   /** Profile in the frame's XY plane, extruded along the frame's +Z by `depth`. */
   | { kind: 'extrude'; profile: Profile; frame: Frame; depth: number }
+  /** Profile in the frame's XY plane revolved by `angle` (rad, right-handed) about the
+   *  line through `axisO` along `axisDir` (both in the frame's XY plane): an elbow. */
+  | { kind: 'revolve'; profile: Profile; frame: Frame; axisO: V2; axisDir: V2; angle: number }
   /** Closed shell: planar polygon faces, outward winding (CCW seen from outside). */
   | { kind: 'brep'; faces: V3[][] };
 

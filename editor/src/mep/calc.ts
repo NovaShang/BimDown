@@ -124,6 +124,28 @@ export function sizePipe(flowLs: number, material?: string): SizeSuggestion | nu
   return fit(series[series.length - 1]);
 }
 
+/**
+ * Domestic water pipe size (GB 50015 3.7.13): smallest DN / de with velocity
+ * ≤ 1.0 m/s (DN15–20), 1.2 (DN25–40), 1.5 (DN50–70), 1.8 (DN80 and up).
+ */
+export function sizeDomesticPipe(flowLs: number, material?: string): SizeSuggestion | null {
+  const q = flowLs / 1000;
+  if (!(q > 0)) return null;
+  const plastic = isPlasticPipe(material);
+  const series = plastic ? DE : DN;
+  const bore = (d: number) => plastic ? plasticBore(d) : d;
+  const fit = (d: number) => {
+    const b = bore(d);
+    return { shape: 'round' as const, sizeX: d, sizeY: d, velocity: q / (Math.PI * b * b / 4), friction: frictionRate(q, b, 'water') };
+  };
+  for (const d of series) {
+    const b = bore(d), s = fit(d);
+    const vmax = b <= 0.0205 ? 1.0 : b <= 0.0405 ? 1.2 : b <= 0.0705 ? 1.5 : 1.8;
+    if (s.velocity <= vmax) return s;
+  }
+  return fit(series[series.length - 1]);
+}
+
 /** Velocity and friction of a run as drawn. */
 export function runHydraulics(curve: CanonicalElement, flowLs: number): { velocity: number; friction: number } | null {
   const q = flowLs / 1000;
@@ -142,7 +164,11 @@ export function runHydraulics(curve: CanonicalElement, flowLs: number): { veloci
  * Flow (L/s) carried by every MEP run, keyed by curve id. Runs with no
  * downstream load get 0.
  */
-export function computeRunFlows(elements: ReadonlyMap<string, CanonicalElement>): Map<string, number> {
+export function computeRunFlows(
+  elements: ReadonlyMap<string, CanonicalElement>,
+  /** Only the runs of this system (a fixture joins several networks), and the load of a terminal (default its `flow`). */
+  opts: { system?: string; loadOf?: (el: CanonicalElement) => number } = {},
+): Map<string, number> {
   // Graph vertices: "h:<host>" for fittings / accessories / devices, "e:<curve>:<side>" for open ends.
   const adj = new Map<string, { curve: string; other: string }[]>();
   const link = (a: string, b: string, curve: string) => {
@@ -158,6 +184,7 @@ export function computeRunFlows(elements: ReadonlyMap<string, CanonicalElement>)
   const curves: MepCurve[] = [];
   for (const el of elements.values()) {
     if (!isMepLineTable(el.tableName) || (el.geometry !== 'line' && el.geometry !== 'spatial_line')) continue;
+    if (opts.system !== undefined && (el.attrs.system_type || '') !== opts.system) continue;
     const c = el as MepCurve;
     curves.push(c);
     link(hostKey(c.attrs.from, c.id, 's'), hostKey(c.attrs.to, c.id, 'e'), c.id);
@@ -166,7 +193,7 @@ export function computeRunFlows(elements: ReadonlyMap<string, CanonicalElement>)
   const sources: { key: string; flow: number }[] = [];
   for (const el of elements.values()) {
     if (el.tableName !== 'terminal' && el.tableName !== 'equipment') continue;
-    const f = parseFloat(el.attrs.flow || '0') || 0;
+    const f = el.tableName === 'terminal' && opts.loadOf ? opts.loadOf(el) : parseFloat(el.attrs.flow || '0') || 0;
     const key = `h:${el.id}`;
     if (!adj.has(key)) continue;
     // Equipment are sources / pass-through (an FCU's rated flow is air, not its
@@ -209,6 +236,32 @@ export function computeRunFlows(elements: ReadonlyMap<string, CanonicalElement>)
   return flows;
 }
 
+/** Domestic water systems sized by fixture loading units (GB 50015) when their fixtures carry no flow. */
+const DOMESTIC_WATER = /^(DCW|CW|DHW|DHWS|HW|DHWR)$/i;
+
+/** Water supply loading unit (当量 N, 1 N = 0.2 L/s) per fixture (GB 50015 table 3.2.12); hot water: the fixtures with a hot supply. */
+const FIXTURE_UNITS: Record<string, { cold: number; hot: number }> = {
+  lavatory: { cold: 0.5, hot: 0.5 }, sink: { cold: 1.0, hot: 1.0 }, shower: { cold: 0.75, hot: 0.75 },
+  water_closet: { cold: 0.5, hot: 0 }, urinal: { cold: 0.5, hot: 0 }, plumbing_fixture: { cold: 0.75, hot: 0.5 },
+};
+
+/** Building-use coefficient α in q = 0.2·α·√Ng (offices, clinics 1.5). */
+export const WATER_ALPHA = 1.5;
+
+/** Design flow (L/s) of `ng` loading units: 0.2·α·√Ng, never more than the fixtures' sum 0.2·Ng (GB 50015 3.7.6). */
+export function waterDesignFlow(ng: number, alpha = WATER_ALPHA): number {
+  if (!(ng > 0)) return 0;
+  return Math.min(0.2 * alpha * Math.sqrt(ng), 0.2 * ng);
+}
+
+/** Loading units of a fixture on `system` (0 for other terminals). */
+export function fixtureUnits(el: CanonicalElement, system: string): number {
+  if (el.tableName !== 'terminal') return 0;
+  const u = FIXTURE_UNITS[el.attrs.terminal_type || ''];
+  if (!u) return 0;
+  return /^(DHW|DHWS|HW|DHWR)$/i.test(system) ? u.hot : u.cold;
+}
+
 export interface SizeSystemOpts {
   /** Equal-friction rate for ducts, Pa/m. */
   rate?: number;
@@ -227,7 +280,15 @@ export interface SizeSystemOpts {
 export function sizeSystem(elements: ReadonlyMap<string, CanonicalElement>, system: string, opts: SizeSystemOpts | number = {}): CanonicalElement[] {
   const o: SizeSystemOpts = typeof opts === 'number' ? { rate: opts } : opts;
   const rate = o.rate ?? 1.0;
-  const flows = computeRunFlows(elements);
+  let flows = computeRunFlows(elements);
+  // Domestic water with no fixture flows: size by loading units on the system's own network
+  if (DOMESTIC_WATER.test(system)) {
+    const units = computeRunFlows(elements, { system, loadOf: el => fixtureUnits(el, system) });
+    if ([...units.values()].some(v => v > 0)) {
+      flows = new Map(flows);
+      for (const [id, ng] of units) if (!(flows.get(id)! > 0)) flows.set(id, waterDesignFlow(ng));
+    }
+  }
   const sized = new Map<string, { sx: string; sy: string }>();
   const members: MepCurve[] = [];
   const stubs = new Set<string>();
@@ -241,7 +302,7 @@ export function sizeSystem(elements: ReadonlyMap<string, CanonicalElement>, syst
     const shape = (el.attrs.shape || (el.tableName === 'duct' ? 'rect' : 'round')) === 'round' ? 'round' : 'rect';
     const s = el.tableName === 'duct'
       ? sizeDuct(f, shape, parseFloat(el.attrs.size_y || '0') || 0, rate)
-      : sizePipe(f, el.attrs.material);
+      : DOMESTIC_WATER.test(system) ? sizeDomesticPipe(f, el.attrs.material) : sizePipe(f, el.attrs.material);
     if (s) sized.set(el.id, { sx: String(round3(s.sizeX)), sy: String(round3(s.sizeY)) });
   }
   if (o.deadEnds ?? true) {
