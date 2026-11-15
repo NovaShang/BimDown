@@ -32,7 +32,7 @@ import type { LineWallFacts, WallOpening } from '../elements/_lineWallShared.tsx
 import type { SlabFacts } from '../elements/_slabShared.tsx';
 import type { RoofFacts } from '../elements/roof.tsx';
 import type { ColumnFacts } from '../elements/column.tsx';
-import type { BeamFacts } from '../elements/beam.tsx';
+import { memberBodyEnds, type BeamFacts } from '../elements/beam.tsx';
 import type { FoundationFacts } from '../elements/foundation.tsx';
 import type { StairFacts } from '../elements/stair.tsx';
 import type { StairRunFacts } from '../elements/stair_run.tsx';
@@ -51,6 +51,10 @@ import type { MepNodeFacts } from '../elements/mep_node.tsx';
 import { furnitureSolids, mepNodeSolids } from './ifc/componentSolids.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { resolvedLayers, typeOfElement, type ResolvedLayer } from '../model/types/catalog.ts';
+import { layersUValue } from '../model/types/thermal.ts';
+import { steelWeightPerMetre } from '../families/sections/steelLibrary.ts';
+import { ringArea } from '../model/quantities.ts';
+import { elementTypeSig, pileKind, typeEntityFor, type TypeSig } from './ifc/typeObjects.ts';
 import { triggerDownload } from './download.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { unitsPerMetre } from './drawing/plan.ts';
@@ -192,6 +196,35 @@ interface Rec {
   external?: boolean;
 }
 
+/** Products sharing one IFC type object (IfcRelDefinesByType). */
+interface TypeGroup {
+  key: string;
+  entity: string;
+  sig: TypeSig;
+  predefined: string;
+  el: CanonicalElement;
+  objects: H[];
+}
+
+/** Tables whose products get an IFC type object. */
+const TYPED_TABLES = new Set([
+  'wall', 'structure_wall', 'curtain_wall', 'slab', 'structure_slab', 'roof', 'ceiling', 'foundation',
+  'door', 'window', 'column', 'structure_column', 'beam', 'brace', 'railing', 'furniture',
+  'duct', 'pipe', 'cable_tray', 'conduit', 'equipment', 'terminal', 'mep_node',
+]);
+
+/** Type PredefinedType when the product carries none (IFC2X3 columns, beams, braces, walls). */
+const DEFAULT_PREDEFINED: Record<string, string> = {
+  column: 'COLUMN', structure_column: 'COLUMN', beam: 'BEAM', brace: 'BRACE',
+  wall: 'STANDARD', structure_wall: 'SHEAR', curtain_wall: 'NOTDEFINED', railing: 'NOTDEFINED',
+};
+
+/** Electrical terminals without a system tag join these systems (IFC4 IfcDistributionSystemEnum by name). */
+const ELECTRICAL_SYSTEM: Record<string, string> = {
+  light_fixture: 'LIGHTING', emergency_light: 'LIGHTING',
+  power_outlet: 'POWER', switch: 'POWER', junction_box: 'POWER', data_outlet: 'DATA',
+};
+
 /** A void cut into a wall for a hosted door / window / opening. */
 interface WallVoid {
   host: Rec;
@@ -274,6 +307,7 @@ class Exporter {
   private recs = new Map<string, Map<string, Rec>>(); // scope id → raw id → rec
   private voids = new Map<string, WallVoid>();         // `${scope}/${hostedId}`
   private materials = new Map<string, { material: H; objects: H[] }>();
+  private typeGroups = new Map<string, TypeGroup>();
   private layerUsages = new Map<string, { usage: H; objects: H[] }>();
   private layerSets = new Map<string, H>();
   private systemMembers = new Map<string, H[]>();     // system_type → members
@@ -325,6 +359,7 @@ class Exporter {
     this.exportMep();
     this.writeSystems();
     this.writeGroups();
+    this.writeTypes();
     this.writeRelationships();
   }
 
@@ -359,7 +394,7 @@ class Exporter {
       ]
       : [unit('LENGTHUNIT', 'METRE', prefix), unit('AREAUNIT', 'SQUARE_METRE', prefix), unit('VOLUMEUNIT', 'CUBIC_METRE', prefix)];
     const units = w.add('IfcUnitAssignment', [
-      ...lengthUnits, unit('PLANEANGLEUNIT', 'RADIAN'),
+      ...lengthUnits, unit('PLANEANGLEUNIT', 'RADIAN'), unit('MASSUNIT', 'GRAM', 'KILO'),
     ]);
 
     const org = w.add('IfcOrganization', null, w.label('BimDown'), null, null, null);
@@ -506,6 +541,8 @@ class Exporter {
     /** false: part of an aggregate / filling, not directly in the storey. */
     contained?: boolean;
     register?: boolean;
+    /** MEP: the IFC4 entity and PredefinedType the type object follows (IFC2X3 products are generic). */
+    typing?: { entity4: string; predefined: string };
   }): Rec {
     const { w } = this;
     const storey = o.storey ?? o.scope.storeyFor(o.el);
@@ -514,9 +551,12 @@ class Exporter {
     const placement = w.placement(parent.placement, parent.frame, frame);
     const shape = this.shapeOf(o.geom, frame, o.styles);
     const key = o.key ?? this.recKey(o.scope, o.el);
+    // The element's own product (not a part) gets a type; its Name is the Mark, else the type name.
+    const sig = o.key === undefined && TYPED_TABLES.has(o.el.tableName) ? elementTypeSig(o.el, this.project.types, this.upm) : null;
     const handle = w.add(o.type, w.guid(key), w.ownerHistory,
-      w.label(o.name !== undefined ? o.name : (o.el.attrs.number || o.el.id)), null,
+      w.label(o.name !== undefined ? o.name : (o.el.attrs.number || sig?.name || o.el.id)), null,
       w.label(o.objectType ?? null), placement, shape, w.ident(o.el.id), ...(o.tail ?? []));
+    if (sig) this.addToType(o.type, sig, o.el, handle, o.typing, o.tail);
     const rec: Rec = { key, el: o.el, table: o.el.tableName, scopeId: o.scope.id, storey, handle, placement, frame, zRange: zRangeOf(o.geom.solids) };
     if (o.contained !== false) storey.contained.push(handle);
     if (o.register !== false) this.register(o.scope.id, o.el.id, rec);
@@ -594,11 +634,12 @@ class Exporter {
       objectType: el.tableName, tail: this.pt4('IfcWall', loadBearing ? 'SHEAR' : 'STANDARD'),
     });
     rec.external = external;
-    this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS2', el);
+    this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS2', el, 0, el.attrs.material_grade);
     const len = f.centerline.arc ? arcLength(f.centerline.start, f.centerline.end, f.centerline.arc) : f.centerline.length;
     const footprint = Math.abs(polygonArea(f.footprint));
     this.pset(rec, 'Pset_WallCommon', {
       Reference: w.ident(el.attrs.number), IsExternal: w.bool(external), LoadBearing: w.bool(loadBearing),
+      ThermalTransmittance: this.typeUValue(el),
     });
     this.qto(rec, 'Qto_WallBaseQuantities', [
       { kind: 'length', name: 'Length', value: len },
@@ -712,16 +753,23 @@ class Exporter {
       objectType: fn ? `${el.tableName}:${fn}` : el.tableName, tail: [w.enumv('IfcSlabTypeEnum', predefined)],
     });
     rec.external = fn === 'roof';
-    this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS3', el, f.baseY + f.thickness - rec.frame.o.z);
+    this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS3', el, f.baseY + f.thickness - rec.frame.o.z, el.attrs.material_grade);
     this.pset(rec, 'Pset_SlabCommon', {
       Reference: w.ident(el.attrs.number), IsExternal: w.bool(fn === 'roof'),
-      LoadBearing: w.bool(el.tableName === 'structure_slab'),
+      LoadBearing: w.bool(el.tableName === 'structure_slab'), ThermalTransmittance: this.typeUValue(el),
     });
+    // Net: the polygon openings hosted on the slab deducted (shafts are not).
+    const cut = scope.elements
+      .filter(o => o.tableName === 'opening' && o.geometry === 'polygon' && (o.attrs.host_id || o.hostId) === el.id && !isShaft(o))
+      .reduce((s, o) => s + ringArea((o as PolygonElement).vertices), 0);
+    const net = Math.max(0, area - cut);
     this.qto(rec, 'Qto_SlabBaseQuantities', [
       { kind: 'length', name: 'Width', value: f.thickness },
       { kind: 'length', name: 'Perimeter', value: polygonPerimeter(verts) },
       { kind: 'area', name: 'GrossArea', value: area },
+      { kind: 'area', name: 'NetArea', value: net },
       { kind: 'volume', name: 'GrossVolume', value: area * f.thickness },
+      { kind: 'volume', name: 'NetVolume', value: net * f.thickness },
     ]);
     this.bimdownPset(rec);
   }
@@ -747,7 +795,7 @@ class Exporter {
     const roofLayers = resolvedLayers(el, this.project.types);
     if (roofLayers) this.typedLayerMaterial(rec.handle, el, roofLayers, null, 0);
     else this.singleMaterial(rec.handle, f.material);
-    this.pset(rec, 'Pset_RoofCommon', { Reference: w.ident(el.attrs.number), IsExternal: w.bool(true) });
+    this.pset(rec, 'Pset_RoofCommon', { Reference: w.ident(el.attrs.number), IsExternal: w.bool(true), ThermalTransmittance: this.typeUValue(el) });
     const area = Math.abs(polygonArea(verts));
     // Sloped area: each roof plane's plan area / cos(its slope).
     let sloped = 0;
@@ -781,9 +829,15 @@ class Exporter {
     }
     let type: string, tail: any[], pset: string;
     switch (f.kind) {
-      case 'pile':
-        type = 'IfcPile'; tail = [w.enumv('IfcPileTypeEnum', 'NOTDEFINED'), null]; pset = 'Pset_PileCommon';
+      case 'pile': {
+        // Bored (concrete) or driven (steel / timber) pile; IFC2X3 has no such enum: user-defined + construction type.
+        const pk = pileKind(f.material);
+        type = 'IfcPile'; pset = 'Pset_PileCommon';
+        tail = w.ifc4
+          ? [w.enumv('IfcPileTypeEnum', pk.predefined4), null]
+          : [w.enumv('IfcPileTypeEnum', 'USERDEFINED'), w.enumv('IfcPileConstructionEnum', pk.construction)];
         break;
+      }
       case 'raft':
         type = 'IfcSlab'; tail = [w.enumv('IfcSlabTypeEnum', 'BASESLAB')]; pset = 'Pset_SlabCommon';
         break;
@@ -791,8 +845,9 @@ class Exporter {
         type = 'IfcFooting'; pset = 'Pset_FootingCommon';
         tail = [w.enumv('IfcFootingTypeEnum', f.kind === 'strip' ? 'STRIP_FOOTING' : f.kind === 'pile_cap' ? 'PILE_CAP' : 'PAD_FOOTING')];
     }
-    const rec = this.product({ scope, el, type, geom, styles: this.styleFor(f.material, 'foundation'), objectType: f.kind, tail });
-    this.singleMaterial(rec.handle, f.material);
+    const objectType = f.kind === 'pile' && !w.ifc4 ? pileKind(f.material).predefined4 : f.kind;
+    const rec = this.product({ scope, el, type, geom, styles: this.styleFor(f.material, 'foundation'), objectType, tail });
+    this.singleMaterial(rec.handle, f.material, el.attrs.material_grade);
     this.pset(rec, pset, { Reference: w.ident(el.attrs.number), LoadBearing: w.bool(true) });
     this.bimdownPset(rec);
   }
@@ -951,7 +1006,7 @@ class Exporter {
 
   private exportColumn(scope: Scope, el: CanonicalElement, f: ColumnFacts): void {
     const { w } = this;
-    const profile = sectionProfile(f.section.family.shape3D(f.section.params), f.section.family.id);
+    const profile = sectionProfile(f.section.family.shape3D(f.section.params), this.profileName(el, f.section.family.id));
     const frame = planFrame(v3(f.position.x, f.position.y, f.baseY), f.rotationDeg * Math.PI / 180);
     const solid: Solid = { kind: 'extrude', profile, frame, depth: f.extrudeHeight };
     const loadBearing = el.tableName === 'structure_column';
@@ -959,9 +1014,9 @@ class Exporter {
       scope, el, type: 'IfcColumn', geom: { frame, solids: [solid] }, styles: this.styleFor(f.material, el.tableName),
       objectType: `${el.tableName}:${f.section.family.id}`, tail: this.pt4('IfcColumn', 'COLUMN'),
     });
-    this.singleMaterial(rec.handle, f.material);
+    this.framingMaterial(rec.handle, el, f.material, profile, 5);
     this.pset(rec, 'Pset_ColumnCommon', { Reference: w.ident(el.attrs.number), LoadBearing: w.bool(loadBearing) });
-    this.qto(rec, 'Qto_ColumnBaseQuantities', [{ kind: 'length', name: 'Length', value: f.extrudeHeight }]);
+    this.qto(rec, 'Qto_ColumnBaseQuantities', this.framingQuantities(el, f.section, f.extrudeHeight));
     this.bimdownPset(rec);
   }
 
@@ -970,8 +1025,13 @@ class Exporter {
     const { w } = this;
     const start = v3(f.start.x, f.start.y, f.baseY + f.startZ);
     const end = v3(f.end.x, f.end.y, f.baseY + f.endZ);
-    const profile = hangFromTop(sectionProfile(f.section.family.shape3D(f.section.params), f.section.family.id));
-    const solid = sweep(start, end, profile);
+    // Body cut back at the girders a secondary beam frames into; the axis stays the member line.
+    const b = memberBodyEnds(f);
+    const bodyStart = v3(b.start.x, b.start.y, f.baseY + b.startZ);
+    const bodyEnd = v3(b.end.x, b.end.y, f.baseY + b.endZ);
+    const centred = sectionProfile(f.section.family.shape3D(f.section.params), this.profileName(el, f.section.family.id));
+    const profile = hangFromTop(centred);
+    const solid = sweep(bodyStart, bodyEnd, profile);
     if (!solid) return;
     const isBeam = el.tableName === 'beam';
     const frame = memberFrame(start, end)!;
@@ -980,9 +1040,10 @@ class Exporter {
       styles: this.styleFor(f.material, el.tableName), objectType: isBeam ? `beam:${f.section.family.id}` : 'BRACE',
       tail: isBeam ? this.pt4('IfcBeam', 'BEAM') : this.pt4('IfcMember', 'BRACE'),
     });
-    this.singleMaterial(rec.handle, f.material);
+    // Member line = top of the section: cardinal point 8 (top centre).
+    this.framingMaterial(rec.handle, el, f.material, centred, 8);
     this.pset(rec, isBeam ? 'Pset_BeamCommon' : 'Pset_MemberCommon', { Reference: w.ident(el.attrs.number), LoadBearing: w.bool(true) });
-    this.qto(rec, isBeam ? 'Qto_BeamBaseQuantities' : 'Qto_MemberBaseQuantities', [{ kind: 'length', name: 'Length', value: length(sub(end, start)) }]);
+    this.qto(rec, isBeam ? 'Qto_BeamBaseQuantities' : 'Qto_MemberBaseQuantities', this.framingQuantities(el, f.section, length(sub(end, start))));
     this.bimdownPset(rec);
   }
 
@@ -1361,6 +1422,7 @@ class Exporter {
     const { w } = this;
     const t = el.tableName;
     let type: string, tail: any[] = [], objectType: string | null = null, geom: ProductGeom | null = null;
+    let typing: { entity4: string; predefined: string } | undefined;
     if (MEP_SEGMENTS.has(t)) {
       const seg = this.segmentByEl.get(el);
       if (!seg) return;
@@ -1370,11 +1432,12 @@ class Exporter {
       geom = { frame: memberFrame(seg.start, seg.end)!, solids: [solid], axis: [seg.start, seg.end] };
       const flexible = el.attrs.flexible === 'true';
       objectType = el.attrs.system_type || t;
+      const segPredef = flexible && (t === 'duct' || t === 'pipe') ? 'FLEXIBLESEGMENT' : SEGMENT_4[t][1] === 'NOTDEFINED' ? 'RIGIDSEGMENT' : SEGMENT_4[t][1];
       if (w.ifc4) {
         type = SEGMENT_4[t][0];
         tail = [w.enumv(`${type}TypeEnum`, flexible && (t === 'duct' || t === 'pipe') ? 'FLEXIBLESEGMENT' : SEGMENT_4[t][1])];
       } else type = 'IfcFlowSegment';
-      const rec = this.mepRec(scope, el, type, geom, objectType, tail);
+      const rec = this.mepRec(scope, el, type, geom, objectType, tail, { entity4: SEGMENT_4[t][0], predefined: segPredef });
       seg.rec = rec;
       const insulation = num(el.attrs.insulation_thickness);
       this.pset(rec, 'BimDown_MEP', {
@@ -1394,7 +1457,7 @@ class Exporter {
       const m4 = (t === 'equipment' ? EQUIPMENT_4 : TERMINAL_4)[kind];
       if (w.ifc4 && m4 && w.has(m4[0])) { type = m4[0]; tail = [w.enumv(`${type}TypeEnum`, m4[1])]; }
       else type = t === 'equipment' ? (w.ifc4 ? 'IfcEnergyConversionDevice' : EQUIPMENT_2X3[kind] ?? 'IfcEnergyConversionDevice') : (w.ifc4 ? 'IfcFlowTerminal' : TERMINAL_2X3[kind] ?? 'IfcFlowTerminal');
-      const rec = this.mepRec(scope, el, type, geom, objectType, tail);
+      const rec = this.mepRec(scope, el, type, geom, objectType, tail, m4 ? { entity4: m4[0], predefined: m4[1] } : undefined);
       this.designPset(rec, el);
       if (el.attrs.circuit_id) {
         let list = this.circuitMembers.get(`${scope.id}/${el.attrs.circuit_id}`);
@@ -1416,7 +1479,9 @@ class Exporter {
       geom = { solids: body.length > 0 ? body : fittingStubs(center, legs) };
       objectType = info?.kind ?? fittingKind(legs);
       const segTable = info?.legs[0]?.table ?? legs[0]?.seg.el.tableName ?? 'duct';
-      if (w.ifc4) { type = (SEGMENT_4[segTable] ?? SEGMENT_4.duct)[2]; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
+      const fitting4 = (SEGMENT_4[segTable] ?? SEGMENT_4.duct)[2];
+      typing = { entity4: fitting4, predefined: fittingPredefined(objectType, fitting4) };
+      if (w.ifc4) { type = fitting4; tail = [w.enumv(`${type}TypeEnum`, fittingPredefined(objectType, type))]; } else type = 'IfcFlowFitting';
     } else {
       let solids: Solid[] = facts?.accessory ? mepNodeSolids(facts) : [];
       if (solids.length === 0) {
@@ -1430,17 +1495,22 @@ class Exporter {
       geom = { solids };
       objectType = kind || 'fitting';
       const acc = ACCESSORY[kind];
+      if (acc) typing = { entity4: acc[1], predefined: acc[2] };
       if (w.ifc4) {
         type = acc && w.has(acc[1]) ? acc[1] : 'IfcFlowFitting';
         tail = acc && w.has(acc[1]) ? [w.enumv(`${type}TypeEnum`, acc[2])] : [];
       } else type = acc ? (w.has(acc[0]) ? acc[0] : 'IfcFlowController') : (kind ? 'IfcFlowController' : 'IfcFlowFitting');
     }
-    this.mepRec(scope, el, type, geom, objectType, tail);
+    this.mepRec(scope, el, type, geom, objectType, tail, typing);
   }
 
-  private mepRec(scope: Scope, el: CanonicalElement, type: string, geom: ProductGeom, objectType: string | null, tail: any[]): Rec {
-    const rec = this.product({ scope, el, type, geom, styles: this.mepStyle(el), objectType, tail });
-    for (const sys of (el.attrs.system_type || '').split(',').map(s => s.trim()).filter(Boolean)) {
+  private mepRec(scope: Scope, el: CanonicalElement, type: string, geom: ProductGeom, objectType: string | null, tail: any[],
+    typing?: { entity4: string; predefined: string }): Rec {
+    const rec = this.product({ scope, el, type, geom, styles: this.mepStyle(el), objectType, tail, typing });
+    const tags = (el.attrs.system_type || '').split(',').map(s => s.trim()).filter(Boolean);
+    // Lights, outlets and switches without a system tag belong to the electrical systems.
+    if (tags.length === 0 && el.tableName === 'terminal' && ELECTRICAL_SYSTEM[el.attrs.terminal_type]) tags.push(ELECTRICAL_SYSTEM[el.attrs.terminal_type]);
+    for (const sys of tags) {
       let list = this.systemMembers.get(sys);
       if (!list) this.systemMembers.set(sys, list = []);
       list.push(rec.handle);
@@ -1621,7 +1691,10 @@ class Exporter {
     }
     const defs: SystemDef[] = [...this.project.mepSystems];
     for (const sys of this.systemMembers.keys()) {
-      if (!defs.some(d => d.system_type === sys)) defs.push({ id: `sys:${sys}`, system_type: sys, name: sys, color: '', discipline: '' });
+      if (!defs.some(d => d.system_type === sys)) {
+        const electrical = Object.values(ELECTRICAL_SYSTEM).includes(sys);
+        defs.push({ id: `sys:${sys}`, system_type: sys, name: electrical ? cap(sys) : sys, color: '', discipline: electrical ? 'electrical' : '' });
+      }
     }
     const assigned = new Set<string>();
     for (const d of defs) {
@@ -1666,15 +1739,117 @@ class Exporter {
 
   // ─── Materials, properties ─────────────────────────────────────────────────
 
-  private materialHandle(name: string): { material: H; objects: H[] } {
-    const key = (name || 'default').toLowerCase();
+  /** IfcMaterial per material + strength grade ("concrete C40", "steel Q355"); IFC4 Category = the material. */
+  private materialHandle(name: string, grade?: string): { material: H; objects: H[] } {
+    const base = (name || 'default').toLowerCase();
+    const g = (grade ?? '').trim();
+    const key = g ? `${base} ${g}` : base;
     let m = this.materials.get(key);
-    if (!m) this.materials.set(key, m = { material: this.w.add('IfcMaterial', this.w.label(key)), objects: [] });
+    if (!m) {
+      const { w } = this;
+      const material = w.ifc4 ? w.add('IfcMaterial', w.label(key), null, w.label(base)) : w.add('IfcMaterial', w.label(key));
+      this.materials.set(key, m = { material, objects: [] });
+    }
     return m;
   }
 
-  private singleMaterial(obj: H, name: string): void {
-    this.materialHandle(name || 'default').objects.push(obj);
+  private singleMaterial(obj: H, name: string, grade?: string): void {
+    this.materialHandle(name || 'default', grade).objects.push(obj);
+  }
+
+  /** IFC4 profile name: the section designation, else the type name, else the shape family. */
+  private profileName(el: CanonicalElement, family: string): string {
+    return el.attrs.designation || typeOfElement(el, this.project.types)?.name || family;
+  }
+
+  /**
+   * Column / beam / brace material: IFC4 IfcMaterialProfileSetUsage (the
+   * section profile + material with grade, at `cardinal` — 5 centroid, 8 top
+   * centre); IFC2X3 the material alone. Equal sets are shared.
+   */
+  private framingMaterial(obj: H, el: CanonicalElement, material: string, profile: import('./ifc/frame.ts').Profile, cardinal: number): void {
+    const { w } = this;
+    const grade = el.attrs.material_grade;
+    if (!w.ifc4) { this.singleMaterial(obj, material, grade); return; }
+    const key = `profile:${JSON.stringify(profile)}|${material}|${grade ?? ''}|${cardinal}`;
+    let u = this.layerUsages.get(key);
+    if (!u) {
+      const mat = this.materialHandle(material, grade).material;
+      const mp = w.add('IfcMaterialProfile', w.label(profile.name ?? null), null, mat, w.profile(profile), null, null);
+      const set = w.add('IfcMaterialProfileSet', w.label(profile.name ?? null), null, [mp], null);
+      const usage = w.add('IfcMaterialProfileSetUsage', set, new this.S.IfcCardinalPointReference(cardinal), null);
+      this.layerUsages.set(key, u = { usage, objects: [] });
+    }
+    u.objects.push(obj);
+  }
+
+  /** Length, cross-section area, volume and (steel) weight of a column / framing member. */
+  private framingQuantities(el: CanonicalElement, section: ColumnFacts['section'], len: number) {
+    const area = section.family.area?.(section.params) ?? Math.abs(polygonArea(section.family.outline2D(section.params)));
+    const kgPerM = steelWeightPerMetre(el.attrs, this.upm);
+    const q: { kind: 'length' | 'area' | 'volume' | 'weight'; name: string; value: number }[] = [
+      { kind: 'length', name: 'Length', value: len },
+      { kind: 'area', name: 'CrossSectionArea', value: area },
+      { kind: 'volume', name: 'GrossVolume', value: area * len },
+      { kind: 'volume', name: 'NetVolume', value: area * len },
+    ];
+    if (kgPerM !== undefined) {
+      q.push({ kind: 'weight', name: 'GrossWeight', value: kgPerM * (len / this.upm) }, { kind: 'weight', name: 'NetWeight', value: kgPerM * (len / this.upm) });
+    }
+    return q;
+  }
+
+  /** Group a product under its IFC type object (written by writeTypes). */
+  private addToType(entity: string, sig: TypeSig, el: CanonicalElement, handle: H, typing: { entity4: string; predefined: string } | undefined, tail: any[] | undefined): void {
+    const { w } = this;
+    const typeEntity = typeEntityFor(entity, w.ifc4, e => w.has(e), typing?.entity4);
+    if (!typeEntity) return;
+    const key = `${typeEntity}|${sig.key}`;
+    let g = this.typeGroups.get(key);
+    if (!g) {
+      const predefined = typing?.predefined ?? enumIn(tail) ?? DEFAULT_PREDEFINED[el.tableName] ?? 'NOTDEFINED';
+      this.typeGroups.set(key, g = { key, entity: typeEntity, sig, predefined, el, objects: [] });
+    }
+    g.objects.push(handle);
+  }
+
+  /** IFC type objects (IfcColumnType, IfcDoorStyle / IfcDoorType, IfcPumpType …) + IfcRelDefinesByType. */
+  private writeTypes(): void {
+    const { w } = this;
+    for (const g of this.typeGroups.values()) {
+      const a = g.el.attrs;
+      const kgPerM = steelWeightPerMetre(a, this.upm);
+      const ps = w.propertySet(`type:${g.key}#pset`, 'BimDown_Type', {
+        TypeId: w.ident(g.sig.typeId ?? null), Designation: w.label(a.designation || null),
+        Grade: w.label(g.sig.typeId ? (typeOfElement(g.el, this.project.types)?.values.material_grade || null) : null),
+        MassPerLength: kgPerM !== undefined ? w.real(Math.round(kgPerM * 100) / 100) : null,
+      });
+      const head = [w.guid(`type:${g.key}`), w.ownerHistory, w.label(g.sig.name), w.text(g.sig.description ?? null), null, ps ? [ps] : null, null,
+        w.ident(g.sig.typeId ?? null)];
+      const op = a.operation || (g.el.tableName === 'door' ? 'single_swing' : 'fixed');
+      let tail: any[];
+      switch (g.entity) {
+        case 'IfcDoorStyle':
+          tail = [w.enumv('IfcDoorStyleOperationEnum', doorOperation(op, a.swing_side)), w.enumv('IfcDoorStyleConstructionEnum', styleConstruction(a.material, true)), w.bool(false), w.bool(false)];
+          break;
+        case 'IfcWindowStyle':
+          tail = [w.enumv('IfcWindowStyleConstructionEnum', styleConstruction(a.material, false)), w.enumv('IfcWindowStyleOperationEnum', windowPartitioning(op)), w.bool(false), w.bool(false)];
+          break;
+        case 'IfcDoorType':
+          tail = [w.label(g.sig.name), w.enumv('IfcDoorTypeEnum', 'DOOR'), w.enumv('IfcDoorTypeOperationEnum', doorOperation(op, a.swing_side)), w.bool(false), null];
+          break;
+        case 'IfcWindowType':
+          tail = [w.label(g.sig.name), w.enumv('IfcWindowTypeEnum', 'WINDOW'), w.enumv('IfcWindowTypePartitioningEnum', windowPartitioning(op)), w.bool(false), null];
+          break;
+        case 'IfcFurnitureType':
+          tail = [w.label(g.sig.name), w.enumv('IfcAssemblyPlaceEnum', 'NOTDEFINED'), ...(w.ifc4 ? [w.enumv('IfcFurnitureTypeEnum', 'NOTDEFINED')] : [])];
+          break;
+        default:
+          tail = [w.label(g.sig.name), w.enumv(`${g.entity}Enum`, g.predefined)];
+      }
+      const handle = w.add(g.entity, ...head, ...tail);
+      w.add('IfcRelDefinesByType', w.guid(`rel:type:${g.key}`), w.ownerHistory, null, null, g.objects, handle);
+    }
   }
 
   /**
@@ -1683,17 +1858,17 @@ class Exporter {
    * its top face above the product placement); otherwise one layer of
    * `name` × `thickness`. Equal layer sets are shared.
    */
-  private layerMaterial(obj: H, name: string, thickness: number, direction: 'AXIS2' | 'AXIS3', el?: CanonicalElement, top = 0): void {
+  private layerMaterial(obj: H, name: string, thickness: number, direction: 'AXIS2' | 'AXIS3', el?: CanonicalElement, top = 0, grade?: string): void {
     const layers = el ? resolvedLayers(el, this.project.types) : null;
     if (el && layers) {
       this.typedLayerMaterial(obj, el, layers, direction, direction === 'AXIS2' ? layers.reduce((s, l) => s + l.thickness, 0) / 2 : top);
       return;
     }
     const { w, S } = this;
-    const key = `${(name || 'default').toLowerCase()}|${thickness.toFixed(4)}|${direction}`;
+    const key = `${(name || 'default').toLowerCase()}|${grade ?? ''}|${thickness.toFixed(4)}|${direction}`;
     let u = this.layerUsages.get(key);
     if (!u) {
-      const mat = this.materialHandle(name).material;
+      const mat = this.materialHandle(name, grade).material;
       const layer = w.add('IfcMaterialLayer', mat, w.plen(thickness), null);
       const set = w.add('IfcMaterialLayerSet', [layer], w.label(`${name || 'default'} ${Math.round(thickness * 1000)}`));
       const usage = w.add('IfcMaterialLayerSetUsage', set, S.IfcLayerSetDirectionEnum[direction], S.IfcDirectionSenseEnum.POSITIVE,
@@ -1714,14 +1889,15 @@ class Exporter {
     const { w, S } = this;
     const type = typeOfElement(el, this.project.types);
     const sig = layers.map(l => `${l.material}:${l.function}:${l.thickness.toFixed(4)}`).join(',');
-    const setKey = `type:${type?.id ?? ''}|${sig}`;
+    const grade = el.attrs.material_grade || type?.values.material_grade || '';
+    const setKey = `type:${type?.id ?? ''}|${sig}|${grade}`;
     const key = `${setKey}|${direction ?? 'set'}|${offset.toFixed(4)}`;
     let u = this.layerUsages.get(key);
     if (!u) {
       let set = this.layerSets.get(setKey);
       if (!set) {
         const ifcLayers = layers.map(l => {
-          const mat = this.materialHandle(l.material || (l.function === 'air_gap' ? 'air' : 'default')).material;
+          const mat = this.materialHandle(l.material || (l.function === 'air_gap' ? 'air' : 'default'), l.function === 'core' ? grade : undefined).material;
           const extra = w.ifc4 ? [w.label(l.name || null), null, w.label(LAYER_CATEGORY[l.function] ?? null)] : [];
           return w.add('IfcMaterialLayer', mat, w.plen(l.thickness), null, ...extra);
         });
@@ -1738,8 +1914,14 @@ class Exporter {
 
   /** U-value of a door / window / curtain wall type (W/(m²·K)), as ThermalTransmittance. */
   private typeUValue(el: CanonicalElement): any {
-    const u = parseFloat(typeOfElement(el, this.project.types)?.values.u_value ?? el.attrs.u_value ?? '');
-    return Number.isFinite(u) && u > 0 ? new this.S.IfcThermalTransmittanceMeasure(u) : null;
+    const type = typeOfElement(el, this.project.types);
+    let u = parseFloat(type?.values.u_value ?? el.attrs.u_value ?? '');
+    // Layered walls / slabs / roofs: from the layers at the element's thickness (EN ISO 6946).
+    if (!Number.isFinite(u) && type) {
+      const layers = resolvedLayers(el, this.project.types);
+      u = layers ? layersUValue(layers, type.table, this.upm) ?? NaN : NaN;
+    }
+    return Number.isFinite(u) && u > 0 ? new this.S.IfcThermalTransmittanceMeasure(Math.round(u * 1000) / 1000) : null;
   }
 
   private pset(rec: Rec, name: string, props: Record<string, any>): void {
@@ -1747,7 +1929,7 @@ class Exporter {
     if (ps) this.w.add('IfcRelDefinesByProperties', this.w.guid(this.relKey('props')), this.w.ownerHistory, null, null, [rec.handle], ps);
   }
 
-  private qto(rec: Rec, name: string, quantities: { kind: 'length' | 'area' | 'volume'; name: string; value: number }[]): void {
+  private qto(rec: Rec, name: string, quantities: { kind: 'length' | 'area' | 'volume' | 'weight'; name: string; value: number }[]): void {
     const q = this.w.elementQuantity(`${rec.key}#qto:${name}`, name, quantities);
     if (q) this.w.add('IfcRelDefinesByProperties', this.w.guid(this.relKey('qto')), this.w.ownerHistory, null, null, [rec.handle], q);
   }
@@ -1789,6 +1971,24 @@ class Exporter {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 const dist = (a: V3, b: V3) => length(sub(a, b));
+const cap = (s: string) => s.charAt(0) + s.slice(1).toLowerCase();
+
+/** First enumeration value in a product's attribute tail (its PredefinedType). */
+function enumIn(tail: any[] | undefined): string | undefined {
+  for (const v of tail ?? []) if (v && typeof v === 'object' && v.type === 3 && typeof v.value === 'string') return v.value;
+  return undefined;
+}
+
+/** IFC2X3 IfcDoorStyleConstructionEnum / IfcWindowStyleConstructionEnum from the material. */
+function styleConstruction(material: string, door: boolean): string {
+  switch (material) {
+    case 'aluminum': return 'ALUMINIUM';
+    case 'steel': return door ? 'STEEL' : 'STEEL';
+    case 'wood': return 'WOOD';
+    case 'pvc': return door ? 'PLASTIC' : 'PLASTIC';
+    default: return 'NOTDEFINED';
+  }
+}
 
 /** Volume of a closed faceted brep (divergence theorem). */
 function brepVolume(s: Solid): number {
@@ -1879,6 +2079,9 @@ function distributionSystem(d: SystemDef): string {
   if (/^DHW|HOT/.test(t)) return 'DOMESTICHOTWATER';
   if (/^(SAN|SW|WW|DR)/.test(t)) return 'DRAINAGE';
   if (/^(FP|SPR|FS)/.test(t)) return 'FIREPROTECTION';
+  if (/^(LIGHT|LTG)/.test(t)) return 'LIGHTING';
+  if (/^(DATA|COMM)/.test(t)) return 'DATA';
+  if (/^(POWER|PWR)/.test(t)) return 'ELECTRICAL';
   if (d.discipline === 'electrical') return 'ELECTRICAL';
   return 'NOTDEFINED';
 }

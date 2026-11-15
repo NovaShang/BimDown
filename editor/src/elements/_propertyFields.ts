@@ -69,6 +69,9 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   position:        { key: 'position',        label: 'Position',        type: 'number', unit: 'm', min: 0, step: 0.05, group: 'geometry' },
   shape:           { key: 'shape',           label: 'Shape',           type: 'select', options: SHAPE_OPTIONS, group: 'geometry' },
   height_offset:   { key: 'height_offset',   label: 'Drop',            type: 'number', unit: 'm', step: 0.05, group: 'geometry' },
+  root_radius:     { key: 'root_radius',     label: 'Root Radius',     type: 'number', unit: 'm', min: 0, step: 0.001, group: 'geometry' },
+  designation:     { key: 'designation',     label: 'Designation',     type: 'text',   group: 'identity' },
+  beam_system_id:  { key: 'beam_system_id',  label: 'Beam System',     type: 'readonly', group: 'relationships' },
 
   // Geometry — readonly computed
   length:          { key: 'length',          label: 'Length',          type: 'readonly', group: 'geometry' },

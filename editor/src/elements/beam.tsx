@@ -6,7 +6,7 @@ import { createProfile } from '../three/primitives/profiles.ts';
 import { framingMemberMesh } from '../three/utils/memberAxis.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, STRUCTURAL_SHAPE_OPTIONS } from './_options.ts';
-import { columnFootprints, trimAtColumns } from './_framing.ts';
+import { beamSegments, columnFootprints, trimAtBeams, trimAtColumns } from './_framing.ts';
 import { PlanTag, tagText } from './_planTag.tsx';
 import { BEAM_SPACING_KEY, BEAM_SPAN_KEY } from '../model/structuralLayout.ts';
 import { resolveSection } from '../families/sections/index.ts';
@@ -24,7 +24,17 @@ export interface BeamFacts {
   /** Plan-view rectangular strip footprint (width = section bbox width),
    *  trimmed where the beam ends inside a column (drawn to the column face). */
   footprint2D: Point[];
+  /** 3D body ends (0..1 along start→end): cut back at the faces of the primary beams it frames into. */
+  body?: [number, number];
   number: string;
+}
+
+/** The member's body ends (cut back at girder faces), z level-relative. */
+export function memberBodyEnds(f: { start: Point; end: Point; startZ: number; endZ: number; body?: [number, number] }) {
+  const [t0, t1] = f.body ?? [0, 1];
+  const at = (t: number) => ({ x: f.start.x + (f.end.x - f.start.x) * t, y: f.start.y + (f.end.y - f.start.y) * t });
+  const zAt = (t: number) => f.startZ + (f.endZ - f.startZ) * t;
+  return { start: at(t0), end: at(t1), startZ: zAt(t0), endZ: zAt(t1) };
 }
 
 /** Plan strip of a framing member between parameters t0..t1 of start→end. */
@@ -89,7 +99,8 @@ export const beamModule: ElementModule<BeamFacts> = {
   prefix: 'bm',
   csvHeaders: [
     'number', 'base_offset', 'start_z', 'end_z',
-    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'material', 'material_grade',
+    'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'root_radius', 'designation', 'material', 'material_grade',
+    'beam_system_id',
   ],
   // Beam z is its TOP, relative to the level: 0 = flush with this level's
   // floor (the Revit / template convention), whatever the storey height.
@@ -114,13 +125,13 @@ export const beamModule: ElementModule<BeamFacts> = {
     // Drag a box (or click a grid bay): beams between neighbouring columns.
     {
       id: 'between_columns', label: 'layer.beams_between_columns', icon: '╋', iconName: 'beams_between', placementType: 'region',
-      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material'],
+      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material', 'material_grade'],
     },
     // Click a grid bay (or drag a box): parallel infill beams at a spacing.
     {
       id: 'beam_system', label: 'layer.beam_system', icon: '▥', iconName: 'beam_system', placementType: 'region',
       defaults: { size_x: '0.25', size_y: '0.45', [BEAM_SPACING_KEY]: '2', [BEAM_SPAN_KEY]: 'short' },
-      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material'],
+      fields: ['shape', 'size_x', 'size_y', 'start_z', 'end_z', 'material', 'material_grade'],
       extraFields: [
         { key: BEAM_SPACING_KEY, label: 'Spacing', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
         { key: BEAM_SPAN_KEY, label: 'Span', type: 'select', options: [
@@ -153,8 +164,10 @@ export const beamModule: ElementModule<BeamFacts> = {
     // 2D footprint: rectangle in plan view, width = section's plan-view extent,
     // stopping at the faces of the columns the beam frames into.
     const planWidth = section.family.bbox(section.params).w;
-    const [t0, t1] = trimAtColumns(ln.start, ln.end, columnFootprints(ctx));
-    const footprint2D = framingStrip(ln.start, ln.end, planWidth, t0, t1);
+    // Secondary beams stop at the side faces of the girders they frame into (plan and 3D).
+    const body = trimAtBeams(ln.id, ln.start, ln.end, (startZ + endZ) / 2, beamSegments(ctx));
+    const [c0, c1] = trimAtColumns(ln.start, ln.end, columnFootprints(ctx));
+    const footprint2D = framingStrip(ln.start, ln.end, planWidth, Math.max(c0, body[0]), Math.min(c1, body[1]));
     return {
       id: ln.id,
       start: ln.start, end: ln.end,
@@ -163,6 +176,7 @@ export const beamModule: ElementModule<BeamFacts> = {
       baseY: ctx.levelElevation,
       material: ln.attrs.material || 'steel',
       footprint2D,
+      body,
       number: tagText(ln.attrs),
     };
   },
@@ -175,7 +189,8 @@ export const beamModule: ElementModule<BeamFacts> = {
     // Section extruded along the (possibly sloped) beam line, which runs along
     // the section's top edge: beam z = top of the beam (Revit export convention).
     const shape = createProfile(facts.section.family.shape3D(facts.section.params));
-    const m = framingMemberMesh(shape, facts.start, facts.end, facts.startZ, facts.endZ, facts.baseY);
+    const b = memberBodyEnds(facts);
+    const m = framingMemberMesh(shape, b.start, b.end, b.startZ, b.endZ, facts.baseY);
     if (!m) return null;
 
     const material = getBimMaterial(resolveBimMaterial(facts.material, 'beam'));

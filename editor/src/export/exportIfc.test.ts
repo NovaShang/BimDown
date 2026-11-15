@@ -548,6 +548,136 @@ describe('IFC export of the building', () => {
     }
   });
 
+  it('writes type objects, graded materials, catalogue profiles, net slab quantities and pile kinds', async () => {
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,4\n',
+      'global/column_type.csv': 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\n'
+        + 'colt-1,RC 600x600 C40,,concrete,rect,0.6,0.6,,,,,,C40\n'
+        + 'colt-2,HEA 300,,steel,i_shape,0.3,0.29,0.014,0.0085,,0.027,HEA 300,S355\n',
+      'global/beam_type.csv': 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\n'
+        + 'bmt-1,CHS 219.1x8,,steel,round_hollow,0.2191,,,,0.008,,CHS 219.1x8,S355\n'
+        + 'bmt-2,SHS 200x200x10,,steel,rect_hollow,0.2,0.2,,,0.01,0.015,SHS 200x200x10,S355\n',
+      'lv-1/structure_column.csv': 'id,number,type_id,material_grade\nsc-1,KZ1,colt-1,C40\nsc-2,,colt-1,C40\nsc-3,KZ3,colt-2,S355\n',
+      'lv-1/structure_column.geojson': fc([
+        { type: 'Feature', properties: { id: 'sc-1' }, geometry: { type: 'Point', coordinates: [0, 0] } },
+        { type: 'Feature', properties: { id: 'sc-2' }, geometry: { type: 'Point', coordinates: [6, 0] } },
+        { type: 'Feature', properties: { id: 'sc-3' }, geometry: { type: 'Point', coordinates: [12, 0] } },
+      ]),
+      'lv-1/brace.csv': 'id,number,type_id\nbr-1,,bmt-1\n',
+      'lv-1/brace.geojson': fc([{ type: 'Feature', properties: { id: 'br-1' }, geometry: { type: 'LineString', coordinates: [[0, 0, 0], [6, 0, 4]] } }]),
+      'lv-1/beam.csv': 'id,number,type_id\nbm-1,KL1,bmt-2\n',
+      'lv-1/beam.geojson': fc([{ type: 'Feature', properties: { id: 'bm-1' }, geometry: { type: 'LineString', coordinates: [[0, 0, 4], [6, 0, 4]] } }]),
+      'lv-1/structure_slab.csv': 'id,number,thickness,material,material_grade\nss-1,,0.2,concrete,C30\n',
+      'lv-1/structure_slab.geojson': fc([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [10, 0], [10, 10], [0, 10], [0, 0]]] } }]),
+      'lv-1/opening.csv': 'id,number,host_id\nop-1,,ss-1\n',
+      'lv-1/opening.geojson': fc([{ type: 'Feature', properties: { id: 'op-1' }, geometry: { type: 'Polygon', coordinates: [[[2, 2], [4, 2], [4, 3], [2, 3], [2, 2]]] } }]),
+      'lv-1/foundation.csv': 'id,number,kind,material,thickness,width,length\nf-1,P1,pile,concrete,12,0.6,\n',
+      'lv-1/foundation.geojson': fc([{ type: 'Feature', properties: { id: 'f-1' }, geometry: { type: 'Point', coordinates: [1, 1] } }]),
+      'lv-1/terminal.csv': 'id,number,terminal_type\ntm-1,,light_fixture\ntm-2,,power_outlet\n',
+      'lv-1/terminal.geojson': fc([
+        { type: 'Feature', properties: { id: 'tm-1' }, geometry: { type: 'Point', coordinates: [2, 2] } },
+        { type: 'Feature', properties: { id: 'tm-2' }, geometry: { type: 'Point', coordinates: [3, 2] } },
+      ]),
+    };
+    for (const schema of ['IFC2X3', 'IFC4'] as const) {
+      const { data, ents, keys } = await exportFiles(files, schema);
+      // web-ifc builds the hollow / filleted bodies
+      const got = await readBack(data, keys);
+      for (const k of ['brace:br-1', 'beam:bm-1', 'structure_column:sc-3']) expect(got.get(k)?.triangles, k).toBeGreaterThan(0);
+      expect(got.get('brace:br-1')!.max[2]).toBeCloseTo(4, 1);
+      const all = [...ents.values()];
+      const typeOf = (key: string) => {
+        const id = byKey(ents, keys, key).id;
+        const rel = all.find(e => e.type === 'IFCRELDEFINESBYTYPE' && refs(e.args[4]).includes(id));
+        return rel && ents.get(ref(rel.args[5]))!;
+      };
+      // Columns share their BimDown type; the Name is the Mark, else the type name
+      const rc = typeOf('structure_column:sc-1')!;
+      expect(rc.type).toBe('IFCCOLUMNTYPE');
+      expect(str(rc.args[2])).toBe('RC 600x600 C40');
+      expect(typeOf('structure_column:sc-2')!.id).toBe(rc.id);
+      expect(str(byKey(ents, keys, 'structure_column:sc-1').args[2])).toBe('KZ1');
+      expect(str(byKey(ents, keys, 'structure_column:sc-2').args[2])).toBe('RC 600x600 C40');
+      expect(typeOf('structure_column:sc-3')!.id).not.toBe(rc.id);
+      expect(typeOf('brace:br-1')!.type).toBe('IFCMEMBERTYPE');
+      expect(typeOf('beam:bm-1')!.type).toBe('IFCBEAMTYPE');
+      expect(typeOf('structure_slab:ss-1')!.type).toBe('IFCSLABTYPE');
+      expect(typeOf('foundation:f-1')!.type).toBe(schema === 'IFC4' ? 'IFCPILETYPE' : 'IFCBUILDINGELEMENTPROXYTYPE');
+      expect(typeOf('terminal:tm-1')!.type).toBe('IFCLIGHTFIXTURETYPE');
+      expect(typeOf('terminal:tm-2')!.type).toBe('IFCOUTLETTYPE');
+      // Materials carry the grade
+      const mats = all.filter(e => e.type === 'IFCMATERIAL').map(e => str(e.args[0]));
+      expect(mats).toEqual(expect.arrayContaining(['concrete C40', 'steel S355', 'concrete C30']));
+      // Catalogue profiles: hollow sections hollow, named by designation, I with its root radius
+      const profiles = all.filter(e => /PROFILEDEF$/.test(e.type));
+      const chs = profiles.find(e => e.type === 'IFCCIRCLEHOLLOWPROFILEDEF')!;
+      expect(str(chs.args[1])).toBe('CHS 219.1x8');
+      expect(Number(chs.args[4].replace(/^IFC[A-Z]+\(|\)$/g, ''))).toBeCloseTo(0.008, 9);
+      const shs = profiles.find(e => e.type === 'IFCRECTANGLEHOLLOWPROFILEDEF')!;
+      expect(str(shs.args[1])).toBe('SHS 200x200x10');
+      const hea = profiles.find(e => e.type === 'IFCISHAPEPROFILEDEF')!;
+      expect(str(hea.args[1])).toBe('HEA 300');
+      expect(hea.args[7]).not.toBe('$');
+      expect(profiles.some(e => e.type === 'IFCCIRCLEPROFILEDEF' && str(e.args[1]) === 'CHS 219.1x8')).toBe(false);
+      // IFC4 framing: material profile set usage; IFC2X3: plain material
+      const scRel = all.find(e => e.type === 'IFCRELASSOCIATESMATERIAL' && refs(e.args[4]).includes(byKey(ents, keys, 'structure_column:sc-3').id))!;
+      expect(ents.get(ref(scRel.args[5]))!.type).toBe(schema === 'IFC4' ? 'IFCMATERIALPROFILESETUSAGE' : 'IFCMATERIAL');
+      // Steel weight and net slab quantities (the 2 m² opening deducted)
+      const w = propertyOf(ents, byKey(ents, keys, 'structure_column:sc-3').id, 'Qto_ColumnBaseQuantities', 'GrossWeight');
+      expect(Number(w!.replace(/^IFC[A-Z]+\(|\)$/g, '')) / 4).toBeCloseTo(88.3, 0);
+      const slab = byKey(ents, keys, 'structure_slab:ss-1').id;
+      const q = (n: string) => Number(propertyOf(ents, slab, 'Qto_SlabBaseQuantities', n)!.replace(/^IFC[A-Z]+\(|\)$/g, ''));
+      expect(q('GrossArea')).toBeCloseTo(100, 6);
+      expect(q('NetArea')).toBeCloseTo(98, 6);
+      expect(q('NetVolume')).toBeCloseTo(19.6, 6);
+      // Piles: bored (IFC4) / user-defined + cast in place (IFC2X3)
+      const pile = byKey(ents, keys, 'foundation:f-1');
+      if (schema === 'IFC4') expect(pile.args[8]).toBe('.BORED.');
+      else expect([pile.args[8], pile.args[9]]).toEqual(['.USERDEFINED.', '.CAST_IN_PLACE.']);
+      // Lights and outlets without a system tag join the electrical systems
+      const systems = all.filter(e => e.type === (schema === 'IFC4' ? 'IFCDISTRIBUTIONSYSTEM' : 'IFCSYSTEM'));
+      const membersOf = (name: string) => {
+        const s = systems.find(x => str(x.args[2]) === name)!;
+        expect(s, name).toBeDefined();
+        const rel = all.find(e => e.type === 'IFCRELASSIGNSTOGROUP' && ref(e.args[6]) === s.id)!;
+        return refs(rel.args[4]).map(id => keys.get(id));
+      };
+      expect(membersOf('Lighting')).toEqual(['terminal:tm-1']);
+      expect(membersOf('Power')).toEqual(['terminal:tm-2']);
+      if (schema === 'IFC4') expect(systems.find(x => str(x.args[2]) === 'Lighting')!.args[6]).toBe('.LIGHTING.');
+    }
+  });
+
+  it('writes the layered wall U-value (EN ISO 6946) and wall / door types', async () => {
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\n',
+      'global/wall_type.csv': 'id,name,description,material,thickness\nwt-1,Brick cavity,,brick,\n',
+      'global/type_layer.csv': 'id,type_id,seq,function,material,thickness,conductivity,name\n'
+        + 'tl-1,wt-1,1,finish,brick,0.1,0.8,Facing brick\ntl-2,wt-1,2,insulation,insulation,0.08,0.035,Mineral wool\ntl-3,wt-1,3,core,concrete,0.15,1.8,Block\n',
+      'lv-1/wall.csv': 'id,number,type_id,thickness\nw-1,,wt-1,\nw-2,,,0.2\n',
+      'lv-1/wall.geojson': fc([
+        { type: 'Feature', properties: { id: 'w-1' }, geometry: { type: 'LineString', coordinates: [[0, 0], [6, 0]] } },
+        { type: 'Feature', properties: { id: 'w-2' }, geometry: { type: 'LineString', coordinates: [[0, 5], [6, 5]] } },
+      ]),
+      'lv-1/door.csv': 'id,number,host_id,position,width,height,operation\nd-1,D101,w-1,2,0.9,2.1,single_swing\n',
+    };
+    // R = 0.13 + 0.1/0.8 + 0.08/0.035 + 0.15/1.8 + 0.04
+    const u = 1 / (0.13 + 0.1 / 0.8 + 0.08 / 0.035 + 0.15 / 1.8 + 0.04);
+    for (const schema of ['IFC2X3', 'IFC4'] as const) {
+      const { ents, keys } = await exportFiles(files, schema);
+      const wall = byKey(ents, keys, 'wall:w-1');
+      const v = propertyOf(ents, wall.id, 'Pset_WallCommon', 'ThermalTransmittance')!;
+      expect(Number(v.replace(/^IFC[A-Z]+\(|\)$/g, ''))).toBeCloseTo(u, 3);
+      expect(str(wall.args[2])).toBe('Brick cavity');
+      const types = [...ents.values()].filter(e => e.type === 'IFCWALLTYPE').map(e => str(e.args[2])).sort();
+      expect(types).toEqual(['Brick cavity', 'Wall 200']);
+      expect(countTypes(ents)[schema === 'IFC4' ? 'IFCDOORTYPE' : 'IFCDOORSTYLE']).toBe(1);
+      expect(str(byKey(ents, keys, 'door:d-1').args[2])).toBe('D101');
+    }
+  });
+
   it('keeps GlobalIds stable across exports', async () => {
     const a = await exportFiles(room);
     const b = await exportFiles(room);

@@ -27,6 +27,9 @@ import type { ProjectData } from '../types.ts';
 import type { DocumentState } from '../model/document.ts';
 
 export type ElementPatch = Map<string, CanonicalElement | null>;
+
+/** Slabs whose function a copy to the top level may turn into roof. */
+export const FLOOR_SLAB_TABLES = new Set(['slab', 'structure_slab']);
 export type LevelPatches = Map<string, ElementPatch>;
 
 export interface MultiLevelEdit {
@@ -285,17 +288,21 @@ export function copyToLevelsPatches(
   targets: readonly string[],
   sourceLevels?: readonly Level[],
   numbers?: NumberPool,
+  roofOnTop = false,
 ): LevelPatches {
   const levels = state.project?.levels ?? [];
   const set = expandCopySet(source, ids);
   for (const id of [...set]) if (source.get(id)?.tableName === 'grid') set.delete(id);
   const out: LevelPatches = new Map();
+  const top = [...levels].sort((a, b) => b.elevation - a.elevation)[0]?.id;
   for (const to of targets) {
     const taken = takenIds(state, to);
     const { clones } = cloneElements(source, set, { taken, numbers });
     const patch: ElementPatch = new Map();
     for (const [id, el] of clones) {
-      const attrs = retargetLevelAttrs(el.attrs, fromLevel, to, sourceLevels ?? levels);
+      let attrs = retargetLevelAttrs(el.attrs, fromLevel, to, sourceLevels ?? levels);
+      // Floor slabs copied to the top level close the building: roof slabs (IFC ROOF)
+      if (roofOnTop && to === top && FLOOR_SLAB_TABLES.has(el.tableName) && (attrs.function || 'floor') === 'floor') attrs = { ...attrs, function: 'roof' };
       patch.set(id, attrs === el.attrs ? el : { ...el, attrs });
     }
     out.set(to, patch);

@@ -1,4 +1,6 @@
+import { useState } from 'react';
 import { useTranslation } from 'react-i18next';
+import FoundationLayoutDialog, { type FoundationLayoutMode } from './FoundationLayoutDialog.tsx';
 import { useEditorDispatch, useCoreEditorState } from '../state/EditorContext.tsx';
 import { Move, Copy, Trash2, FlipHorizontal, FlipVertical, RotateCw, ArrowLeftRight, FlipHorizontal2, Grid3x3, Layers, Pin, PinOff, Group, Ungroup, PencilRuler, Filter } from 'lucide-react';
 import { enterModifyToolFor } from '../tools/modifyTools.ts';
@@ -21,8 +23,9 @@ export default function SelectionActions() {
   const state = useCoreEditorState();
   const dispatch = useEditorDispatch();
   const { selectedIds, document: doc } = state;
+  const [fdnDialog, setFdnDialog] = useState<FoundationLayoutMode | null>(null);
 
-  if (selectedIds.size === 0) return null;
+  if (selectedIds.size === 0 && !fdnDialog) return null;
 
   // Inspect single-selected element for type-specific actions
   const singleId = selectedIds.size === 1 ? [...selectedIds][0] : null;
@@ -44,6 +47,13 @@ export default function SelectionActions() {
       if (c && c.geometry === 'point' && (c.tableName === 'structure_column' || c.tableName === 'column')) selectedColumns.push(c.position);
     }
   }
+  // Columns selected → pads under them; one pile cap → piles in it.
+  const anyColumn = !!doc && [...selectedIds].some(sid => {
+    const c = doc.elements.get(toElementId(sid));
+    return c?.geometry === 'point' && (c.tableName === 'structure_column' || c.tableName === 'column');
+  });
+  const pileCap = el?.tableName === 'foundation' && el.attrs.kind === 'pile_cap' && el.geometry === 'polygon';
+
   const placeBeamsBetween = () => {
     if (!doc) return;
     const existing: Segment[] = [];
@@ -117,6 +127,20 @@ export default function SelectionActions() {
           </button>
         </>
       )}
+
+      {/* Batch foundations */}
+      {(anyColumn || pileCap) && !state.readonly && (
+        <>
+          <div className="mx-0.5 h-4 w-px bg-[var(--panel-border)]" />
+          <button className={btnClass} title={t(pileCap ? 'fdn.pilesTitle' : 'fdn.padsTitle')} data-testid={pileCap ? 'sel-piles-in-cap' : 'sel-pads-under'}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); setFdnDialog(pileCap ? 'piles' : 'pads'); }}
+          >
+            <Icon name={pileCap ? 'pile_foundation' : 'isolated_foundation'} width={16} height={16} />
+          </button>
+        </>
+      )}
+      <FoundationLayoutDialog mode={fdnDialog ?? 'pads'} open={!!fdnDialog} onClose={() => setFdnDialog(null)} />
 
       {/* Door-specific actions */}
       {isDoor && el && singleId && (

@@ -9,7 +9,7 @@ import { STARTER_TYPE_FILES } from './starterFiles.mjs';
 export { STARTER_TYPE_FILES };
 
 /** Type parameters that are lengths (scaled with the project units). */
-const LENGTH_PARAMS = new Set(['thickness', 'width', 'height', 'frame_width', 'u_spacing', 'v_spacing', 'size_x', 'size_y', 'flange', 'web']);
+const LENGTH_PARAMS = new Set(['thickness', 'width', 'length', 'height', 'frame_width', 'u_spacing', 'v_spacing', 'size_x', 'size_y', 'flange', 'web', 'root_radius']);
 
 const round6 = (v: number) => Math.round(v * 1e6) / 1e6;
 

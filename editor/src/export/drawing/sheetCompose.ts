@@ -356,7 +356,7 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
   // Printed door / window schedules list types (one row per mark and size, with a count);
   // other schedules list every element. Host ids mean nothing on paper.
   const byType = vp.schedule === 'doors' || vp.schedule === 'windows';
-  const columns = cat.columns.filter(c => c.key !== 'host_id' && (byType ? c.key !== 'level' && (c.defaultOn !== false || c.key === 'count') : c.defaultOn !== false));
+  const columns = cat.columns.filter(c => c.key !== 'host_id' && c.key !== 'host' && (byType ? c.key !== 'level' && (c.defaultOn !== false || c.key === 'count') : c.defaultOn !== false));
   const header = columns.map(c => {
     const u = unitSuffix(c.kind, unit);
     return u ? `${drawingLabel(lang, c.label)} (${u})` : drawingLabel(lang, c.label);

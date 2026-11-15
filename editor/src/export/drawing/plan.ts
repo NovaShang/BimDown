@@ -45,7 +45,7 @@ import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { EquipmentFacts } from '../../elements/equipment.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import { roofArrows, type RoofFacts } from '../../elements/roof.tsx';
-import type { SlabFacts } from '../../elements/_slabShared.tsx';
+import { spanSymbolLines, type SlabFacts } from '../../elements/_slabShared.tsx';
 import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { LAYERS, mepLayer, type DrawingLayer } from './layers.ts';
 import { tint } from './color.ts';
@@ -459,6 +459,12 @@ function drawColumn(env: DrawEnv, f: ColumnFacts, table: string) {
   const pts = rotateAbout(local, f.position, f.rotationDeg);
   e.fill(patt, pts);
   e.poly(outline, pts, true);
+  // Hollow sections (RHS / CHS): the void is paper-white, outlined.
+  for (const hole of family.holes2D?.(params) ?? []) {
+    const h = rotateAbout(hole, f.position, f.rotationDeg);
+    e.fill(patt, h, '#ffffff');
+    e.poly(outline, h, true);
+  }
 }
 
 /** One flight: outline and treads split at the plan cut (beyond = hidden), break line at the cut. */
@@ -884,9 +890,14 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       const f = facts as { kind: string; vertices: Point[] };
       if (f.kind === 'polygon' && f.vertices.length >= 3) {
         e.phase = Phase.Openings;
-        e.poly(LAYERS.floorOpen, f.vertices, true);
-        e.line(LAYERS.floorOpen, f.vertices[0], f.vertices[Math.floor(f.vertices.length / 2)], { weight: 0.13 });
-        if (f.vertices.length === 4) e.line(LAYERS.floorOpen, f.vertices[1], f.vertices[3], { weight: 0.13 });
+        // Openings in structural slabs (and structural plans) go on S-FLOR-OPEN
+        const hostId = el.attrs.host_id || el.hostId || '';
+        const host = hostId ? env.src.byId.get(hostId) : undefined;
+        const open = host?.tableName === 'structure_slab' || host?.tableName === 'foundation' || (!host && env.src.discipline === 'structure')
+          ? LAYERS.sFloorOpen : LAYERS.floorOpen;
+        e.poly(open, f.vertices, true);
+        e.line(open, f.vertices[0], f.vertices[Math.floor(f.vertices.length / 2)], { weight: 0.13 });
+        if (f.vertices.length === 4) e.line(open, f.vertices[1], f.vertices[3], { weight: 0.13 });
       } else if (el.geometry === 'line') {
         drawWallOpening(env, el as LineElement);
       }
@@ -898,10 +909,17 @@ function drawEntry(env: DrawEnv, entry: Entry) {
     case 'slab':
     case 'structure_slab': {
       e.phase = Phase.Below;
-      e.poly(el.tableName === 'slab' ? LAYERS.slab : LAYERS.sSlab, (facts as { vertices: Point[] }).vertices, true);
+      const structural = el.tableName === 'structure_slab';
+      e.poly(structural ? LAYERS.sSlab : LAYERS.slab, (facts as { vertices: Point[] }).vertices, true);
       // Inner rings (holes) of the slab outline; hosted openings draw themselves.
-      for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(LAYERS.floorOpen, h, true);
+      for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(structural ? LAYERS.sFloorOpen : LAYERS.floorOpen, h, true);
       drawShafts(env, (facts as SlabFacts).shaftHoles ?? []);
+      // One-way slab: span direction arrow (paper-sized heads)
+      const sf = facts as SlabFacts;
+      if (structural && sf.spanDirection !== null && sf.spanDirection !== undefined) {
+        e.phase = Phase.Annotation;
+        for (const pl of spanSymbolLines(sf.vertices, sf.labelAt, sf.spanDirection, 2.5 * env.pm, 3 * env.pm)) e.poly(LAYERS.sSlabIden, pl, false);
+      }
       return;
     }
     case 'roof':

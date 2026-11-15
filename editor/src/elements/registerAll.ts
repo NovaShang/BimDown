@@ -9,6 +9,7 @@ import './column.tsx';
 import './slab.tsx';
 import './space.tsx';
 import './beam.tsx';
+import './beam_system.tsx';
 import './equipment.tsx';
 import './grid.tsx';
 import './room_separator.tsx';

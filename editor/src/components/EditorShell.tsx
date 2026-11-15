@@ -341,7 +341,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     const meta = stateRef.current.project?.metadata;
     if (metadataSaveSeq === 0 || stateRef.current.readonly || !meta) return;
     const { project_name = '', project_number = '', client = '', address = '' } = meta;
-    persistMetadataFields({ project_name, project_number, client, address }, ds).catch(err => console.error('Persist metadata failed:', err));
+    persistMetadataFields({ project_name, project_number, client, address }, ds, meta.numbering ?? {}).catch(err => console.error('Persist metadata failed:', err));
   }, [metadataSaveSeq, ds]);
 
   // Use document model for rendering when available

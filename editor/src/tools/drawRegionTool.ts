@@ -7,7 +7,8 @@
  * One CREATE_ELEMENTS dispatch, so a single undo step.
  */
 import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
-import type { CanonicalElement, LineElement, Point, PointElement, SpatialLineElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, Point, PointElement, PolygonElement, SpatialLineElement } from '../model/elements.ts';
+import { bayDirection, regenerateBeamSystem } from '../model/beamSystem.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
@@ -19,6 +20,7 @@ import {
   type Segment,
 } from '../model/structuralLayout.ts';
 import { COLUMN_TABLES } from '../elements/_framing.ts';
+import { columnsToppingAt } from '../model/framingLevels.ts';
 
 import { BEAM_SPACING_KEY, BEAM_SPAN_KEY } from '../model/structuralLayout.ts';
 export { BEAM_SPACING_KEY, BEAM_SPAN_KEY };
@@ -97,6 +99,20 @@ function existingColumnPoints(state: ToolStateSnapshot): Point[] {
   return out;
 }
 
+/**
+ * Columns a level's beams frame into: its own, plus the lower-level / global
+ * columns whose top is this level (a roof is framed on the columns below).
+ */
+export function framingColumnPoints(state: ToolStateSnapshot): Point[] {
+  const out = existingColumnPoints(state);
+  const levelId = state.document?.levelId;
+  if (!state.project || !levelId) return out;
+  for (const c of columnsToppingAt(state.project, levelId)) {
+    if (!out.some(q => Math.hypot(q.x - c.position.x, q.y - c.position.y) < 0.05)) out.push(c.position);
+  }
+  return out;
+}
+
 function existingBeamSegments(state: ToolStateSnapshot): Segment[] {
   const out: Segment[] = [];
   for (const el of state.document?.elements.values() ?? []) {
@@ -140,18 +156,35 @@ export function beamsBetweenColumnsIn(state: ToolStateSnapshot, a: Point, b: Poi
     lo = { x: Math.min(...xs), y: Math.min(...ys) };
     hi = { x: Math.max(...xs), y: Math.max(...ys) };
   }
-  const cols = existingColumnPoints(state).filter(p => inRect(p, lo, hi, 0.05));
+  const cols = framingColumnPoints(state).filter(p => inRect(p, lo, hi, 0.05));
   const segs = beamsBetweenColumns(cols, gridDirections(state.grids), existingBeamSegments(state));
   return beamsAlong(state, segs, state.drawingTarget?.variantId);
 }
 
-/** Beam system across the clicked grid bay, or across the dragged box. */
+/**
+ * Beam system across the clicked grid bay, or across the dragged box: a
+ * beam_system element (the bay, spacing, direction) plus its beams
+ * (beam_system_id), so editing the system later regenerates them.
+ */
 export function beamSystemIn(state: ToolStateSnapshot, a: Point, b: Point, click: boolean): CanonicalElement[] {
   const bay = click ? gridBayAt(a, state.grids) : rectBay(a, b);
   if (!bay) return [];
   const spacing = parseFloat(state.drawingAttrs[BEAM_SPACING_KEY] ?? '2') || 2;
   const span = state.drawingAttrs[BEAM_SPAN_KEY] === 'long' ? 'long' : 'short';
-  return beamsAlong(state, beamSystemLines(bay, spacing, span), state.drawingTarget?.variantId);
+  if (!state.drawingTarget || beamSystemLines(bay, spacing, span).length === 0) return [];
+  const ids = new Set(state.document?.elements.keys() ?? []);
+  const sid = generateId('beam_system', ids);
+  ids.add(sid);
+  const attrs = memberAttrs(state, 'beam', state.drawingTarget.variantId);
+  const sys: PolygonElement = {
+    id: sid, tableName: 'beam_system', discipline: 'structure', geometry: 'polygon', vertices: bay.map(p => ({ ...p })),
+    attrs: {
+      id: sid, spacing: String(spacing), direction: String(bayDirection(bay, span)),
+      type_id: attrs.type_id ?? '', material_grade: attrs.material_grade ?? '',
+    },
+  };
+  const beams = [...regenerateBeamSystem(sys, new Map(), state.project?.types, attrs, ids).values()].filter((x): x is CanonicalElement => !!x);
+  return [sys, ...beams];
 }
 
 function layout(state: ToolStateSnapshot, a: Point, b: Point, click: boolean): CanonicalElement[] {
@@ -194,10 +227,12 @@ export const drawRegionTool: ToolHandler = {
     ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: end } });
     ctx.setSnap(null);
     if (elements.length === 0) return;
+    const members = elements.filter(e => e.tableName !== 'beam_system');
     ctx.dispatch({
       type: 'CREATE_ELEMENTS',
       elements,
-      description: `Place ${elements.length} ${elements[0].tableName === 'beam' ? 'beams' : 'columns'}`,
+      description: elements[0].tableName === 'beam_system' ? `Place beam system (${members.length} beams)`
+        : `Place ${elements.length} ${elements[0].tableName === 'beam' ? 'beams' : 'columns'}`,
       selectPrimary: false,
     });
   },

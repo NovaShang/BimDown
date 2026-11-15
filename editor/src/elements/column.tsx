@@ -55,7 +55,7 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
     csvHeaders: [
       'number', 'base_offset', 'top_level_id', 'top_offset', 'material',
       'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'rotation',
-      ...(structural ? ['material_grade'] : []),
+      ...(structural ? ['root_radius', 'designation', 'material_grade'] : []),
     ],
     defaults,
     drawingFields: [
@@ -112,13 +112,19 @@ function buildColumnModule(table: string, defaults: Record<string, string>, laye
           text={facts.number} color={structural ? '#333' : '#555'} />
       ) : null;
 
-      // Structural columns are cut by the plan: a solid section, the real outline.
+      // Structural columns are cut by the plan: a solid section, the real outline
+      // (hollow sections as a ring: even-odd fill of outline + inner rings).
       if (structural) {
         const fill = structuralColumnFill(facts.material);
+        const holes = family.holes2D?.(params) ?? [];
+        const ring = (pts: Point[]) => `M${pts.map(pt => `${pt.x},${pt.y}`).join('L')}Z`;
         const body = family.id === 'round'
           ? <ellipse cx={0} cy={0} rx={hw} ry={hh} fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
-          : <polygon points={family.outline2D(params).map(pt => `${pt.x},${pt.y}`).join(' ')}
-              fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />;
+          : holes.length > 0
+            ? <path d={[family.outline2D(params), ...holes].map(ring).join('')} fillRule="evenodd"
+                fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />
+            : <polygon points={family.outline2D(params).map(pt => `${pt.x},${pt.y}`).join(' ')}
+                fill={fill} stroke={stroke} strokeWidth={OUTLINE_WIDTH} />;
         return (
           <g data-id={facts.id}>
             <g transform={transform}>{body}</g>

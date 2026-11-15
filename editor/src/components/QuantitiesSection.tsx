@@ -2,19 +2,20 @@ import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useEditorState } from '../state/EditorContext.tsx';
 import { toElementId } from '../model/ids.ts';
-import { getProjectUnits } from '../utils/units.ts';
+import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 import { elementQuantities } from '../schedule/quantities.ts';
 import { formatCell, unitSuffix, type ColumnKind } from '../schedule/schedules.ts';
 import { parseLayer } from '../model/parse.ts';
 import { resolveDimension, formatDimension } from '../annotation/geometry.ts';
 
-const ROWS: { key: 'area' | 'perimeter' | 'length' | 'height' | 'gross_area' | 'volume'; label: string; kind: ColumnKind }[] = [
+const ROWS: { key: 'area' | 'perimeter' | 'length' | 'height' | 'gross_area' | 'volume' | 'weight'; label: string; kind: ColumnKind }[] = [
   { key: 'area', label: 'schedule.col.area', kind: 'area' },
   { key: 'perimeter', label: 'schedule.col.perimeter', kind: 'length' },
   { key: 'length', label: 'schedule.col.length', kind: 'length' },
   { key: 'height', label: 'schedule.col.height', kind: 'length' },
   { key: 'gross_area', label: 'schedule.col.grossArea', kind: 'area' },
   { key: 'volume', label: 'schedule.col.volume', kind: 'volume' },
+  { key: 'weight', label: 'schedule.col.weight', kind: 'weight' },
 ];
 
 /** Read-only computed quantities (room area, wall length / area / volume, …) for the selected element. */
@@ -35,11 +36,11 @@ export default function QuantitiesSection({ selectionId }: { selectionId: string
       return g ? [{ label: t('annot.measured'), value: formatDimension(g.value, unit) }] : [];
     }
     const global = project.globalLayers.flatMap(gl => parseLayer(gl));
-    const q = elementQuantities(el, level, project.levels, [...doc.elements.values(), ...global]);
+    const q = elementQuantities(el, level, project.levels, [...doc.elements.values(), ...global], unitsPerMetreOf(unit));
     // Walls: "Net area" (openings deducted) + "Gross area". Rooms: "Area" at the
     // wall faces + "Gross area (centreline)". Slabs: "Area".
     const isRoom = el.tableName === 'space';
-    const isWall = !isRoom && q.gross_area !== undefined;
+    const isWall = !isRoom && q.gross_area !== undefined;  // walls, and slabs with hosted openings
     const label = (r: typeof ROWS[number]) =>
       r.key === 'area' && isWall ? 'schedule.col.netArea'
         : r.key === 'gross_area' && isRoom ? 'schedule.col.grossAreaCentreline'

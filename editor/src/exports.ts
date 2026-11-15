@@ -29,7 +29,7 @@ export { TooltipProvider } from './components/ui/tooltip.tsx';
 // Export functions (lazy-loaded internally)
 export { exportGltf } from './export/exportGltf.ts';
 export { exportIfc } from './export/exportIfc.ts';
-export { exportPdf, suggestPlanScale } from './export/exportPdf.ts';
+export { exportPdf, suggestPlanScale, planPdfOverflow } from './export/exportPdf.ts';
 export type { PdfExportOptions } from './export/exportPdf.ts';
 export { exportDxf } from './export/exportDxf.ts';
 export type { DxfExportOptions } from './export/exportDxf.ts';

@@ -60,18 +60,19 @@ export interface TypeTableDef {
 }
 
 const FENESTRATION = ['frame_width', 'u_value', 'shgc', 'vt'];
-const SECTION = ['shape', 'size_x', 'size_y', 'flange', 'web', 'thickness'];
+const SECTION = ['shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'root_radius', 'designation'];
 
 export const TYPE_TABLE_DEFS: TypeTableDef[] = [
   { table: 'wall_type', prefix: 'wt', instances: ['wall', 'structure_wall'], layered: true, columns: ['material', 'thickness'] },
-  { table: 'slab_type', prefix: 'slt', instances: ['slab', 'structure_slab'], layered: true, columns: ['material', 'thickness'] },
+  { table: 'slab_type', prefix: 'slt', instances: ['slab', 'structure_slab'], layered: true, columns: ['material', 'thickness', 'material_grade'] },
   { table: 'roof_type', prefix: 'rot', instances: ['roof'], layered: true, columns: ['material', 'thickness'] },
   { table: 'ceiling_type', prefix: 'clt', instances: ['ceiling'], layered: true, columns: ['material', 'thickness'] },
   { table: 'door_type', prefix: 'dt', instances: ['door'], layered: false, columns: ['material', 'width', 'height', 'operation', ...FENESTRATION] },
   { table: 'window_type', prefix: 'wnt', instances: ['window'], layered: false, columns: ['material', 'width', 'height', 'operation', ...FENESTRATION] },
   { table: 'curtain_wall_type', prefix: 'cwt', instances: ['curtain_wall'], layered: false, columns: ['material', 'u_spacing', 'v_spacing', 'panel_material', 'mullion_width', 'mullion_depth', 'mullion_profile', 'solid_material', 'u_value', 'shgc', 'vt'] },
-  { table: 'column_type', prefix: 'colt', instances: ['column', 'structure_column'], layered: false, columns: ['material', ...SECTION] },
-  { table: 'beam_type', prefix: 'bmt', instances: ['beam', 'brace'], layered: false, columns: ['material', ...SECTION] },
+  { table: 'column_type', prefix: 'colt', instances: ['column', 'structure_column'], layered: false, columns: ['material', ...SECTION, 'material_grade'] },
+  { table: 'beam_type', prefix: 'bmt', instances: ['beam', 'brace'], layered: false, columns: ['material', ...SECTION, 'material_grade'] },
+  { table: 'foundation_type', prefix: 'fdt', instances: ['foundation'], layered: false, columns: ['material', 'kind', 'width', 'length', 'thickness', 'material_grade'] },
   { table: 'furniture_type', prefix: 'fut', instances: ['furniture'], layered: false, columns: ['family', 'variant', 'size_x', 'size_y', 'height'] },
   { table: 'railing_type', prefix: 'rlt', instances: ['railing'], layered: false, columns: ['material', 'height', 'top_rail_shape', 'top_rail_size', 'infill', 'baluster_spacing', 'baluster_size'] },
 ];

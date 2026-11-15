@@ -189,6 +189,42 @@ describe('plan drawing', () => {
     expect(pdf?.pages).toBeGreaterThan(0);
   });
 
+  it('structural plans: span arrows on S-SLAB-IDEN, slab openings on S-FLOR-OPEN, hollow columns as rings', async () => {
+    const f = room();
+    f['lv-1/structure_slab.csv'] = 'id,number,thickness,span_direction\nss-1,,0.2,90\n';
+    f['lv-1/structure_slab.geojson'] = fc([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [4, 0], [4, 3], [0, 3], [0, 0]]] } }]);
+    f['lv-1/opening.csv'] = 'id,number,host_id\nop-1,,ss-1\n';
+    f['lv-1/opening.geojson'] = fc([{ type: 'Feature', properties: { id: 'op-1' }, geometry: { type: 'Polygon', coordinates: [[[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]] } }]);
+    f['lv-1/structure_column.csv'] = 'id,number,shape,size_x,thickness,material\nsc-1,,round_hollow,0.2191,0.008,steel\n';
+    f['lv-1/structure_column.geojson'] = fc([{ type: 'Feature', properties: { id: 'sc-1' }, geometry: { type: 'Point', coordinates: [3, 2] } }]);
+    const { project, grids } = await open(f);
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'structure' }, 100)!;
+    const span = on(d.items, 'S-SLAB-IDEN');
+    expect(span).toHaveLength(4); // shaft, two heads, tick
+    const shaft = span[0] as Extract<DrawItem, { kind: 'path' }>;
+    expect(shaft.pts[0].x).toBeCloseTo(2, 6);
+    expect(Math.abs(shaft.pts[1].y - shaft.pts[0].y)).toBeGreaterThan(0.9);
+    expect(on(d.items, 'S-FLOR-OPEN').length).toBeGreaterThan(0);
+    expect(on(d.items, 'A-FLOR-OPEN')).toHaveLength(0);
+    // CHS: outer fill + a white inner fill
+    const fills = on(d.items, 'S-COLS-PATT').filter(i => i.kind === 'path' && i.fill);
+    expect(fills.map(i => (i as { fill?: string }).fill)).toContain('#ffffff');
+  });
+
+  it('warns when a fixed PDF scale crops the plan, and names the scale that fits', async () => {
+    const f = room();
+    f['global/grid.csv'] = 'id,number,start_x,start_y,end_x,end_y\ngr-1,1,0,-2,0,30\ngr-2,A,-2,0,60,0\n';
+    f['lv-1/structure_slab.csv'] = 'id,number,thickness\nss-1,,0.2\n';
+    f['lv-1/structure_slab.geojson'] = fc([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [58, 0], [58, 28], [0, 28], [0, 0]]] } }]);
+    const { project, grids } = await open(f);
+    const { planPdfOverflow } = await import('../exportPdf.ts');
+    const o = planPdfOverflow(project, { scope: 'current', levelId: 'lv-1', grids, paper: 'A3', scale: 100, discipline: 'structure' });
+    expect(o.levels).toEqual(['L1']);
+    expect(o.fitScale).toBeGreaterThan(100);
+    expect(planPdfOverflow(project, { scope: 'current', levelId: 'lv-1', grids, paper: 'A3', scale: o.fitScale!, discipline: 'structure' }).levels).toEqual([]);
+    expect(planPdfOverflow(project, { scope: 'current', levelId: 'lv-1', grids, paper: 'A3' }).levels).toEqual([]);
+  });
+
   it('chains wall outline edges into polylines', () => {
     const p = (x: number, y: number) => ({ x, y });
     expect(chainEdges([[p(0, 0), p(1, 0)], [p(1, 0), p(1, 1)], [p(5, 5), p(6, 5)]], 1e-9)).toEqual([

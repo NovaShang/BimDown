@@ -13,6 +13,15 @@ import { getStarter, materializeStarter } from '../elements/equipment_starters.t
 import { getElementModule } from '../elements/registry.ts';
 import { accessoryPointerDown } from '../mep/accessoryTool.ts';
 import { arrayPointerDown, arrayPointerMove } from '../mep/arrayTool.ts';
+import type { Point } from '../model/elements.ts';
+
+/**
+ * Relative typed placement ('@' ΔX, Tab, ΔY, Enter): the element lands at
+ * that offset from the snapped reference (e.g. piles at ±0.75 from a column centre).
+ */
+export function typedOffsetPoint(anchor: Point, typed: { length: string; angle: string }, unit: Parameters<typeof parseTypedLength>[1]): Point {
+  return { x: anchor.x + (parseTypedLength(typed.length, unit) ?? 0), y: anchor.y + (parseTypedLength(typed.angle, unit) ?? 0) };
+}
 
 /** A module's own place tool (e.g. library furniture), if it declares one. */
 function moduleTool(ctx: ToolContext): ToolHandler | undefined {
@@ -56,36 +65,52 @@ export const drawPointTool: ToolHandler = {
     const state = ctx.getState();
     const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, undefined, undefined, state.grids, undefined, undefined, getProjectUnits(state), pointSnapTypes(state, svgPt));
     const pt = snap.point;
-
+    // While an offset is being typed the reference stays put.
+    const ds = state.drawingState;
     ctx.dispatch({
       type: 'SET_DRAWING_STATE',
-      state: { points: [], cursor: pt, typed: state.drawingState?.typed },
+      state: ds?.typed?.relative ? { ...ds, cursor: pt } : { points: [], cursor: pt, typed: ds?.typed },
     });
     ctx.setSnap(snap);
   },
 
-  // Typed coordinates: X, Tab, Y, Enter places there (model coordinates, project unit)
+  // Typed placement, one input: X, Tab, Y, Enter places at those model
+  // coordinates; '@' first (AutoCAD style) types ΔX, ΔY from the snapped
+  // point under the cursor (a column centre, a grid crossing …).
   onKeyDown(ctx: ToolContext, e: KeyboardEvent): boolean {
     if (moduleTool(ctx) || mepDelegate(ctx.getState().drawingTarget)) return false;
     const s = ctx.getState();
     const ds = s.drawingState;
     if (!s.drawingTarget) return false;
-    // A coordinate may start with a sign ('-' is zoom out otherwise)
+    if (!ds?.typed && e.key === '@' && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      if (!ds?.cursor) return false;
+      e.preventDefault();
+      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [ds.cursor], cursor: ds.cursor, typed: { length: '', angle: '', field: 'length', relative: true } } });
+      return true;
+    }
+    // A value may start with a sign ('-' is zoom out otherwise)
     const r = !ds?.typed && e.key === '-' && !e.ctrlKey && !e.metaKey && !e.altKey
       ? { handled: true, typed: { length: '-', angle: '', field: 'length' as const } }
       : typedKey(e, ds?.typed);
     if (!r.handled) return false;
     e.preventDefault();
     const unit = getProjectUnits(s);
+    const relative = !!ds?.typed?.relative;
     if (e.key === 'Enter') {
-      const x = parseTypedLength(ds?.typed?.length ?? '', unit);
-      const y = parseTypedLength(ds?.typed?.angle ?? '', unit) ?? ds?.cursor?.y ?? null;
-      if (x == null || y == null) return true;
-      placePoint(ctx, { x, y });
-      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: { x, y } } });
+      let at: Point | null;
+      if (relative && ds?.typed && ds.points[0]) at = typedOffsetPoint(ds.points[0], ds.typed, unit);
+      else {
+        const x = parseTypedLength(ds?.typed?.length ?? '', unit);
+        const y = parseTypedLength(ds?.typed?.angle ?? '', unit) ?? ds?.cursor?.y ?? null;
+        at = x == null || y == null ? null : { x, y };
+      }
+      if (!at) return true;
+      placePoint(ctx, at);
+      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: relative ? ds?.cursor ?? at : at } });
       return true;
     }
-    ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: ds?.cursor ?? null, typed: r.typed } });
+    const typed = r.typed && relative ? { ...r.typed, relative: true } : r.typed;
+    ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: typed?.relative ? ds?.points ?? [] : [], cursor: ds?.cursor ?? null, typed } });
     return true;
   },
 };

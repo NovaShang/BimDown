@@ -18,10 +18,14 @@ export type Vec3 = { x: number; y: number; z: number };
 export type Shape2D =
   | { kind: 'rect'; width: number; depth: number }
   | { kind: 'round'; radius: number }
-  | { kind: 'i'; width: number; depth: number; flange: number; web: number }
-  | { kind: 't'; width: number; depth: number; flange: number; web: number }
-  | { kind: 'l'; width: number; depth: number; thickness: number }
-  | { kind: 'c'; width: number; depth: number; flange: number; web: number }
+  | { kind: 'i'; width: number; depth: number; flange: number; web: number; radius?: number }
+  | { kind: 't'; width: number; depth: number; flange: number; web: number; radius?: number }
+  | { kind: 'l'; width: number; depth: number; thickness: number; radius?: number }
+  | { kind: 'c'; width: number; depth: number; flange: number; web: number; radius?: number }
+  /** Rectangular hollow section (RHS / SHS / HSS): wall `thickness`, outer corner `radius`. */
+  | { kind: 'rect_hollow'; width: number; depth: number; thickness: number; radius: number }
+  /** Circular hollow section (CHS / round HSS): outer `radius`, wall `thickness`. */
+  | { kind: 'round_hollow'; radius: number; thickness: number }
   | { kind: 'cross'; width: number; depth: number; thickness: number }
   | { kind: 'shape'; shape: Shape };
 

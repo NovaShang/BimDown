@@ -29,7 +29,7 @@ import { wallSolidGeometry, type LineWallFacts } from '../../elements/_lineWallS
 import type { SlabFacts } from '../../elements/_slabShared.tsx';
 import type { RoofFacts } from '../../elements/roof.tsx';
 import type { ColumnFacts } from '../../elements/column.tsx';
-import type { BeamFacts } from '../../elements/beam.tsx';
+import { memberBodyEnds, type BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { StairFacts } from '../../elements/stair.tsx';
 import type { StairRunFacts } from '../../elements/stair_run.tsx';
@@ -119,6 +119,35 @@ export function profileRings(p: Profile): { outer: V2[]; holes: V2[][]; smooth: 
         { x: tw, y: hd - tf }, { x: hw, y: hd - tf }, { x: hw, y: hd }, { x: -hw, y: hd },
         { x: -hw, y: hd - tf }, { x: -tw, y: hd - tf }, { x: -tw, y: -hd + tf }, { x: -hw, y: -hd + tf },
       ].map(q => ({ x: q.x + cx, y: q.y + cy }));
+      break;
+    }
+    case 'ushape': {
+      const hw = p.w / 2, hd = p.d / 2, tf = p.flange, tw = p.web;
+      outer = [
+        { x: -hw, y: -hd }, { x: hw, y: -hd }, { x: hw, y: -hd + tf }, { x: -hw + tw, y: -hd + tf },
+        { x: -hw + tw, y: hd - tf }, { x: hw, y: hd - tf }, { x: hw, y: hd }, { x: -hw, y: hd },
+      ].map(q => ({ x: q.x + cx, y: q.y + cy }));
+      break;
+    }
+    case 'lshape': {
+      const hw = p.w / 2, hd = p.d / 2, t = p.t;
+      outer = [
+        { x: -hw, y: -hd }, { x: hw, y: -hd }, { x: hw, y: -hd + t }, { x: -hw + t, y: -hd + t }, { x: -hw + t, y: hd }, { x: -hw, y: hd },
+      ].map(q => ({ x: q.x + cx, y: q.y + cy }));
+      break;
+    }
+    case 'rect_hollow': {
+      const box = (hw: number, hd: number) => [{ x: cx - hw, y: cy - hd }, { x: cx + hw, y: cy - hd }, { x: cx + hw, y: cy + hd }, { x: cx - hw, y: cy + hd }];
+      outer = box(p.w / 2, p.d / 2);
+      holes = [box(p.w / 2 - p.t, p.d / 2 - p.t)];
+      break;
+    }
+    case 'circle_hollow': {
+      const n = 32;
+      const ring = (r: number) => Array.from({ length: n }, (_, i) => ({ x: cx + r * Math.cos((i / n) * Math.PI * 2), y: cy + r * Math.sin((i / n) * Math.PI * 2) }));
+      outer = ring(p.r);
+      holes = [ring(p.r - p.t)];
+      smooth = true;
       break;
     }
     default:
@@ -411,8 +440,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     }
     case 'beam': case 'brace': {
       const f = facts as BeamFacts;
-      const start = v3(f.start.x, f.start.y, f.baseY + f.startZ);
-      const end = v3(f.end.x, f.end.y, f.baseY + f.endZ);
+      const b = memberBodyEnds(f);
+      const start = v3(b.start.x, b.start.y, f.baseY + b.startZ);
+      const end = v3(b.end.x, b.end.y, f.baseY + b.endZ);
       const profile = hangFromTop(sectionProfile(f.section.family.shape3D(f.section.params), f.section.family.id));
       push(solidsPart(id, t, 'beam', [sweep(start, end, profile)]));
       break;

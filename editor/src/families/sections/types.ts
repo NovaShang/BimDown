@@ -42,6 +42,10 @@ export interface SectionFamily {
   /** 2D plan outline (centered at origin). Used by column.draw2D / beam.draw2D
    *  to show the actual cross-section instead of a generic rect. */
   outline2D(p: SectionParams): Point[];
+  /** Inner rings of a hollow section (RHS / CHS), same frame as outline2D. */
+  holes2D?(p: SectionParams): Point[][];
+  /** Exact cross-section area (root fillets, rounded corners); default = outline − holes. */
+  area?(p: SectionParams): number;
   /** 3D extrusion shape (Shape2D for createProfile compatibility). */
   shape3D(p: SectionParams): Shape2D;
   /** Plan-view bounding extent (full width / depth, not half). */

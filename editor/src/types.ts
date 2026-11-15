@@ -43,6 +43,8 @@ export interface ProjectMetadata {
   spatial_z?: string;
   /** Discipline to open in (`architecture` / `structure` / `mep`), e.g. written by IFC import for an MEP model. */
   discipline?: string;
+  /** Auto-numbering prefixes: table or table.kind → prefix (model/autoNumber.ts). */
+  numbering?: Record<string, string>;
 }
 
 /** One row of the project-level `global/mep_system.csv` lookup table. Lets users

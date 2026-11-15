@@ -90,4 +90,6 @@ export type ViewsAction =
   | { type: 'UPDATE_SHEETS'; sheets: import('../sheets/sheetTypes.ts').SheetSet; persist?: boolean }
   | { type: 'UPDATE_VIEW_ANNOTATIONS'; layers: import('../types.ts').LayerData[]; persist?: boolean }
   /** Title-block fields of project_metadata.json. */
-  | { type: 'UPDATE_METADATA'; fields: Partial<Record<'project_name' | 'project_number' | 'client' | 'address', string>>; persist?: boolean };
+  | { type: 'UPDATE_METADATA'; fields: Partial<Record<'project_name' | 'project_number' | 'client' | 'address', string>>; persist?: boolean }
+  /** Auto-numbering prefixes (project_metadata.json `numbering`). */
+  | { type: 'SET_NUMBERING'; numbering: Record<string, string>; persist?: boolean };

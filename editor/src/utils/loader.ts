@@ -37,6 +37,9 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
       source: json.source,
       spatial_z: json.spatial_z,
       ...(typeof json.discipline === 'string' ? { discipline: json.discipline } : {}),
+      ...(json.numbering && typeof json.numbering === 'object' && !Array.isArray(json.numbering)
+        ? { numbering: Object.fromEntries(Object.entries(json.numbering).filter(([, v]) => typeof v === 'string')) as Record<string, string> }
+        : {}),
     };
   } catch {
     return { ...DEFAULT_METADATA };

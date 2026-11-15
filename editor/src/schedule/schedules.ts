@@ -12,10 +12,13 @@ import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { pointInPolygon } from '../geometry/spaceBoundary.ts';
 import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
 import { circuitsIn, type CircuitSummary } from '../mep/circuits.ts';
-import { MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
+import { FOUNDATION_KIND_OPTIONS, MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
 import { drawingLabel, drawingLang, type DrawingLang } from '../export/drawing/labels.ts';
+import { typeOfElement, type TypeCatalog } from '../model/types/catalog.ts';
+import { foundationKind } from '../elements/foundation.tsx';
+import { unitsPerMetreOf } from '../utils/units.ts';
 
-export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count';
+export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count' | 'weight';
 
 export interface ScheduleColumn {
   key: string;
@@ -55,6 +58,9 @@ const NUMBER = C('number', 'schedule.col.number', 'text');
 const CATEGORY = C('category', 'schedule.col.category', 'text');
 const MATERIAL = C('material', 'schedule.col.material', 'text');
 const COUNT = C('count', 'schedule.col.count', 'count', false, true);
+const TYPE_NAME = C('type_name', 'schedule.col.typeName', 'text');
+const GRADE = C('grade', 'schedule.col.grade', 'text');
+const WEIGHT = C('weight', 'schedule.col.weight', 'weight', true, true);
 
 export const SCHEDULES: ScheduleCategory[] = [
   {
@@ -65,38 +71,49 @@ export const SCHEDULES: ScheduleCategory[] = [
       C('perimeter', 'schedule.col.perimeter', 'length', true, true), COUNT],
   },
   {
+    // Host = the wall's mark / type, not its internal id
     key: 'doors', label: 'schedule.doors', tables: ['door'],
-    columns: [NUMBER, LEVEL, C('host_id', 'schedule.col.host', 'text'), C('width', 'schedule.col.width', 'length'),
+    columns: [NUMBER, LEVEL, TYPE_NAME, C('host', 'schedule.col.host', 'text'), C('width', 'schedule.col.width', 'length'),
       C('height', 'schedule.col.height', 'length'), C('operation', 'schedule.col.operation', 'text'), MATERIAL, COUNT],
   },
   {
     key: 'windows', label: 'schedule.windows', tables: ['window'],
-    columns: [NUMBER, LEVEL, C('host_id', 'schedule.col.host', 'text'), C('width', 'schedule.col.width', 'length'),
+    columns: [NUMBER, LEVEL, TYPE_NAME, C('host', 'schedule.col.host', 'text'), C('width', 'schedule.col.width', 'length'),
       C('height', 'schedule.col.height', 'length'), C('base_offset', 'schedule.col.sill', 'length'), MATERIAL, COUNT],
   },
   {
     key: 'walls', label: 'schedule.walls', tables: ['wall', 'structure_wall', 'curtain_wall'], groupBy: '',
-    columns: [NUMBER, LEVEL, CATEGORY, MATERIAL, C('thickness', 'schedule.col.thickness', 'length'),
+    columns: [NUMBER, LEVEL, CATEGORY, { ...TYPE_NAME, defaultOn: false }, MATERIAL, { ...GRADE, defaultOn: false }, C('thickness', 'schedule.col.thickness', 'length'),
       C('length', 'schedule.col.length', 'length', true, true), C('qheight', 'schedule.col.height', 'length'),
       C('area', 'schedule.col.netArea', 'area', true, true), C('gross_area', 'schedule.col.grossArea', 'area', false, true),
       C('volume', 'schedule.col.volume', 'volume', true, true), COUNT],
   },
   {
-    key: 'slabs', label: 'schedule.slabs', tables: ['slab', 'structure_slab', 'roof', 'ceiling', 'foundation'],
-    columns: [NUMBER, LEVEL, CATEGORY, C('function', 'schedule.col.function', 'text'), MATERIAL,
-      C('thickness', 'schedule.col.thickness', 'length'), C('area', 'schedule.col.area', 'area', true, true),
+    // Area / volume net of the floor openings hosted on the slab
+    key: 'slabs', label: 'schedule.slabs', tables: ['slab', 'structure_slab', 'roof', 'ceiling'],
+    columns: [NUMBER, LEVEL, CATEGORY, { ...TYPE_NAME, defaultOn: false }, C('function', 'schedule.col.function', 'text'), MATERIAL,
+      { ...GRADE, defaultOn: false }, C('thickness', 'schedule.col.thickness', 'length'), C('area', 'schedule.col.netArea', 'area', true, true),
+      C('gross_area', 'schedule.col.grossArea', 'area', false, true),
       C('perimeter', 'schedule.col.perimeter', 'length', false, true), C('volume', 'schedule.col.volume', 'volume', true, true), COUNT],
   },
   {
-    key: 'columns', label: 'schedule.columns', tables: ['column', 'structure_column'], groupBy: 'size',
-    columns: [NUMBER, LEVEL, CATEGORY, C('shape', 'schedule.col.shape', 'text'), C('size', 'schedule.col.size', 'text'),
-      MATERIAL, C('qheight', 'schedule.col.height', 'length', true, true), C('volume', 'schedule.col.volume', 'volume', false, true),
-      C('count', 'schedule.col.count', 'count', true, true)],
+    // Structural take-off: per type and grade, concrete volume and steel weight
+    key: 'columns', label: 'schedule.columns', tables: ['column', 'structure_column'], groupBy: 'type_name',
+    columns: [NUMBER, LEVEL, CATEGORY, TYPE_NAME, C('shape', 'schedule.col.shape', 'text', false), C('size', 'schedule.col.size', 'text'),
+      MATERIAL, GRADE, C('qheight', 'schedule.col.height', 'length', true, true), C('volume', 'schedule.col.volume', 'volume', true, true),
+      WEIGHT, C('count', 'schedule.col.count', 'count', true, true)],
   },
   {
-    key: 'framing', label: 'schedule.framing', tables: ['beam', 'brace'], groupBy: 'size',
-    columns: [NUMBER, LEVEL, CATEGORY, C('size', 'schedule.col.size', 'text'), MATERIAL,
-      C('length', 'schedule.col.length', 'length', true, true), C('count', 'schedule.col.count', 'count', true, true)],
+    key: 'framing', label: 'schedule.framing', tables: ['beam', 'brace'], groupBy: 'type_name',
+    columns: [NUMBER, LEVEL, CATEGORY, TYPE_NAME, C('size', 'schedule.col.size', 'text'), MATERIAL, GRADE,
+      C('length', 'schedule.col.length', 'length', true, true), C('volume', 'schedule.col.volume', 'volume', true, true),
+      WEIGHT, C('count', 'schedule.col.count', 'count', true, true)],
+  },
+  {
+    key: 'foundations', label: 'schedule.foundations', tables: ['foundation'], groupBy: 'kind',
+    columns: [NUMBER, LEVEL, C('kind', 'schedule.col.kind', 'text'), TYPE_NAME, C('size', 'schedule.col.size', 'text'), MATERIAL, GRADE,
+      C('thickness', 'schedule.col.depthLength', 'length'), C('area', 'schedule.col.area', 'area', false, true),
+      C('volume', 'schedule.col.volume', 'volume', true, true), C('count', 'schedule.col.count', 'count', true, true)],
   },
   {
     key: 'mep', label: 'schedule.mep', tables: ['duct', 'pipe', 'conduit', 'cable_tray'], groupBy: 'system_type',
@@ -138,8 +155,16 @@ export function sizeLabel(el: CanonicalElement, unit: ProjectUnit): string {
     if (!Number.isFinite(n)) return '';
     return unit === 'm' ? String(Math.round(n * 1000)) : String(Number(n.toFixed(unit === 'mm' ? 0 : 2)));
   };
+  if (el.tableName === 'foundation') {
+    const w = f(el.attrs.width), l = f(el.attrs.length);
+    const kind = foundationKind(el);
+    if (kind === 'pile' && !l) return w ? `Ø${w}` : '';
+    if (el.geometry === 'point') return w ? `${w}×${l || w}` : '';
+    return el.geometry === 'line' ? w : '';
+  }
+  if (el.attrs.designation) return el.attrs.designation;
   const sx = f(el.attrs.size_x), sy = f(el.attrs.size_y);
-  if (el.attrs.shape === 'round' && sx) return `Ø${sx}`;
+  if ((el.attrs.shape === 'round' || el.attrs.shape === 'round_hollow') && sx) return `Ø${sx}`;
   if (sx && sy) return `${sx}×${sy}`;
   return sx;
 }
@@ -159,7 +184,26 @@ export function operationLabel(table: string, value: string | undefined, lang: D
   return label ? drawingLabel(lang, `option.${label}`) : value;
 }
 
-function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, unit: ProjectUnit, displayName: (table: string) => string, lang: DrawingLang): Record<string, string | number | undefined> {
+/** Foundation kind as its option label (empty kind = the geometry's default). */
+function kindLabel(el: CanonicalElement, lang: DrawingLang): string {
+  if (el.tableName !== 'foundation') return el.attrs.kind ?? '';
+  const k = foundationKind(el);
+  const label = FOUNDATION_KIND_OPTIONS?.find(o => o.value === k)?.label;
+  return label ? drawingLabel(lang, `option.${label}`) : k;
+}
+
+/** A hosted element's host as people name it: mark and type ("W12 · Brick cavity"), id only as a fallback. */
+function hostLabel(el: CanonicalElement, context: CanonicalElement[], types: TypeCatalog | undefined): string {
+  const hid = el.attrs.host_id || el.hostId || '';
+  if (!hid) return '';
+  const host = context.find(e => e.id === hid);
+  if (!host) return hid;
+  const parts = [host.attrs.number, typeOfElement(host, types)?.name].filter(Boolean);
+  return parts.length > 0 ? parts.join(' · ') : hid;
+}
+
+function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, unit: ProjectUnit, displayName: (table: string) => string, lang: DrawingLang,
+  types?: TypeCatalog, context: CanonicalElement[] = []): Record<string, string | number | undefined> {
   const a = el.attrs;
   const num = (v: string | undefined) => {
     const n = parseFloat(v ?? '');
@@ -182,7 +226,11 @@ function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, uni
     size: sizeLabel(el, unit),
     system_type: a.system_type ?? '',
     type: a.equipment_type || a.terminal_type || a.type || a.family || '',
-    kind: a.kind ?? '',
+    kind: kindLabel(el, lang),
+    type_name: typeOfElement(el, types)?.name ?? '',
+    grade: a.material_grade ?? '',
+    host: hostLabel(el, context, types),
+    weight: q.weight,
     insulation: num(a.insulation_thickness) || undefined,
     length: q.length,
     qheight: q.height,
@@ -218,7 +266,7 @@ function circuitValues(el: CanonicalElement, circuits: Map<string, CircuitSummar
   const panel = context.find(e => e.id === panelId);
   const load = c?.load ?? 0;
   return {
-    panel: panel?.attrs.number || panelId,
+    panel: panel?.attrs.number || panel?.attrs.type || panel?.attrs.family || panelId,
     voltage: el.attrs.voltage ? `${el.attrs.voltage} V` : '',
     rating: el.attrs.rating ? `${el.attrs.rating} A` : '',
     devices: c?.devices.length ?? 0,
@@ -264,12 +312,13 @@ export function scheduleRows(
     if (!r) roomCache.set(levelId, r = levelRooms(elements, context));
     return r;
   };
+  const upm = unitsPerMetreOf(unit);
   for (const { level, elements } of levels) {
     const context = [...elements, ...global];
     for (const el of elements) {
       if (!tables.has(el.tableName)) continue;
-      const q = elementQuantities(el, level, allLevels, context);
-      const values = rowValues(el, level, q, unit, displayName, lang);
+      const q = elementQuantities(el, level, allLevels, context, upm);
+      const values = rowValues(el, level, q, unit, displayName, lang, project.types, context);
       if (cat.filter && !cat.filter(el)) continue;
       if (el.tableName === 'furniture') Object.assign(values, furnitureValues(el, rooms(level.id, elements, context), lang));
       if (el.tableName === 'circuit') Object.assign(values, circuitValues(el, circuits(level.id, context), context));
@@ -281,8 +330,8 @@ export function scheduleRows(
     if (!tables.has(el.tableName) || !lowest) continue;
     const level = allLevels.find(l => l.id === el.attrs.base_level_id) ?? lowest;
     const context = [...(levels.find(l => l.level.id === level.id)?.elements ?? []), ...global];
-    const q = elementQuantities(el, level, allLevels, context);
-    rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values: rowValues(el, level, q, unit, displayName, lang) });
+    const q = elementQuantities(el, level, allLevels, context, upm);
+    rows.push({ sid: `global:${el.id}`, id: el.id, levelId: 'global', table: el.tableName, values: rowValues(el, level, q, unit, displayName, lang, project.types, context) });
   }
   return rows;
 }
@@ -346,6 +395,7 @@ export function formatCell(v: string | number | undefined, kind: ColumnKind, uni
     case 'length': return v.toFixed(unit === 'mm' ? 0 : unit === 'm' ? 3 : 2);
     case 'area': return v.toFixed(unit === 'mm' ? 0 : 2);
     case 'volume': return v.toFixed(unit === 'mm' ? 0 : 3);
+    case 'weight': return v.toFixed(1);
     default: return String(v);
   }
 }
@@ -354,6 +404,7 @@ export function unitSuffix(kind: ColumnKind, unit: ProjectUnit): string {
   if (kind === 'length') return unit;
   if (kind === 'area') return `${unit}²`;
   if (kind === 'volume') return `${unit}³`;
+  if (kind === 'weight') return 'kg';
   return '';
 }
 

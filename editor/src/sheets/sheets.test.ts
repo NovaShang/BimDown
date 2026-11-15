@@ -43,6 +43,10 @@ describe('sheets', () => {
     expect(again).toEqual(set);
     expect(viewportsToCsv(set.viewports).split('\n')[3]).toBe('vp-3,sh-2,schedule,,,doors,,,120,110,');
     expect(nextSheetNumber(set.sheets)).toBe('A-602');
+    // Structural / MEP sheets: own prefix
+    expect(nextSheetNumber(set.sheets, 'structure')).toBe('S-101');
+    expect(nextSheetNumber([...set.sheets, { ...set.sheets[0], id: 'sh-9', number: 'S-101' }], 'structure')).toBe('S-102');
+    expect(nextSheetNumber(set.sheets, 'mep')).toBe('M-101');
     expect(newSheet(set).id).toBe('sh-3');
   });
 
