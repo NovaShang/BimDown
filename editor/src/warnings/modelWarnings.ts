@@ -7,7 +7,7 @@
  * the CLI's), MEP from the connectivity check (mep/mepCheck.ts, also the
  * CLI's). Messages are i18n keys + params.
  */
-import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, Point, PolygonElement } from '../model/elements.ts';
 import type { LayerData, Level, ProjectData } from '../types.ts';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import { collectWallOpenings } from '../elements/_lineWallShared.tsx';
@@ -19,8 +19,10 @@ import { assembleStair, hostRefOf, stairCalc, stairRepetitions, STAIR_LIMITS, ty
 import { STAIR_PART_TABLES } from '../model/stairElements.ts';
 import { checkDocument, externalMep } from '../mep/mepModel.ts';
 import { parseFloorLayers, parseLayer } from '../model/parse.ts';
+import { edgeDistance, pileEdgeMin } from '../model/foundationLayout.ts';
+import { foundationKind } from '../elements/foundation.tsx';
 
-export type WarningKind = 'insert_overlap' | 'wall_overlap' | 'redundant_room' | 'unbounded_room' | 'stair' | 'mep';
+export type WarningKind = 'insert_overlap' | 'wall_overlap' | 'redundant_room' | 'unbounded_room' | 'stair' | 'pile_edge' | 'mep';
 
 export interface ModelWarning {
   /** Stable key (kind + level + ids). */
@@ -113,6 +115,26 @@ export function levelWarnings(
         if (c.ok) continue;
         const m = stairCheckMessage(c);
         add('stair', [st.id], m.text, m.params);
+      }
+    }
+  }
+
+  // Piles too close to (or outside) their pile cap's edge: centre ≥ d and rim ≥ 150 mm in
+  const caps = [...elements.values()].filter((e): e is PolygonElement => e.tableName === 'foundation' && e.geometry === 'polygon' && foundationKind(e) === 'pile_cap');
+  if (caps.length > 0) {
+    for (const pile of elements.values()) {
+      if (pile.tableName !== 'foundation' || pile.geometry !== 'point' || foundationKind(pile) !== 'pile') continue;
+      const d = pile.width || 0.6 * upm;
+      const need = pileEdgeMin(d, upm);
+      let best: { cap: PolygonElement; dist: number } | null = null;
+      for (const cap of caps) {
+        const dist = edgeDistance(pile.position, cap.vertices);
+        // the cap it stands in, or one it sticks out of (within a diameter)
+        if (dist > -d && (!best || dist > best.dist)) best = { cap, dist };
+      }
+      if (best && best.dist < need - 1e-6 * upm) {
+        add('pile_edge', [pile.id, best.cap.id], best.dist < 0 ? 'warnings.pileOutside' : 'warnings.pileEdge',
+          { pile: pile.attrs.number || pile.id, cap: best.cap.attrs.number || best.cap.id, dist: (best.dist / upm).toFixed(2), need: (need / upm).toFixed(2) });
       }
     }
   }

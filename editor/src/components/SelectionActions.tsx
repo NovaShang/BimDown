@@ -138,6 +138,14 @@ export default function SelectionActions() {
           >
             <Icon name={pileCap ? 'pile_foundation' : 'isolated_foundation'} width={16} height={16} />
           </button>
+          {anyColumn && (
+            <button className={btnClass} title={t('fdn.capsTitle')} data-testid="sel-caps-under"
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); setFdnDialog('caps'); }}
+            >
+              <Icon name="pile_foundation" width={16} height={16} />
+            </button>
+          )}
         </>
       )}
       <FoundationLayoutDialog mode={fdnDialog ?? 'pads'} open={!!fdnDialog} onClose={() => setFdnDialog(null)} />

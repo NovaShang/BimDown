@@ -73,3 +73,19 @@ describe('warnings panel checks (G5)', () => {
     expect(w.every(x => x.levelId === 'lv-1')).toBe(true);
   });
 });
+
+describe('pile edge distance', () => {
+  it('a pile outside or too close to its cap edge is warned; one well inside is not', () => {
+    const cap = {
+      id: 'f-1', tableName: 'foundation', discipline: 'structure', geometry: 'polygon',
+      vertices: [{ x: 20, y: 24 }, { x: 22.5, y: 24 }, { x: 22.5, y: 26.5 }, { x: 20, y: 26.5 }], attrs: { id: 'f-1', kind: 'pile_cap', thickness: '1' },
+    } as CanonicalElement;
+    const pile = (id: string, x: number, y: number): PointElement => ({
+      id, tableName: 'foundation', discipline: 'structure', geometry: 'point', position: { x, y }, width: 0.6, height: 0.6, attrs: { id, kind: 'pile', width: '0.6' },
+    });
+    const els = [cap, pile('f-2', 21.25, 25.25), pile('f-3', 20.4, 24.4), pile('f-4', 19.9, 25.25), pile('f-5', 40, 40)];
+    const w = levelWarnings(L1, [L1, L2], mapOf(els), 1).filter(x => x.kind === 'pile_edge');
+    expect(w.map(x => [x.ids[0], x.text])).toEqual([['f-3', 'warnings.pileEdge'], ['f-4', 'warnings.pileOutside']]);
+    expect(w[0].params).toMatchObject({ cap: 'f-1', dist: '0.40', need: '0.60' });
+  });
+});

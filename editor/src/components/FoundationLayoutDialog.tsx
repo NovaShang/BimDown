@@ -7,7 +7,7 @@ import { toElementId } from '../model/ids.ts';
 import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
 import { typesOfTable, typeValues, type ElementType } from '../model/types/catalog.ts';
 import { starterTypes } from '../model/types/starter.ts';
-import { padsUnderColumns, pilesInCap, PILE_COUNTS } from '../model/foundationLayout.ts';
+import { capPilePositions, capSizeFor, capsUnderColumns, maxPileSpacing, padsUnderColumns, pileEdgeCheck, pilesInCap, PILE_COUNTS } from '../model/foundationLayout.ts';
 import { getProjectUnits, getUnitSuffix, unitsPerMetreOf } from '../utils/units.ts';
 import { Input } from './ui/input';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
@@ -19,12 +19,13 @@ const CELL = 'h-7 w-full rounded-md border border-input bg-transparent px-1.5 te
 const BTN = 'rounded-md border border-border bg-transparent px-3 py-1.5 text-[11px] text-muted-foreground hover:bg-accent hover:text-foreground';
 const CUSTOM = '__custom__';
 
-export type FoundationLayoutMode = 'pads' | 'piles';
+export type FoundationLayoutMode = 'pads' | 'piles' | 'caps';
 
 /**
  * Batch foundations: pads under the selected columns (sized by a foundation
  * type, or typed sizes), or piles in the selected pile cap by count and
- * spacing. One undo step.
+ * spacing (checked against the pile edge distance), or pile caps with
+ * their piles under the selected columns. One undo step.
  */
 export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: FoundationLayoutMode; open: boolean; onClose: () => void }) {
   const { t } = useTranslation();
@@ -33,6 +34,7 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
   const unit = getUnitSuffix(getProjectUnits(state)).trim();
   const upm = unitsPerMetreOf(getProjectUnits(state));
   const kind = mode === 'pads' ? 'pad' : 'pile';
+  const piled = mode !== 'pads';
   // Project types of the kind; the starter ones when the project has none yet.
   const types: ElementType[] = useMemo(() => {
     const own = typesOfTable(state.project?.types, 'foundation_type').filter(x => (x.values.kind || kind) === kind);
@@ -56,7 +58,7 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
     const tv = typeValues(ty);
     setV(prev => {
       const next: Record<string, string> = { ...prev, width: tv.width ?? '', length: tv.length ?? '', thickness: tv.thickness ?? '', material_grade: tv.material_grade ?? '', material: tv.material ?? 'concrete' };
-      if (mode === 'piles') next.spacing = String(Math.round(3 * (parseFloat(tv.width || '0.6') || 0.6) * 1000) / 1000);
+      if (piled) next.spacing = String(Math.round(3 * (parseFloat(tv.width || '0.6') || 0.6) * 1000) / 1000);
       return next;
     });
   };
@@ -71,7 +73,7 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
 
   useEffect(() => {
     if (!open) return;
-    setV(mode === 'piles' ? { count: '4', spacing: String(1.8 * upm), width: String(0.6 * upm), thickness: String(15 * upm), material: 'concrete' }
+    setV(piled ? { count: '4', spacing: String(1.8 * upm), width: String(0.6 * upm), thickness: String(15 * upm), material: 'concrete', cap_thickness: String(1 * upm) }
       : { width: String(1.5 * upm), length: String(1.5 * upm), thickness: String(0.5 * upm), material: 'concrete' });
     if (types[0]) applyType(types[0].id); else setTypeId(CUSTOM);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -92,16 +94,27 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
   };
   const taken = () => [...(doc?.elements.keys() ?? []), ...state.grids.map(g => g.id)];
 
-  const count = mode === 'pads' ? columns.length : (cap ? 1 : 0);
+  const count = mode === 'piles' ? (cap ? 1 : 0) : columns.length;
+  const nPiles = parseInt(v.count || '4', 10) || 4;
+  const spacing = parseFloat(v.spacing || '') || 1.8 * upm;
+  const diameter = parseFloat(v.width || '') || 0.6 * upm;
+  // Edge distance of the piles in the selected cap (pile centre ≥ d and pile rim ≥ 150 mm from the edge)
+  const edge = mode === 'piles' && cap ? pileEdgeCheck(cap.vertices, capPilePositions(cap.vertices, nPiles, spacing), diameter, upm) : null;
+  const fitSpacing = mode === 'piles' && cap && edge && !edge.ok ? maxPileSpacing(cap.vertices, nPiles, diameter, upm) : 0;
+  const capSize = mode === 'caps' ? capSizeFor(nPiles, spacing, diameter, upm) : null;
+  const fmt = (x: number) => String(Math.round((x / upm) * 1000) / 1000 * upm);
   const ok = () => {
     if (!doc) return;
     if (mode === 'pads') {
       const pads = padsUnderColumns(columns, doc.elements.values(), attrs(), taken());
       if (pads.length > 0) dispatch({ type: 'CREATE_ELEMENTS', elements: pads, description: `Place ${pads.length} foundations`, selectPrimary: false });
+    } else if (mode === 'caps') {
+      const capAttrs: Record<string, string> = { material: 'concrete', thickness: v.cap_thickness || String(upm) };
+      if (v.material_grade) capAttrs.material_grade = v.material_grade;
+      const els = capsUnderColumns(columns, doc.elements.values(), nPiles, spacing, capAttrs, attrs(), taken(), upm);
+      if (els.length > 0) dispatch({ type: 'CREATE_ELEMENTS', elements: els, description: `Place ${els.filter(e => e.geometry === 'polygon').length} pile caps`, selectPrimary: false });
     } else if (cap) {
-      const n = parseInt(v.count || '4', 10) || 4;
-      const s = parseFloat(v.spacing || '') || 1.8 * upm;
-      const { piles, replace } = pilesInCap(cap, n, s, attrs(), taken(), doc.elements.values());
+      const { piles, replace } = pilesInCap(cap, nPiles, spacing, attrs(), taken(), doc.elements.values());
       const patches = new Map<string, CanonicalElement | null>(replace.map(id => [id, null]));
       for (const p of piles) patches.set(p.id, p);
       dispatch({ type: 'APPLY_PATCH', description: `Place ${piles.length} piles`, patches });
@@ -121,8 +134,8 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
       <div className="w-[440px] max-w-[95vw] rounded-xl border border-border bg-card shadow-xl" onClick={e => e.stopPropagation()}
         onKeyDown={e => { if (e.key === 'Escape') onClose(); }} role="dialog" data-testid="foundation-layout-dialog">
         <div className="flex items-center gap-2 border-b border-border/60 px-4 py-3">
-          <div className="text-[13px] font-semibold">{t(mode === 'pads' ? 'fdn.padsTitle' : 'fdn.pilesTitle')}</div>
-          <span className="text-[11px] text-muted-foreground">{t(mode === 'pads' ? 'fdn.columnsSelected' : 'fdn.capSelected', { count })}</span>
+          <div className="text-[13px] font-semibold">{t(mode === 'pads' ? 'fdn.padsTitle' : mode === 'caps' ? 'fdn.capsTitle' : 'fdn.pilesTitle')}</div>
+          <span className="text-[11px] text-muted-foreground">{t(mode === 'piles' ? 'fdn.capSelected' : 'fdn.columnsSelected', { count })}</span>
           <button type="button" className="ml-auto inline-flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-accent" onClick={onClose} aria-label={t('dialog.cancel')}><X className="size-4" /></button>
         </div>
         <div className="grid grid-cols-3 gap-2 px-4 py-3">
@@ -138,7 +151,7 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
               </SelectContent>
             </Select>
           </div>
-          {mode === 'piles' && (
+          {piled && (
             <div className="min-w-0">
               <label className={LABEL}>{t('fdn.count')}</label>
               <Select value={v.count ?? '4'} onValueChange={x => { if (x) set('count', x); }}>
@@ -147,7 +160,7 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
               </Select>
             </div>
           )}
-          {mode === 'piles' && num('spacing', t('fdn.spacing'))}
+          {piled && num('spacing', t('fdn.spacing'))}
           {num('width', t(mode === 'pads' ? 'field.Width' : 'field.Diameter'))}
           {mode === 'pads' && num('length', t('field.Length'))}
           {num('thickness', t(mode === 'pads' ? 'field.Thickness' : 'field.Pile Length'))}
@@ -155,12 +168,31 @@ export default function FoundationLayoutDialog({ mode, open, onClose }: { mode: 
             <label className={LABEL}>{t('field.Grade')}</label>
             <Input className={CELL} value={v.material_grade ?? ''} onChange={e => setV(p => ({ ...p, material_grade: e.target.value }))} data-testid="fdn-grade" />
           </div>
+          {mode === 'caps' && num('cap_thickness', t('fdn.capThickness'))}
+          {capSize && (
+            <div className="col-span-3 text-[11px] text-muted-foreground" data-testid="fdn-cap-size">
+              {t('fdn.capSize', { x: fmt(capSize.x), y: fmt(capSize.y), unit })}
+            </div>
+          )}
+          {edge && !edge.ok && (
+            <div className="col-span-3 flex items-center gap-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-2 py-1.5 text-[11px] text-amber-700 dark:text-amber-300" data-testid="fdn-edge-warning">
+              <span className="flex-1">{edge.outside > 0
+                ? t('fdn.edgeOutside', { count: edge.outside })
+                : t('fdn.edgeTooClose', { least: fmt(edge.least), required: fmt(edge.required), unit })}</span>
+              {fitSpacing > 0 && (
+                <button type="button" className={BTN} data-testid="fdn-fit-spacing" onClick={() => set('spacing', fmt(fitSpacing))}>
+                  {t('fdn.fitSpacing', { spacing: fmt(fitSpacing), unit })}
+                </button>
+              )}
+              {fitSpacing === 0 && <span>{t('fdn.capTooSmall')}</span>}
+            </div>
+          )}
         </div>
         <div className="flex items-center gap-2 border-t border-border/60 px-4 py-2.5">
-          <span className="text-[11px] text-muted-foreground">{t(mode === 'pads' ? 'fdn.padsHint' : 'fdn.pilesHint')}</span>
+          <span className="text-[11px] text-muted-foreground">{t(mode === 'pads' ? 'fdn.padsHint' : mode === 'caps' ? 'fdn.capsHint' : 'fdn.pilesHint')}</span>
           <div className="ml-auto flex gap-2">
             <button type="button" className={BTN} onClick={onClose}>{t('dialog.cancel')}</button>
-            <button type="button" disabled={count === 0} onClick={ok} data-testid="fdn-ok"
+            <button type="button" disabled={count === 0 || (!!edge && edge.outside > 0)} onClick={ok} data-testid="fdn-ok"
               className="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-50">{t('type.ok')}</button>
           </div>
         </div>
