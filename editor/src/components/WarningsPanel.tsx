@@ -14,6 +14,9 @@ import { cn } from '../lib/utils';
 /** Event a host app (or the top bar) fires to open/close the warnings panel. */
 export const WARNINGS_TOGGLE_EVENT = 'bimdown:toggle-warnings';
 
+/** The elements a row selects: a redundant room alone (its properties show the warning), else all involved. */
+const selectIds = (w: ModelWarning) => (w.kind === 'redundant_room' ? [w.ids[0]] : w.ids);
+
 const KIND_ORDER: WarningKind[] = ['insert_overlap', 'wall_overlap', 'redundant_room', 'unbounded_room', 'stair', 'mep'];
 
 /**
@@ -118,7 +121,7 @@ export default function WarningsPanel({ warnings, onClose }: { warnings: ModelWa
     const w = pending.current;
     if (!w || state.document?.levelId !== w.levelId) return;
     pending.current = null;
-    dispatch({ type: 'SELECT', ids: w.ids.filter(id => state.document!.elements.has(id)).map(id => `${w.levelId}:${id}`) });
+    dispatch({ type: 'SELECT', ids: selectIds(w).filter(id => state.document!.elements.has(id)).map(id => `${w.levelId}:${id}`) });
     zoomTo(w, state.document.elements);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.document]);
@@ -136,7 +139,7 @@ export default function WarningsPanel({ warnings, onClose }: { warnings: ModelWa
       }, 120);
       return;
     }
-    dispatch({ type: 'SELECT', ids: w.ids.filter(id => state.document?.elements.has(id) ?? true).map(id => `${w.levelId}:${id}`) });
+    dispatch({ type: 'SELECT', ids: selectIds(w).filter(id => state.document?.elements.has(id) ?? true).map(id => `${w.levelId}:${id}`) });
     zoomTo(w, state.document?.elements);
   };
 

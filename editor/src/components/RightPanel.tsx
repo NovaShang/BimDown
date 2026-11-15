@@ -27,7 +27,7 @@ import { rememberDrawingType } from '../model/types/drawingType.ts';
 import QuantitiesSection from './QuantitiesSection.tsx';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
 import { ElementWarnings } from './WarningsPanel.tsx';
-import { numericFieldError } from '../geometry/modelChecks.ts';
+import { NON_NEGATIVE_FIELDS, POSITIVE_FIELDS, numericFieldError } from '../geometry/modelChecks.ts';
 import { showNotice } from '../state/modifyUi.ts';
 
 // Shared input styling so number / text / select / level controls read as one
@@ -309,7 +309,9 @@ function PropertyRow({
   const draftRef = useRef<string | null>(null);
   const draftError = draft !== null ? numericFieldError(f.key, draft) : null;
   const setNumber = (v: string) => {
-    if (numericFieldError(f.key, v)) { draftRef.current = v; setDraft(v); return; }
+    // Breaking values, and half-typed ones ("-", "."), stay local until they are valid
+    const partial = v.trim() !== '' && !Number.isFinite(Number(v));
+    if (numericFieldError(f.key, v) || (partial && (POSITIVE_FIELDS.has(f.key) || NON_NEGATIVE_FIELDS.has(f.key)))) { draftRef.current = v; setDraft(v); return; }
     draftRef.current = null;
     setDraft(null);
     onChange(f.key, v);

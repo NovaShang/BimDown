@@ -3,10 +3,13 @@
  * clashes with another on the same wall): a placement that only partly
  * overlaps slides to the nearest free spot; one whose centre lands on an
  * existing insert is refused. Inserts stacked one over the other (a window
- * above a door) don't clash — same rule as geometry/modelChecks.ts.
+ * above a door) don't clash — same rule as geometry/modelChecks.ts. An
+ * embedded curtain wall occupies its stretch of the wall.
  */
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
 import { arcLength } from '../geometry/arc.ts';
+import { curtainEmbedSpan } from '../geometry/curtainEmbed.ts';
+import { metre } from '../annotation/geometry.ts';
 
 const INSERT_TABLES = new Set(['door', 'window', 'opening']);
 
@@ -45,6 +48,14 @@ export function occupiedSpans(wall: LineElement, elements: ReadonlyMap<string, C
     }
     const { sill, height } = insertSill(el.tableName, el.attrs);
     out.push({ id: el.id, lo, hi, sill, top: sill + height });
+  }
+  // A curtain wall embedded in the wall takes its stretch too (geometry/curtainEmbed.ts)
+  if (!wall.arc) {
+    for (const el of elements.values()) {
+      if (el.tableName !== 'curtain_wall' || el.geometry !== 'line' || (el as LineElement).arc) continue;
+      const span = curtainEmbedSpan(wall, wall.strokeWidth, el as LineElement, 0.005 * metre());
+      if (span) out.push({ id: el.id, lo: span.lo, hi: span.hi, sill: parseFloat(el.attrs.base_offset ?? '') || 0, top: Infinity });
+    }
   }
   return out.sort((a, b) => a.lo - b.lo);
 }

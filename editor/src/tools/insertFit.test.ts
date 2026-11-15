@@ -38,4 +38,18 @@ describe('door / window placement without overlaps (B4)', () => {
     expect(doors[1].start.x).toBeCloseTo(2.45, 6);
     h.done();
   });
+
+  it('an embedded curtain wall takes its stretch of the host wall', () => {
+    const h = createHarness();
+    h.pick('wall'); h.click(0, 0); h.click(10, 0); h.done();
+    h.pick('curtain_wall'); h.click(5, 0); h.click(8, 0); h.done();
+    h.pick('door', { width: '0.9' });
+    h.click(6, 0);
+    expect(inserts(h, 'door')).toHaveLength(0);
+    h.click(4.8, 0);
+    const d = inserts(h, 'door');
+    expect(d).toHaveLength(1);
+    expect(parseFloat(d[0].attrs.position)).toBeCloseTo(4.55, 6);
+    h.done();
+  });
 });
