@@ -7,7 +7,7 @@ import {
   transformPatch, arrayPatch, linearArrayTransforms, radialArrayTransforms, alignDelta, nearestAlignLine, offsetPatch, offsetSide,
 } from '../model/modifyOps.ts';
 import { createGroupPatch } from '../model/groups.ts';
-import { levelElements } from './levelEdits.ts';
+import { levelElements, projectNumbers } from './levelEdits.ts';
 import { resolveHostedGeometry } from '../geometry/hosted.ts';
 import { parseFloorLayers } from '../model/parse.ts';
 
@@ -288,6 +288,20 @@ describe('model groups', () => {
     apply(h, r);
     return { h, groupId: g.groupId };
   }
+
+  it('arrayed group instances take their own door numbers, kept through a group edit', () => {
+    const h = room();
+    const els0 = h.state.document!.elements;
+    const g = createGroupPatch(els0, ['w-1', 'w-2', 'w-3', 'w-4'], 'Unit', new Set(els0.keys()))!;
+    h.dispatch({ type: 'APPLY_PATCH', description: 'Create group', patches: g.patch });
+    apply(h, arrayPatch(h.state.document!.elements, [g.groupId], linearArrayTransforms({ x: 10, y: 0 }, 3, false), undefined, projectNumbers(h.state)));
+    const doors = () => [...h.state.document!.elements.values()].filter(e => e.tableName === 'door').map(e => e.attrs.number).sort();
+    expect(doors()).toEqual(['D101', 'D102', 'D103']);
+    h.dispatch({ type: 'START_GROUP_EDIT', groupId: g.groupId });
+    h.dispatch({ type: 'MOVE_ELEMENTS', ids: ['d-1'], dx: 0.5, dy: 0 });
+    h.dispatch({ type: 'FINISH_GROUP_EDIT' });
+    expect(doors()).toEqual(['D101', 'D102', 'D103']);
+  });
 
   it('selecting a member selects its whole instance; exact picks one', () => {
     const { h, groupId } = groupedRooms();

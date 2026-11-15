@@ -150,8 +150,8 @@ export function arrayPatch(
   const names = gridNames(source.values()); // copies 2, 3, 4 of grid 1
   const select: string[] = [];
   for (const T of transforms) {
-    // Instances of one group stay identical: no renumbering there
-    const { clones, idMap } = cloneElements(source, set, { taken, keepOutsideRefs: true, numbers: group ? undefined : numbers, gridNames: names });
+    // Group instances stay identical in shape; each takes its own door / window / room marks
+    const { clones, idMap } = cloneElements(source, set, { taken, keepOutsideRefs: true, numbers, gridNames: names });
     for (const [src, nid] of idMap) {
       const el = source.get(src)!;
       if (el.hostId && !set.has(el.hostId) && el.tableName !== 'connector') { clones.delete(nid); idMap.delete(src); }
