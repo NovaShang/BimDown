@@ -269,7 +269,7 @@ export default function LeftPanel({
                 e.preventDefault();
                 if (!readonly) setContextMenu({ x: e.clientX, y: e.clientY, level });
               }}
-              title={`${level.name} (${formatElevation(level.elevation, projectUnit)})`}
+              title={`${levelLabel(t, level)} (${formatElevation(level.elevation, projectUnit)})`}
             >
               <span className="flex-1 truncate">{levelLabel(t, level)}</span>
               <span className={cn(
