@@ -8,7 +8,7 @@ import { fixtureIfc, type FixtureHelpers } from './fixture.test-util.js';
 import { readCsv } from '../utils/csv.js';
 import { build } from '../build/index.js';
 import { mepReport } from '../mep/index.js';
-import { outlineSection, parseDesignation } from './profiles.js';
+import { librarySection, outlineSection, parseDesignation, sectionColumns } from './profiles.js';
 import { gradeFromText } from './materials.js';
 import { classifySystem } from './mep-systems.js';
 
@@ -268,12 +268,20 @@ describe('import-ifc structural sections, types and grades', () => {
       expect(b.material_grade).toBe('345 MPa');
     }
     const colTypes = new Map([...table(files, 'column_type').values()].map(t => [t.name, t]));
-    expect(colTypes.get('HSS152X152X9.5')).toMatchObject({ shape: 'rect', size_x: '0.152', size_y: '0.152', thickness: '0.01', material: 'steel' });
+    expect(colTypes.get('HSS152X152X9.5')).toMatchObject({ shape: 'rect_hollow', size_x: '0.152', size_y: '0.152', thickness: '0.01', material: 'steel' });
     expect(colTypes.get('400 x 400mm')).toMatchObject({ shape: 'rect', size_x: '0.4', material: 'concrete' });
     const cols = [...table(files, 'structure_column').values()];
     expect(cols.map(c => c.material_grade).sort()).toEqual(['345 MPa', 'C30/37']);
     const dir = writeProject(files);
     try { expect(build(dir).issues).toEqual([]); } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+
+  it('maps catalogue designations to the steel library (dimensions, root radius, library spelling)', () => {
+    expect(librarySection('HEA200')).toMatchObject({ kind: 'i', width: 0.2, depth: 0.19, flange: 0.01, web: 0.0065, rootRadius: 0.018, designation: 'HEA 200' });
+    expect(librarySection('chs219.1X8')).toMatchObject({ kind: 'chs', width: 0.2191, thickness: 0.008, designation: 'CHS 219.1x8' });
+    expect(librarySection('HEA200', 'chs')).toBeNull();
+    expect(librarySection('XYZ123')).toBeNull();
+    expect(sectionColumns(librarySection('HEA 200')!)).toMatchObject({ shape: 'i_shape', root_radius: 0.018, designation: 'HEA 200' });
   });
 
   it('parses steel designations', () => {

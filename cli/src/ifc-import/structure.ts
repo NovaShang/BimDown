@@ -169,7 +169,7 @@ export function convertFooting(ctx: ImportContext, id: number, pile: boolean): O
   if (Math.abs(top) >= 0.0005) props.base_offset = r3(top);
   const obb = planObb(mesh);
   if (!obb) { ctx.skip(id, 'no usable geometry'); return []; }
-  const base: Record<string, AttrValue> = { number: ctx.label(id), material, thickness: r3(thickness) };
+  const base: Record<string, AttrValue> = { number: numberOf(ctx, id), material, thickness: r3(thickness) };
   if (pile) {
     const round = (extrusion(model, id)?.profile?.kind ?? 'circle') === 'circle';
     return [ctx.add('foundation', id, level, {

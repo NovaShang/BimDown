@@ -7,6 +7,7 @@
  * thickness is the layer set total (or the body width), and the line runs so
  * that layer 1 of the set lies on its left (BimDown seq 1 = exterior face).
  */
+import { numberOf } from './names.js';
 import type { ImportContext, OutEl, ArcInfo, AttrValue } from './context.js';
 import type { TypeCatalog } from './element-types.js';
 import { type WorldMesh, mergeMeshes, planPoints, planObb } from './geometry.js';
@@ -114,7 +115,7 @@ export function convertWall(ctx: ImportContext, types: TypeCatalog, id: number, 
     ctx.note(`${ctx.label(id) ?? id}: wall thickness not measurable, used ${r3(thickness)} m`);
   }
   const span = ctx.span(level, line.zMin, line.zMax);
-  const attrs: Record<string, AttrValue> = { number: ctx.label(id), ...extra };
+  const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id), ...extra };
   const props: Record<string, unknown> = {};
   ctx.applySpan(level, attrs, props, span);
   if (typeId) {
@@ -141,7 +142,7 @@ export function convertCurtainWall(ctx: ImportContext, id: number): OutEl | null
   if (!line || !mesh) { ctx.skip(id, 'no usable geometry'); return null; }
   const level = ctx.levelOf(id, line.zMin);
   const span = ctx.span(level, line.zMin, line.zMax);
-  const attrs: Record<string, AttrValue> = { number: ctx.label(id), material: 'aluminum' };
+  const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id), material: 'aluminum' };
   const props: Record<string, unknown> = {};
   ctx.applySpan(level, attrs, props, span);
   // Mullions / transoms → grid lines (interior ones only)

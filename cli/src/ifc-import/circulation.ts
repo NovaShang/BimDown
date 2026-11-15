@@ -5,6 +5,7 @@
  * flight. Railings follow their Axis polyline (one row per segment) or the
  * long axis of their body.
  */
+import { numberOf } from './names.js';
 import type { ImportContext, OutEl, AttrValue } from './context.js';
 import { type WorldMesh, mergeMeshes, planObb } from './geometry.js';
 import { axisCurve } from './representation.js';
@@ -54,7 +55,7 @@ function flight(ctx: ImportContext, id: number, mesh: WorldMesh, stairType: stri
   const wl = walkingLine(mesh);
   if (!wl) { ctx.skip(id, 'no usable geometry'); return null; }
   const level = ctx.levelOf(id, mesh.min.z);
-  const attrs: Record<string, AttrValue> = { number: ctx.label(id), width: r3(wl.width) };
+  const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id), width: r3(wl.width) };
   if (table === 'stair') {
     attrs.step_count = risers(ctx, id, wl.end.z - wl.start.z);
     attrs.stair_type = stairType;
@@ -82,7 +83,7 @@ export function convertStairOrRamp(ctx: ImportContext, id: number, table: 'stair
       const wl = walkingLine(m!);
       if (!wl) { ctx.skip(f, 'no usable geometry'); continue; }
       out.push(ctx.add('stair_run', f, out[0].level, {
-        number: ctx.label(f), host_id: out[0].id, width: r3(wl.width), step_count: risers(ctx, f, wl.end.z - wl.start.z),
+        number: numberOf(ctx, f), host_id: out[0].id, width: r3(wl.width), step_count: risers(ctx, f, wl.end.z - wl.start.z),
       }, line3(wl.start, wl.end)));
       continue;
     }
@@ -185,7 +186,7 @@ export function convertRailing(ctx: ImportContext, id: number): OutEl[] {
     const h = typeof psetH === 'number' ? psetH * model.scale : Math.max(0.3, body);
     // A handrail without posts: the body is only the rail, its foot is a railing height lower
     if (body < h * 0.5) { za -= h - body; zb -= h - body; }
-    out.push(ctx.add('railing', id, level, { number: ctx.label(id), height: r3(h), type_id: railingType(ctx, id, h) }, line3({ x: a.x, y: a.y, z: za }, { x: b.x, y: b.y, z: zb })));
+    out.push(ctx.add('railing', id, level, { number: numberOf(ctx, id), height: r3(h), type_id: railingType(ctx, id, h) }, line3({ x: a.x, y: a.y, z: za }, { x: b.x, y: b.y, z: zb })));
   }
   return out;
 }

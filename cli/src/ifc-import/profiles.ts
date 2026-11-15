@@ -13,6 +13,7 @@
 import type { AttrValue } from './context.js';
 import type { Profile } from './representation.js';
 import { type V2, polygonArea, r3 } from './math.js';
+import { findSteelSection, type SteelSection } from '../sections/steel-sections.js';
 
 export type SectionKind = 'rect' | 'round' | 'i' | 't' | 'l' | 'c' | 'rhs' | 'chs';
 
@@ -26,17 +27,32 @@ export interface Section {
   web?: number;
   /** Leg thickness (L), wall thickness (hollow). */
   thickness?: number;
-  /** Catalogue designation from the name, e.g. "W460X60". */
+  /** Catalogue designation from the name, e.g. "W460X60" (the library's spelling when it knows it). */
   designation?: string;
+  /** Root / outer corner radius (m), from the section library. */
+  rootRadius?: number;
 }
 
 /** Schema `shape` per section kind. */
 export const SHAPE_OF: Record<SectionKind, string> = {
-  rect: 'rect', round: 'round', i: 'i_shape', t: 't_shape', l: 'l_shape', c: 'c_shape', rhs: 'rect', chs: 'round',
+  rect: 'rect', round: 'round', i: 'i_shape', t: 't_shape', l: 'l_shape', c: 'c_shape', rhs: 'rect_hollow', chs: 'round_hollow',
 };
 
-/** Hook for a section library: dimensions of a designation (m), or null. */
-export let lookupSection: (designation: string, kind: SectionKind) => Section | null = () => null;
+const KIND_OF: Record<SteelSection['shape'], SectionKind> = { i_shape: 'i', c_shape: 'c', l_shape: 'l', rect_hollow: 'rhs', round_hollow: 'chs' };
+
+/** The steel section library entry of a designation (HEA200 = "HEA 200", W14X90, CHS 219.1x8 …) as a section, or null. */
+export function librarySection(designation: string, kind?: SectionKind): Section | null {
+  const s = findSteelSection(designation);
+  if (!s || (kind && KIND_OF[s.shape] !== kind && !(kind === 'rect' || kind === 'round'))) return null;
+  const k = KIND_OF[s.shape];
+  return {
+    kind: k, width: s.size_x, depth: k === 'chs' ? s.size_x : s.size_y ?? s.size_x,
+    flange: s.flange, web: s.web, thickness: s.thickness, rootRadius: s.root_radius, designation: s.designation,
+  };
+}
+
+/** Hook for a section library: dimensions of a designation (m), or null. Defaults to the steel library. */
+export let lookupSection: (designation: string, kind: SectionKind) => Section | null = librarySection;
 export function setSectionLookup(fn: typeof lookupSection): void { lookupSection = fn; }
 
 const n = (s: string | undefined) => (s === undefined ? NaN : s.includes('/') ? s.split('/').map(Number).reduce((a, b) => a / b) : parseFloat(s));
@@ -216,5 +232,7 @@ export function sectionColumns(s: Section, rectOnly = false): Record<string, Att
   if (s.flange) out.flange = r3(s.flange);
   if (s.web) out.web = r3(s.web);
   if (s.thickness) out.thickness = r3(s.thickness);
+  if (s.rootRadius) out.root_radius = r3(s.rootRadius);
+  if (s.designation) out.designation = s.designation;
   return out;
 }

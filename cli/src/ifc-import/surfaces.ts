@@ -4,6 +4,7 @@
  * outline is the body's plan silhouette, so voids web-ifc cut through the
  * slab come back as holes.
  */
+import { numberOf } from './names.js';
 import type { ImportContext, OutEl, AttrValue, Geometry, Position2 } from './context.js';
 import type { TypeCatalog } from './element-types.js';
 import { type PlanPolygon, type WorldMesh, footprint, mergeMeshes, roofSlopes } from './geometry.js';
@@ -59,7 +60,7 @@ export function convertSlab(ctx: ImportContext, types: TypeCatalog, id: number, 
   const out: OutEl[] = [];
   if (polys.length > 1) ctx.note(`${ctx.label(id) ?? id}: ${polys.length} separate pieces imported as separate ${table} rows`);
   for (const poly of polys) {
-    const attrs: Record<string, AttrValue> = { number: ctx.label(id), ...extra };
+    const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id), ...extra };
     const props: Record<string, unknown> = {};
     const top = mesh.max.z - ctx.elevation(level);
     if (table === 'roof') {
@@ -123,7 +124,7 @@ export function convertCeiling(ctx: ImportContext, id: number): OutEl[] {
   if (!mesh) { ctx.skip(id, 'no body geometry'); return []; }
   const level = ctx.levelOf(id, mesh.min.z);
   return pieces(mesh).map(poly => ctx.add('ceiling', id, level, {
-    number: ctx.label(id), material: elementMaterial(ctx.model, id) ?? 'gypsum',
+    number: numberOf(ctx, id), material: elementMaterial(ctx.model, id) ?? 'gypsum',
     // Underside = level + base_offset + height_offset (editor default drop -0.3 m), so pin the drop to 0.
   }, polygonGeometry(poly), { base_offset: r3(mesh.min.z - ctx.elevation(level)), height_offset: 0 }));
 }

@@ -1,4 +1,5 @@
 /** IfcGrid axes → grid rows; furniture → furniture boxes (when the format has the table). */
+import { numberOf } from './names.js';
 import type { ImportContext, OutEl } from './context.js';
 import { curve } from './representation.js';
 import { str } from './model.js';
@@ -82,7 +83,7 @@ export function convertFurniture(ctx: ImportContext, id: number): OutEl | null {
   const base = mesh.min.z - ctx.elevation(level);
   if (Math.abs(base) >= 0.0005) props.base_offset = r3(base);
   return ctx.add('furniture', id, level, {
-    number: label || undefined, family: furnitureFamily(`${label} ${str(ctx.model.line(id)?.ObjectType) ?? ''}`),
+    number: numberOf(ctx, id), family: furnitureFamily(`${label} ${str(ctx.model.line(id)?.ObjectType) ?? ''}`),
     size_x: r3(obb.length), size_y: r3(obb.width), height: r3(mesh.max.z - mesh.min.z),
   }, { type: 'Point', coordinates: [r3(obb.center.x), r3(obb.center.y)] }, props);
 }

@@ -6,6 +6,7 @@
  * the walls are joined and oriented, so positions match the final lines.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- web-ifc lines are untyped */
+import { numberOf } from './names.js';
 import type { ImportContext, OutEl, AttrValue } from './context.js';
 import type { WorldMesh } from './geometry.js';
 import { project } from './lines.js';
@@ -96,7 +97,7 @@ export function convertHosted(ctx: ImportContext, id: number, table: 'door' | 'w
   const level = host.global ? level0 : host.level;
   const baseOffset = bottom - ctx.elevation(host.level);
   const attrs: Record<string, AttrValue> = {
-    number: table === 'opening' ? undefined : ctx.label(id),
+    number: table === 'opening' ? undefined : numberOf(ctx, id),
     host_id: host.id,
     position: r3(position),
     width: r3(width),
