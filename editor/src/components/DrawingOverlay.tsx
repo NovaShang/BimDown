@@ -432,8 +432,9 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
             stroke="#ef476f" strokeWidth={0.12 / scale} strokeDasharray={`${0.45 / scale},${0.3 / scale}`}
             opacity="0.6"
           />
-          <circle cx={points[0].x} cy={points[0].y} r={0.45 / scale} fill="none" stroke="#ef476f" strokeWidth={0.08 / scale} opacity="0.6" />
-          <circle cx={cursor.x} cy={cursor.y} r={0.3 / scale} fill="#ef476f" opacity="0.4" />
+          {/* The head (bubble) lands at the second click */}
+          <circle cx={points[0].x} cy={points[0].y} r={0.3 / scale} fill="#ef476f" opacity="0.4" />
+          <circle cx={cursor.x} cy={cursor.y} r={0.45 / scale} fill="none" stroke="#ef476f" strokeWidth={0.08 / scale} opacity="0.6" />
         </g>
       );
     }

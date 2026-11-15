@@ -1,10 +1,10 @@
 import type { ToolHandler, ToolContext } from './types.ts';
-import type { LineElement } from '../model/elements.ts';
+import type { LineElement, Point } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
-import { snapPoint } from '../utils/snap.ts';
+import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
-import { letterIndex, letterLabel, nextGridName } from '../model/copySet.ts';
-import type { Point } from '../model/elements.ts';
+import { orthoSnap } from './orthoLock.ts';
+import { nextGridName } from '../model/copySet.ts';
 
 // ─── Grid labels ─────────────────────────────────────────────────────────────
 
@@ -58,14 +58,15 @@ export function nextGridLabel(names: Iterable<string>, sequence: 'numbers' | 'le
   const used = new Set([...names].map(n => n.trim()).filter(Boolean));
   const t = typed.trim();
   if (t) return used.has(t) ? nextGridName(t, used) : t;
-  let top = 0;
-  for (const n of used) {
-    if (sequence === 'numbers' ? /^\d+$/.test(n) : /^[A-Z]+$/.test(n)) top = Math.max(top, sequence === 'numbers' ? parseInt(n, 10) : letterIndex(n));
+  if (sequence === 'numbers') {
+    let top = 0;
+    for (const n of used) if (/^\d+$/.test(n)) top = Math.max(top, parseInt(n, 10));
+    for (let i = top + 1; ; i++) if (!used.has(String(i))) return String(i);
   }
-  for (let i = top + 1; ; i++) {
-    const c = sequence === 'numbers' ? String(i) : letterLabel(i);
-    if (!used.has(c)) return c;
-  }
+  // Letters in drafting order (no I / O), after the highest one used
+  let top = -1;
+  for (const n of used) top = Math.max(top, letterIndex(n.toUpperCase()));
+  for (let i = top + 1; ; i++) if (!used.has(letterLabel(i))) return letterLabel(i);
 }
 
 /** Names of the project grids (state.grids plus any in the open document). */
@@ -75,21 +76,57 @@ function usedGridNames(state: ReturnType<ToolContext['getState']>): string[] {
   return out;
 }
 
+/** Grid letters in drafting order: I and O are skipped (they read as 1 and 0). */
+const LETTERS = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+
+function letterLabel(i: number): string {
+  let s = '';
+  let n = i + 1;
+  while (n > 0) {
+    const r = (n - 1) % LETTERS.length;
+    s = LETTERS[r] + s;
+    n = Math.floor((n - 1) / LETTERS.length);
+  }
+  return s;
+}
+
+function letterIndex(label: string): number {
+  if (!/^[A-Z]+$/.test(label)) return -1;
+  let n = 0;
+  for (const c of label) {
+    const k = LETTERS.indexOf(c);
+    if (k < 0) return -1;
+    n = n * LETTERS.length + k + 1;
+  }
+  return n - 1;
+}
+
+function pick(ctx: ToolContext, e: React.PointerEvent): SnapResult | null {
+  const raw = ctx.screenToSvg(e.clientX, e.clientY);
+  if (!raw) return null;
+  const state = ctx.getState();
+  const anchor = state.drawingState?.points[0] ?? undefined;
+  const snap = snapPoint(raw, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
+  return orthoSnap(anchor, raw, snap, e.shiftKey);
+}
+
+/** The grid line drawn from `first` to `second` click: the bubble (drawn at
+ *  the line's start) goes at the second click, where Revit puts the head. */
+export function gridFromClicks(first: Point, second: Point): { start: Point; end: Point } {
+  return { start: second, end: first };
+}
+
 export const drawGridTool: ToolHandler = {
   cursor: 'crosshair',
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
-
-    const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    if (!svgPt) return;
-
-    const state = ctx.getState();
-    const anchor = state.drawingState?.points[0] ?? undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
+    const snap = pick(ctx, e);
+    if (!snap) return;
     const pt = snap.point;
     ctx.setSnap(snap);
 
+    const state = ctx.getState();
     const points = state.drawingState?.points || [];
 
     if (points.length === 0) {
@@ -98,13 +135,14 @@ export const drawGridTool: ToolHandler = {
         state: { points: [pt], cursor: pt },
       });
     } else {
-      const start = points[0];
+      const first = points[0];
+      if (Math.hypot(pt.x - first.x, pt.y - first.y) < 1e-3) return;
 
       const existingIds = new Set(state.document?.elements.keys() ?? []);
       const id = generateId('grid', existingIds);
 
       // Next name of the axis's sequence (or the one typed in the options bar)
-      const name = nextGridLabel(usedGridNames(state), gridSequence(start, pt), gridOptions.next);
+      const name = nextGridLabel(usedGridNames(state), gridSequence(first, pt), gridOptions.next);
       if (gridOptions.next) setGridDrawOptions({ next: '' });
 
       const element: LineElement = {
@@ -112,8 +150,7 @@ export const drawGridTool: ToolHandler = {
         tableName: 'grid',
         discipline: 'reference',
         geometry: 'line',
-        start,
-        end: pt,
+        ...gridFromClicks(first, pt),
         strokeWidth: 0.06,
         attrs: { number: name },
       };
@@ -125,18 +162,13 @@ export const drawGridTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
-    const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    if (!svgPt) return;
-
+    const snap = pick(ctx, e);
+    if (!snap) return;
     const state = ctx.getState();
-    const anchor = state.drawingState?.points[0] ?? undefined;
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
-    const pt = snap.point;
-
     if (state.drawingState && state.drawingState.points.length > 0) {
       ctx.dispatch({
         type: 'SET_DRAWING_STATE',
-        state: { ...state.drawingState, cursor: pt },
+        state: { ...state.drawingState, cursor: snap.point },
       });
     }
     ctx.setSnap(snap);

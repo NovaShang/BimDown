@@ -74,7 +74,7 @@ function pointToSegDist(P: Pt, A: Pt, B: Pt): { dist: number; t: number } {
   return { dist: Math.sqrt(px * px + py * py), t };
 }
 
-interface TJunction {
+export interface TJunction {
   /** The wall whose endpoint hits the middle of another wall */
   tWallId: string;
   tWhich: 'start' | 'end';
@@ -300,13 +300,15 @@ export interface MiterResult {
   planAdjustments: Map<string, CornerAdjustment>;
   /** Fill polygons at junctions (to cover gaps between wall fills) */
   junctionFills: { points: Pt[]; fill: string }[];
+  /** Walls ending on the middle of another (fine-detail layer joins). */
+  tJunctions: TJunction[];
 }
 
 export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
-  const empty: MiterResult = { adjustments: new Map(), planAdjustments: new Map(), junctionFills: [] };
+  const empty: MiterResult = { adjustments: new Map(), planAdjustments: new Map(), junctionFills: [], tJunctions: [] };
   if (walls.length < 2) return empty;
   const junctions = buildJunctions(walls);
-  const result: MiterResult = { adjustments: new Map(), planAdjustments: new Map(), junctionFills: [] };
+  const result: MiterResult = { adjustments: new Map(), planAdjustments: new Map(), junctionFills: [], tJunctions: [] };
 
   for (const junc of junctions.values()) {
     if (junc.walls.length < 2) continue;
@@ -362,6 +364,7 @@ export function computeCornerAdjustments(walls: WallSegment[]): MiterResult {
 
   // T-junction handling: extend T-wall sides to meet main wall outline
   const tJunctions = detectTJunctions(walls);
+  result.tJunctions = tJunctions;
   result.planAdjustments = new Map(result.adjustments);
   for (const tj of tJunctions) {
     const key = `${tj.tWallId}:${tj.tWhich}`;

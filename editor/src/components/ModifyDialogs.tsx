@@ -222,6 +222,51 @@ function FilterDialog({ onClose }: { onClose: () => void }) {
   );
 }
 
+/** VV: Revit's Visibility/Graphics — which categories the view draws. */
+function VisibilityDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation();
+  const state = useEditorState();
+  const dispatch = useEditorDispatch();
+  const cats = useMemo(() => {
+    const keys = new Map<string, string>();
+    for (const floor of state.project?.floors.values() ?? []) {
+      for (const l of floor.layers) keys.set(`${l.discipline}/${l.tableName}`, l.tableName);
+    }
+    for (const gl of state.project?.globalLayers ?? []) keys.set(`${gl.discipline}/${gl.tableName}`, gl.tableName);
+    if (state.grids.length) keys.set('reference/grid', 'grid');
+    return [...keys].map(([key, table]) => ({ key, table }))
+      .sort((a, b) => (LAYER_STYLES[a.table]?.order ?? 99) - (LAYER_STYLES[b.table]?.order ?? 99));
+  }, [state.project, state.grids]);
+  const [shown, setShown] = useState<Set<string>>(() => new Set(cats.filter(c => state.visibleLayers.has(c.key)).map(c => c.key)));
+  const apply = () => {
+    const next = new Set(state.visibleLayers);
+    for (const c of cats) { if (shown.has(c.key)) next.add(c.key); else next.delete(c.key); }
+    dispatch({ type: 'SET_VISIBLE_LAYERS', keys: next });
+  };
+  return (
+    <Modal title={t('vv.title')} onClose={onClose} testId="visibility-dialog">
+      <div className="flex max-h-[50vh] flex-col gap-0.5 overflow-auto">
+        {cats.map(c => {
+          const style = LAYER_STYLES[c.table];
+          return (
+            <label key={c.key} className="flex cursor-pointer items-center gap-2 rounded px-2 py-1 text-[11px] hover:bg-accent">
+              <input type="checkbox" checked={shown.has(c.key)} data-layer-key={c.key}
+                onChange={() => setShown(k => { const n = new Set(k); if (n.has(c.key)) n.delete(c.key); else n.add(c.key); return n; })} />
+              <span className="flex-1">{style ? t(`display.${style.displayName}`) : c.table}</span>
+              <span className="text-[10px] text-muted-foreground">{t(`discipline.${c.key.split('/')[0]}`, { defaultValue: c.key.split('/')[0] })}</span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-2 text-[10px]">
+        <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[var(--color-accent)]" onClick={() => setShown(new Set(cats.map(c => c.key)))}>{t('dialog.all')}</button>
+        <button type="button" className="cursor-pointer border-none bg-transparent p-0 text-[var(--color-accent)]" onClick={() => setShown(new Set())}>{t('dialog.none')}</button>
+      </div>
+      <Buttons onClose={onClose} onOk={apply} okLabel={t('type.ok')} />
+    </Modal>
+  );
+}
+
 function SaveSetDialog({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation();
   const dispatch = useEditorDispatch();
@@ -286,5 +331,6 @@ export default function ModifyDialogs() {
     case 'saveSet': return <SaveSetDialog onClose={close} />;
     case 'shortcuts': return <ShortcutsPanel onClose={close} />;
     case 'renumber': return <RenumberDialog onClose={close} />;
+    case 'visibility': return <VisibilityDialog onClose={close} />;
   }
 }

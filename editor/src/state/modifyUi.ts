@@ -11,7 +11,8 @@ export type ModifyDialog =
   | { kind: 'filter' }
   | { kind: 'saveSet' }
   | { kind: 'renumber' }
-  | { kind: 'shortcuts' };
+  | { kind: 'shortcuts' }
+  | { kind: 'visibility' };
 
 interface UiState {
   dialog: ModifyDialog | null;

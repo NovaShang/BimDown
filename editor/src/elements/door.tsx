@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
-import { getBlockSvg } from './_blockLoader.ts';
+import { doorPlan2D } from './_openingPlan.tsx';
 import {
   MATERIAL_OPTIONS,
   OPERATION_OPTIONS,
@@ -19,6 +19,12 @@ const BLOCK_MAP: Record<string, string> = {
   revolving: 'door_revolving',
 };
 
+/** Thickness of the wall hosting `el` (fallback: its own stroke). */
+export function hostThicknessOf(el: LineElement, ctx: GeometryContext, fallback: number): number {
+  const host = el.hostId || el.attrs.host_id ? ctx.elementById(el.hostId || el.attrs.host_id) : undefined;
+  return host && (host.geometry === 'line' || host.geometry === 'spatial_line') && host.strokeWidth > 0 ? host.strokeWidth : fallback;
+}
+
 export interface DoorFacts {
   id: string;
   start: Point;
@@ -32,6 +38,8 @@ export interface DoorFacts {
   baseY: number;
   width: number;
   thickness: number;
+  /** Host wall thickness (plan drawing). */
+  hostThickness: number;
   material: string;
   operation: string;
 }
@@ -95,22 +103,17 @@ export const doorModule: ElementModule<DoorFacts> = {
       baseY: ctx.levelElevation + baseOffset,
       width: parseFloat(d.attrs.width || '0.9') || 0.9,
       thickness: d.strokeWidth || 0.04,
+      hostThickness: hostThicknessOf(d, ctx, d.strokeWidth || 0.2),
       material: d.attrs.material || '',
       operation,
     };
   },
 
-  draw2D(facts): ReactNode {
-    const svg = getBlockSvg(facts.blockName);
-    if (!svg) return null;
-    const sx = facts.hingeEnd ? -1 : 1;
-    const sy = facts.swingRight ? -1 : 1;
-    const tx = facts.hingeEnd ? 1 : 0;
-    const transform =
-      `translate(${facts.start.x},${facts.start.y}) rotate(${facts.angleDeg}) ` +
-      `scale(${facts.length},${facts.length}) translate(${tx},0) scale(${sx},${sy})`;
+  draw2D(facts, drawCtx): ReactNode {
     return (
-      <g data-id={facts.id} transform={transform} dangerouslySetInnerHTML={{ __html: svg }} />
+      <g data-id={facts.id}>
+        {doorPlan2D({ ...facts, thickness: facts.hostThickness }, drawCtx.selected)}
+      </g>
     );
   },
 

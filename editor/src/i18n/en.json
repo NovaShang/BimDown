@@ -511,6 +511,7 @@
   "topbar.structContext": "Show structural columns, walls and slabs",
   "topbar.structContextShort": "Str",
   "view.toggleGridBubbles": "Grid bubbles at both ends",
+  "view.toggleLevelBelow": "Underlay: level below (halftone)",
   "view.toggleGrids3D": "Show grids in 3D",
   "view.toggleNumbers": "Show element numbers",
   "field.Grade": "Grade",
@@ -1312,5 +1313,16 @@
   "renumber.cat.equipment.other": "Other equipment",
   "levels.roofOnTop": "Floor slabs become roof slabs on the top level",
   "display.Beam Systems": "Beam Systems",
-  "field.Type Id": "Beam type"
+  "field.Type Id": "Beam type",
+  "vv.title": "Visibility / graphics",
+  "shortcut.createSimilar": "Create similar",
+  "shortcut.matchType": "Match type properties (first selected is the source)",
+  "shortcut.hideElement": "Temporarily hide elements",
+  "shortcut.isolateElement": "Temporarily isolate elements",
+  "shortcut.hideCategory": "Temporarily hide category",
+  "shortcut.isolateCategory": "Temporarily isolate category",
+  "shortcut.resetTempHide": "Reset temporary hide / isolate",
+  "notice.matched": "{{count}} elements changed to the source's type",
+  "tempHide.active": "Temporary hide / isolate",
+  "tempHide.reset": "Reset (HR)"
 }

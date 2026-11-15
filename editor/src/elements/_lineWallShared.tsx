@@ -24,7 +24,8 @@ import { buildStraightWallSolid, buildPiecesSolid } from '../three/utils/wallSol
 import { resolveTopAttach, wallTopPieces, maxTop, type AttachPiece } from '../geometry/attach.ts';
 import { resolvedLayers } from '../model/types/catalog.ts';
 import { layerBands, wallFrame, clipToBand, chordAt, type LayerBand } from '../geometry/layerBands.ts';
-import { layerFill } from './_layerHatch.tsx';
+import { fineJoins, cutBand, cutChord, type FinishCut, type JoinWall } from '../geometry/layerJoins.ts';
+import { layerColor, layerFill } from './_layerHatch.tsx';
 
 const HOSTED_TABLES = new Set(['door', 'window', 'opening']);
 const DEFAULT_HEIGHT = 3.0;
@@ -48,6 +49,16 @@ export interface WallDrawSegment {
   outline: [Point, Point][];
 }
 
+/** Fine-detail drawing of a wall in a layered tee (geometry/layerJoins.ts). */
+export interface WallFineJoin {
+  /** Polygons of a stem running through the main wall's finish to its core. */
+  corners?: Point[][];
+  /** The stem's sides through the finish and its end on the core. */
+  lines?: [Point, Point][];
+  /** Finish taken out of a main wall by the stems teeing into it. */
+  cuts?: FinishCut[];
+}
+
 export interface LineWallFacts {
   id: string;
   table: string;
@@ -61,6 +72,8 @@ export interface LineWallFacts {
   material: string;
   /** Type layers as bands across the wall (straight typed walls with 2+ layers). */
   layers?: LayerBand[];
+  /** Layered tee joins at fine detail. */
+  fine?: WallFineJoin;
   /** Top attached to a roof / slab (`top_attach_id`): its underside, and the
    *  wall's own top (absolute) where the footprint is not under it. */
   topAttach?: { surface: AttachPiece[]; ownTop: number };
@@ -97,10 +110,16 @@ export function getWallMiterAdjustments(
  *  and the junction edge is hidden in 2D. */
 const WALL_NETWORK_TABLES = ['wall', 'structure_wall'] as const;
 
+/** Joined by walls (mitres, tees) but drawn on their own: a wall meeting a
+ *  curtain wall end to end stops square at it. */
+const JOIN_ONLY_TABLES = ['curtain_wall'] as const;
+
 export interface WallNetwork {
   adj: Map<string, CornerAdjustment>;
   /** Draw-ready segments keyed by element id. */
   segmentsByEl: Map<string, WallDrawSegment[]>;
+  /** Fine-detail tee joins keyed by element id. */
+  fineByEl: Map<string, WallFineJoin>;
 }
 
 /**
@@ -128,10 +147,16 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
       }
     }
     if (walls.length === 0) {
-      return { adj: new Map(), segmentsByEl: new Map() };
+      return { adj: new Map(), segmentsByEl: new Map(), fineByEl: new Map() };
+    }
+    const joinOnly: LineElement[] = [];
+    for (const table of JOIN_ONLY_TABLES) {
+      for (const e of ctx.elementsByTable(table)) {
+        if (e.geometry === 'line' && !e.arc) joinOnly.push(e as LineElement);
+      }
     }
 
-    const miterInput: WallMiterSegment[] = walls.map(({ el }) => ({
+    const miterInput: WallMiterSegment[] = [...walls.map(w => w.el), ...joinOnly].map(el => ({
       id: el.id,
       x1: el.start.x, y1: el.start.y,
       x2: el.end.x, y2: el.end.y,
@@ -146,6 +171,9 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
     for (const w of walls) {
       epCount.set(w.startKey, (epCount.get(w.startKey) ?? 0) + 1);
       epCount.set(w.endKey, (epCount.get(w.endKey) ?? 0) + 1);
+    }
+    for (const el of joinOnly) {
+      for (const k of [ptKey(el.start.x, el.start.y), ptKey(el.end.x, el.end.y)]) epCount.set(k, (epCount.get(k) ?? 0) + 1);
     }
     const junctionKeys = new Set<string>();
     for (const [k, c] of epCount) if (c >= 2) junctionKeys.add(k);
@@ -169,8 +197,45 @@ export function getWallNetwork(ctx: GeometryContext): WallNetwork {
       }
       segmentsByEl.set(elId, segs);
     }
-    return { adj, segmentsByEl };
+    return { adj, segmentsByEl, fineByEl: fineTeeJoins(walls.map(w => w.el), miter, ctx) };
   });
+}
+
+/** Layered tees at fine detail: stems run through the main wall's finish to its core. */
+function fineTeeJoins(
+  walls: LineElement[],
+  miter: ReturnType<typeof computeCornerAdjustments>,
+  ctx: GeometryContext,
+): Map<string, WallFineJoin> {
+  const out = new Map<string, WallFineJoin>();
+  if (miter.tJunctions.length === 0) return out;
+  const byId = new Map<string, JoinWall>();
+  const els = new Map<string, LineElement>();
+  for (const el of walls) {
+    if (el.arc) continue;
+    const layers = resolvedLayers(el, ctx.projectTypes());
+    byId.set(el.id, {
+      id: el.id, start: el.start, end: el.end, thickness: el.strokeWidth,
+      bands: layers && layers.length > 1 ? layerBands(layers, el.strokeWidth) : undefined,
+    });
+    els.set(el.id, el);
+  }
+  const joins = fineJoins(byId, miter.tJunctions);
+  if (joins.stems.size === 0) return out;
+  const adj = new Map(miter.planAdjustments);
+  const stems = new Set<string>();
+  for (const [key, end] of joins.stems) {
+    adj.set(key, { left: end.left, right: end.right });
+    stems.add(key.slice(0, key.lastIndexOf(':')));
+  }
+  for (const id of stems) {
+    const el = els.get(id)!;
+    const polys = buildWallPolygons(el, collectWallOpenings(el, ctx), adj, '', '');
+    const lines = [...joins.stems].filter(([k]) => k.startsWith(`${id}:`)).flatMap(([, v]) => v.lines);
+    out.set(id, { corners: polys.map(p => p.corners), lines });
+  }
+  for (const [id, cuts] of joins.cuts) out.set(id, { ...out.get(id), cuts });
+  return out;
 }
 
 export function buildLineWallFootprint(
@@ -368,40 +433,60 @@ export function wallGeometryFor(
     baseY,
     material: el.attrs.material || 'concrete',
     layers: typeLayers && typeLayers.length > 1 ? layerBands(typeLayers, el.strokeWidth) : undefined,
+    fine: network.fineByEl.get(el.id),
     topAttach,
   };
 }
 
 /**
- * Fine-detail opacity for a wall's layers: they fade in once the wall is
- * ~14 px thick on screen. `--canvas-scale` × 15 is pixels per metre (see
- * Canvas uiScale), so zooming needs no re-render.
+ * Layer fills and the lines between layers, per draw segment: fine detail
+ * only (`plan-fine`, shown from ≈ 1:50 by planDetail.ts), so zooming needs
+ * no re-render.
  */
-function layerOpacity(thickness: number): string {
-  return `clamp(0, calc((var(--canvas-scale, 1) * ${(15 * thickness).toFixed(4)} - 14) / 8), 1)`;
-}
-
-/** Layer fills and the lines between layers, per draw segment. */
 function wallLayers2D(facts: LineWallFacts): ReactNode {
   const frame = facts.layers && wallFrame(facts.centerline.start, facts.centerline.end);
   if (!facts.layers || !frame) return null;
   const bands = facts.layers;
+  const { start, end } = facts.centerline;
+  const cuts = facts.fine?.cuts ?? [];
+  const pieces = facts.fine?.corners ?? facts.segments.map(s => s.corners);
+  const pts = (poly: Point[]) => poly.map(p => `${p.x},${p.y}`).join(' ');
   return (
-    <g style={{ opacity: layerOpacity(facts.thickness) }} data-id={facts.id}>
-      {facts.segments.flatMap((seg, si) => bands.map((b, bi) => {
-        const poly = clipToBand(seg.corners, frame, b.lo, b.hi);
-        return poly.length < 3 ? null : (
-          <polygon key={`l${si}-${bi}`} points={poly.map(p => `${p.x},${p.y}`).join(' ')}
-            fill={layerFill(b)} stroke="none" data-id={facts.id} />
-        );
+    <g className="plan-fine" data-id={facts.id}>
+      {pieces.flatMap((corners, si) => bands.flatMap((b, bi) => {
+        const poly = clipToBand(corners, frame, b.lo, b.hi);
+        if (poly.length < 3) return [];
+        // A hairline of the layer's colour closes the seams at mitred corners
+        return (cuts.length ? cutBand(poly, start, end, b.lo, b.hi, cuts) : [poly]).map((piece, pi) => (
+          <polygon key={`l${si}-${bi}-${pi}`} points={pts(piece)}
+            fill={layerFill(b)} stroke={layerColor(b)} strokeWidth={0.004} data-id={facts.id} />
+        ));
       }))}
-      {facts.segments.flatMap((seg, si) => bands.slice(1).map((b, bi) => {
-        const c = chordAt(seg.corners, frame, b.hi);
-        return c ? (
-          <line key={`b${si}-${bi}`} x1={c[0].x} y1={c[0].y} x2={c[1].x} y2={c[1].y}
-            stroke="#4b5563" strokeWidth={0.006} data-id={facts.id} />
-        ) : null;
+      {pieces.flatMap((corners, si) => bands.slice(1).flatMap((b, bi) => {
+        const c = chordAt(corners, frame, b.hi);
+        if (!c) return [];
+        return (cuts.length ? cutChord(c, start, end, b.hi, cuts) : [c]).map(([p, q], ci) => (
+          <line key={`b${si}-${bi}-${ci}`} x1={p.x} y1={p.y} x2={q.x} y2={q.y}
+            className="pen-hair" stroke="#4b5563" strokeWidth={0.006} data-id={facts.id} />
+        ));
       }))}
+    </g>
+  );
+}
+
+/** Fine detail of a stem in a layered tee: its fill through the finish, its sides and end. */
+function wallFineStem2D(facts: LineWallFacts, fill: string, stroke: string): ReactNode {
+  const f = facts.fine;
+  if (!f?.corners) return null;
+  return (
+    <g className="plan-fine" data-id={facts.id}>
+      {!facts.layers && f.corners.map((c, i) => (
+        <polygon key={`f${i}`} points={c.map(p => `${p.x},${p.y}`).join(' ')} fill={fill} stroke={fill} strokeWidth={0.01} data-id={facts.id} />
+      ))}
+      {(f.lines ?? []).map(([a, b], i) => (
+        <line key={`s${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} className={i % 3 === 2 ? 'pen-hair' : 'pen-cut'}
+          stroke={stroke} strokeWidth={0.02} strokeLinecap="square" data-id={facts.id} />
+      ))}
     </g>
   );
 }
@@ -413,11 +498,15 @@ export function wallDraw2D(
   strokeWidth: number,
 ): ReactNode {
   if (facts.segments.length === 0) return null;
+  // At fine detail a layered wall is drawn by its layers, and a stem running
+  // into a layered wall's core by its own outline (wallFineStem2D).
+  const coarseOnly = facts.layers || facts.fine?.corners ? 'plan-not-fine' : undefined;
   return (
     <g data-id={facts.id}>
       {facts.segments.map((seg, i) => (
         <polygon
           key={`f${i}`}
+          className={coarseOnly}
           points={seg.corners.map(p => `${p.x},${p.y}`).join(' ')}
           fill={fill}
           // A hairline of the fill colour hides the anti-aliasing seam where
@@ -429,11 +518,13 @@ export function wallDraw2D(
         />
       ))}
       {wallLayers2D(facts)}
+      {wallFineStem2D(facts, fill, stroke)}
       {facts.segments.flatMap((seg, si) =>
         seg.outline.map(([a, b], ei) => (
           <line
             key={`e${si}-${ei}`}
             x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+            className="pen-cut"
             stroke={stroke}
             strokeWidth={strokeWidth}
             // Square caps close the hairline gap where two walls' outline

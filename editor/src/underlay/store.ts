@@ -7,6 +7,7 @@ import type { Point } from '../model/elements.ts';
 import type { DataSource } from '../utils/dataSource.ts';
 import { fetchBinaryFile } from '../utils/dataSource.ts';
 import type { ProjectUnit } from '../types.ts';
+import type { TypedInput } from '../state/editorTypes.ts';
 import type { ExternalSnapTarget } from '../utils/snap.ts';
 import { IMAGE_MIME, MAX_UNDERLAY_BYTES, UNDERLAY_CSV, underlayKind, type Underlay, type UnderlayKind } from './types.ts';
 import { nextUnderlayId, parseUnderlayCsv, serializeUnderlayCsv, underlayFileName } from './csv.ts';
@@ -37,6 +38,8 @@ export interface UnderlaySnapshot {
   cursor: Point | null;
   calibration: PendingCalibration | null;
   importing: boolean;
+  /** Distance / angle typed for the running move (Revit's listening dimension). */
+  typed?: TypedInput;
 }
 
 export type ImportError = 'unsupported' | 'too_large' | 'read_only' | 'failed';
@@ -382,11 +385,28 @@ export class UnderlayStore {
     const mode: UnderlayMode = kind === 'calibrate'
       ? { kind, id, points: [] }
       : kind === 'move' ? { kind, id, base: null } : { kind, id, center: null, ref: null };
-    this.set({ mode, selectedId: id, cursor: null, calibration: null });
+    this.set({ mode, selectedId: id, cursor: null, calibration: null, typed: undefined });
   }
 
   cancelMode() {
-    if (this.snap.mode || this.snap.cursor) this.set({ mode: null, cursor: null });
+    if (this.snap.mode || this.snap.cursor) this.set({ mode: null, cursor: null, typed: undefined });
+  }
+
+  setTyped(typed: TypedInput | undefined) {
+    this.set({ typed });
+  }
+
+  /** The move's base point is being picked: it belongs on the underlay itself. */
+  get pickingMoveBase(): boolean {
+    const m = this.snap.mode;
+    return m?.kind === 'move' && !m.base;
+  }
+
+  /** Kind of the underlay's asset (raster underlays have no snap points). */
+  assetKind(id: string): 'image' | 'pdf' | 'dxf' | null {
+    const u = this.snap.underlays.find(x => x.id === id);
+    const a = u && this.snap.assets.get(assetKey(u));
+    return a?.status === 'ready' ? a.kind : null;
   }
 
   pointerMove(p: Point) {
@@ -408,8 +428,8 @@ export class UnderlayStore {
         return true;
       }
       case 'move': {
-        if (!mode.base) { this.set({ mode: { ...mode, base: p } }); return false; }
-        this.set({ mode: null, cursor: null });
+        if (!mode.base) { this.set({ mode: { ...mode, base: p }, typed: undefined }); return false; }
+        this.set({ mode: null, cursor: null, typed: undefined });
         this.update(u.id, moveBy(u, p.x - mode.base.x, p.y - mode.base.y));
         return true;
       }
@@ -460,10 +480,12 @@ export class UnderlayStore {
   snapTargets = (p: Point, radius: number): ExternalSnapTarget[] => {
     const out: ExternalSnapTarget[] = [];
     const { mode } = this.snap;
-    // While moving/rotating, don't snap the underlay onto itself.
+    // While moving/rotating, don't snap the underlay onto itself; the move's
+    // base point snaps to nothing but the moved underlay's own geometry.
     const moving = mode && ((mode.kind === 'move' && mode.base) || (mode.kind === 'rotate' && mode.center)) ? mode.id : null;
+    const only = mode?.kind === 'move' && !mode.base ? mode.id : null;
     for (const u of this.snap.underlays) {
-      if (u.levelId !== this.levelId || !u.visible || u.id === moving) continue;
+      if (u.levelId !== this.levelId || !u.visible || u.id === moving || (only && u.id !== only)) continue;
       const index = this.indexFor(u);
       if (index) index.query(p, radius, out);
     }

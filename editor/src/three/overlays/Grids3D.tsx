@@ -34,7 +34,8 @@ function GridBubble({ position, label }: { position: [number, number, number]; l
   useEffect(() => () => texture.dispose(), [texture]);
   return (
     <sprite position={position} scale={[0.026, 0.026, 1]} renderOrder={10} raycast={() => null}>
-      <spriteMaterial map={texture} sizeAttenuation={false} depthTest={false} transparent />
+      {/* Depth-tested: the model in front (a roof seen from above) hides the bubble */}
+      <spriteMaterial map={texture} sizeAttenuation={false} transparent />
     </sprite>
   );
 }

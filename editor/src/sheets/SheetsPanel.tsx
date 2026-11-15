@@ -15,6 +15,7 @@ import { drawingLabel, drawingLang } from '../export/drawing/labels.ts';
 import { composeSheet, sheetFrame, SheetDrawings, type PlacedViewport } from '../export/drawing/sheetCompose.ts';
 import { exportSheetSetPdf, exportSheetSetDxf } from '../export/exportSheets.ts';
 import type { DrawingDiscipline } from '../export/drawing/types.ts';
+import { hasPlan } from '../export/drawing/plan.ts';
 import ConfirmDialog from '../components/ConfirmDialog.tsx';
 import { cn } from '../lib/utils';
 import { DrawingItemsSvg } from './DrawingSvg.tsx';
@@ -151,7 +152,7 @@ export default function SheetsPanel({ onClose }: { onClose: () => void }) {
 
   if (!project) return null;
   const sections = project.sections ?? [];
-  const levels = [...project.levels].sort((a, b) => a.elevation - b.elevation).filter(l => project.floors.has(l.id));
+  const levels = [...project.levels].sort((a, b) => a.elevation - b.elevation).filter(l => hasPlan(project, l.id));
   const palette: { group: string; items: { spec: ViewSpec; label: string; testId: string }[] }[] = [
     { group: t('sheets.plans'), items: levels.map(l => ({
       spec: { type: 'plan', levelId: l.id, viewId: '', schedule: '', discipline: 'architecture' },

@@ -511,6 +511,7 @@
   "topbar.structContext": "显示结构柱、结构墙和结构板",
   "topbar.structContextShort": "结构",
   "view.toggleGridBubbles": "轴号两端显示",
+  "view.toggleLevelBelow": "底图：显示下一层（灰显）",
   "view.toggleGrids3D": "在三维中显示轴网",
   "view.toggleNumbers": "显示构件编号",
   "field.Grade": "强度等级",
@@ -1312,5 +1313,16 @@
   "renumber.cat.equipment.other": "其他设备",
   "levels.roofOnTop": "复制到顶层时楼板改为屋面板",
   "display.Beam Systems": "梁系统",
-  "field.Type Id": "梁类型"
+  "field.Type Id": "梁类型",
+  "vv.title": "可见性 / 图形",
+  "shortcut.createSimilar": "创建类似实例",
+  "shortcut.matchType": "匹配类型属性（先选的为源）",
+  "shortcut.hideElement": "临时隐藏图元",
+  "shortcut.isolateElement": "临时隔离图元",
+  "shortcut.hideCategory": "临时隐藏类别",
+  "shortcut.isolateCategory": "临时隔离类别",
+  "shortcut.resetTempHide": "重设临时隐藏 / 隔离",
+  "notice.matched": "{{count}} 个图元已改为源类型",
+  "tempHide.active": "临时隐藏 / 隔离",
+  "tempHide.reset": "重设 (HR)"
 }

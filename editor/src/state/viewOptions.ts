@@ -12,6 +12,8 @@ export interface ViewOptions {
   gridBubblesBothEnds: boolean;
   /** Draw grid axes in the 3D view. */
   showGrids3D: boolean;
+  /** Plan underlay: the level below drawn halftone (Revit's Underlay). */
+  showLevelBelow: boolean;
 }
 
 export type ViewOptionKey = keyof ViewOptions;
@@ -21,6 +23,7 @@ export const DEFAULT_VIEW_OPTIONS: ViewOptions = {
   showStructureInArch: true,
   gridBubblesBothEnds: false,
   showGrids3D: true,
+  showLevelBelow: false,
 };
 
 const STORAGE_KEY = 'bimdown-view-options';

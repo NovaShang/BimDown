@@ -1,8 +1,19 @@
 import type { ToolHandler, ToolContext } from './types.ts';
-import { snapPoint } from '../utils/snap.ts';
+import { snapPoint, type SnapResult } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { nextSectionId, nextSectionName } from '../views/sectionsIO.ts';
 import type { SectionDef } from '../views/viewTypes.ts';
+import { orthoSnap } from './orthoLock.ts';
+
+/** Snapped pick, locked orthogonal to the start (near an axis, or Shift). */
+function pick(ctx: ToolContext, e: React.PointerEvent): SnapResult | null {
+  const raw = ctx.screenToSvg(e.clientX, e.clientY);
+  if (!raw) return null;
+  const state = ctx.getState();
+  const anchor = state.drawingState?.points[0];
+  const snap = snapPoint(raw, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
+  return orthoSnap(anchor, raw, snap, e.shiftKey);
+}
 
 /** Two clicks in the plan: start and end of a section line. The view looks to
  *  the left of start→end; the new section opens in the view pane. */
@@ -11,12 +22,10 @@ export const drawSectionTool: ToolHandler = {
 
   onPointerDown(ctx: ToolContext, e: React.PointerEvent) {
     if (e.button !== 0) return;
-    const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    if (!svgPt) return;
-
+    const snap = pick(ctx, e);
+    if (!snap) return;
     const state = ctx.getState();
     const points = state.drawingState?.points ?? [];
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, points[0], undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
     const pt = snap.point;
 
     if (points.length === 0) {
@@ -38,11 +47,9 @@ export const drawSectionTool: ToolHandler = {
   },
 
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
-    const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
-    if (!svgPt) return;
+    const snap = pick(ctx, e);
+    if (!snap) return;
     const state = ctx.getState();
-    const anchor = state.drawingState?.points[0];
-    const snap = snapPoint(svgPt, ctx.screenToSvg, state.document?.elements, undefined, anchor, undefined, state.grids, undefined, undefined, getProjectUnits(state), state.disabledSnapTypes);
     if (state.drawingState && state.drawingState.points.length > 0) {
       ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { ...state.drawingState, cursor: snap.point } });
     }

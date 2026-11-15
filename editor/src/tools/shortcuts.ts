@@ -15,6 +15,7 @@ import { isHostedTable } from '../model/tableRegistry.ts';
 import { createGroup, selectAllInstances, selectedGroup, setPinned, ungroup } from '../state/selectionOps.ts';
 import { openDialog, showNotice, toggleShortcuts } from '../state/modifyUi.ts';
 import { ANNOTATION_DISCIPLINE } from '../annotation/model.ts';
+import { matchType, resetTempHide, similarOf, tempHideSelection } from '../state/revitCommands.ts';
 
 type Dispatch = (a: EditorAction) => void;
 
@@ -134,6 +135,22 @@ export const TWO_LETTER: Shortcut[] = [
   } },
   { keys: 'SA', labelKey: 'shortcut.selectAllInstances', group: 'select', run: a => { if (needSelection(a)) selectAllInstances(a.state, a.dispatch, 'view'); } },
   { keys: 'SF', labelKey: 'ctx.selectionFilter', group: 'select', run: a => { if (needSelection(a)) openDialog({ kind: 'filter' }); } },
+  { keys: 'CS', labelKey: 'shortcut.createSimilar', group: 'draw', run: a => {
+    const s = similarOf(a.state);
+    if (!s) { showNotice('notice.selectFirst'); return; }
+    startDrawing(a, s.tableName);
+    if (s.typeId) a.dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...a.state.drawingAttrs, type_id: s.typeId } });
+  } },
+  { keys: 'MA', labelKey: 'shortcut.matchType', group: 'modify', run: a => {
+    if (!needSelection(a)) return;
+    showNotice('notice.matched', { count: matchType(a.state, a.dispatch) });
+  } },
+  { keys: 'HH', labelKey: 'shortcut.hideElement', group: 'view', run: a => { if (needSelection(a)) { tempHideSelection(a.state, 'hide', 'element'); a.dispatch({ type: 'CLEAR_SELECTION' }); } } },
+  { keys: 'HI', labelKey: 'shortcut.isolateElement', group: 'view', run: a => { if (needSelection(a)) tempHideSelection(a.state, 'isolate', 'element'); } },
+  { keys: 'HC', labelKey: 'shortcut.hideCategory', group: 'view', run: a => { if (needSelection(a)) { tempHideSelection(a.state, 'hide', 'category'); a.dispatch({ type: 'CLEAR_SELECTION' }); } } },
+  { keys: 'IC', labelKey: 'shortcut.isolateCategory', group: 'view', run: a => { if (needSelection(a)) tempHideSelection(a.state, 'isolate', 'category'); } },
+  { keys: 'HR', labelKey: 'shortcut.resetTempHide', group: 'view', run: () => resetTempHide() },
+  { keys: 'VV', labelKey: 'vv.title', group: 'view', run: () => openDialog({ kind: 'visibility' }) },
   { keys: 'ZF', labelKey: 'ctx.zoomToFit', group: 'view', run: () => window.dispatchEvent(new Event('bimdown:zoom-fit')) },
   { keys: 'KS', labelKey: 'shortcut.title', group: 'view', run: () => toggleShortcuts() },
 ];

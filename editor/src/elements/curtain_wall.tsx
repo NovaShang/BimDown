@@ -250,6 +250,8 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     });
     return (
       <g data-id={facts.id}>
+        {/* Hit area over the whole wall, door bays included */}
+        <polygon points={facts.footprint2D.map(p => `${p.x},${p.y}`).join(' ')} fill="transparent" stroke="none" />
         {strips}
         {ticks}
         {swings}

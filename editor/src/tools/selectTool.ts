@@ -1,6 +1,7 @@
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import type { ToolHandler, ToolContext } from './types.ts';
-import { snapPoint } from '../utils/snap.ts';
+import { snapPoint, computePixelSize } from '../utils/snap.ts';
+import { rankPicks, wallChain, type PickCandidate, type RankedPick } from './pickPriority.ts';
 import { toSelectionId, toElementId, toLevelId } from '../model/ids.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { isBackgroundDiscipline } from '../state/selectors.ts';
@@ -22,6 +23,9 @@ const gesture = {
   startScreen: { x: 0, y: 0 },
   startSvg: { x: 0, y: 0 },
   clickedId: null as string | null,
+  /** Pressed inside a room / floor / roof with nothing else there: a click
+   *  selects it, a drag box-selects instead of moving it. */
+  softId: null as string | null,
   beforeSnapshot: null as Map<string, CanonicalElement | null> | null,
   accumulatedDx: 0,
   accumulatedDy: 0,
@@ -37,6 +41,7 @@ const gesture = {
     this.isMarquee = false;
     this.marqueeMoved = false;
     this.clickedId = null;
+    this.softId = null;
     this.beforeSnapshot = null;
     this.accumulatedDx = 0;
     this.accumulatedDy = 0;
@@ -50,28 +55,72 @@ const gesture = {
 const lastPointer = { x: NaN, y: NaN };
 const tabCycle = { key: '', index: -1 };
 
-/**
- * Tab / Shift+Tab: select, one at a time, the elements stacked under the
- * pointer (a wall under a room, a door in a wall, a member of a group).
- */
-function cycleUnderPointer(ctx: ToolContext, back: boolean): boolean {
-  if (!Number.isFinite(lastPointer.x) || typeof document === 'undefined') return false;
+/** Pixels around the pointer that count as on a floor / roof edge. */
+const EDGE_PX = 6;
+
+/** An invisible hit shape (no fill, no stroke): a pick area, not drawing. */
+function isPickArea(node: Element): boolean {
+  const clear = (v: string | null) => v === 'none' || v === 'transparent';
+  const fill = node.getAttribute('fill'), stroke = node.getAttribute('stroke');
+  return clear(fill) && (stroke == null || clear(stroke));
+}
+
+/** Elements under the pointer (2D plan), most specific first (pickPriority.ts). */
+function picksAt(ctx: ToolContext, clientX: number, clientY: number): RankedPick[] {
+  if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return [];
+  const p = ctx.screenToSvg(clientX, clientY);
+  if (!p) return [];
   const state = ctx.getState();
-  const ids: string[] = [];
-  for (const node of document.elementsFromPoint(lastPointer.x, lastPointer.y)) {
+  const byId = new Map<string, PickCandidate>();
+  for (const node of document.elementsFromPoint(clientX, clientY)) {
     const sid = ctx.findElementId(node);
-    if (!sid || ids.includes(sid)) continue;
+    if (!sid) continue;
     const el = state.document?.elements.get(toElementId(sid));
     if (!el || el.tableName === 'connector' || el.tableName === 'model_group') continue;
-    ids.push(sid);
+    const tag = node.tagName.toLowerCase();
+    const onLabel = tag === 'text' || (el.tableName === 'space' && tag === 'circle');
+    const pickArea = isPickArea(node);
+    const had = byId.get(sid);
+    if (had) { had.onLabel = had.onLabel || onLabel; had.pickAreaOnly = had.pickAreaOnly && pickArea; }
+    else byId.set(sid, { sid, el, onLabel, pickAreaOnly: pickArea });
   }
-  if (ids.length === 0) return false;
-  const key = ids.join('|');
-  if (tabCycle.key !== key) { tabCycle.key = key; tabCycle.index = -1; }
-  tabCycle.index = (tabCycle.index + (back ? -1 : 1) + ids.length) % ids.length;
-  const pick = ids[tabCycle.index];
-  ctx.dispatch({ type: 'SET_HOVER', id: pick });
-  ctx.dispatch({ type: 'SELECT', ids: [pick], exact: true });
+  return rankPicks([...byId.values()], p, EDGE_PX * computePixelSize(ctx.screenToSvg));
+}
+
+/**
+ * Tab / Shift+Tab: select, one at a time, what lies under the pointer, in
+ * pick order (a door, its wall, the wall's chain, the room, the slab). Like
+ * Revit, where hovering pre-selects the first, the first Tab goes to the
+ * second: over a wall that is its chain of walls joined end to end.
+ */
+function cycleUnderPointer(ctx: ToolContext, back: boolean): boolean {
+  if (!Number.isFinite(lastPointer.x)) return false;
+  const state = ctx.getState();
+  const picks = picksAt(ctx, lastPointer.x, lastPointer.y);
+  if (picks.length === 0) return false;
+  const entries: string[][] = [];
+  let chained = false;
+  for (const pk of picks) {
+    entries.push([pk.sid]);
+    if (!chained && (pk.el.tableName === 'wall' || pk.el.tableName === 'curtain_wall' || pk.el.tableName === 'structure_wall')) {
+      chained = true;
+      const chain = wallChain(pk.el, state.document?.elements.values() ?? []);
+      if (chain.length > 1) {
+        const lv = toLevelId(pk.sid);
+        entries.push(chain.map(w => (lv ? toSelectionId(lv, w.id) : w.id)));
+      }
+    }
+  }
+  const key = entries.map(e => e.join(',')).join('|');
+  if (tabCycle.key !== key) {
+    tabCycle.key = key;
+    tabCycle.index = entries.length > 1 ? (back ? entries.length - 1 : 1) : 0;
+  } else {
+    tabCycle.index = (tabCycle.index + (back ? -1 : 1) + entries.length) % entries.length;
+  }
+  const pick = entries[tabCycle.index];
+  ctx.dispatch({ type: 'SET_HOVER', id: pick[0] });
+  ctx.dispatch({ type: 'SELECT', ids: pick, exact: true });
   return true;
 }
 
@@ -95,6 +144,16 @@ export const selectTool: ToolHandler = {
     gesture.isDragging = true;
     gesture.startScreen = { x: e.clientX, y: e.clientY };
     gesture.clickedId = ctx.findElementId(e.target);
+    // 2D plan: pick by priority among everything under the pointer (3D
+    // picks the nearest hit; connectors keep their port-drag handling below).
+    if (!ctx.resolveMarquee) {
+      const direct = gesture.clickedId ? ctx.getState().document?.elements.get(toElementId(gesture.clickedId)) : undefined;
+      if (direct?.tableName !== 'connector') {
+        const top = picksAt(ctx, e.clientX, e.clientY)[0];
+        if (top?.soft) { gesture.softId = top.sid; gesture.clickedId = null; }
+        else if (top) gesture.clickedId = top.sid;
+      }
+    }
 
     const svgPt = ctx.screenToSvg(e.clientX, e.clientY);
     gesture.startSvg = svgPt || { x: 0, y: 0 };
@@ -323,6 +382,9 @@ export const selectTool: ToolHandler = {
         if (container && state.drawingState === null) {
           finishMarquee(ctx, e);
         }
+      } else if (gesture.softId) {
+        // A click inside a room / floor / roof with nothing else there selects it.
+        ctx.dispatch({ type: 'SELECT', ids: [gesture.softId], additive: e.shiftKey });
       } else if (!e.shiftKey) {
         // Bare click on empty space → clear the selection on release.
         ctx.dispatch({ type: 'CLEAR_SELECTION' });
@@ -446,8 +508,6 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   };
 
   if (marqueeRect.w < 5 && marqueeRect.h < 5) return;
-  // Left → right: window (entirely inside); right → left: crossing.
-  const windowMode = _e.clientX - containerRect.left >= gesture.startScreen.x;
 
   // 3D mode: use resolveMarquee callback
   if (ctx.resolveMarquee) {
@@ -458,55 +518,70 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
     return;
   }
 
-  // 2D mode: use SVG DOM
+  // 2D mode: use SVG DOM. Like Revit, dragging left → right selects what
+  // lies wholly inside the box (window); right → left also what it crosses.
   const svg = ctx.svgRef.current;
   if (!svg) return;
+  const crossing = _e.clientX - containerRect.left < gesture.startScreen.x;
 
   const state = ctx.getState();
   const docElements = state.document?.elements;
 
-  const ids = new Set<string>();
+  // Screen box per element id: the union of its outermost tagged nodes
+  const boxes = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
+  const ctms = new Map<string, DOMMatrix>();
   const elements = svg.querySelectorAll('[data-id]');
   for (const el of elements) {
+    const rawId = el.getAttribute('data-id');
+    if (!rawId || el.closest('.level-underlay')) continue;
+    // A node inside a group tagged with the same id is already in its box
+    if (el.parentElement?.closest('[data-id]')?.getAttribute('data-id') === rawId) continue;
     try {
       const bbox = (el as SVGGraphicsElement).getBBox();
       const ctm = (el as SVGGraphicsElement).getScreenCTM();
       if (!ctm) continue;
-
       const pt1 = svg.createSVGPoint();
       pt1.x = bbox.x;
       pt1.y = bbox.y;
-      const screenPt1 = pt1.matrixTransform(ctm);
-
+      const a = pt1.matrixTransform(ctm);
       const pt2 = svg.createSVGPoint();
       pt2.x = bbox.x + bbox.width;
       pt2.y = bbox.y + bbox.height;
-      const screenPt2 = pt2.matrixTransform(ctm);
-
-      const rawId = el.getAttribute('data-id');
-      if (!rawId) continue;
-      const elemId = toElementId(rawId);
-      const canonical = docElements?.get(elemId);
-      // Window mode tests the element's own geometry (its tag text may stick out of the box).
-      const toScreen = (p: { x: number; y: number }) => {
-        const q = svg.createSVGPoint();
-        q.x = p.x; q.y = p.y;
-        const s = q.matrixTransform(ctm);
-        return { x: s.x - containerRect.left, y: s.y - containerRect.top };
+      const b = pt2.matrixTransform(ctm);
+      const r = {
+        x0: Math.min(a.x, b.x) - containerRect.left, y0: Math.min(a.y, b.y) - containerRect.top,
+        x1: Math.max(a.x, b.x) - containerRect.left, y1: Math.max(a.y, b.y) - containerRect.top,
       };
-      const pts = windowMode && canonical
-        ? modelExtent(canonical).map(toScreen)
-        : [{ x: screenPt1.x - containerRect.left, y: screenPt1.y - containerRect.top }, { x: screenPt2.x - containerRect.left, y: screenPt2.y - containerRect.top }];
-
-      if (marqueeHits(windowMode, pts, marqueeRect)) {
-        if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline, canonical.tableName)) continue;
-        // Connectors are pure derivatives of their host — not selectable.
-        if (canonical?.tableName === 'connector') continue;
-        ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);
-      }
+      if (!ctms.has(rawId)) ctms.set(rawId, ctm);
+      const had = boxes.get(rawId);
+      boxes.set(rawId, had
+        ? { x0: Math.min(had.x0, r.x0), y0: Math.min(had.y0, r.y0), x1: Math.max(had.x1, r.x1), y1: Math.max(had.y1, r.y1) }
+        : r);
     } catch {
       // getBBox can throw for hidden elements
     }
+  }
+
+  const mx0 = marqueeRect.x, my0 = marqueeRect.y, mx1 = marqueeRect.x + marqueeRect.w, my1 = marqueeRect.y + marqueeRect.h;
+  const ids = new Set<string>();
+  for (const [rawId, r] of boxes) {
+    const canonical = docElements?.get(toElementId(rawId));
+    // Window mode tests the element's own geometry where known (its tag text may stick out of the box)
+    const ctm = ctms.get(rawId);
+    const hit = crossing
+      ? r.x0 < mx1 && r.x1 > mx0 && r.y0 < my1 && r.y1 > my0
+      : canonical && ctm
+        ? marqueeHits(true, modelExtent(canonical).map(p => {
+          const q = svg.createSVGPoint(); q.x = p.x; q.y = p.y;
+          const t = q.matrixTransform(ctm);
+          return { x: t.x - containerRect.left, y: t.y - containerRect.top };
+        }), marqueeRect)
+        : r.x0 >= mx0 && r.x1 <= mx1 && r.y0 >= my0 && r.y1 <= my1;
+    if (!hit) continue;
+    if (canonical && isBackgroundDiscipline(canonical.discipline, state.activeDiscipline, canonical.tableName)) continue;
+    // Connectors are pure derivatives of their host — not selectable.
+    if (canonical?.tableName === 'connector') continue;
+    ids.add(state.currentLevel ? toSelectionId(state.currentLevel, rawId) : rawId);
   }
 
   if (ids.size > 0) {
