@@ -16,6 +16,7 @@ fields:
       - cooling_tower
       - fan
       - pump
+      - coil
       - transformer
       - panelboard
       - generator

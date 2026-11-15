@@ -17,12 +17,12 @@ export interface LoadedMep extends MepModelIn {
   rowOf: Map<string, Record<string, string>>;
 }
 
-function num(v: unknown, fallback = 0): number {
+export function num(v: unknown, fallback = 0): number {
   const n = parseFloat(String(v ?? ''));
   return Number.isFinite(n) ? n : fallback;
 }
 
-function levelElevations(dir: string): Map<string, number> {
+export function levelElevations(dir: string): Map<string, number> {
   const out = new Map<string, number>();
   const p = join(dir, 'global', 'level.csv');
   if (!existsSync(p)) return out;
@@ -30,7 +30,7 @@ function levelElevations(dir: string): Map<string, number> {
   return out;
 }
 
-function featuresById(path: string): Map<string, BimDownFeature> {
+export function featuresById(path: string): Map<string, BimDownFeature> {
   const map = new Map<string, BimDownFeature>();
   if (!existsSync(path)) return map;
   try {
@@ -72,6 +72,8 @@ export function loadMep(dir: string): LoadedMep {
           a: [lg.start_x, lg.start_y, lg.start_z ?? base + off],
           b: [lg.end_x, lg.end_y, lg.end_z ?? base + off],
           from: row.from ?? '', to: row.to ?? '', system: (row.system_type ?? '').trim(),
+          shape: (row.shape ?? '').trim() || (t === 'duct' || t === 'cable_tray' ? 'rect' : 'round'),
+          w: num(row.size_x), h: num(row.size_y),
         });
         rowOf.set(`${d.name}/${row.id}`, row);
       }
@@ -88,6 +90,7 @@ export function loadMep(dir: string): LoadedMep {
           id: row.id, scope: d.name, table: t, pos,
           kind: (row.kind ?? '').trim(), fitting: (row.fitting ?? '').trim(),
           system: (row.system_type ?? '').trim(), circuitId: (row.circuit_id ?? '').trim(), load: num(row.load),
+          flow: num(row.flow),
         });
         hostFrame.set(`${d.name}/${row.id}`, { pos, rot: pg.rotation ?? 0 });
         rowOf.set(`${d.name}/${row.id}`, row);
@@ -110,6 +113,7 @@ export function loadMep(dir: string): LoadedMep {
       hostId: r.host_id, scope: hostFrame.has(`${r.__dir}/${r.host_id}`) ? r.__dir : 'global', name: r.name,
       pos: [host.pos[0] + ox * Math.cos(th) - oy * Math.sin(th), host.pos[1] + ox * Math.sin(th) + oy * Math.cos(th), host.pos[2] + oz],
       system: (r.system_type ?? '').trim(), domain: (r.domain ?? '').trim(),
+      shape: (r.shape ?? '').trim(), w: num(r.size_w), h: num(r.size_h), flowDir: (r.flow_dir ?? '').trim(),
     });
   }
 

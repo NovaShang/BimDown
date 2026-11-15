@@ -263,6 +263,32 @@ program
     if (report.problems.some(p => p.severity === 'warning')) process.exitCode = 1;
   });
 
+// ─── clash ────────────────────────────────────────────────
+program
+  .command('clash')
+  .argument('<dir>', 'BimDown project directory')
+  .option('--tolerance <mm>', 'Smallest overlap to report, mm', '10')
+  .option('--clearance <mm>', 'Also report MEP closer than this to MEP / structure, mm (0 = off)', '0')
+  .option('--level <id>', 'Only MEP on this level (obstacles from every level)')
+  .option('--json', 'Print the report as JSON')
+  .option('--mep-only', 'Only MEP vs MEP')
+  .description('MEP clash detection: ducts / pipes / conduits / cable trays and devices against structure (high), against other MEP they do not connect to (medium), through slabs / roofs / non-structural walls with no opening (low penetration), and closer than --clearance (low). Exit code 0 unless the project cannot be read.')
+  .action(async (dir: string, opts: { tolerance: string; clearance: string; level?: string; json?: boolean; mepOnly?: boolean }) => {
+    const absDir = resolve(dir);
+    const tolerance = Number(opts.tolerance), clearance = Number(opts.clearance);
+    if (!existsSync(absDir)) { console.error(`No such directory: ${dir}`); process.exitCode = 1; return; }
+    if (!Number.isFinite(tolerance) || tolerance < 0 || !Number.isFinite(clearance) || clearance < 0) {
+      console.error('--tolerance and --clearance take a length in mm (>= 0)'); process.exitCode = 1; return;
+    }
+    if (opts.level && !discoverLayout(absDir).levelDirs.some(d => d.name === opts.level) && opts.level !== 'global') {
+      console.error(`No level directory ${opts.level} in ${dir}`); process.exitCode = 1; return;
+    }
+    const { clashReport, formatClashReport } = await import('./mep/clash-load.js');
+    const report = clashReport(absDir, { toleranceMm: tolerance, clearanceMm: clearance, level: opts.level, mepOnly: opts.mepOnly });
+    if (opts.json) console.log(JSON.stringify(report, null, 2));
+    else for (const line of formatClashReport(report)) console.log(line);
+  });
+
 // ─── merge ───────────────────────────────────────────────
 program
   .command('merge')
