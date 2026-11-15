@@ -4,7 +4,7 @@
 
 ## Phase 0: Prerequisites
 
-Run `bimdown init <dir>`. Gather from user (ask if missing): building type, total GFA, floor count, site constraints, functional requirements.
+Run `bimdown init <dir> --units <m|mm|ft|in>`. Gather from user (ask if missing): building type, total GFA, floor count, site constraints, functional requirements.
 
 ## Phase 1: Programming & Massing
 

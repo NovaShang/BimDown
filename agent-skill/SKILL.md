@@ -51,7 +51,7 @@ project/
 ```
 
 - `project_metadata.json` takes only the known keys (`format_version`, `units`, …); unknown keys such as `name` fail `build`.
-- Start with `bimdown init <dir>`, then edit `global/level.csv` (elevations are absolute, basements negative) and `global/grid.csv`.
+- Start with `bimdown init <dir> --units <m|mm|ft|in>` (default `m`), then edit `global/level.csv` (elevations are absolute, basements negative) and `global/grid.csv`.
 - An element's base level is **always the directory it is in**. Put it in the level it starts from; only elements spanning more than one level go to `global/`.
 - **Units**: use the units `project_metadata.json` declares (`m`, `ft`, `in`, `mm`; new project: the user's units, else `m`). Every number in every file is in that unit — never convert a project's declared units.
 - **IDs**: `{prefix}-{n}` with digits (`w-12`, `sc-3`, `f-40`); `lv-*` / `gr-*` may use any suffix. IDs are unique per table **per level**. The CSV row and its GeoJSON Feature share the id (`properties.id`).
@@ -74,7 +74,7 @@ Most elements are **level-anchored**: their geometry is 2D and their height come
 | duct, pipe, cable_tray, conduit | 3D LineString | | z = **centre line** |
 | `door`, `window`, `opening` | none (hosted) | **level** + `base_offset` (sill height above the level, not above the wall base) | + `height` |
 
-So a 180 mm slab whose top is at −0.100 on level `lv-1` (elevation 0) is `base_offset: -0.1, thickness: 0.18`; a 300×700 beam whose top is flush with that slab has z = −0.1 and `size_y: 0.7`.
+So a 180 mm slab whose top is at 4.100 on level `lv-2` (elevation 4.2) is `base_offset: -0.1, thickness: 0.18` (relative to the level); a 300×700 beam whose top is flush with that slab has z = 4.1 (absolute) and `size_y: 0.7`.
 
 - **Offsets are relative to a level; spatial z is absolute.** `base_offset` / `top_offset` are added to a level elevation. The z in a beam/duct/ramp coordinate is the absolute elevation — the same number whatever level directory the element is in (a beam at elevation 3.95 in `lv-2` whose elevation is 4.2 has z = 3.95, not −0.25).
 - `top_level_id` may be the element's own level with a negative `top_offset` (e.g. a pit wall in `lv-B1` from −5.9 to −4.9 is `base_offset: -1.5, top_level_id: lv-B1, top_offset: -0.5`). Use whichever reads more clearly.
@@ -184,7 +184,7 @@ wn-1,C1515,w-7,4.2,1.5,1.5,0.9,aluminum
 
 ## 7b. Element types
 
-Optional Revit-style types in `global/` (`bimdown init` writes a metric starter catalog): `wall_type`, `slab_type`, `roof_type`, `ceiling_type` (layers in `type_layer.csv`), `door_type`, `window_type` (width, height, operation, `u_value`, `shgc`, `vt`), `curtain_wall_type`, `column_type`, `beam_type`.
+Optional Revit-style types in `global/` (`bimdown init` writes a starter catalog scaled to the project units: metric sizes, names in mm; add imperial types in ft/in projects): `wall_type`, `slab_type`, `roof_type`, `ceiling_type` (layers in `type_layer.csv`), `door_type`, `window_type` (width, height, operation, `u_value`, `shgc`, `vt`), `curtain_wall_type`, `column_type`, `beam_type`.
 - Elements set `type_id` and leave the type's fields empty (e.g. wall `thickness`, door `width`); a value they set overrides the type for that element.
 - `type_layer.csv`: `id,type_id,seq,function,material,thickness,conductivity,name`; `seq` 1 = exterior / top, `function` core | substrate | insulation | air_gap | membrane | finish. Type thickness = sum of layers.
 - A wall's layer 1 is on its left looking start→end: draw exterior walls clockwise seen from above.
@@ -194,13 +194,13 @@ Optional Revit-style types in `global/` (`bimdown init` writes a metric starter 
 
 | Command | Purpose |
 |---|---|
-| `bimdown init <dir>` | new empty project |
+| `bimdown init <dir> [--units m\|mm\|ft\|in]` | new empty project |
 | `bimdown import-ifc <file.ifc> <dir>` | new project from an IFC2x3 / IFC4 model (Revit, ArchiCAD …); builds it and reports skipped elements and room problems |
 | `bimdown build <dir>` | validate, snap, normalise, compute spaces — run after every edit |
 | `bimdown render <dir> [-l level] [-o out.png] [-w width]` | plan image of a level |
 | `bimdown query <dir> "<sql>" [--json]` | DuckDB SQL over all tables incl. computed fields |
 | `bimdown info <dir>` | element counts per level |
-| `bimdown schema [table]` | columns and types of a table |
+| `bimdown schema <table>` | columns and types of a table (no table: a short index of all tables) |
 | `bimdown diff <a> <b>` / `merge <dirs…> -o <out>` / `sync <dir>` | compare / combine / normalise projects |
 | `bimdown resolve-topology <dir>` | connect MEP runs (after all MEP is placed) |
 | `bimdown publish <dir>` | upload for a 3D share link — **network; ask the user first** |

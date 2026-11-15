@@ -177,9 +177,9 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 1. **`bimdown query <dir> <sql> [--json]`** —— DuckDB SQL 查询,含 hydrate 后的几何字段。
 2. **`bimdown render <dir> [-l level] [-o out.png] [-w width]`** —— 渲染单层为 PNG/SVG 图。
 3. **`bimdown build <dir>`** —— 校验 + snap 端点 + 几何归一化 + 计算空间边界。**每次编辑后必跑**。
-4. **`bimdown schema [table]`** —— 打印表的完整 schema。
+4. **`bimdown schema <table>`** —— 打印该表的完整 schema;不带表名只打印所有表的简短索引。
 5. **`bimdown diff <dirA> <dirB>`** —— 项目结构差异。
-6. **`bimdown init <dir>`** —— 创建空项目(`format_version: 2`)。
+6. **`bimdown init <dir> [--units m|mm|ft|in]`** —— 创建空项目(`format_version: 2`,缺省 `m`)。
 7. **`bimdown publish <dir>`** —— 上传到 bim.jouledown.com,返回分享链接(联网,**事先征求用户同意**)。
 8. **`bimdown info <dir>`** —— 各层级元素数量统计。
 9. **`bimdown resolve-topology <dir>`** —— 自动解析 MEP 曲线连接关系。
@@ -198,7 +198,7 @@ BimDown 采用 **"所见即所存"** 模型:CSV / GeoJSON 文件中每一个坐�
 
 ## 构件类型（type）
 
-`global/` 下可选的 Revit 式类型表（`bimdown init` 会写入一套公制起步类型）：`wall_type`、`slab_type`、`roof_type`、`ceiling_type`（分层写在 `type_layer.csv`），`door_type`、`window_type`（宽、高、开启方式、`u_value`、`shgc`、`vt`），`curtain_wall_type`、`column_type`、`beam_type`。
+`global/` 下可选的 Revit 式类型表（`bimdown init` 会写入一套按项目单位换算的起步类型:尺寸为公制规格、名称按毫米;ft/in 项目按需补英制类型）：`wall_type`、`slab_type`、`roof_type`、`ceiling_type`（分层写在 `type_layer.csv`），`door_type`、`window_type`（宽、高、开启方式、`u_value`、`shgc`、`vt`），`curtain_wall_type`、`column_type`、`beam_type`。
 - 构件填 `type_id`，类型给出的字段留空（如墙 `thickness`、门 `width`）；构件自己填的值只覆盖该构件。
 - `type_layer.csv`：`id,type_id,seq,function,material,thickness,conductivity,name`；`seq` 1 为外侧 / 顶面，`function` 取 core | substrate | insulation | air_gap | membrane | finish；类型厚度 = 各层之和。
 - 墙的第 1 层在其左侧（从起点看向终点）：外墙按俯视顺时针绘制，保温和饰面朝外。
