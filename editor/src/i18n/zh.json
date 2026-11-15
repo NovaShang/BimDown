@@ -1133,5 +1133,7 @@
   "renumber.cat.equipment.water_heater": "热水器",
   "renumber.cat.equipment.tank": "水箱",
   "renumber.cat.equipment.other": "其他设备",
-  "levels.roofOnTop": "复制到顶层时楼板改为屋面板"
+  "levels.roofOnTop": "复制到顶层时楼板改为屋面板",
+  "display.Beam Systems": "梁系统",
+  "field.Type Id": "梁类型"
 }

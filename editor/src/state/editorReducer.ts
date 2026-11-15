@@ -27,6 +27,7 @@ import { loadViewOptions, saveViewOptions } from './viewOptions.ts';
 import { followColumnMoves } from '../model/framingCascade.ts';
 import { followColumnMovesAbove } from '../model/framingLevels.ts';
 import { autoNumberCreated } from './numbering.ts';
+import { regenerateBeamSystem, touchedBeamSystems } from '../model/beamSystem.ts';
 import { initialViewsState } from '../views/viewTypes.ts';
 import { applyStairConsistency, stairsTouchedBy } from '../model/stairElements.ts';
 import { isViewsAction, viewsReducer } from '../views/viewsReducer.ts';
@@ -267,9 +268,49 @@ export function editorReducer(state: EditorState, action: EditorAction): EditorS
     const r = withProjectSelection(state, action as Extract<EditorAction, { ids: string[] }>);
     if (r) return r;
   }
-  const next = coreReducer(state, action);
+  const next = cascadeBeamSystems(state, coreReducer(state, action), action);
   // Any selection change ends a project-wide selection
   return next.projectSelection && next.selectedIds !== state.selectedIds ? { ...next, projectSelection: undefined } : next;
+}
+
+/**
+ * Associative beam systems: an edit that changed a beam_system (spacing,
+ * direction, type, bay outline, deletion) regenerates its beams in the same
+ * undo step (model/beamSystem.ts). Undo / redo replay the stored patch.
+ */
+function cascadeBeamSystems(prev: EditorState, next: EditorState, action: EditorAction): EditorState {
+  if (action.type === 'UNDO' || action.type === 'REDO' || next.history === prev.history || !next.document || !prev.document) return next;
+  if (next.document.levelId !== prev.document.levelId) return next;
+  const cmd = next.history.undoStack[next.history.undoStack.length - 1];
+  if (!cmd || cmd.multi || cmd.level) return next;
+  const touched = touchedBeamSystems(cmd.before, cmd.after);
+  if (touched.length === 0) return next;
+  const elements = new Map(next.document.elements);
+  const before = new Map(cmd.before), after = new Map(cmd.after);
+  let changed = false;
+  for (const id of touched) {
+    const sys = elements.get(id);
+    const patch = sys && sys.geometry === 'polygon'
+      ? regenerateBeamSystem(sys, elements, next.project?.types)
+      // Deleted system: its beams go too (unless the edit deleted them already)
+      : new Map([...elements.values()].filter(e => e.tableName === 'beam' && e.attrs.beam_system_id === id).map(e => [e.id, null] as const));
+    for (const [bid, b] of patch) {
+      if (!before.has(bid)) before.set(bid, prev.document.elements.get(bid) ?? null);
+      after.set(bid, b);
+      if (b) elements.set(bid, b); else elements.delete(bid);
+      changed = true;
+    }
+  }
+  if (!changed) return next;
+  const undoStack = [...next.history.undoStack.slice(0, -1), { ...cmd, before, after }];
+  const version = next.documentVersion;
+  const keys = new Set([...(next.lastMutation?.version === version ? next.lastMutation.keys : []), 'structure/beam']);
+  return {
+    ...next,
+    document: { ...next.document, elements },
+    history: { ...next.history, undoStack },
+    lastMutation: { version, keys: [...keys] },
+  };
 }
 
 /** Element changes between two maps of one level. */
