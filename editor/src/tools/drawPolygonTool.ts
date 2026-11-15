@@ -9,6 +9,8 @@ import { resolveNextLevelId } from './levelUtil.ts';
 import { variantDefaults } from './variantDefaults.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { placementTypeForTable } from '../model/tableRegistry.ts';
+import { parseTypedLength, resolveTypedPoint, typedKey } from './typedInput.ts';
+import type { Point } from '../model/elements.ts';
 
 /** Minimum 3 vertices to form a polygon */
 const MIN_VERTICES = 3;
@@ -65,6 +67,53 @@ export const drawPolygonTool: ToolHandler = {
       state: { points, cursor: pt },
     });
     ctx.setSnap(snap);
+  },
+
+  // Precise vertices: the first one as X, Tab, Y, Enter (model coordinates);
+  // the next ones as length, Tab, angle (° CCW from +X; toward the cursor
+  // when blank), Enter — or '@' ΔX, Tab, ΔY, Enter from the last vertex.
+  // Enter with nothing typed still closes the outline.
+  onKeyDown(ctx: ToolContext, e: KeyboardEvent): boolean {
+    const s = ctx.getState();
+    const ds = s.drawingState;
+    if (!s.drawingTarget) return false;
+    const points = ds?.points ?? [];
+    if (!ds?.typed && e.key === '@' && points.length > 0 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+      e.preventDefault();
+      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { ...ds, points, cursor: ds?.cursor ?? null, typed: { length: '', angle: '', field: 'length', relative: true } } });
+      return true;
+    }
+    const r = !ds?.typed && e.key === '-' && !e.ctrlKey && !e.metaKey && !e.altKey
+      ? { handled: true, typed: { length: '-', angle: '', field: 'length' as const } }
+      : typedKey(e, ds?.typed);
+    if (!r.handled) return false;
+    e.preventDefault();
+    const unit = getProjectUnits(s);
+    if (e.key === 'Enter') {
+      const t = ds?.typed;
+      if (!t) return false;
+      const last = points[points.length - 1];
+      let at: Point | null;
+      if (!last) {
+        const x = parseTypedLength(t.length, unit), y = parseTypedLength(t.angle, unit);
+        at = x == null || y == null ? null : { x, y };
+      } else if (t.relative) {
+        at = { x: last.x + (parseTypedLength(t.length, unit) ?? 0), y: last.y + (parseTypedLength(t.angle, unit) ?? 0) };
+      } else at = resolveTypedPoint(last, ds?.cursor ?? null, t, unit);
+      if (!at) return true;
+      const round = (v: number) => Math.round(v * 1e6) / 1e6;
+      const pt = { x: round(at.x), y: round(at.y) };
+      // Back on the first vertex: close
+      if (points.length >= MIN_VERTICES && Math.hypot(pt.x - points[0].x, pt.y - points[0].y) < 1e-6) {
+        createPolygon(s, ctx.dispatch, points);
+        return true;
+      }
+      ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [...points, pt], cursor: pt } });
+      return true;
+    }
+    const typed = r.typed && ds?.typed?.relative ? { ...r.typed, relative: true } : r.typed;
+    ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { ...ds, points, cursor: ds?.cursor ?? null, typed } });
+    return true;
   },
 };
 
