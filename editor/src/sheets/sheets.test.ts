@@ -41,7 +41,7 @@ describe('sheets', () => {
     expect(set.viewports.map(v => v.id)).toEqual(['vp-1', 'vp-2', 'vp-3']);
     const again = sheetSetFromRows(parseCsv(sheetsToCsv(set.sheets)), parseCsv(viewportsToCsv(set.viewports)));
     expect(again).toEqual(set);
-    expect(viewportsToCsv(set.viewports).split('\n')[3]).toBe('vp-3,sh-2,schedule,,,doors,,,120,110,');
+    expect(viewportsToCsv(set.viewports).split('\n')[3]).toBe('vp-3,sh-2,schedule,,,doors,,,120,110,,,,,');
     expect(nextSheetNumber(set.sheets)).toBe('A-602');
     // Structural / MEP sheets: own prefix
     expect(nextSheetNumber(set.sheets, 'structure')).toBe('S-101');
@@ -70,6 +70,23 @@ describe('sheets', () => {
     expect(plan.rect.y + plan.rect.h / 2).toBeCloseTo(170, 6);
     // Everything inside the paper
     for (const it of all.items) if (it.kind === 'path') for (const q of it.pts) { expect(q.x).toBeGreaterThanOrEqual(0); expect(q.y).toBeLessThanOrEqual(297); }
+  });
+
+  it('crops a viewport to a region of its view and flags views reaching past the drawing area', async () => {
+    const files = project();
+    files['global/sheet_viewport.csv'] = 'id,sheet_id,view_type,level_id,view_id,schedule,discipline,scale,x,y,title,crop_min_x,crop_min_y,crop_max_x,crop_max_y\n'
+      + 'vp-1,sh-1,plan,lv-1,,,architecture,100,150,170,,0,0,2,3\nvp-2,sh-1,section,,vw-1,,,100,395,90,\n';
+    const ds = memoryDataSource(files);
+    const p = await loadProject(ds);
+    const set = p.sheets!;
+    expect(set.viewports[0].crop).toEqual({ minX: 0, minY: 0, maxX: 2, maxY: 3 });
+    expect(sheetSetFromRows(parseCsv(SHEETS), parseCsv(viewportsToCsv(set.viewports))).viewports[0].crop).toEqual(set.viewports[0].crop);
+    const c = composeSheet(set.sheets[0], set, new SheetDrawings({ project: p, grids: [], lang: 'en', date: new Date(2026, 10, 7) }));
+    const plan = c.viewports[0];
+    expect(plan.drawing!.bounds).toEqual({ minX: 0, minY: 0, maxX: 2, maxY: 3 });
+    for (const it of plan.drawing!.items) if (it.kind === 'path') for (const q of it.pts) expect(q.x).toBeLessThanOrEqual(2 + 1e-9);
+    expect(plan.rect.w).toBeCloseTo(20, 6); // 2 m at 1:100
+    expect(c.outside).toEqual(['vp-2']);
   });
 
   it('prints door schedules by type with counts, and writes one DXF per sheet in mm', async () => {

@@ -12,6 +12,7 @@
  * gets a Revit-style title: detail number, name, scale. Annotation sizes are
  * paper sizes, so dimensions and notes read the same at 1:50 and 1:200.
  */
+import { cropDrawing } from './crop.ts';
 import type { CanonicalElement, Point } from '../../model/elements.ts';
 import type { GridData, ProjectData } from '../../types.ts';
 import { LAYER_STYLES } from '../../types.ts';
@@ -297,6 +298,8 @@ export interface ComposedSheet {
   items: DrawItem[];
   layers: Map<string, DrawingLayer>;
   viewports: PlacedViewport[];
+  /** Viewports (ids) that reach past the drawing frame. */
+  outside: string[];
 }
 
 function boxToRect(b: Box): Rect { return { x: b.minX, y: b.minY, w: b.maxX - b.minX, h: b.maxY - b.minY }; }
@@ -567,7 +570,9 @@ export function composeSheet(sheet: SheetDef, set: SheetSet, drawings: SheetDraw
   const own = set.viewports.filter(v => v.sheetId === sheet.id);
   for (const vp of own) {
     if (vp.type === 'schedule' || vp.type === 'legend') continue;
-    const d = drawings.drawing(vp, vp.scale, placements);
+    const full = drawings.drawing(vp, vp.scale, placements);
+    // Crop region: only that box of the view
+    const d = full && vp.crop ? cropDrawing(full, vp.crop) : full;
     detail++;
     if (d) for (const l of d.legend) systems.set(l.label, l);
     let rect: Rect = { x: vp.x - 30, y: vp.y - 20, w: 60, h: 40 };
@@ -604,7 +609,15 @@ export function composeSheet(sheet: SheetDef, set: SheetSet, drawings: SheetDraw
   const border = new Paper();
   border.rect(SHEET_LAYERS.frame, F.frame, { weight: 0.5 });
   const layers = new Map([...border.layers, ...tb.layers]);
-  return { sheet, frame: F, items: [...border.items, ...tb.items], layers, viewports };
+  // Views (with their titles) reaching past the drawing area (into the border or the title strip)
+  const fr = F.area;
+  const outside = viewports.filter(v => {
+    const b = itemsBounds(v.titleItems);
+    const x0 = Math.min(v.rect.x, b?.minX ?? Infinity), y0 = Math.min(v.rect.y, b?.minY ?? Infinity);
+    const x1 = Math.max(v.rect.x + v.rect.w, b?.maxX ?? -Infinity), y1 = Math.max(v.rect.y + v.rect.h, b?.maxY ?? -Infinity);
+    return x0 < fr.x - 0.5 || y0 < fr.y - 0.5 || x1 > fr.x + fr.w + 0.5 || y1 > fr.y + fr.h + 0.5;
+  }).map(v => v.vp.id);
+  return { sheet, frame: F, items: [...border.items, ...tb.items], layers, viewports, outside };
 }
 
 /** Every item of a composed sheet in paper mm (for PDF / DXF), and the layers they use. */

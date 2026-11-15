@@ -9,7 +9,7 @@ export const SHEET_CSV_PATH = 'global/sheet.csv';
 export const VIEWPORT_CSV_PATH = 'global/sheet_viewport.csv';
 
 const SHEET_HEADER = 'id,number,name,paper,revision,revision_date,revision_note,issue_date,drawn_by,checked_by';
-const VIEWPORT_HEADER = 'id,sheet_id,view_type,level_id,view_id,schedule,discipline,scale,x,y,title';
+const VIEWPORT_HEADER = 'id,sheet_id,view_type,level_id,view_id,schedule,discipline,scale,x,y,title,crop_min_x,crop_min_y,crop_max_x,crop_max_y';
 
 const VIEWPORT_TYPES = new Set<ViewportType>(['plan', 'section', 'elevation', 'schedule', 'legend']);
 const DISCIPLINES = new Set<DrawingDiscipline>(['architecture', 'structure', 'mep', 'all']);
@@ -27,6 +27,12 @@ export function sheetsFromRows(rows: CsvRow[]): SheetDef[] {
     drawnBy: r.drawn_by || '',
     checkedBy: r.checked_by || '',
   }));
+}
+
+/** crop_min_x … crop_max_y, all four finite and a non-empty box. */
+function cropOf(r: CsvRow): Pick<ViewportDef, 'crop'> {
+  const [x0, y0, x1, y1] = ['crop_min_x', 'crop_min_y', 'crop_max_x', 'crop_max_y'].map(k => parseFloat(r[k] ?? ''));
+  return [x0, y0, x1, y1].every(Number.isFinite) && x1 > x0 && y1 > y0 ? { crop: { minX: x0, minY: y0, maxX: x1, maxY: y1 } } : {};
 }
 
 export function viewportsFromRows(rows: CsvRow[]): ViewportDef[] {
@@ -47,6 +53,7 @@ export function viewportsFromRows(rows: CsvRow[]): ViewportDef[] {
       scale: Number.isFinite(scale) && scale > 0 ? scale : 100,
       x, y,
       title: r.title || '',
+      ...cropOf(r),
     });
   }
   return out;
@@ -75,6 +82,9 @@ export function viewportsToCsv(viewports: ViewportDef[]): string {
     v.type === 'plan' ? v.discipline : '',
     v.type === 'schedule' || v.type === 'legend' ? '' : String(v.scale),
     num(v.x), num(v.y), esc(v.title),
+    ...(v.crop && v.type !== 'schedule' && v.type !== 'legend'
+      ? [v.crop.minX, v.crop.minY, v.crop.maxX, v.crop.maxY].map(n => String(Math.round(n * 1e6) / 1e6))
+      : ['', '', '', '']),
   ].join(','));
   return [VIEWPORT_HEADER, ...rows].join('\n') + '\n';
 }

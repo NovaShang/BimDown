@@ -52,6 +52,8 @@ export interface ViewportDef {
   y: number;
   /** Empty = the view's own name. */
   title: string;
+  /** Drawing viewports: only this region of the view (model coordinates of the view). */
+  crop?: { minX: number; minY: number; maxX: number; maxY: number };
 }
 
 export interface SheetSet {

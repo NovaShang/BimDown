@@ -293,6 +293,24 @@ export default function SheetsPanel({ onClose }: { onClose: () => void }) {
                   </select>
                 </Field>
               )}
+              {composed?.outside.includes(vp.id) && (
+                <div className="rounded border border-amber-500/40 bg-amber-500/10 px-2 py-1 text-[10px] text-amber-700 dark:text-amber-400" data-testid="viewport-outside">
+                  {t('sheets.vpOutside')}
+                </div>
+              )}
+              {(vp.type === 'plan' || vp.type === 'section' || vp.type === 'elevation') && (
+                <TextField label={t('sheets.crop')} hint={t('sheets.cropHint')} testId="viewport-crop" disabled={readonly}
+                  value={vp.crop ? [vp.crop.minX, vp.crop.minY, vp.crop.maxX, vp.crop.maxY].map(n => String(Math.round(n * 1000) / 1000)).join(', ') : ''}
+                  placeholder={(() => {
+                    const b = composed?.viewports.find(p => p.vp.id === vp.id)?.drawing?.bounds;
+                    return b ? [b.minX, b.minY, b.maxX, b.maxY].map(n => String(Math.round(n * 10) / 10)).join(', ') : '';
+                  })()}
+                  onCommit={v => {
+                    const n = v.split(/[,;\s]+/).filter(Boolean).map(Number);
+                    if (v.trim() === '') updateVp(vp.id, { crop: undefined });
+                    else if (n.length === 4 && n.every(Number.isFinite) && n[2] > n[0] && n[3] > n[1]) updateVp(vp.id, { crop: { minX: n[0], minY: n[1], maxX: n[2], maxY: n[3] } });
+                  }} />
+              )}
               <TextField label={t('sheets.vpTitle')} value={vp.title} disabled={readonly} hint={t('sheets.vpTitleHint')} testId="viewport-title"
                 placeholder={composed?.viewports.find(p => p.vp.id === vp.id)?.title}
                 onCommit={v => updateVp(vp.id, { title: v.trim() })} />
@@ -435,7 +453,7 @@ function SheetCanvas({ composed, selected, readonly, onSelect, onMove, onDrop }:
         <DrawingItemsSvg items={pv.paperItems} layers={pv.paperLayers} pm={1} />
         <DrawingItemsSvg items={pv.titleItems} layers={pv.paperLayers} pm={1} />
         <rect x={r.x - 2} y={r.y - 2} width={r.w + 4} height={r.h + 4}
-          fill="rgba(58,123,255,0.001)" stroke={sel ? '#3a7bff' : 'transparent'} strokeWidth={0.6} strokeDasharray="3 2"
+          fill="rgba(58,123,255,0.001)" stroke={sel ? '#3a7bff' : composed.outside.includes(pv.vp.id) ? '#d97706' : 'transparent'} strokeWidth={0.6} strokeDasharray="3 2"
           className={readonly ? 'cursor-pointer' : 'cursor-move'}
           onPointerDown={e => onPointerDown(e, pv.vp.id)} />
       </g>

@@ -40,7 +40,7 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   roof_type: { csv: ['id', 'name', 'description', 'material', 'thickness'], geojson: [] },
   room_separator: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned'], geojson: ['base_offset'] },
   sheet: { csv: ['id', 'number', 'name', 'paper', 'revision', 'revision_date', 'revision_note', 'issue_date', 'drawn_by', 'checked_by'], geojson: [] },
-  sheet_viewport: { csv: ['id', 'sheet_id', 'view_type', 'level_id', 'view_id', 'schedule', 'discipline', 'scale', 'x', 'y', 'title'], geojson: [] },
+  sheet_viewport: { csv: ['id', 'sheet_id', 'view_type', 'level_id', 'view_id', 'schedule', 'discipline', 'scale', 'x', 'y', 'title', 'crop_min_x', 'crop_min_y', 'crop_max_x', 'crop_max_y'], geojson: [] },
   slab: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'material', 'function', 'thickness', 'type_id'], geojson: ['base_offset'] },
   slab_type: { csv: ['id', 'name', 'description', 'material', 'thickness', 'material_grade'], geojson: [] },
   space: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'x', 'y', 'name'], geojson: ['base_offset'] },
