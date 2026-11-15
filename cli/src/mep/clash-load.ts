@@ -143,6 +143,18 @@ export function loadClashModel(dir: string, level?: string): ClashModelIn {
         const z = d.base + num(f.properties?.base_offset);
         const [dw, dh] = MEMBER_DEFAULTS[t];
         const w = num(row.size_x, dw / unitM);
+        if ((row.shape ?? '').trim() === 'open_web') {
+          // Open-web joist: only its chords are solid (ducts and pipes run through the web)
+          const d = num(row.size_y, 0.356 / unitM), fl = Math.min(num(row.flange, Math.min(0.032 / unitM, d * 0.12)), d / 3);
+          for (const drop of [0, d - fl]) {
+            m.members!.push({
+              id: row.id, scope, table: t,
+              a: [lg.start_x, lg.start_y, (lg.start_z ?? z) - drop], b: [lg.end_x, lg.end_y, (lg.end_z ?? z) - drop],
+              shape: 'rect', w, h: fl, top: true,
+            });
+          }
+          continue;
+        }
         m.members!.push({
           id: row.id, scope, table: t,
           a: [lg.start_x, lg.start_y, lg.start_z ?? z], b: [lg.end_x, lg.end_y, lg.end_z ?? z],

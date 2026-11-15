@@ -57,7 +57,8 @@ function memberAttrs(ctx: ImportContext, id: number, table: 'column' | 'structur
   const ft = familyType(ctx, id);
   const t = model.typeOf.get(id);
   const section = resolveSection(measured, extents, [ft.type, t ? str(model.line(t)?.Name) ?? undefined : undefined, ft.family, str(model.line(id)?.ObjectType) ?? undefined]);
-  const material = elementMaterial(model, id);
+  // A catalogue steel section (or an open-web joist) without an IFC material is steel
+  const material = elementMaterial(model, id) ?? (section.designation || section.kind === 'joist' ? 'steel' : null);
   const cols = sectionColumns(section, table === 'column');
   const typeTable = table === 'column' || table === 'structure_column' ? 'column_type' : 'beam_type';
   const { typeId, attrs } = sectionType(ctx, typeTable, ft, cols, material ?? undefined, section.designation);

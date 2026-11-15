@@ -258,7 +258,7 @@ describe('import-ifc structural sections, types and grades', () => {
     const { files } = importIfc(api, enc(ifc));
     const beamTypes = [...table(files, 'beam_type').values()];
     expect(beamTypes).toHaveLength(1);
-    expect(beamTypes[0]).toMatchObject({ name: 'W310X39', description: 'M_W-Wide Flange', shape: 'i_shape', size_x: '0.165', size_y: '0.31', flange: '0.01', web: '0.006', material: 'steel' });
+    expect(beamTypes[0]).toMatchObject({ name: 'W310X39', description: 'M_W-Wide Flange', shape: 'i_shape', size_x: '0.165', size_y: '0.31', flange: '0.0097', web: '0.0058', material: 'steel' }); // plates to 0.1 mm (tf 9.7, tw 5.8)
     const beams = [...table(files, 'beam').values()];
     expect(beams).toHaveLength(2);
     for (const b of beams) {
@@ -268,7 +268,7 @@ describe('import-ifc structural sections, types and grades', () => {
       expect(b.material_grade).toBe('345 MPa');
     }
     const colTypes = new Map([...table(files, 'column_type').values()].map(t => [t.name, t]));
-    expect(colTypes.get('HSS152X152X9.5')).toMatchObject({ shape: 'rect_hollow', size_x: '0.152', size_y: '0.152', thickness: '0.01', material: 'steel' });
+    expect(colTypes.get('HSS152X152X9.5')).toMatchObject({ shape: 'rect_hollow', size_x: '0.152', size_y: '0.152', thickness: '0.0095', material: 'steel' });
     expect(colTypes.get('400 x 400mm')).toMatchObject({ shape: 'rect', size_x: '0.4', material: 'concrete' });
     const cols = [...table(files, 'structure_column').values()];
     expect(cols.map(c => c.material_grade).sort()).toEqual(['345 MPa', 'C30/37']);
@@ -282,6 +282,16 @@ describe('import-ifc structural sections, types and grades', () => {
     expect(librarySection('HEA200', 'chs')).toBeNull();
     expect(librarySection('XYZ123')).toBeNull();
     expect(sectionColumns(librarySection('HEA 200')!)).toMatchObject({ shape: 'i_shape', root_radius: 0.018, designation: 'HEA 200' });
+  });
+
+  it('maps K-series joists to open-web sections (steel, standard weight)', () => {
+    expect(parseDesignation('M_K-Series Bar Joist-Rod Web:14K1')).toMatchObject({ designation: '14K1', kind: 'joist' });
+    expect(parseDesignation('18LH05')).toMatchObject({ kind: 'joist', dims: { depth: 18 * 0.0254 } });
+    expect(parseDesignation('Bar Joist')).toMatchObject({ kind: 'joist' });
+    const k = librarySection('14K1')!;
+    expect(k).toMatchObject({ kind: 'joist', designation: '14K1' });
+    expect(k.depth).toBeCloseTo(14 * 0.0254, 6);
+    expect(sectionColumns(k)).toMatchObject({ shape: 'open_web', size_x: 0.073, flange: 0.032, designation: '14K1' });
   });
 
   it('parses steel designations', () => {
@@ -299,7 +309,7 @@ describe('import-ifc structural sections, types and grades', () => {
     expect(parseDesignation('L100X100X10')).toMatchObject({ kind: 'l', dims: { width: 0.1, thickness: 0.01 } });
     expect(parseDesignation('H400X200X8X13')).toMatchObject({ kind: 'i', dims: { depth: 0.4, width: 0.2, web: 0.008, flange: 0.013 } });
     expect(parseDesignation('400 x 400mm')).toBeNull();
-    expect(parseDesignation('14K1')).toBeNull();
+    expect(parseDesignation('14K1')).toMatchObject({ kind: 'joist' }); // an open-web joist (was: not a section)
   });
 
   it('reads outlines as sections', () => {

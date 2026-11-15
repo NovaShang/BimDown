@@ -20,10 +20,12 @@ describe('hydrate: structural volume', () => {
       F('sc-1', { type: 'Point', coordinates: [0, 0] }), F('sc-2', { type: 'Point', coordinates: [6, 0] })]));
     writeFileSync(join(dir, 'lv-1', 'beam.csv'), 'id,number,shape,size_x,size_y,flange,web\nbm-1,,rect,0.3,0.6,,\nbm-2,,i_shape,0.2,0.4,0.02,0.01\n');
     writeFileSync(join(dir, 'lv-1', 'brace.csv'), 'id,number,material,shape,size_x,size_y,flange,web,thickness,root_radius\n'
+      + 'br-4,,steel,open_web,0.073,0.3556,0.032,,0.00346,\n'
       + 'br-1,,steel,round_hollow,0.2191,,,,0.008,\n'
       + 'br-2,,steel,rect_hollow,0.2,0.1,,,0.01,0.015\n'
       + 'br-3,,steel,i_shape,0.3,0.29,0.014,0.0085,,0.027\n');
     writeFileSync(join(dir, 'lv-1', 'brace.geojson'), fc([
+      F('br-4', { type: 'LineString', coordinates: [[0, 3, 0], [1, 3, 0]] }),
       F('br-1', { type: 'LineString', coordinates: [[0, 0, 0], [1, 0, 0]] }),
       F('br-2', { type: 'LineString', coordinates: [[0, 1, 0], [1, 1, 0]] }),
       F('br-3', { type: 'LineString', coordinates: [[0, 2, 0], [1, 2, 0]] })]));
@@ -91,5 +93,7 @@ describe('hydrate: structural volume', () => {
     // HEA 300 with r = 27 mm: 112.5 cm², 88.3 kg/m
     expect(by['br-3'].v).toBeCloseTo(0.01125, 4);
     expect(by['br-3'].kg).toBeCloseTo(88.3, 0);
+    // 14K1 open-web joist: 5.2 lb/ft = 7.7 kg/m (SJI)
+    expect(by['br-4'].kg).toBeCloseTo(7.7, 0);
   });
 });

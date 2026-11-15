@@ -45,6 +45,17 @@ describe('bimdown clash', () => {
     expect(clashReport(dir, { mepOnly: true }).clashes).toEqual([]);
   });
 
+  it('a duct through an open-web joist\'s web does not clash; one through its chord does (audit r3: 494 false clashes)', () => {
+    // 14K1-like joist: top at 3.0, 0.356 deep, 0.032 chords: web between z 2.676 and 2.968
+    put('global/beam_type.csv', 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\nbmt-1,14K1,,steel,open_web,0.073,0.356,0.032,,0.0035,,14K1,\n');
+    put('lv-1/beam.csv', 'id,type_id\nbm-1,bmt-1\n');
+    put('lv-1/beam.geojson', fc([line('bm-1', [0, 0, 3], [10, 0, 3])]));
+    put('lv-1/duct.csv', 'id,shape,size_x,size_y,system_type,from,to\ndu-1,round,0.15,,SA,,\ndu-2,round,0.15,,SA,,\n');
+    put('lv-1/duct.geojson', fc([line('du-1', [5, -3, 2.82], [5, 3, 2.82]), line('du-2', [7, -3, 2.98], [7, 3, 2.98])]));
+    const r = clashReport(dir);
+    expect(r.clashes.map(c => c.a)).toEqual(['du-2']);
+  });
+
   it('a run split where it crosses a beam is one clash', () => {
     put('lv-1/beam.csv', 'id,shape,size_x,size_y,material\nbm-1,rect,0.3,0.5,concrete\n');
     put('lv-1/beam.geojson', fc([line('bm-1', [0, 0, 3], [10, 0, 3])]));

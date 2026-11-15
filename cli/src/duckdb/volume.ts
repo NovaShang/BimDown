@@ -65,6 +65,8 @@ function sectionAreaSql(cols: Set<string>): string {
     WHEN 'cross' THEN COALESCE(${th}, least(${w(0.15)}, ${d(0.15)}) * 0.25) * (${w(0.15)} + ${d(0.15)} - COALESCE(${th}, least(${w(0.15)}, ${d(0.15)}) * 0.25))
     WHEN 'rect_hollow' THEN ${w(0.2)} * ${d(0.2)} - greatest(${w(0.2)} - 2 * ${rhT}, 0) * greatest(${d(0.2)} - 2 * ${rhT}, 0)
       - (4 - pi()) * (power(${rhRo}, 2) - power(${rhRi}, 2))
+    WHEN 'open_web' THEN 4.6 * least(COALESCE(${th}, 0.0035), least(COALESCE(${fl}, least(0.032, ${d(0.356)} * 0.12)), ${d(0.356)} / 3) / 2, ${w(0.073)} / 4)
+      * (${w(0.073)} / 2 + least(COALESCE(${fl}, least(0.032, ${d(0.356)} * 0.12)), ${d(0.356)} / 3) - least(COALESCE(${th}, 0.0035), least(COALESCE(${fl}, least(0.032, ${d(0.356)} * 0.12)), ${d(0.356)} / 3) / 2, ${w(0.073)} / 4))
     WHEN 'round_hollow' THEN pi() / 4 * (power(${w(0.2)}, 2) - power(greatest(${w(0.2)} - 2 * ${chsT}, 0), 2))
     ELSE ${w(0.3)} * ${d(0.3)}
   END`;

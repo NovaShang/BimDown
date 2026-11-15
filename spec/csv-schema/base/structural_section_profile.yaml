@@ -18,6 +18,11 @@ description: >
     rect_hollow:  size_x = width, size_y = depth, thickness = wall thk,
                   root_radius = outer corner radius (RHS / SHS / rectangular HSS)
     round_hollow: size_x = outside diameter, thickness = wall thk (CHS / round HSS)
+    open_web:     open-web steel joist (K / LH series bar joist): size_x = chord
+                  width, size_y = joist depth, flange = chord depth, thickness =
+                  chord angle thk. Only the top and bottom chords are solid (clash
+                  checks see the open web); area = 4.6 × thickness × (size_x / 2 +
+                  flange − thickness) (two double-angle chords + 15 % web rods).
 
   `designation` names a catalogue section (HEA 300, W14X90, HSS8X8X1/2,
   CHS 219.1x8); tools use it as the IFC ProfileName. Steel weight per metre =
@@ -37,6 +42,7 @@ fields:
       - c_shape
       - rect_hollow
       - round_hollow
+      - open_web
 
   - name: size_x
     type: float
@@ -46,7 +52,7 @@ fields:
 
   - name: flange
     type: float
-    description: Flange thickness — used by i_shape / t_shape / c_shape.
+    description: Flange thickness — used by i_shape / t_shape / c_shape; chord depth of open_web.
 
   - name: web
     type: float
@@ -54,7 +60,7 @@ fields:
 
   - name: thickness
     type: float
-    description: Leg / arm thickness — used by l_shape / cross; wall thickness of rect_hollow / round_hollow.
+    description: Leg / arm thickness — used by l_shape / cross; wall thickness of rect_hollow / round_hollow; chord angle thickness of open_web.
 
   - name: root_radius
     type: float
@@ -62,4 +68,4 @@ fields:
 
   - name: designation
     type: string
-    description: Catalogue section designation, e.g. HEA 300, IPE 300, W14X90, HSS8X8X1/2, CHS 219.1x8. Used as the IFC ProfileName.
+    description: Catalogue section designation, e.g. HEA 300, IPE 300, W14X90, HSS8X8X1/2, CHS 219.1x8, 14K1 (open-web joist). Used as the IFC ProfileName.
