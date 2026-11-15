@@ -2046,7 +2046,7 @@ function zRangeOf(solids: Solid[]): [number, number] | undefined {
   for (const s of solids) {
     if (s.kind === 'brep') {
       for (const f of s.faces) for (const p of f) { lo = Math.min(lo, p.z); hi = Math.max(hi, p.z); }
-    } else if (Math.abs(s.frame.z.z) > 0.999) {
+    } else if (s.kind === 'extrude' && Math.abs(s.frame.z.z) > 0.999) {
       lo = Math.min(lo, s.frame.o.z, s.frame.o.z + s.depth * s.frame.z.z);
       hi = Math.max(hi, s.frame.o.z, s.frame.o.z + s.depth * s.frame.z.z);
     }

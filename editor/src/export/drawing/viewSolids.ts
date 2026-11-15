@@ -258,7 +258,8 @@ class PartBuilder {
 
   solid(s: Solid, edges = true) {
     if (s.kind === 'extrude') this.extrude(s, edges);
-    else this.faces(s.faces);
+    else if (s.kind === 'brep') this.faces(s.faces);
+    // 'revolve' is IFC-only (drawings take the faceted bodies)
   }
 
   /** three.js geometry (world Y up, plan y = −z) → triangles only. */
