@@ -63,7 +63,9 @@ export function convertSegment(ctx: ImportContext, systems: Systems, id: number,
   const prof = axis.profile;
   const round = prof?.kind === 'circle' || (!prof && table !== 'duct' && table !== 'cable_tray') ||
     (!prof && Math.abs(sec.width - sec.height) < 0.002 && /rund|round|circ|spiral|wickelfalz/i.test(ctx.label(id) ?? ''));
-  const level = ctx.levelOf(id, Math.min(a.z, b.z));
+  // Horizontal runs go by their height (a duct in the ceiling void under its storey)
+  const horizontal = Math.abs(b.z - a.z) < 0.1 * Math.max(Math.hypot(b.x - a.x, b.y - a.y), 1e-6);
+  const level = horizontal ? ctx.levelOfRun(id, Math.min(a.z, b.z)) : ctx.levelOf(id, Math.min(a.z, b.z));
   const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id) };
   // Pipes: nominal size (DN / de) and material when the file states them
   const nominal = table === 'pipe' ? ctx.model.prop(id, /^Pset_PipeSegment/, 'NominalDiameter') : null;

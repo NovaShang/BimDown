@@ -222,8 +222,9 @@ export function checkMep(model: MepModelIn): MepProblem[] {
       if (!host) {
         const broken = missingIsBroken(r.hostId);
         out.push({ severity: broken ? 'warning' : 'info', code: broken ? 'dangling_ref' : 'external_ref', id: c.id, scope: c.scope, table: c.table, system: c.system,
-          message: `${c.table} ${fmtId(c.id)}.${side} = "${refs[i].ref}" references a missing element`, at: end,
-          key: 'dangling_ref', vars: { table: c.table, id: c.id, side, ref: refs[i].ref } });
+          message: broken ? `${c.table} ${fmtId(c.id)}.${side} = "${refs[i].ref}" references a missing element`
+            : `${c.table} ${fmtId(c.id)} connects to ${refs[i].ref} on another level`, at: end,
+          key: broken ? 'dangling_ref' : 'external_ref', vars: { table: c.table, id: c.id, side, ref: refs[i].ref } });
         continue;
       }
       const used = usedPorts.get(hkey(host)) ?? new Set<string>();
