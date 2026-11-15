@@ -55,8 +55,12 @@ export function useMepView(): MepViewState {
   return useSyncExternalStore(subscribeMepView, getMepView, getMepView);
 }
 
+/** System browser key of MEP elements without a system_type ("Unassigned"). */
+export const UNASSIGNED = '\u0000unassigned';
+
 /** Does an element tagged `systemType` (comma list for equipment) belong to `sys`? */
 export function inSystem(systemType: string | undefined, sys: string): boolean {
+  if (sys === UNASSIGNED) return !(systemType ?? '').trim();
   if (!systemType) return false;
   return systemType.split(',').some(s => s.trim() === sys);
 }

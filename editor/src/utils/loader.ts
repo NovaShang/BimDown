@@ -36,6 +36,7 @@ export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetada
       units: normalizeUnits(json.units),
       source: json.source,
       spatial_z: json.spatial_z,
+      ...(typeof json.discipline === 'string' ? { discipline: json.discipline } : {}),
     };
   } catch {
     return { ...DEFAULT_METADATA };

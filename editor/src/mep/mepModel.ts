@@ -6,7 +6,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement, PointElement } 
 import { isMepLineTable } from '../model/mepTopology.ts';
 import { endZ } from '../model/mepSplit.ts';
 import { checkMep, type MepModelIn, type MepProblem, type Vec3 } from './mepCheck.ts';
-import { inSystem } from './mepView.ts';
+import { inSystem, UNASSIGNED } from './mepView.ts';
 import type { LayerData, ProjectData } from '../types.ts';
 import { crossLevelRefs } from './externalRefs.ts';
 
@@ -87,7 +87,7 @@ export interface SystemRow {
   ids: string[];
 }
 
-/** Members of each system_type on this level (curves, devices, fittings). */
+/** Members of each system_type on this level (curves, devices, fittings); MEP elements without one under UNASSIGNED, last. */
 export function systemRows(elements: ReadonlyMap<string, CanonicalElement>): SystemRow[] {
   const by = new Map<string, SystemRow>();
   const row = (s: string) => {
@@ -96,28 +96,34 @@ export function systemRows(elements: ReadonlyMap<string, CanonicalElement>): Sys
     return r;
   };
   for (const el of elements.values()) {
+    if (!isMepMember(el)) continue;
     const sys = (el.attrs.system_type ?? '').trim();
-    if (!sys) continue;
-    if (isMepLineTable(el.tableName) && (el.geometry === 'line' || el.geometry === 'spatial_line')) {
+    if (isMepLineTable(el.tableName)) {
       const c = el as MepCurve;
-      const r = row(sys);
+      const r = row(sys || UNASSIGNED);
       r.curves++;
       r.length += Math.hypot(c.end.x - c.start.x, c.end.y - c.start.y, endZ(c, 'end') - endZ(c, 'start'));
       r.ids.push(c.id);
-    } else if (el.tableName === 'equipment' || el.tableName === 'terminal' || el.tableName === 'mep_node') {
-      for (const s of sys.split(',').map(x => x.trim()).filter(Boolean)) {
+    } else {
+      for (const s of sys ? sys.split(',').map(x => x.trim()).filter(Boolean) : [UNASSIGNED]) {
         const r = row(s);
         if (el.tableName !== 'mep_node') r.devices++;
         r.ids.push(el.id);
       }
     }
   }
-  return [...by.values()].sort((a, b) => a.system.localeCompare(b.system));
+  return [...by.values()].sort((a, b) => (a.system === UNASSIGNED ? 1 : 0) - (b.system === UNASSIGNED ? 1 : 0) || a.system.localeCompare(b.system));
+}
+
+/** Curves, devices and fittings: what the system browser lists. */
+function isMepMember(el: CanonicalElement): boolean {
+  if (isMepLineTable(el.tableName)) return el.geometry === 'line' || el.geometry === 'spatial_line';
+  return el.tableName === 'equipment' || el.tableName === 'terminal' || el.tableName === 'mep_node';
 }
 
 /** Ids of everything on `system` (for select / isolate). */
 export function systemMemberIds(elements: ReadonlyMap<string, CanonicalElement>, system: string): string[] {
   const out: string[] = [];
-  for (const el of elements.values()) if (inSystem(el.attrs.system_type, system)) out.push(el.id);
+  for (const el of elements.values()) if (isMepMember(el) && inSystem(el.attrs.system_type, system)) out.push(el.id);
   return out;
 }

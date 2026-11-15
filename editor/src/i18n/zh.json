@@ -745,6 +745,7 @@
   "mep.systems.size": "定尺寸",
   "mep.systems.sizeTip": "按末端风量/流量自动定管径（等摩阻 1 Pa/m）",
   "mep.systems.summary": "{{curves}} 段 · {{length}} m · {{devices}} 个设备",
+  "mep.systems.unassigned": "未分配系统",
   "mep.tags": "标注",
   "mep.tab.systems": "系统",
   "mep.tab.check": "检查",

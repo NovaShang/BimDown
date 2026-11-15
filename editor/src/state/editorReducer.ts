@@ -18,7 +18,7 @@ import { parseLayer } from '../model/parse.ts';
 import type { LayerData } from '../types.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { portRefTargetsHost } from '../utils/portRef.ts';
-import { pickStartLevel } from './startLevel.ts';
+import { pickStartDiscipline, pickStartLevel } from './startLevel.ts';
 import { applyMoveJoins, applyReshapeJoins, findWallJoins, rehostChildren } from '../geometry/wallJoins.ts';
 import { reresolveElements, reresolveProject, retypeElements } from './typeEdits.ts';
 import { EMPTY_CATALOG, reresolveTypeAttrs } from '../model/types/catalog.ts';
@@ -352,7 +352,7 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
 
       let currentLevel = '';
       let visibleLayers = new Set<string>();
-      let activeDiscipline: string | null = 'architecture';
+      let activeDiscipline: string | null = pickStartDiscipline(project);
 
       if (keepLevel) {
         currentLevel = state.currentLevel;
