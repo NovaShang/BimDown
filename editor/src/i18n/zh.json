@@ -1064,5 +1064,16 @@
   "field.Side": "侧",
   "option.Both Sides": "两侧",
   "option.Balusters": "立杆",
-  "type.category.railing_type": "栏杆类型"
+  "type.category.railing_type": "栏杆类型",
+  "vv.title": "可见性 / 图形",
+  "shortcut.createSimilar": "创建类似实例",
+  "shortcut.matchType": "匹配类型属性（先选的为源）",
+  "shortcut.hideElement": "临时隐藏图元",
+  "shortcut.isolateElement": "临时隔离图元",
+  "shortcut.hideCategory": "临时隐藏类别",
+  "shortcut.isolateCategory": "临时隔离类别",
+  "shortcut.resetTempHide": "重设临时隐藏 / 隔离",
+  "notice.matched": "{{count}} 个图元已改为源类型",
+  "tempHide.active": "临时隐藏 / 隔离",
+  "tempHide.reset": "重设 (HR)"
 }

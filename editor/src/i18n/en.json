@@ -1064,5 +1064,16 @@
   "field.Side": "Side",
   "option.Both Sides": "Both Sides",
   "option.Balusters": "Balusters",
-  "type.category.railing_type": "Railing type"
+  "type.category.railing_type": "Railing type",
+  "vv.title": "Visibility / graphics",
+  "shortcut.createSimilar": "Create similar",
+  "shortcut.matchType": "Match type properties (first selected is the source)",
+  "shortcut.hideElement": "Temporarily hide elements",
+  "shortcut.isolateElement": "Temporarily isolate elements",
+  "shortcut.hideCategory": "Temporarily hide category",
+  "shortcut.isolateCategory": "Temporarily isolate category",
+  "shortcut.resetTempHide": "Reset temporary hide / isolate",
+  "notice.matched": "{{count}} elements changed to the source's type",
+  "tempHide.active": "Temporary hide / isolate",
+  "tempHide.reset": "Reset (HR)"
 }

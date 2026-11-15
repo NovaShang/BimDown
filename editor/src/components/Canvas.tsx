@@ -12,6 +12,7 @@ import { useCanvasKeyboard } from '../hooks/useCanvasKeyboard.ts';
 import SVGLayers from './SVGLayers.tsx';
 import SelectionOverlay from './SelectionOverlay.tsx';
 import WallFlipArrows from './WallFlipArrows.tsx';
+import TempHideFrame from './TempHideFrame.tsx';
 import MarqueeSelection from './MarqueeSelection.tsx';
 import DrawingOverlay from './DrawingOverlay.tsx';
 import ModifyOverlay from './ModifyOverlay.tsx';
@@ -602,6 +603,7 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
       </svg>
 
       {state.marquee && <MarqueeSelection marquee={state.marquee} />}
+      <TempHideFrame />
 
       {overlayItems && overlayItems.length > 0 && (
         <CanvasOverlay
