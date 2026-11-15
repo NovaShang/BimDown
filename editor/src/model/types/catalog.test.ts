@@ -235,6 +235,13 @@ describe('element types in the editor', () => {
     const messy = { ...hea, values: { ...hea.values, shape: 'rect' } };
     const copy = duplicateType(catalog, messy);
     expect(copy.values).toMatchObject({ shape: 'rect', size_x: '0.3', size_y: '0.29', flange: '', web: '' });
+    // A library section keeps its catalogue name and root fillet (weight, IFC FilletRadius)
+    const hw = upsertType(catalog, { ...hea, values: { ...hea.values, shape: 'i_shape', root_radius: '0.013', designation: 'HW300x300x10x15' } });
+    expect(findType(hw, hea.id)!.values).toMatchObject({ root_radius: '0.013', designation: 'HW300x300x10x15' });
+    const shs = upsertType(catalog, { ...hea, values: { ...hea.values, shape: 'rect_hollow', thickness: '0.01', root_radius: '0.015', designation: 'SHS 200x200x10' } });
+    expect(findType(shs, hea.id)!.values).toMatchObject({ thickness: '0.01', root_radius: '0.015', designation: 'SHS 200x200x10', flange: '', web: '' });
+    const chs = upsertType(catalog, { ...hea, values: { ...hea.values, shape: 'round_hollow', thickness: '0.008', root_radius: '0.01', designation: 'CHS 219.1x8' } });
+    expect(findType(chs, hea.id)!.values).toMatchObject({ thickness: '0.008', root_radius: '', designation: 'CHS 219.1x8', size_y: '' });
     // Unknown shapes (newer spec) keep everything
     expect(findType(upsertType(catalog, { ...hea, values: { ...hea.values, shape: 'future_shape' } }), hea.id)!.values.flange).toBe('0.014');
   });

@@ -235,21 +235,24 @@ export function retypeAttrs(
   return next;
 }
 
-/** Section parameters each structural shape uses (spec structural_section_profile). */
+/** Section parameters each structural shape uses (spec structural_section_profile;
+ *  mirrors families/sections/_builtin.ts). `designation` names any section. */
 const SECTION_PARAMS: Record<string, string[]> = {
   rect: ['size_x', 'size_y'],
   round: ['size_x'],
-  i_shape: ['size_x', 'size_y', 'flange', 'web'],
-  t_shape: ['size_x', 'size_y', 'flange', 'web'],
-  c_shape: ['size_x', 'size_y', 'flange', 'web'],
-  l_shape: ['size_x', 'size_y', 'thickness'],
+  i_shape: ['size_x', 'size_y', 'flange', 'web', 'root_radius'],
+  t_shape: ['size_x', 'size_y', 'flange', 'web', 'root_radius'],
+  c_shape: ['size_x', 'size_y', 'flange', 'web', 'root_radius'],
+  l_shape: ['size_x', 'size_y', 'thickness', 'root_radius'],
   cross: ['size_x', 'size_y', 'thickness'],
+  rect_hollow: ['size_x', 'size_y', 'thickness', 'root_radius'],
+  round_hollow: ['size_x', 'thickness'],
 };
 
-/** Section parameters a shape doesn't use (round: size_y, flange, web, thickness). Unknown shapes: none. */
+/** Section parameters a shape doesn't use (round: size_y, flange, web, thickness, root_radius). Unknown shapes: none. */
 export function unusedSectionParams(shape: string | undefined): string[] {
   const used = SECTION_PARAMS[(shape ?? '').trim()];
-  return used ? SECTION.filter(k => k !== 'shape' && !used.includes(k)) : [];
+  return used ? SECTION.filter(k => k !== 'shape' && k !== 'designation' && !used.includes(k)) : [];
 }
 
 /** 'type' when the field shows the type's value, 'override' when the instance differs, null when untyped/not a parameter. */
