@@ -101,6 +101,8 @@ export interface Draw2DContext extends DrawContextBase {
   showNumbers?: boolean;
   /** View option: grid bubbles at both ends instead of the start only. */
   gridBubblesBothEnds?: boolean;
+  /** Rooms: draw only the label ('only', the label pass over furniture) or no label ('none'). */
+  labels?: 'only' | 'none';
 }
 
 /** Context passed to draw3D — Three.js / R3F. */

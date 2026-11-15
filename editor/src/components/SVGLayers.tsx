@@ -43,7 +43,8 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
           // The plan flip for every element of the layer (one transform, not one wrapper per element)
           <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle} transform="scale(1,-1)">
             {pickOrder(layer.elements).map(el => (
-              <ElementNode key={el.id} element={el} />
+              // Room labels come in the pass below (over furniture), not twice
+              <ElementNode key={el.id} element={el} labels={layer.tableName === 'space' ? 'none' : undefined} />
             ))}
           </g>
         );
@@ -54,7 +55,7 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
         const className = `room-labels-top ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''}`;
         return (
           <g key={`labels:${layer.key}`} className={className} style={isArchContext ? { pointerEvents: 'none', opacity: 0.35 } : undefined} transform="scale(1,-1)">
-            {layer.elements.map(el => <ElementNode key={el.id} element={el} />)}
+            {layer.elements.map(el => <ElementNode key={el.id} element={el} labels="only" />)}
           </g>
         );
       })}

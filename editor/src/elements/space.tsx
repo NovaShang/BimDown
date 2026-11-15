@@ -166,6 +166,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
     })() : null;
 
     if ((!facts.number && !facts.name) || facts.tagged) {
+      if (drawCtx.labels === 'only') return null;
       return <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
     }
     const { x, y } = facts.anchor;
@@ -180,6 +181,16 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         {text}
       </text>
     );
+    const roomLabel = (
+      <g className="room-label">
+        {label(big, y, 0.36, 700, '#3a86ff')}
+        {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
+        {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
+      </g>
+    );
+    // The label pass over furniture and equipment (SVGLayers) draws the label alone
+    if (drawCtx.labels === 'only') return <g data-id={facts.id}>{roomLabel}</g>;
+    if (drawCtx.labels === 'none') return <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
     return (
       <g data-id={facts.id}>
         {outline}

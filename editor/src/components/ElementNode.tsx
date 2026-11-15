@@ -18,6 +18,8 @@ export function pruneCache(_currentIds: Set<string>): void {
 
 interface ElementNodeProps {
   element: CanonicalElement;
+  /** Room labels: 'only' (the label pass over furniture) or 'none' (the room layer, when that pass draws them). */
+  labels?: 'only' | 'none';
 }
 
 interface ElementNodeBodyProps {
@@ -32,12 +34,13 @@ interface ElementNodeBodyProps {
   display: RangeDisplay;
   /** Plan view scale for annotations (their text and ticks are paper-sized); 0 for other elements. */
   annotationScale: number;
+  labels?: 'only' | 'none';
 }
 
 /** Renders one canonical element through its registered ElementModule.
  *  Wrapper reads selection state; the memoized body skips re-render unless
  *  the element itself, its selection, or its hover changes. */
-export function ElementNode({ element }: ElementNodeProps) {
+export function ElementNode({ element, labels }: ElementNodeProps) {
   const { selectedRawIds, hoveredRawId } = useSelectionState();
   const core = useCoreEditorState();
   const selected = selectedRawIds.has(element.id);
@@ -65,12 +68,13 @@ export function ElementNode({ element }: ElementNodeProps) {
       gridBubblesBothEnds={core.viewOptions?.gridBubblesBothEnds ?? false}
       display={display}
       annotationScale={isAnnotationTable(element.tableName) ? core.views.planScale : 0}
+      labels={labels}
     />
   );
 }
 
 // annotationScale is only a memo key: annotation modules read the scale set by the shell
-const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, hostHovered, mepToolActive, showNumbers, gridBubblesBothEnds, display }: ElementNodeBodyProps) {
+const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected, hovered, hostSelected, hostHovered, mepToolActive, showNumbers, gridBubblesBothEnds, display, labels }: ElementNodeBodyProps) {
   const ctx = useGeometryContext();
   if (display === 'hidden' && !selected) return null;
   if (!ctx) return null;
@@ -89,6 +93,7 @@ const ElementNodeBody = React.memo(function ElementNodeBody({ element, selected,
     mepToolActive,
     showNumbers,
     gridBubblesBothEnds,
+    labels,
   };
   const result = mod.draw2D(facts, drawCtx);
   if (result === null || result === undefined) return null;
