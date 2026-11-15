@@ -533,9 +533,20 @@ export function continueRoute(api: RouteApi, pt: Point, portRef: string | undefi
       if (vp && Math.abs(vp.z - z) > EPS_Z) {
         const main = findPipeBodyHit(from, elements, { tolerance: 0.02, pickPadding: 0.02, excludeIds: exclude, endZoneRatio: 0 })!.pipe as MepCurve;
         const halfW = (parseFloat(main.attrs.size_x || '0.2') || 0.2) / 2;
-        // Off the main by more than its half width: a short jog at the main's height first.
-        if (Math.hypot(vp.at.x - from.x, vp.at.y - from.y) > halfW) seg(from, z, vp.at, z);
-        const s = seg(vp.at, z, vp.at, vp.z, { to: vp.ref });
+        const onMain = nearestOnCurve(main, vp.at);
+        const off = Math.hypot(vp.at.x - onMain.x, vp.at.y - onMain.y);
+        let s: MepCurve | null;
+        if (off > halfW) {
+          // Off the main by more than its half width: a short jog at the main's height first.
+          seg(from, z, vp.at, z);
+          s = seg(vp.at, z, vp.at, vp.z, { to: vp.ref });
+        } else if (off > JOIN_TOL) {
+          // Under the main but off its centre line: drop from the centre line, jog over, drop into the port.
+          const zj = jogHeight(vp.z, z, main);
+          seg(onMain, z, onMain, zj);
+          seg(onMain, zj, vp.at, zj);
+          s = seg(vp.at, zj, vp.at, vp.z, { to: vp.ref });
+        } else s = seg(vp.at, z, vp.at, vp.z, { to: vp.ref });
         b.fitPort(s, 'end', vp);
       } else ended = false;
     } else if (Math.abs(wanted - zFrom) > EPS_Z) {
@@ -692,18 +703,45 @@ function finish(api: RouteApi, b: Builder, da: Record<string, string>, z: number
 }
 
 /**
- * Vertical from the run's point straight into `main` above / below. Within
- * the main's half width the riser leans onto its centre line (the tee);
+ * Vertical from the run's point straight into `main` above / below. On its
+ * centre line it is one riser; within the main's half width it rises to
+ * halfway below the main, jogs under its centre line and rises into it (the
+ * tee stays on the centre line and every segment stays vertical or level);
  * further off, it rises in place and jogs over at the main's height.
  */
 function tapInto(seg: (a: Point, za: number, c: Point, zc: number, refs?: { from?: string; to?: string }) => MepCurve | null,
   at: Point, z: number, main: MepCurve, onMain: Point, refs: { from?: string }): MepCurve | null {
-  const zMain = zAt(main, onMain);
+  const centre = nearestOnCurve(main, onMain);
+  const zMain = zAt(main, centre);
   const halfW = (parseFloat(main.attrs.size_x || '0.2') || 0.2) / 2;
-  if (Math.hypot(onMain.x - at.x, onMain.y - at.y) <= halfW) return seg(at, z, at, zMain, refs);
+  const off = Math.hypot(centre.x - at.x, centre.y - at.y);
+  if (off <= JOIN_TOL) return seg(at, z, at, zMain, refs);
+  if (off <= halfW) {
+    const zj = jogHeight(z, zMain, main);
+    const s = seg(at, z, at, zj, refs);
+    seg(at, zj, centre, zj);
+    seg(centre, zj, centre, zMain);
+    return s;
+  }
   const s = seg(at, z, at, zMain, refs);
-  seg(at, zMain, onMain, zMain);
+  seg(at, zMain, centre, zMain);
   return s;
+}
+
+/** Plan point of `main`'s centre line nearest `p`. */
+function nearestOnCurve(main: MepCurve, p: Point): Point {
+  const dx = main.end.x - main.start.x, dy = main.end.y - main.start.y, l2 = dx * dx + dy * dy;
+  const t = l2 > 0 ? Math.max(0, Math.min(1, ((p.x - main.start.x) * dx + (p.y - main.start.y) * dy) / l2)) : 0;
+  return { x: main.start.x + t * dx, y: main.start.y + t * dy };
+}
+
+/** Height of the level jog between a port at `zPort` and `main` at `zMain`: halfway to the main's near face. */
+function jogHeight(zPort: number, zMain: number, main: MepCurve): number {
+  const half = (parseFloat(main.attrs.size_y || main.attrs.size_x || '0.2') || 0.2) / 2;
+  const face = zMain > zPort ? zMain - half : zMain + half;
+  const zj = (zPort + face) / 2;
+  // A port touching the main: jog just past it
+  return (zMain - zPort) * (zj - zPort) > 0 ? round(zj) : round(zPort + Math.sign(zMain - zPort) * 0.05);
 }
 
 /** Where the line from `a` through `b` crosses `main` (plan), if it does inside it. */

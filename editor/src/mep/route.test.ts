@@ -96,6 +96,45 @@ describe('vertical tap into a run above / below (tap + drop)', () => {
     expect(ducts(h.state).some(d => (d.attrs.to ?? '').startsWith(`${t.id}:`))).toBe(true);
     expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
   });
+
+  // audit r3: a grille 0.15 m off a 350 mm trunk's centre line got a sloping duct (24.2,6.6,6.75)->(24.2,6.45,7.0)
+  const vertOrLevel = (d: SpatialLineElement) =>
+    (Math.abs(d.start.x - d.end.x) < 1e-6 && Math.abs(d.start.y - d.end.y) < 1e-6) || Math.abs(d.startZ - d.endZ) < 1e-6;
+  it('a grille slightly off the trunk centre line: rise, jog under the centre line, rise (no sloping duct)', () => {
+    const h = createHarness();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.35', size_y: '0.2', shape: 'rect' });
+    h.click(0, 6.45); h.click(30, 6.45);
+    h.done();
+    h.pick('terminal', { [STARTER_KEY_ATTR]: 'grille_return' });
+    h.click(16, 6.6);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.4', size_y: '0.4', shape: 'rect' });
+    h.click(16, 6.6); h.click(16, 6.6);
+    const ds = ducts(h.state);
+    expect(ds.filter(d => !vertOrLevel(d))).toEqual([]);
+    const branch = ds.filter(d => d.attrs.size_x === '0.4');
+    expect(branch).toHaveLength(3);
+    expect(branch[0].attrs.from).toMatch(/^tm-\d+:outlet$/);
+    // the tee is on the trunk centre line
+    expect(branch[2].end).toEqual({ x: 16, y: 6.45 });
+    expect(branch[2].endZ).toBe(3);
+    expect(codes(h.state).filter(c => c !== 'open_end')).toEqual([]);
+  });
+
+  it('from the trunk down into a grille slightly off its centre line: no sloping duct either', () => {
+    const h = createHarness();
+    h.pick('terminal', { [STARTER_KEY_ATTR]: 'grille_return' });
+    h.click(16, 6.6);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.35', size_y: '0.2', shape: 'rect' });
+    h.click(0, 6.45); h.click(30, 6.45);
+    h.done();
+    h.pick('duct', { start_z: '3', system_type: 'RA', size_x: '0.4', size_y: '0.4', shape: 'rect' });
+    h.click(16.3, 6.5); h.click(16.3, 6.5);
+    const t = els(h.state, 'terminal')[0];
+    expect(ducts(h.state).some(d => (d.attrs.to ?? '').startsWith(`${t.id}:`))).toBe(true);
+    expect(ducts(h.state).filter(d => !vertOrLevel(d))).toEqual([]);
+  });
 });
 
 describe('ortho routing', () => {
