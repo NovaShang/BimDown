@@ -2,18 +2,18 @@
  * MEP: flow segments → duct / pipe / cable_tray / conduit (3D centre line
  * between the two ports, or along the extrusion / principal axis), fittings
  * and accessories → mep_node, terminals and equipment → points with a size
- * box, IfcSystem membership → system_type + global/mep_system.csv.
+ * box. Systems (mep-systems.ts) and connections (mep-topology.ts) come after.
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- web-ifc lines are untyped */
 import type { ImportContext, OutEl, AttrValue } from './context.js';
 import { type WorldMesh, planObb, sectionExtents } from './geometry.js';
 import { enumValue, str } from './model.js';
-import { type V3, add3, angleDeg, apply, dist2, len3, norm3, r3, scale3, sub3 } from './math.js';
+import type { Systems } from './mep-systems.js';
+import { familyType, numberOf } from './names.js';
+import { type V3, add3, angleDeg, apply, len3, norm3, r3, scale3, sub3 } from './math.js';
 import { memberAxis } from './structure.js';
 
 export type SegmentTable = 'duct' | 'pipe' | 'cable_tray' | 'conduit';
-
-const SYSTEM_CLASSES = new Set(['IfcSystem', 'IfcDistributionSystem', 'IfcDistributionCircuit', 'IfcBuildingSystem']);
 
 /** What an IfcFlowSegment (or IFC4 subtype) carries. */
 export function segmentTable(ctx: ImportContext, id: number): SegmentTable | null {
@@ -35,35 +35,10 @@ export function segmentTable(ctx: ImportContext, id: number): SegmentTable | nul
   return 'pipe';
 }
 
-/** Systems an element belongs to (first distribution system name), registering mep_system rows. */
-export class Systems {
-  private rows = new Map<string, OutEl>();
-  constructor(private ctx: ImportContext) {}
-
-  systemOf(id: number, discipline: string): string | undefined {
-    const { model } = this.ctx;
-    for (const g of model.groups.get(id) ?? []) {
-      if (!SYSTEM_CLASSES.has(model.className(g))) continue;
-      const line = model.line(g);
-      const tag = (str(line?.Name) ?? str(line?.LongName) ?? '').slice(0, 60);
-      if (!tag) continue;
-      if (!this.rows.has(tag)) {
-        const row = this.ctx.add('mep_system', 0, 0, { system_type: tag, name: str(line?.Description) ?? str(line?.ObjectType) ?? tag, discipline }, null);
-        row.global = true;
-        this.rows.set(tag, row);
-      }
-      return tag;
-    }
-    return undefined;
-  }
-}
-
 function portPosition(ctx: ImportContext, port: number): V3 | null {
   const m = ctx.model.productMatrix(port);
   return m ? apply(m, 0, 0, 0) : null;
 }
-
-const DISCIPLINE: Record<SegmentTable, string> = { duct: 'hvac', pipe: 'plumbing', cable_tray: 'electrical', conduit: 'electrical' };
 
 export function convertSegment(ctx: ImportContext, systems: Systems, id: number, table: SegmentTable): OutEl | null {
   const mesh = ctx.mesh(id);
@@ -88,7 +63,7 @@ export function convertSegment(ctx: ImportContext, systems: Systems, id: number,
   const round = prof?.kind === 'circle' || (!prof && table !== 'duct' && table !== 'cable_tray') ||
     (!prof && Math.abs(sec.width - sec.height) < 0.002 && /rund|round|circ|spiral|wickelfalz/i.test(ctx.label(id) ?? ''));
   const level = ctx.levelOf(id, Math.min(a.z, b.z));
-  const attrs: Record<string, AttrValue> = { number: ctx.label(id) };
+  const attrs: Record<string, AttrValue> = { number: numberOf(ctx, id) };
   if (round) {
     attrs.shape = 'round';
     attrs.size_x = r3(prof?.kind === 'circle' ? prof.r * 2 : Math.max(sec.width, sec.height));
@@ -97,8 +72,9 @@ export function convertSegment(ctx: ImportContext, systems: Systems, id: number,
     attrs.size_x = r3(sec.width);
     attrs.size_y = r3(sec.height);
   }
-  attrs.system_type = systems.systemOf(id, DISCIPLINE[table]);
-  return ctx.add(table, id, level, attrs, { type: 'LineString', coordinates: [[r3(a.x), r3(a.y), r3(a.z)], [r3(b.x), r3(b.y), r3(b.z)]] });
+  const el = ctx.add(table, id, level, attrs, { type: 'LineString', coordinates: [[r3(a.x), r3(a.y), r3(a.z)], [r3(b.x), r3(b.y), r3(b.z)]] });
+  systems.note(el, id);
+  return el;
 }
 
 function sideOf(d: V3): V3 {
@@ -193,11 +169,14 @@ export function convertTerminal(ctx: ImportContext, systems: Systems, id: number
   const mesh = ctx.mesh(id);
   if (!mesh) { ctx.skip(id, 'no body geometry'); return null; }
   const bp = boxPoint(mesh);
-  const system = systems.systemOf(id, 'hvac');
   const level = ctx.levelOf(id, mesh.min.z);
-  return ctx.add('terminal', id, level, {
-    number: ctx.label(id), terminal_type: terminalType(ctx, id, system), system_type: system, family: ctx.label(ctx.model.typeOf.get(id) ?? 0) ?? ctx.label(id),
+  const ft = familyType(ctx, id);
+  const system = str(ctx.model.prop(id, /./, 'System Classification') ?? ctx.model.prop(id, /./, 'Systemklassifizierung')) ?? undefined;
+  const el = ctx.add('terminal', id, level, {
+    number: numberOf(ctx, id, ft), terminal_type: terminalType(ctx, id, system), family: ft.family, type: ft.type,
   }, { type: 'Point', coordinates: bp.coordinates }, pointProps(bp));
+  systems.note(el, id);
+  return el;
 }
 
 export function convertEquipment(ctx: ImportContext, systems: Systems, id: number): OutEl | null {
@@ -205,10 +184,12 @@ export function convertEquipment(ctx: ImportContext, systems: Systems, id: numbe
   if (!mesh) { ctx.skip(id, 'no body geometry'); return null; }
   const bp = boxPoint(mesh);
   const level = ctx.levelOf(id, mesh.min.z);
-  return ctx.add('equipment', id, level, {
-    number: ctx.label(id), equipment_type: equipmentType(ctx, id), system_type: systems.systemOf(id, 'hvac'),
-    family: ctx.label(ctx.model.typeOf.get(id) ?? 0) ?? ctx.label(id),
+  const ft = familyType(ctx, id);
+  const el = ctx.add('equipment', id, level, {
+    number: numberOf(ctx, id, ft), equipment_type: equipmentType(ctx, id), family: ft.family, type: ft.type,
   }, { type: 'Point', coordinates: bp.coordinates }, pointProps(bp));
+  systems.note(el, id);
+  return el;
 }
 
 const ACCESSORY_CLASS: Record<string, string> = {
@@ -236,36 +217,10 @@ export function convertNode(ctx: ImportContext, systems: Systems, id: number, ac
   }
   const level = ctx.levelOf(id, mesh.min.z);
   const size = Math.max(mesh.max.x - mesh.min.x, mesh.max.y - mesh.min.y, mesh.max.z - mesh.min.z);
-  return ctx.add('mep_node', id, level, {
-    number: ctx.label(id), kind, system_type: systems.systemOf(id, 'hvac'), family: accessory ? ctx.label(t ?? 0) ?? ctx.label(id) : undefined,
-    size_w: accessory ? r3(size) : undefined,
+  const ft = familyType(ctx, id);
+  const el = ctx.add('mep_node', id, level, {
+    number: numberOf(ctx, id, ft), kind, family: ft.family, type: ft.type, size_w: accessory ? r3(size) : undefined,
   }, { type: 'Point', coordinates: [r3(c.x), r3(c.y), r3(c.z)] });
-}
-
-/**
- * Port connections → from / to on the curves (bare host ids of the node /
- * equipment / terminal at each end, nearest end first).
- */
-export function linkSegments(ctx: ImportContext): number {
-  const { model } = ctx;
-  const SEG = new Set(['duct', 'pipe', 'cable_tray', 'conduit']);
-  const POINTS = new Set(['mep_node', 'equipment', 'terminal']);
-  let linked = 0;
-  for (const el of ctx.out) {
-    if (!SEG.has(el.table) || !el.src) continue;
-    const coords = (el.geometry as { coordinates: number[][] }).coordinates;
-    const ends = [coords[0], coords[coords.length - 1]];
-    for (const port of model.ports.get(el.src) ?? []) {
-      const other = model.portLink.get(port);
-      const owner = other ? model.portOwner.get(other) : undefined;
-      const target = owner ? (ctx.bySrc.get(owner) ?? []).find(o => POINTS.has(o.table)) : undefined;
-      if (!target || target.level !== el.level) continue;
-      const pos = portPosition(ctx, port);
-      if (!pos) continue;
-      const end = dist2({ x: pos.x, y: pos.y }, { x: ends[0][0], y: ends[0][1] }) + Math.abs(pos.z - ends[0][2])
-        <= dist2({ x: pos.x, y: pos.y }, { x: ends[1][0], y: ends[1][1] }) + Math.abs(pos.z - ends[1][2]) ? 'from' : 'to';
-      if (!el.attrs[end]) { el.attrs[end] = target.id; linked++; }
-    }
-  }
-  return linked;
+  systems.note(el, id);
+  return el;
 }

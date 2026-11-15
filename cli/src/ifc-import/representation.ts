@@ -23,7 +23,7 @@ export type Profile =
   | { kind: 't'; width: number; depth: number; web: number; flange: number }
   | { kind: 'l'; width: number; depth: number; thickness: number }
   | { kind: 'c'; width: number; depth: number; web: number; flange: number }
-  | { kind: 'polygon'; points: V2[] };
+  | { kind: 'polygon'; points: V2[]; voids?: V2[][] };
 
 export interface Extrusion {
   /** World matrix of the solid's position (profile plane = local XY). */
@@ -287,9 +287,15 @@ export function profile(model: IfcModel, p: any): Profile | null {
       return { kind: 'c', width: L(p.Width), depth: L(p.Depth), web: L(p.WallThickness), flange: L(p.WallThickness) };
     case 'IfcArbitraryClosedProfileDef':
     case 'IfcArbitraryProfileDefWithVoids': {
-      const outer = model.ref(p.OuterCurve);
-      const c = outer ? curve(model, outer, [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1]) : null;
-      return c ? { kind: 'polygon', points: c.points.map(q => ({ x: q.x, y: q.y })) } : null;
+      const I: Mat4 = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1];
+      const ring = (cv: any): V2[] | null => {
+        const c = cv ? curve(model, cv, I) : null;
+        return c ? c.points.map(q => ({ x: q.x, y: q.y })) : null;
+      };
+      const points = ring(model.ref(p.OuterCurve));
+      if (!points) return null;
+      const voids = model.refs(p.InnerCurves).map(ring).filter((r): r is V2[] => !!r && r.length >= 3);
+      return voids.length ? { kind: 'polygon', points, voids } : { kind: 'polygon', points };
     }
     case 'IfcDerivedProfileDef':
       return profile(model, model.ref(p.ParentProfile));

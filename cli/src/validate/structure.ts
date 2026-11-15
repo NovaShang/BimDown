@@ -22,7 +22,7 @@ const ROOT_NOTE_FILE = /^(LICEN[CS]E|COPYING|NOTICE|README|CREDITS)(\.(txt|md))?
 const MIN_FORMAT_VERSION = 2;
 
 /** Fields of project_metadata.json — keep in sync with spec/project_metadata.schema.yaml. */
-export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'project_number', 'client', 'address', 'units', 'source', 'spatial_z'];
+export const PROJECT_METADATA_FIELDS = ['format_version', 'project_name', 'project_number', 'client', 'address', 'units', 'source', 'spatial_z', 'discipline'];
 
 export function validateStructure(dir: string): string[] {
   const issues: string[] = [];

@@ -89,11 +89,13 @@ export function convertStairOrRamp(ctx: ImportContext, id: number, table: 'stair
     const el = flight(ctx, f, m!, shape, table);
     if (el) out.push(el);
   }
-  // The stair arrives on the level its top flight reaches
-  if (table === 'stair' && out[0]) {
+  // The stair arrives on the level its top flight reaches: the nearest level
+  // above, within a riser (storey elevations are often the structural floor
+  // while the stair lands on the finish)
+  if (table === 'stair' && out[0] && meshes.length) {
     const zTop = Math.max(...meshes.map(x => x.m!.max.z));
-    const top = ctx.levels.find(l => l.index > out[0].level && Math.abs(l.elevation - zTop) < 0.1);
-    if (top) out[0].attrs.top_level_id = top.id;
+    const zBot = Math.min(...meshes.map(x => x.m!.min.z));
+    setTopLevel(ctx, out[0], zBot, zTop, out.reduce((s, el) => s + (Number(el.attrs.step_count) || 0), 0));
   }
   if (out.length === 0) {
     const m = ctx.mesh(id) ?? mergeMeshes([...flights, ...others].map(p => ctx.mesh(p)).filter((x): x is WorldMesh => !!x));
@@ -119,11 +121,22 @@ export function convertStairOrRamp(ctx: ImportContext, id: number, table: 'stair
   return out;
 }
 
+/** top_level_id: the nearest level above that the stair reaches within about a riser. */
+function setTopLevel(ctx: ImportContext, stair: OutEl, zBot: number, zTop: number, steps: number): void {
+  const riser = steps > 0 ? (zTop - zBot) / steps : 0.175;
+  const tol = Math.max(0.1, 1.2 * riser);
+  const top = ctx.levels.filter(l => l.index > stair.level)
+    .sort((a, b) => Math.abs(a.elevation - zTop) - Math.abs(b.elevation - zTop))[0];
+  if (top && Math.abs(top.elevation - zTop) <= tol) stair.attrs.top_level_id = top.id;
+}
+
 /** A free-standing IfcStairFlight / IfcRampFlight. */
 export function convertFlight(ctx: ImportContext, id: number, table: 'stair' | 'ramp'): OutEl | null {
   const m = ctx.mesh(id);
   if (!m) { ctx.skip(id, 'no body geometry'); return null; }
-  return flight(ctx, id, m, 'straight', table);
+  const el = flight(ctx, id, m, 'straight', table);
+  if (el && table === 'stair') setTopLevel(ctx, el, m.min.z, m.max.z, Number(el.attrs.step_count) || 0);
+  return el;
 }
 
 /** railing_type row for the IfcRailingType of a railing (once per type), else undefined. */

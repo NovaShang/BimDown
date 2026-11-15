@@ -1,29 +1,70 @@
 /**
  * Columns, beams, members, footings and piles. Section sizes come from the
- * swept profile when the body is an extrusion (rect / round / I / T / L / C),
- * else from the body's extents; beam lines run along the section's top edge
- * (BimDown / Revit convention), column points sit at the section centre.
+ * swept profile when the body is an extrusion (rect / round / I / T / L / C /
+ * hollow, arbitrary outlines read back), else from the body's extents, and
+ * the type / family name (profiles.ts); family types become column_type /
+ * beam_type rows, the material name gives the strength grade. Beam lines run
+ * along the section's top edge (BimDown / Revit convention), column points
+ * sit at the section centre.
  */
 import type { ImportContext, OutEl, AttrValue } from './context.js';
 import { type WorldMesh, planObb, planPointsInBand, sectionExtents, principalAxis } from './geometry.js';
 import { extrusion, type Profile } from './representation.js';
-import { elementMaterial } from './materials.js';
-import { enumValue } from './model.js';
+import { elementMaterial, materialGrade } from './materials.js';
+import { enumValue, str } from './model.js';
+import { type FamilyType, familyType, numberOf } from './names.js';
+import { type Section, measuredSection, resolveSection, sectionColumns } from './profiles.js';
 import { type V3, add3, angleDeg, minAreaRect, norm3, r3, scale3 } from './math.js';
 import { pieces, polygonGeometry } from './surfaces.js';
 
-/** structural_section_profile columns from a profile. */
-function sectionAttrs(p: Profile | null, fallback: { x: number; y: number }, round = false): Record<string, AttrValue> {
-  switch (p?.kind) {
-    case 'rect': return { shape: 'rect', size_x: r3(p.x), size_y: r3(p.y) };
-    case 'circle': return { shape: 'round', size_x: r3(p.r * 2) };
-    case 'i': return { shape: 'i_shape', size_x: r3(p.width), size_y: r3(p.depth), flange: r3(p.flange), web: r3(p.web) };
-    case 't': return { shape: 't_shape', size_x: r3(p.width), size_y: r3(p.depth), flange: r3(p.flange), web: r3(p.web) };
-    case 'l': return { shape: 'l_shape', size_x: r3(p.width), size_y: r3(p.depth), thickness: r3(p.thickness) };
-    case 'c': return { shape: 'c_shape', size_x: r3(p.width), size_y: r3(p.depth), flange: r3(p.flange), web: r3(p.web) };
-    default:
-      return round ? { shape: 'round', size_x: r3(Math.max(fallback.x, fallback.y)) } : { shape: 'rect', size_x: r3(fallback.x), size_y: r3(fallback.y) };
+/**
+ * Column / beam type row (global/column_type.csv, beam_type.csv) for the
+ * product's family type, created on first use with that instance's section
+ * and material; instances leave equal values empty (they inherit them).
+ */
+function sectionType(ctx: ImportContext, table: 'column_type' | 'beam_type', ft: FamilyType, cols: Record<string, AttrValue>,
+  material: string | undefined, designation: string | undefined): { typeId?: string; attrs: Record<string, AttrValue> } {
+  const own: Record<string, AttrValue> = { ...cols, material };
+  if (!ctx.tables.has(table) || !ft.type) return { attrs: own };
+  const key = `${table}:${ft.family ?? ''}:${ft.type}`;
+  let typeId = ctx.typeIds.get(key);
+  let row = typeId ? ctx.out.find(e => e.id === typeId) : undefined;
+  if (!row) {
+    // Type names repeat across families ("Standard"): the family disambiguates
+    const clash = [...ctx.typeIds.keys()].some(k => k.startsWith(`${table}:`) && k.endsWith(`:${ft.type}`));
+    const name = (clash && ft.family ? `${ft.family} ${ft.type}` : ft.type).slice(0, 120);
+    row = ctx.add(table, 0, 0, {
+      name, description: [ft.family, designation && designation !== ft.type ? designation : undefined].filter(Boolean).join(' · ') || undefined, ...own,
+    }, null);
+    row.global = true;
+    typeId = row.id;
+    ctx.typeIds.set(key, typeId);
   }
+  // Instance values equal to the type's stay empty; a different value overrides
+  const attrs: Record<string, AttrValue> = {};
+  for (const [k, v] of Object.entries(own)) {
+    const t = row.attrs[k];
+    const same = v === undefined || v === t || (typeof v === 'number' && typeof t === 'number' && Math.abs(v - t) < 0.0015);
+    if (!same) attrs[k] = v;
+  }
+  return { typeId, attrs };
+}
+
+/** Number, type, section, material and grade of a column or beam. */
+function memberAttrs(ctx: ImportContext, id: number, table: 'column' | 'structure_column' | 'beam' | 'brace', measured: Section | null,
+  extents: { x: number; y: number }): { attrs: Record<string, AttrValue>; section: Section } {
+  const { model } = ctx;
+  const ft = familyType(ctx, id);
+  const t = model.typeOf.get(id);
+  const section = resolveSection(measured, extents, [ft.type, t ? str(model.line(t)?.Name) ?? undefined : undefined, ft.family, str(model.line(id)?.ObjectType) ?? undefined]);
+  const material = elementMaterial(model, id);
+  const cols = sectionColumns(section, table === 'column');
+  const typeTable = table === 'column' || table === 'structure_column' ? 'column_type' : 'beam_type';
+  const { typeId, attrs } = sectionType(ctx, typeTable, ft, cols, material ?? undefined, section.designation);
+  return {
+    section,
+    attrs: { number: numberOf(ctx, id, ft), type_id: typeId, ...attrs, material_grade: table === 'column' ? undefined : materialGrade(model, id, material) ?? undefined },
+  };
 }
 
 /** Vertical member → column / structure_column point. */
@@ -40,25 +81,22 @@ export function convertColumn(ctx: ImportContext, id: number, table: 'column' | 
   const prof = ex && Math.abs(ex.dir.z) > 0.9 ? ex.profile : null;
   const level = ctx.levelOf(id, mesh.min.z);
   const span = ctx.span(level, mesh.min.z, mesh.max.z);
-  const attrs: Record<string, AttrValue> = { number: ctx.label(id), material: elementMaterial(model, id) ?? undefined };
+  const measured = measuredSection(prof);
+  // The box is long along u: size_x runs along the column's local X after rotation.
+  let rot = angleDeg(obb.u);
+  let extents = { x: obb.length, y: obb.width };
+  if (measured && ex) {
+    // A profile's own X axis gives the rotation (and its sizes the section)
+    rot = angleDeg({ x: ex.matrix[0], y: ex.matrix[1] });
+    if (measured.kind === 'rect') extents = { x: measured.width, y: measured.depth };
+  }
+  const { attrs, section } = memberAttrs(ctx, id, table, measured && measured.kind !== 'rect' ? measured : null, extents);
   const props: Record<string, unknown> = {};
   ctx.applySpan(level, attrs, props, span);
-  // The box is long along u: size_x runs along the column's local X after rotation.
-  let sx = obb.length, sy = obb.width;
-  let rot = angleDeg(obb.u);
-  if (prof?.kind === 'rect' && ex) {
-    // Rotation of the profile's X axis in plan
-    const xAxis = { x: ex.matrix[0], y: ex.matrix[1] };
-    rot = angleDeg(xAxis);
-    sx = prof.x; sy = prof.y;
-  }
-  const sec = table === 'column'
-    ? (prof?.kind === 'circle' ? { shape: 'round', size_x: r3(prof.r * 2) } : { shape: 'rect', size_x: r3(sx), size_y: r3(sy) })
-    : sectionAttrs(prof?.kind === 'rect' ? { kind: 'rect', x: sx, y: sy } : prof, { x: sx, y: sy });
-  Object.assign(attrs, sec);
   rot = ((rot % 180) + 180) % 180;
   if (rot > 90.0005) rot -= 180;
-  if (Math.abs(rot) >= 0.05 && sec.shape !== 'round') props.rotation = Math.round(rot * 100) / 100;
+  const round = section.kind === 'round' || section.kind === 'chs';
+  if (Math.abs(rot) >= 0.05 && !round) props.rotation = Math.round(rot * 100) / 100;
   const el = ctx.add(table, id, level, attrs, { type: 'Point', coordinates: [r3(obb.center.x), r3(obb.center.y)] }, props);
   el.global = span.global;
   return el;
@@ -66,7 +104,6 @@ export function convertColumn(ctx: ImportContext, id: number, table: 'column' | 
 
 /** Horizontal / inclined member → beam or brace along the top of its section. */
 export function convertBeam(ctx: ImportContext, id: number, table: 'beam' | 'brace'): OutEl | null {
-  const { model } = ctx;
   const mesh = ctx.mesh(id);
   if (!mesh) { ctx.skip(id, 'no body geometry'); return null; }
   const axis = memberAxis(ctx, id, mesh);
@@ -79,12 +116,9 @@ export function convertBeam(ctx: ImportContext, id: number, table: 'beam' | 'bra
   const base = add3(add3(axis.origin, scale3(side, sec.du)), scale3(up, sec.top));
   const a = add3(base, scale3(axis.dir, sec.t0)), b = add3(base, scale3(axis.dir, sec.t1));
   const level = ctx.levelOf(id, Math.min(a.z, b.z) - sec.height);
-  const prof = axis.profile;
-  const attrs: Record<string, AttrValue> = {
-    number: ctx.label(id),
-    material: elementMaterial(model, id) ?? undefined,
-    ...sectionAttrs(prof?.kind === 'rect' ? { kind: 'rect', x: sec.width, y: sec.height } : prof, { x: sec.width, y: sec.height }),
-  };
+  // Rect profiles: the measured body (Revit sweeps some outlines); other kinds from the profile
+  const measured = measuredSection(axis.profile);
+  const { attrs } = memberAttrs(ctx, id, table, measured && measured.kind !== 'rect' ? measured : null, { x: sec.width, y: sec.height });
   return ctx.add(table, id, level, attrs, { type: 'LineString', coordinates: [[r3(a.x), r3(a.y), r3(a.z)], [r3(b.x), r3(b.y), r3(b.z)]] });
 }
 

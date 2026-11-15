@@ -187,4 +187,19 @@ describe('importIfc', () => {
       expect(b.issues).toEqual([]);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+
+  it('finds the top level of a stair landing on the finish floor above the storey elevation', () => {
+    // Storeys at the structural floor (3000), the stair reaches the finish (3150): within a riser
+    const flights = [
+      { x: 1000, y: 1000, z: 0, dx: 1, dy: 0, steps: 9, going: 280, riser: 175, width: 1000 },
+      { x: 4500, y: 1500, z: 1575, dx: 0, dy: 1, steps: 9, going: 280, riser: 175, width: 1000 },
+    ];
+    const reach = (top: number) => {
+      const ifc = fixtureIfc({ walls: [{ from: [0, 0], to: [6000, 0], thickness: 200 }], upperStorey: top, stairs: [{ name: 'Stair:U:7002', shape: 'HALF_TURN_STAIR', flights }] });
+      return rows(importIfc(api, enc(ifc)).files, 'lv-1/stair.csv')[0].top_level_id ?? '';
+    };
+    expect(reach(3000)).toBe('lv-2');
+    // A storey a metre off is not where the stair arrives
+    expect(reach(4150)).toBe('');
+  });
 });

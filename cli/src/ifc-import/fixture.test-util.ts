@@ -23,6 +23,27 @@ export interface FixtureOptions {
   stairs?: { name: string; shape: string; flights: FixtureFlight[] }[];
   /** IfcRailings along an axis, optionally typed by an IfcRailingType. */
   railings?: { from: [number, number]; to: [number, number]; z?: number; height: number; type?: string }[];
+  /** More products written with the fixture's helpers; returns ids to contain in the storey. */
+  extra?: (h: FixtureHelpers) => string[];
+}
+
+/** Low-level writers handed to `extra` (mm, storey frame). */
+export interface FixtureHelpers {
+  add: (entity: string) => string;
+  f: (v: number) => string;
+  pt: (x: number, y: number, z?: number) => string;
+  pt2: (x: number, y: number) => string;
+  dir: (x: number, y: number, z: number) => string;
+  guid: (key: string) => string;
+  /** Representation context. */
+  ctx: string;
+  /** Storey placement. */
+  storey: string;
+  /** Axis-aligned box body: centre (cx, cy), sizes, height, bottom z. */
+  box: (cx: number, cy: number, xd: number, yd: number, h: number, z?: number) => string;
+  placeAt: (x: number, y: number, dx?: number, dy?: number, rel?: string, z?: number) => string;
+  /** A product shape from body items. */
+  shape: (items: string[]) => string;
 }
 
 /** A straight flight from (x, y, z) along (dx, dy): `steps` risers of `riser`, treads of `going` (mm). */
@@ -126,6 +147,10 @@ export function fixtureIfc(o: FixtureOptions): string {
       add(`IFCRELDEFINESBYTYPE(${guid(`railtyped${i}`)},$,$,$,(${rail}),${t})`);
     }
   });
+  if (o.extra) {
+    const shape = (items: string[]) => add(`IFCPRODUCTDEFINITIONSHAPE($,$,(${add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${items.join(',')}))`)}))`);
+    contained.push(...o.extra({ add, f, pt, pt2, dir, guid, ctx, storey: stPl, box, placeAt, shape }));
+  }
   const spaces = (o.spaces ?? []).map((s, i) => {
     const pl = placeAt(0, 0);
     const body = add(`IFCSHAPEREPRESENTATION(${ctx},'Body','SweptSolid',(${box((s.x0 + s.x1) / 2, (s.y0 + s.y1) / 2, s.x1 - s.x0, s.y1 - s.y0, 2800)}))`);

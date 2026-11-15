@@ -167,3 +167,67 @@ export function materialName(model: IfcModel, id: number): string | null {
   if (!sel) return null;
   return str(sel.Name) ?? str(model.refs(sel.Materials)[0]?.Name) ?? null;
 }
+
+// ─── Strength grades ─────────────────────────────────────────────────────────
+
+/** Grade patterns, first match wins; `format` normalises the match (data: extend for new standards). */
+export const GRADE_PATTERNS: { re: RegExp; format: (m: RegExpMatchArray) => string; materials?: MaterialEnum[] }[] = [
+  { re: /\bL?C\s?(\d{2,3})\s?\/\s?(\d{2,3})\b/i, format: m => `${/^L/i.test(m[0]) ? 'LC' : 'C'}${m[1]}/${m[2]}` },
+  { re: /\b([SQ])\s?(\d{3})\s?(J[R0-2]|[A-E]|N|NL|M|ML|GJ)?\b/, format: m => `${m[1]}${m[2]}${m[3] ?? ''}` },
+  { re: /\bGL\s?(\d{2})\s?([hc])\b/i, format: m => `GL${m[1]}${m[2].toLowerCase()}` },
+  { re: /\b(A\d{3,4})(?:\s?(?:Grade|Gr\.?)\s?(\w+))?/, format: m => (m[2] ? `${m[1]} Gr. ${m[2]}` : m[1]) },
+  { re: /\bGrade\s?(\d{2,3})\b/i, format: m => `Grade ${m[1]}` },
+  { re: /\bC\s?(\d{2})\b/, format: m => `C${m[1]}`, materials: ['concrete'] },
+  { re: /\b[CD]\s?(\d{2})\b/, format: m => m[0].replace(/\s/g, ''), materials: ['wood'] },
+  { re: /(\d{2,3}(?:\.\d)?)\s?MPa\b/i, format: m => `${m[1]} MPa` },
+  { re: /(\d{4,5})\s?psi\b/i, format: m => `${m[1]} psi` },
+];
+
+const GRADE_PROPS = /^(grade|material.?grade|strength.?class|concrete.?(grade|strength)|steel.?grade|festigkeitsklasse|betong(ü|ue)te|stahlg(ü|ue)te|强度等级|钢号|混凝土等级)$/i;
+
+export function gradeFromText(text: string | null | undefined, material: MaterialEnum | null): string | null {
+  if (!text) return null;
+  for (const g of GRADE_PATTERNS) {
+    if (g.materials && (!material || !g.materials.includes(material))) continue;
+    const m = text.match(g.re);
+    if (m) return g.format(m);
+  }
+  return null;
+}
+
+/** Names of all materials associated with an element (single, layers, list, constituents, profiles). */
+function materialNames(model: IfcModel, id: number): string[] {
+  const sel = materialSelect(model, id);
+  if (!sel) return [];
+  const out: string[] = [];
+  const add = (m: any) => { const s = str(m?.Name); if (s) out.push(s); };
+  const walk = (x: any, depth = 0) => {
+    if (!x || depth > 3) return;
+    const cls = model.className(x.expressID);
+    if (cls === 'IfcMaterial') add(x);
+    else if (cls === 'IfcMaterialList') for (const m of model.refs(x.Materials)) add(m);
+    else if (cls === 'IfcMaterialLayerSetUsage') walk(model.ref(x.ForLayerSet), depth + 1);
+    else if (cls === 'IfcMaterialLayerSet') for (const l of model.refs(x.MaterialLayers)) add(model.ref(l.Material));
+    else if (cls === 'IfcMaterialProfileSetUsage') walk(model.ref(x.ForProfileSet), depth + 1);
+    else if (cls === 'IfcMaterialProfileSet') for (const p of model.refs(x.MaterialProfiles)) add(model.ref(p.Material));
+    else if (cls === 'IfcMaterialConstituentSet') for (const c of model.refs(x.MaterialConstituents)) add(model.ref(c.Material));
+  };
+  walk(sel);
+  return out;
+}
+
+/** Strength grade (C30/37, S355, Q355, A992, GL24h, "345 MPa" …) from a grade property or the material names. */
+export function materialGrade(model: IfcModel, id: number, material: MaterialEnum | null): string | null {
+  for (const [, props] of model.propertySets(id)) {
+    for (const [k, v] of props) {
+      if (typeof v !== 'string' || !GRADE_PROPS.test(k.trim())) continue;
+      const g = gradeFromText(v, material);
+      if (g) return g;
+    }
+  }
+  for (const name of materialNames(model, id)) {
+    const g = gradeFromText(name, material ?? materialFromName(name));
+    if (g) return g;
+  }
+  return null;
+}

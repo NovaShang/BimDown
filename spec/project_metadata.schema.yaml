@@ -52,3 +52,11 @@ fields:
       editor, the legacy migration script). Older hosted projects (bim-claw.com, formerly BimClaw) without it
       may hold level-relative Z written by earlier editor versions; see
       bimdown-editor/scripts/migrate-spatial-z.mjs.
+
+  - name: discipline
+    type: enum
+    values: [architecture, structure, mep]
+    description: |
+      Discipline the editor opens the project in, e.g. "mep" for an imported
+      MEP model (written by `import-ifc` for MEP / structural models).
+      Default architecture.

@@ -20,7 +20,9 @@ import { convertCeiling, convertRoof, convertSlab, slabKind } from './surfaces.j
 import { convertSpace, wallObstacles, type SpaceRef } from './spaces.js';
 import { convertFlight, convertRailing, convertStairOrRamp } from './circulation.js';
 import { convertBeam, convertColumn, convertFooting, memberOrientation } from './structure.js';
-import { Systems, convertEquipment, convertNode, convertSegment, convertTerminal, linkSegments, segmentTable } from './mep.js';
+import { convertEquipment, convertNode, convertSegment, convertTerminal, segmentTable } from './mep.js';
+import { Systems } from './mep-systems.js';
+import { buildMepTopology, nameEquipmentPorts, type MepTopologyReport } from './mep-topology.js';
 import { convertFurniture, convertGrid } from './misc.js';
 import { addSeparators, checkRooms, danglingEnds, extendIntoBodies, joinEnds, roomLines, settleTees, snapEnds } from './postprocess.js';
 import { emitFiles } from './emit.js';
@@ -79,6 +81,8 @@ export interface ImportReport {
   };
   /** Plan shift applied to bring a far-away model near the origin (meters). */
   offset: { x: number; y: number } | null;
+  /** MEP connectivity vs the source port graph, and systems written. */
+  mep: (MepTopologyReport & { systems: number }) | null;
   timings: { parseMs: number; geometryMs: number; convertMs: number; cleanupMs: number; totalMs: number };
 }
 
@@ -305,8 +309,9 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
     }
   }
   if (outlines.size) ctx.note(`${outlines.size} room separators trace the spaces of levels without walls (an MEP or space-only model)`);
-  const linked = linkSegments(ctx);
-  if (linked) ctx.note(`${linked} duct / pipe ends linked to their fittings, terminals or equipment from IFC port connections`);
+  const mep = buildMepTopology(ctx, systems);
+  const systemCount = systems.finish();
+  nameEquipmentPorts(mep);
   const rooms = checkRooms(ctx, spaceRefs);
   const freeEnds = danglingEnds(ctx);
   const tCleanup = now();
@@ -314,7 +319,8 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   progress('write', 0.97);
   const projectName = opts.projectName ?? projectNameOf(model) ?? opts.fileName?.replace(/\.ifc$/i, '') ?? 'IFC import';
   const files = emitFiles(ctx, { projectName, source: `IFC ${model.schema}${opts.fileName ? ` (${opts.fileName})` : ''} via bimdown import-ifc` });
-  const report = buildReport(ctx, [...products, ...grids], data, opts, rooms, spaceRefs, { snapped, corners, tees, separators: separators.length, freeEnds }, offset, {
+  const mepReport = mep.curveEnds || systemCount ? { ...mep, systems: systemCount } : null;
+  const report = buildReport(ctx, [...products, ...grids], data, opts, rooms, spaceRefs, { snapped, corners, tees, separators: separators.length, freeEnds }, offset, mepReport, {
     parseMs: tParse - t0, geometryMs: tGeom - tParse, convertMs: tConvert - tGeom, cleanupMs: tCleanup - tConvert, totalMs: now() - t0,
   });
   progress('write', 1);
@@ -471,7 +477,7 @@ function classReport(ctx: ImportContext, ids: number[]): ClassReport[] {
 
 function buildReport(
   ctx: ImportContext, ids: number[], data: Uint8Array, opts: ImportIfcOptions, rooms: ReturnType<typeof checkRooms>, spaces: SpaceRef[],
-  joins: ImportReport['joins'], offset: { x: number; y: number } | null, timings: ImportReport['timings'],
+  joins: ImportReport['joins'], offset: { x: number; y: number } | null, mep: ImportReport['mep'], timings: ImportReport['timings'],
 ): ImportReport {
   const counts: Record<string, number> = {};
   for (const el of ctx.out) counts[el.table] = (counts[el.table] ?? 0) + 1;
@@ -505,6 +511,7 @@ function buildReport(
     joins,
     rooms: { count: spaces.length, issues: rooms.issues, warnings: rooms.warnings, area, worst, labels: issueLabels(spaces, rooms.issues) },
     offset,
+    mep,
     timings: {
       parseMs: Math.round(timings.parseMs), geometryMs: Math.round(timings.geometryMs), convertMs: Math.round(timings.convertMs),
       cleanupMs: Math.round(timings.cleanupMs), totalMs: Math.round(timings.totalMs),
@@ -552,6 +559,13 @@ export function formatReport(r: ImportReport): string {
       out.push(`  ${i.level}: ${i.spaceIds.join(', ')} ${i.kind === 'shared' ? 'share one enclosed area' : i.kind === 'contains' ? `encloses ${(i.inside ?? []).join(', ')}` : 'has no enclosing boundary'}`);
     }
     if (r.rooms.issues.length > 30) out.push(`  ... ${r.rooms.issues.length - 30} more`);
+  }
+  if (r.mep) {
+    const m = r.mep;
+    const pct = m.curveEnds ? Math.round((m.connectedEnds / m.curveEnds) * 1000) / 10 : 0;
+    out.push(`MEP: ${m.connectedEnds} of ${m.curveEnds} run ends connected (${pct}%), ${m.openEnds} open (${m.sourceOpenEnds} open in the source too); ${m.systems} system(s)`);
+    out.push(`  source: ${m.sourcePorts} ports, ${m.sourceLinks} port connections (${m.linksUsed} used); ${m.inferred} connection(s) from geometry`);
+    out.push(`  added: ${m.couplings} couplings, ${m.taps} taps (mains split), ${m.connectors} connector runs; fittings: ${Object.entries(m.fittingKinds).map(([k, n]) => `${n} ${k}`).join(', ') || 'none'}`);
   }
   if (r.notes.length) {
     out.push('');
