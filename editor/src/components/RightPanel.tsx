@@ -25,6 +25,7 @@ import { findType, isTypedTable, typeParamState, typeValues } from '../model/typ
 import QuantitiesSection from './QuantitiesSection.tsx';
 import { selectedElsewhere } from '../state/selectionOps.ts';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
+import { levelLabel } from '../model/displayNames.ts';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -96,7 +97,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     if (!mod) return [];
     // Mixed tables: only the fields every selected type has.
     const shared = (key: string) => [...tables].every(tb => getElementModule(tb)?.propertyFields.some(f => f.key === key));
-    const levelOptions = levels.map(l => ({ value: l.id, label: l.name || l.id }));
+    const levelOptions = levels.map(l => ({ value: l.id, label: levelLabel(t, l) }));
     // Inject dynamic options at render time. Level + MEP system definitions
     // live in project state, not in the static element module. For MEP line
     // tables (duct / pipe / etc.) filter to the disciplines that make sense

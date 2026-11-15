@@ -106,12 +106,12 @@ export default function MepSystemDialog({ open, onClose, onConfirm, initial }: M
         <Select value={discipline} onValueChange={(v) => { if (v) setDiscipline(v); }}>
           <SelectTrigger className="mb-3 h-7 w-full rounded border border-input bg-transparent px-2 text-[12px]">
             <span className="truncate">
-              {DISCIPLINE_OPTIONS.find(o => o.value === discipline)?.label ?? discipline}
+              {DISCIPLINE_OPTIONS.some(o => o.value === discipline) ? t(`mepDiscipline.${discipline}`) : discipline}
             </span>
           </SelectTrigger>
           <SelectContent>
             {DISCIPLINE_OPTIONS.map(opt => (
-              <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+              <SelectItem key={opt.value} value={opt.value}>{t(`mepDiscipline.${opt.value}`, opt.label)}</SelectItem>
             ))}
           </SelectContent>
         </Select>

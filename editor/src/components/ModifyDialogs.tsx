@@ -15,6 +15,7 @@ import { formatElevation, getProjectUnits } from '../utils/units.ts';
 import { SINGLE_KEYS, TWO_LETTER, type Shortcut, type ShortcutGroup } from '../tools/shortcuts.ts';
 import { Input } from './ui/input';
 import { cn } from '../lib/utils';
+import { levelLabel } from '../model/displayNames.ts';
 
 const primary = 'cursor-pointer rounded border-none bg-[var(--color-accent)] px-3 py-1.5 text-[11px] font-medium text-white hover:opacity-90 disabled:opacity-40';
 const secondary = 'cursor-pointer rounded border border-border bg-transparent px-3 py-1.5 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground';
@@ -80,7 +81,7 @@ function LevelsDialog({ mode, onClose }: { mode: 'copy' | 'paste'; onClose: () =
           return (
             <label key={l.id} className={cn('flex items-center gap-2 rounded px-2 py-1 text-[11px]', disabled ? 'opacity-40' : 'cursor-pointer hover:bg-accent')}>
               <input type="checkbox" disabled={disabled} checked={picked.has(l.id)} onChange={() => toggle(l.id)} data-level={l.id} />
-              <span className="flex-1">{l.name || l.id}</span>
+              <span className="flex-1">{levelLabel(t, l)}</span>
               <span className="text-[9px] tabular-nums text-muted-foreground">{formatElevation(l.elevation, unit)}</span>
             </label>
           );

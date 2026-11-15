@@ -20,6 +20,7 @@ import {
 import { flightMesh } from './_stair3D.tsx';
 import StairPropertyPanel from './StairPropertyPanel.tsx';
 import { STAIR_RAILINGS_KEY } from '../model/stairElements.ts';
+import { drawingLabel, drawingLang } from '../export/drawing/labels.ts';
 
 export interface StairFacts {
   id: string;
@@ -187,7 +188,7 @@ function drawWalkingLine(asm: StairAssembly, stroke: string): ReactNode {
         fill={stroke} textAnchor="middle" dominantBaseline="central"
         transform={`translate(${lp.x},${lp.y}) scale(1,-1) translate(${-lp.x},${-lp.y})`}
       >
-        {goingUp ? 'UP' : 'DN'}
+        {drawingLabel(drawingLang(), goingUp ? 'plan.up' : 'plan.down')}
       </text>
     </>
   );

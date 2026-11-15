@@ -70,10 +70,11 @@ export default function TopBar() {
 
       {/* Project unit indicator (read-only in phase 1) */}
       <div
-        className="flex h-8 select-none items-center px-2 text-[10px] font-medium uppercase tracking-wide text-muted-foreground"
+        className="flex h-8 select-none items-center px-2 text-[10px] font-medium tracking-wide text-muted-foreground"
         title={t('topbar.projectUnit', 'Project unit (set in project_metadata.json)')}
+        data-testid="project-unit"
       >
-        {projectUnit}
+        {t(`unit.${projectUnit}`, projectUnit)}
       </div>
 
       <Separator orientation="vertical" className="mx-0.5 self-stretch" />
