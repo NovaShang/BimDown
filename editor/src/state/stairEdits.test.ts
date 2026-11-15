@@ -10,7 +10,8 @@ function lStair() {
     { id: 'lv-1', number: '1', name: 'Level 1', elevation: 0 },
     { id: 'lv-2', number: '2', name: 'Level 2', elevation: 3 },
   ]);
-  h.pick('stair', { stair_type: 'quarter_turn', width: '1.2', step_count: '18' });
+  // Going 0.28: runs locked to 9 × 0.28 each (the clicks land on whole treads)
+  h.pick('stair', { stair_type: 'quarter_turn', width: '1.2', step_count: '18', __going: '0.28' });
   h.click(0, 0); h.click(3.12, 0); h.click(3.12, 3.12);
   h.done();
   return h;

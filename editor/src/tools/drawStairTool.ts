@@ -12,8 +12,9 @@
  * both sides), CSV-only stair railings whose path follows the stair.
  *
  * Rise: base_offset → top level + top_offset (the vertical span, as for a
- * straight stair); `step_count` is the stair's total riser count, shared out
- * over the runs in proportion to their length.
+ * straight stair); `step_count` is the stair's total riser count. Runs are
+ * locked to risers × going (typed, else 2R + G = 630 mm): the first run's
+ * click snaps to whole treads, the last run ends after the remaining ones.
  */
 import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
 import type { Point } from '../model/elements.ts';
@@ -21,7 +22,8 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { resolveNextLevelId } from './levelUtil.ts';
 import { getProjectUnits } from '../utils/units.ts';
-import { layoutStair, pointsForGoing } from '../geometry/stair.ts';
+import { defaultGoing, fitStairPoints, layoutStair } from '../geometry/stair.ts';
+import { unitsPerMetreOf } from '../utils/units.ts';
 import { stairElements, STAIR_RAILINGS_KEY } from '../model/stairElements.ts';
 
 /** Clicks a stair type needs (the walking line's points). */
@@ -60,12 +62,12 @@ export const drawStairTool: ToolHandler = {
     if (!snap) return;
     ctx.setSnap(snap);
     const state = ctx.getState();
-    let points = [...(state.drawingState?.points ?? []), snap.point];
+    // Every click lands where the treads put it (run lengths locked to risers × going)
+    let points = fitClicks(state, [...(state.drawingState?.points ?? []), snap.point]);
     if (points.length < clicksRequired(state.drawingAttrs.stair_type)) {
       ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points, cursor: snap.point } });
       return;
     }
-    points = withTypedGoing(state, points);
     placeStair(ctx, state, points);
     ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
     ctx.setSnap(null);
@@ -76,27 +78,33 @@ export const drawStairTool: ToolHandler = {
     if (!snap) return;
     const state = ctx.getState();
     const points = state.drawingState?.points ?? [];
-    // The last click's run is as long as the typed going needs
-    let cursor = snap.point;
-    if (points.length === clicksRequired(state.drawingAttrs.stair_type) - 1) {
-      const fitted = withTypedGoing(state, [...points, cursor]);
-      cursor = fitted[fitted.length - 1];
-    }
+    // The run being drawn is as long as its treads: the cursor gives the direction
+    const fitted = fitClicks(state, [...points, snap.point]);
+    const cursor = fitted[fitted.length - 1];
     ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points, cursor } });
     ctx.setSnap(snap);
   },
 };
 
-/** UI-only drawing attr: the going (tread depth) typed in the drawing bar, project units; empty = by the clicks. */
+/** UI-only drawing attr: the going (tread depth) typed in the drawing bar, project units; empty = the default for the riser (2R + G = 630 mm). */
 export const STAIR_GOING_KEY = '__going';
 
-/** The walking-line points with the last one moved so the treads get the typed going (if any). */
-export function withTypedGoing(state: Pick<ToolStateSnapshot, 'drawingAttrs'>, points: Point[]): Point[] {
+/** Going the stair being drawn uses (project units): typed, else the default for its riser height. */
+export function drawGoing(state: Pick<ToolStateSnapshot, 'document' | 'project' | 'drawingAttrs'>): number {
   const da = state.drawingAttrs;
-  const going = num(da[STAIR_GOING_KEY], 0);
-  if (!(going > 0)) return points;
+  const typed = num(da[STAIR_GOING_KEY], 0);
+  if (typed > 0) return typed;
+  const upm = unitsPerMetreOf(getProjectUnits(state));
+  const { baseZ, topZ } = stairSpan(state);
   const steps = Math.max(2, Math.round(num(da.step_count, 18)));
-  return pointsForGoing(points, num(da.width, 1.2) || 1.2, steps, going) ?? points;
+  return defaultGoing((topZ - baseZ) / steps / upm) * upm;
+}
+
+/** Walking-line clicks (plus cursor) fitted so every run is its risers × going. */
+export function fitClicks(state: Pick<ToolStateSnapshot, 'document' | 'project' | 'drawingAttrs'>, points: Point[]): Point[] {
+  const da = state.drawingAttrs;
+  const steps = Math.max(2, Math.round(num(da.step_count, 18)));
+  return fitStairPoints(points, clicksRequired(da.stair_type), num(da.width, 1.2) || 1.2, steps, drawGoing(state));
 }
 
 const num = (s: string | undefined, fallback: number) => {

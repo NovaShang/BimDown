@@ -10,13 +10,13 @@ import { useEditorDispatch, useEditorState } from '../state/EditorContext.tsx';
 import { Select, SelectTrigger, SelectContent, SelectItem } from '../components/ui/select';
 import { NumberInput } from '../components/NumberInput.tsx';
 import {
-  assembleStair, comfortableStair, hostRefOf, layoutStair, stairCalc, stairRepetitions, STAIR_LIMITS,
+  assembleStair, comfortableStair, hostRefOf, stairCalc, stairRepetitions, STAIR_LIMITS,
   type RailSide, type StairCheck,
 } from '../geometry/stair.ts';
 import { STAIR_PART_TABLES, stairRailingElement } from '../model/stairElements.ts';
 import { generateId } from '../model/ids.ts';
 import { getProjectUnits } from '../utils/units.ts';
-import { STAIR_GOING_KEY, clicksRequired, stairSpan } from '../tools/drawStairTool.ts';
+import { STAIR_GOING_KEY, drawGoing, stairSpan } from '../tools/drawStairTool.ts';
 
 import { cn } from '../lib/utils';
 
@@ -210,17 +210,8 @@ function drawCalc(state: ReturnType<typeof useEditorState>) {
   const rise = (topZ - baseZ) / upm;
   const steps = Math.max(1, Math.round(parseFloat(da.step_count ?? '') || 18));
   const riser = rise / steps;
-  const typed = parseFloat(da[STAIR_GOING_KEY] ?? '');
-  let going: number | null = typed > 0 ? typed / upm : null;
-  if (going === null) {
-    const pts = state.drawingState?.points ?? [];
-    const cur = state.drawingState?.cursor;
-    const all = cur ? [...pts, cur] : pts;
-    if (all.length === clicksRequired(da.stair_type) && pts.length > 0) {
-      const layout = layoutStair(all, parseFloat(da.width ?? '') || 1.2, steps, 0, 1);
-      if (layout) going = layout.runs.reduce((acc, r) => acc + Math.hypot(r.end.x - r.start.x, r.end.y - r.start.y), 0) / steps / upm;
-    }
-  }
+  // Runs are locked to risers × going: the typed going, else the default for the riser
+  const going: number | null = drawGoing(state) / upm;
   const L = STAIR_LIMITS;
   const riserOk = riser >= L.riserMin - 1e-9 && riser <= L.riserMax + 1e-9;
   const goingOk = going === null || going >= L.goingMin - 1e-9;
@@ -233,7 +224,7 @@ const BAR_INPUT = 'h-[22px] w-[52px] rounded-md border border-input bg-transpare
 
 /**
  * Drawing-bar stair calculator (Revit's stair type parameters): riser height
- * (sets the riser count), typed going (the last click's run is made to fit),
+ * (sets the riser count), going (typed or 2R + G = 630 mm; every run is locked to its treads),
  * a live riser / going / 2R+G check with a one-click fix, and the multi-storey
  * "repeat up to" level.
  */
