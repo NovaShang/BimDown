@@ -631,7 +631,7 @@ export function computeSnap(
   }
 
   // ── Pass 4: Grid-distance snap (snap to round distances from nearest 轴网) ──
-  // Folded into the "Grid line" toggle — disabled together with 'gridline'.
+  // Own toggle ("Round distance"); point placements turn it off near geometry.
   if (grids && grids.length > 0 && !disabledSnapTypes.has('grid')) {
     const gridSpacing = adaptiveGridSpacing(pixelSize);
     const gridThreshold = gridSpacing * 0.45;

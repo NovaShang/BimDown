@@ -380,8 +380,12 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     const mepPreview = mepDrawingPreview({ activeTool, tableName, points, cursor, drawingAttrs, scale });
     if (mepPreview) return mepPreview;
     const Preview = tableName ? getElementModule(tableName)?.placementPreview : undefined;
+    // Typed X / Y coordinates (drawPointTool)
+    const typedBadge = cursor && drawingState.typed
+      ? <g transform="scale(1,-1)"><TypedBadge at={cursor} typed={drawingState.typed} scale={scale} labels={['X', 'Y']} /></g>
+      : null;
     if (cursor && Preview) {
-      return <Preview cursor={cursor} rotation={drawingState.rotation} attrs={drawingAttrs} scale={scale} />;
+      return <><Preview cursor={cursor} rotation={drawingState.rotation} attrs={drawingAttrs} scale={scale} />{typedBadge && <g className="drawing-overlay" transform="scale(1,-1)">{typedBadge}</g>}</>;
     }
     if (cursor) {
       // Plan size attrs: size_x/size_y, foundation width/length.
@@ -400,6 +404,7 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
           />
           <line x1={cursor.x - hw - (0.3 / scale)} y1={cursor.y} x2={cursor.x + hw + (0.3 / scale)} y2={cursor.y} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
           <line x1={cursor.x} y1={cursor.y - hh - (0.3 / scale)} x2={cursor.x} y2={cursor.y + hh + (0.3 / scale)} stroke="#4fc3f7" strokeWidth={0.06 / scale} opacity="0.5" />
+          {typedBadge}
         </g>
       );
     }

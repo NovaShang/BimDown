@@ -28,6 +28,28 @@ function defaultConfig(cat: ScheduleCategory): Config {
 
 const fileSafe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'schedule';
 
+/** Schedule settings of a project (open schedule, columns / grouping / sort per schedule), kept across reloads. */
+interface SavedSchedules { catKey?: string; configs: Record<string, Config> }
+const storageKey = (model: string) => `bimdown-schedules:${model}`;
+
+export function loadScheduleSettings(model: string): SavedSchedules {
+  try {
+    const raw = localStorage.getItem(storageKey(model));
+    if (raw) {
+      const v = JSON.parse(raw) as SavedSchedules;
+      if (v && typeof v.configs === 'object') return v;
+    }
+  } catch { /* unavailable storage */ }
+  return { configs: {} };
+}
+
+export function saveScheduleSettings(model: string, v: SavedSchedules): void {
+  try { localStorage.setItem(storageKey(model), JSON.stringify(v)); } catch { /* unavailable storage */ }
+}
+
+/** The schedule a discipline opens on (Structure: columns, not rooms). */
+const DISCIPLINE_SCHEDULE: Record<string, string> = { structure: 'columns', mep: 'mep' };
+
 /**
  * Schedule view: element lists per category across all levels with
  * configurable columns, grouping with subtotals, totals and sorting. A row
@@ -39,8 +61,17 @@ export default function SchedulePanel({ onClose }: { onClose: () => void }) {
   const state = useEditorState();
   const dispatch = useEditorDispatch();
   const unit = getProjectUnits(state);
-  const [catKey, setCatKey] = useState(SCHEDULES[0].key);
-  const [configs, setConfigs] = useState<Record<string, Config>>({});
+  const [saved] = useState(() => loadScheduleSettings(state.modelName));
+  const [catKey, setCatKeyState] = useState(() =>
+    saved.catKey && SCHEDULES.some(c => c.key === saved.catKey) ? saved.catKey
+      : DISCIPLINE_SCHEDULE[state.activeDiscipline ?? ''] ?? SCHEDULES[0].key);
+  const [configs, setConfigsState] = useState<Record<string, Config>>(saved.configs);
+  const setCatKey = (k: string) => { setCatKeyState(k); saveScheduleSettings(state.modelName, { catKey: k, configs }); };
+  const setConfigs = (f: (prev: Record<string, Config>) => Record<string, Config>) => setConfigsState(prev => {
+    const next = f(prev);
+    saveScheduleSettings(state.modelName, { catKey, configs: next });
+    return next;
+  });
   const [showColumns, setShowColumns] = useState(false);
   const cat = SCHEDULES.find(c => c.key === catKey)!;
   const config = configs[catKey] ?? defaultConfig(cat);

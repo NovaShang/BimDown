@@ -23,7 +23,6 @@ import MepOverlay from '../mep/MepOverlay.tsx';
 import SelectionActions from './SelectionActions.tsx';
 import OnboardingTour from './OnboardingTour.tsx';
 import ModifyHost from './ModifyHost.tsx';
-import { useOverlayItems } from '../hooks/useOverlayItems.ts';
 import { useMediaQuery } from '../hooks/useMediaQuery.ts';
 import SchedulePanel, { SCHEDULE_TOGGLE_EVENT } from './SchedulePanel.tsx';
 import { setAnnotationUnits, setAnnotationScale } from '../annotation/geometry.ts';
@@ -369,7 +368,6 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
   // Overlay items for selection action bar
   const showSelectionActions = state.selectedIds.size > 0 && !state.readonly && !state.activeTool.startsWith('relocate') && !MODIFY_TOOLS.has(state.activeTool);
   const selectionContent = showSelectionActions ? <SelectionActions /> : null;
-  const overlayItems = useOverlayItems(state.selectedIds, state.document, selectionContent);
 
   // Current level elevation for 3D overlay projection
   const currentElevation = useMemo(() => {
@@ -437,7 +435,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         )}
         {state.viewMode === '3d' ? (
           <Suspense fallback={<div className="flex h-full items-center justify-center"><div className="text-center"><div className="mx-auto mb-3 size-8 animate-spin rounded-full border-2 border-border border-t-[var(--color-accent)]" /><p className="text-xs text-muted-foreground">{t('view.loading3d')}</p></div></div>}>
-            <Canvas3D overlayItems={overlayItems} elevation={currentElevation} />
+            <Canvas3D elevation={currentElevation} />
           </Suspense>
         ) : (
           <Canvas
@@ -446,13 +444,18 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
             viewBox={viewBox}
             activeFilter={state.activeFilter}
             activeDiscipline={activeDiscipline}
-            overlayItems={overlayItems}
           />
         )}
         {/* Elevation / section pane docked over the right of the canvas */}
         <ViewPane />
         {/* Hide the top discipline bar while the snap panel occupies the same slot. */}
         {!(!state.readonly && isSnapInteraction(state.activeTool, state.drawingState)) && <TopBar />}
+        {/* Selection actions dock under the view bar, away from the model, so
+            they never cover the element next to the selection (a shift-click
+            there used to hit Copy) */}
+        {selectionContent && (
+          <div data-testid="selection-bar" className="absolute left-1/2 top-[60px] z-30 -translate-x-1/2 max-md:top-[108px]">{selectionContent}</div>
+        )}
         {!state.readonly && <DrawingPropertiesBar />}
         {!state.readonly && <FloatingToolbar activeDiscipline={activeDiscipline} />}
         <ViewToolbar

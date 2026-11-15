@@ -3,15 +3,15 @@ import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
 import type { SnapType } from '../utils/snap.ts';
 import { cn } from '../lib/utils';
 
-/** User-facing snap toggles. Each maps to one or more engine snap types.
- *  "Grid line" folds the 轴网 line-snap and the round grid-distance snap
- *  together so they turn on/off as one. */
+/** User-facing snap toggles. Each maps to one or more engine snap types. */
 const SNAP_CATEGORIES: { labelKey: string; types: SnapType[] }[] = [
   { labelKey: 'snap.endpoint', types: ['endpoint'] },
   { labelKey: 'snap.midpoint', types: ['midpoint'] },
   { labelKey: 'snap.center', types: ['center'] },
   { labelKey: 'snap.edge', types: ['edge'] },
-  { labelKey: 'snap.gridline', types: ['gridline', 'grid'] },
+  { labelKey: 'snap.gridline', types: ['gridline'] },
+  // Round distances (0.1 / 0.5 m…) from the grid lines; point placements skip it near geometry
+  { labelKey: 'snap.roundDistance', types: ['grid'] },
   { labelKey: 'snap.angle', types: ['angle'] },
   { labelKey: 'snap.length', types: ['length'] },
   { labelKey: 'snap.connector', types: ['connector'] },

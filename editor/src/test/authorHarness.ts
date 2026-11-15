@@ -29,6 +29,8 @@ export interface Harness {
   click(x: number, y: number, button?: number): void;
   /** Leave the placement tool (Esc). */
   done(): void;
+  /** A key press for the active placement tool (typed values); true when the tool took it. */
+  key(key: string): boolean;
 }
 
 export function createHarness(levels: Level[] = [{ id: 'lv-1', number: '1', name: 'Level 1', elevation: 0 }]): Harness {
@@ -69,6 +71,11 @@ export function createHarness(levels: Level[] = [{ id: 'lv-1', number: '1', name
       tool.onPointerMove?.(ctx, e);
       tool.onPointerDown?.(ctx, e);
       tool.onPointerUp?.(ctx, e);
+    },
+    key(key) {
+      if (!tool) throw new Error('no tool picked');
+      const e = { key, shiftKey: false, ctrlKey: false, metaKey: false, altKey: false, preventDefault() {}, stopPropagation() {} } as unknown as KeyboardEvent;
+      return tool.onKeyDown?.(ctx, e) ?? false;
     },
     done() {
       dispatch({ type: 'SET_DRAWING_TARGET', target: null });

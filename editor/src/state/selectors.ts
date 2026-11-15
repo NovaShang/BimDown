@@ -102,8 +102,9 @@ const GRID_BUBBLE_REACH = 0.5;
 
 /**
  * Bounds of the elements that define a level's extent. Grid lines don't drive
- * it (they're references, often drawn well past the building), but their
- * label bubbles near the model are included so a fit keeps them on screen.
+ * it (they're references, often drawn well past the building), but the label
+ * bubbles of axes through the model, and of others near it, are included so a
+ * fit keeps them on screen.
  * Doors/windows not resolved onto a wall (e.g. the wall isn't loaded yet) are
  * skipped: they're zero-length lines at the origin.
  */
@@ -115,14 +116,32 @@ function extentBounds(elements: CanonicalElement[]) {
 
   const reach = GRID_BUBBLE_REACH * Math.max(model.w, model.h);
   const r = GRID_BUBBLE_EXTENT;
+  // The building's grid: axes through the model, and the axes those cross in
+  // turn. Their bubbles always show (a level with a few columns still fits its
+  // whole grid); other axes only near the model.
+  const axes = elements.filter(g => g.tableName === 'grid' && g.geometry === 'line'
+    && !(g.start.x === g.end.x && g.start.y === g.end.y)) as (CanonicalElement & { geometry: 'line' })[];
+  const span = (g: CanonicalElement & { geometry: 'line' }) => ({
+    x0: Math.min(g.start.x, g.end.x), x1: Math.max(g.start.x, g.end.x), y0: Math.min(-g.start.y, -g.end.y), y1: Math.max(-g.start.y, -g.end.y),
+  });
+  const own = new Set<string>();
+  let region = { x0: model.x, y0: model.y, x1: model.x + model.w, y1: model.y + model.h };
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const g of axes) {
+      if (own.has(g.id)) continue;
+      const b = span(g);
+      if (b.x0 > region.x1 || b.x1 < region.x0 || b.y0 > region.y1 || b.y1 < region.y0) continue;
+      own.add(g.id); grew = true;
+      region = { x0: Math.min(region.x0, b.x0), y0: Math.min(region.y0, b.y0), x1: Math.max(region.x1, b.x1), y1: Math.max(region.y1, b.y1) };
+    }
+  }
   let x0 = model.x, y0 = model.y, x1 = model.x + model.w, y1 = model.y + model.h;
-  for (const g of elements) {
-    if (g.tableName !== 'grid' || g.geometry !== 'line') continue;
-    if (g.start.x === g.end.x && g.start.y === g.end.y) continue; // not drawn
+  for (const g of axes) {
     // The bubble sits on the start point; SVG y is flipped.
     const bx = g.start.x, by = -g.start.y;
-    if (bx - r < model.x - reach || bx + r > model.x + model.w + reach
-      || by - r < model.y - reach || by + r > model.y + model.h + reach) continue;
+    if (!own.has(g.id) && (bx - r < model.x - reach || bx + r > model.x + model.w + reach
+      || by - r < model.y - reach || by + r > model.y + model.h + reach)) continue;
     x0 = Math.min(x0, bx - r); y0 = Math.min(y0, by - r);
     x1 = Math.max(x1, bx + r); y1 = Math.max(y1, by + r);
   }
