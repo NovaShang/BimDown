@@ -2,6 +2,7 @@ name: slab
 bases:
   - polygon_element
   - materialized
+  - wall_bounded
 
 fields:
   - name: function

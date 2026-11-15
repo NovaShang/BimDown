@@ -59,7 +59,7 @@ Most critical element. One wall = one straight line (`LineString` with 2 coordin
 Same rules as door. **Always set `base_offset`** = sill height (standard 0.9m). Omitting it puts windows at floor level.
 
 ### slab (`lv-N/slab.csv` + `.geojson`)
-Polygon matching exterior wall outline. `function`: floor/roof. Account for shaft openings.
+Polygon matching exterior wall outline. `function`: floor/roof. Account for shaft openings. Optional `boundary_walls` (`w-1;w-2;…`) + `boundary_face` (core default): the editor keeps the outline on those walls when they move.
 
 **Pitfall**: polygon not matching wall outline, forgetting openings.
 

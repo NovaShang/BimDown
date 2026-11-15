@@ -217,6 +217,7 @@ In the **SVG encoding** (2D-only), the same two modes apply but Z always lives i
 | `hosted_element`             | `host_id` (CSV reference), `position` (CSV float, meters along host start) |
 | `vertical_span`              | `base_level_id`, `top_level_id` (CSV FKs), `top_offset` (GeoJSON property), `height` (computed) |
 | `materialized`               | `material` (CSV enum) |
+| `wall_bounded`               | `boundary_walls`, `boundary_face`, `boundary_offset` (CSV; slab, structure_slab, roof, ceiling) |
 | `section_profile`            | `shape` (CSV enum rect/round), `size_x`, `size_y` (CSV) |
 | `structural_section_profile` | `shape` (CSV enum rect/round/i/t/l/c/cross), `size_x`, `size_y` (CSV) |
 | `mep_system`                 | `system_type` (CSV string) |
@@ -362,6 +363,8 @@ ro-1,gable,35,35;35;0;35;35;0,0.25
 id,thickness,top_level_id,top_attach_id
 w-1,0.2,lv-3,ro-1
 ```
+
+**Boundaries picked from walls.** A slab, structure_slab, roof or ceiling with `boundary_walls` (`w-1;w-2;…`, walls / curtain walls / room separators on its level or in global/) keeps its outline associated with those walls (Revit "Pick Walls"): the polygon is still stored, but editors rebuild it from the walls' loop at `boundary_face` (interior, core, centerline, core_exterior, exterior; default core, roofs exterior, ceilings interior) moved out by `boundary_offset` (a roof's overhang) whenever one of the walls moves, flips or changes thickness. Editing the polygon directly clears `boundary_walls`. `validate` checks the ids.
 
 ### Stairs and Railings
 
