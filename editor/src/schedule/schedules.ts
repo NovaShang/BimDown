@@ -93,8 +93,9 @@ export const SCHEDULES: ScheduleCategory[] = [
       C('height', 'schedule.col.height', 'length'), C('base_offset', 'schedule.col.sill', 'length'), MATERIAL, COUNT],
   },
   {
+    // Mark and type first, as Revit's wall schedule (the type names the build-up)
     key: 'walls', label: 'schedule.walls', tables: ['wall', 'structure_wall', 'curtain_wall'], groupBy: '',
-    columns: [NUMBER, LEVEL, CATEGORY, { ...TYPE_NAME, defaultOn: false }, MATERIAL, { ...GRADE, defaultOn: false }, C('thickness', 'schedule.col.thickness', 'length'),
+    columns: [NUMBER, TYPE_NAME, LEVEL, CATEGORY, MATERIAL, { ...GRADE, defaultOn: false }, C('thickness', 'schedule.col.thickness', 'length'),
       C('length', 'schedule.col.length', 'length', true, true), C('qheight', 'schedule.col.height', 'length'),
       C('area', 'schedule.col.netArea', 'area', true, true), C('gross_area', 'schedule.col.grossArea', 'area', false, true),
       C('volume', 'schedule.col.volume', 'volume', true, true), COUNT],
