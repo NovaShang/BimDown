@@ -32,6 +32,7 @@ import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 import { applyPlanDetail } from './planDetail.ts';
 import { getContentBounds } from '../state/selectors.ts';
 import UnderlayLayer from '../underlay/UnderlayLayer.tsx';
+import LevelUnderlay2D from './LevelUnderlay2D.tsx';
 import UnderlayToolOverlay from '../underlay/UnderlayToolOverlay.tsx';
 import { useUnderlayStore } from '../underlay/UnderlayContext.tsx';
 
@@ -558,6 +559,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
         <LayerHatchDefs />
         {/* Reference drawings under everything (underlay/) */}
         <UnderlayLayer />
+        {/* The level below, halftone (view option) */}
+        <LevelUnderlay2D />
 
         {/* Heavy SVG content — React.memo, never re-renders during pan/zoom */}
         <SVGLayers layers={layers} activeFilter={activeFilter} activeDiscipline={activeDiscipline} />

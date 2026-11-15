@@ -144,6 +144,19 @@ export function collectPlan(input: PlanInput): PlanSource | null {
       if (facts) entries.push({ el: { ...el, id: `rep:${rep.level.id}:${el.id}` }, facts });
     }
   }
+  // Roof plan: roofs of the storey below seen from above (a roof level has none of its own)
+  for (const rf of roofsBelow(project, level.id)) {
+    const rctx = buildGeometryContext({
+      level: rf.level, allLevels: project.levels, allElements: new Map(rf.elements.map(e => [e.id, e])),
+      mepSystems: project.mepSystems, types: project.types, unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+      crossLevel: buildCrossLevelIndex(project),
+    });
+    for (const el of rf.elements) {
+      let facts: unknown = null;
+      try { facts = getElementModule(el.tableName)?.geometry(el, rctx) ?? null; } catch { facts = null; }
+      if (facts) entries.push({ el: { ...el, id: `roof:${rf.level.id}:${el.id}` }, facts });
+    }
+  }
   const unit = getProjectUnits({ project });
   return {
     input, level, unit, upm: unitsPerMetre(unit),
@@ -1080,6 +1093,26 @@ export interface PlanExportOptions {
   annotators?: readonly PlanAnnotator[];
 }
 
+/**
+ * Roofs a level's plan shows from above: those of the storey right below,
+ * when the level has no roof of its own (the roof plan of a roof level).
+ */
+export function roofsBelow(project: ProjectData, levelId: string): { level: Level; elements: CanonicalElement[] }[] {
+  const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
+  const i = sorted.findIndex(l => l.id === levelId);
+  if (i <= 0) return [];
+  if (project.floors.get(levelId)?.layers.some(l => l.tableName === 'roof' && l.csvRows.size > 0)) return [];
+  const below = sorted[i - 1];
+  const roofLayers = project.floors.get(below.id)?.layers.filter(l => l.tableName === 'roof') ?? [];
+  const elements = roofLayers.length ? parseFloorLayers(roofLayers) : [];
+  return elements.length ? [{ level: below, elements }] : [];
+}
+
+/** Whether a level gets a plan: it has elements, or it is a roof plan. */
+export function hasPlan(project: ProjectData, levelId: string): boolean {
+  return project.floors.has(levelId) || roofsBelow(project, levelId).length > 0;
+}
+
 /** Levels to draw, bottom to top. */
 export function planLevels(project: ProjectData, opts: PlanExportOptions): Level[] {
   const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
@@ -1087,7 +1120,7 @@ export function planLevels(project: ProjectData, opts: PlanExportOptions): Level
     const lv = sorted.find(l => l.id === opts.levelId) ?? sorted.find(l => project.floors.has(l.id));
     return lv ? [lv] : [];
   }
-  return sorted.filter(l => project.floors.has(l.id));
+  return sorted.filter(l => hasPlan(project, l.id));
 }
 
 export function collectPlans(project: ProjectData, opts: PlanExportOptions, lang: DrawingLang): PlanSource[] {

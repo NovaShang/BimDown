@@ -494,6 +494,7 @@
   "topbar.structContext": "显示结构柱、结构墙和结构板",
   "topbar.structContextShort": "结构",
   "view.toggleGridBubbles": "轴号两端显示",
+  "view.toggleLevelBelow": "底图：显示下一层（灰显）",
   "view.toggleGrids3D": "在三维中显示轴网",
   "view.toggleNumbers": "显示构件编号",
   "field.Grade": "强度等级",

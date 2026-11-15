@@ -75,6 +75,14 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
             <circle cx="12.5" cy="8" r="2" />
             <path d="M5.5 8h5" strokeDasharray="1.5 1" />
           </ViewOptionToggle>
+          <ViewOptionToggle
+            on={viewOptions.showLevelBelow}
+            onClick={() => dispatch({ type: 'TOGGLE_VIEW_OPTION', key: 'showLevelBelow' })}
+            label={t('view.toggleLevelBelow')}
+          >
+            <path d="M2 6.5l6-3 6 3-6 3z" />
+            <path d="M2 9.5l6 3 6-3" strokeDasharray="1.5 1" />
+          </ViewOptionToggle>
         </>
       )}
 

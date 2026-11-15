@@ -509,7 +509,7 @@ function finishMarquee(ctx: ToolContext, _e: React.PointerEvent) {
   const elements = svg.querySelectorAll('[data-id]');
   for (const el of elements) {
     const rawId = el.getAttribute('data-id');
-    if (!rawId) continue;
+    if (!rawId || el.closest('.level-underlay')) continue;
     // A node inside a group tagged with the same id is already in its box
     if (el.parentElement?.closest('[data-id]')?.getAttribute('data-id') === rawId) continue;
     try {

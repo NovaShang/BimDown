@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import '../../elements/registerAll.ts';
 import { loadProject, loadGrids } from '../../utils/loader.ts';
 import { memoryDataSource, fc } from '../../test/memoryDataSource.ts';
-import { buildPlanDrawing, chainEdges, formatArea } from './plan.ts';
+import { buildPlanDrawing, chainEdges, formatArea, hasPlan, planLevels } from './plan.ts';
 import { registerPlanAnnotator } from './annotations.ts';
 import { LAYERS } from './layers.ts';
 import { buildPlanDxfFiles, planToDxf } from '../exportDxf.ts';
@@ -244,5 +244,18 @@ describe('DXF plans', () => {
     expect(dxfLineweight(0.18)).toBe(18);
     expect(dxfLineweight(0.09)).toBe(9);
     expect(dxfLineweight(0.33)).toBe(35);
+  });
+
+  it('draws a roof plan for a roof level from the roofs of the storey below', async () => {
+    const files = room();
+    files['global/level.csv'] += 'lv-3,3,Roof,6\n';
+    files['lv-2/roof.csv'] = 'id,number,roof_type,slope,thickness,base_offset\nro-1,,gable,30,0.2,3\n';
+    files['lv-2/roof.geojson'] = fc([{ type: 'Feature', properties: { id: 'ro-1' }, geometry: { type: 'Polygon', coordinates: [[[-0.5, -0.5], [4.5, -0.5], [4.5, 3.5], [-0.5, 3.5], [-0.5, -0.5]]] } }]);
+    const { project, grids } = await open(files);
+    expect(project.floors.has('lv-3')).toBe(false);
+    expect(hasPlan(project, 'lv-3')).toBe(true);
+    expect(planLevels(project, {}).map(l => l.id)).toEqual(['lv-1', 'lv-2', 'lv-3']);
+    const d = buildPlanDrawing({ project, levelId: 'lv-3', grids, discipline: 'architecture' }, 100)!;
+    expect(d.items.some(i => i.layer === LAYERS.roof.name)).toBe(true);
   });
 });

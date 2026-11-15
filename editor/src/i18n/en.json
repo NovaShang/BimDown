@@ -494,6 +494,7 @@
   "topbar.structContext": "Show structural columns, walls and slabs",
   "topbar.structContextShort": "Str",
   "view.toggleGridBubbles": "Grid bubbles at both ends",
+  "view.toggleLevelBelow": "Underlay: level below (halftone)",
   "view.toggleGrids3D": "Show grids in 3D",
   "view.toggleNumbers": "Show element numbers",
   "field.Grade": "Grade",
