@@ -1459,6 +1459,11 @@ class Exporter {
         InsulationThickness: insulation > 0 ? w.len(insulation) : null, Flexible: flexible ? w.bool(true) : null,
       });
       if (insulation > 0) this.insulationCovering(scope, el, rec, seg, insulation);
+      if (t === 'pipe') {
+        // Pipe size is nominal (DN, or de for plastics): the IFC pipe segment's NominalDiameter; the pipe material
+        this.pset(rec, 'Pset_PipeSegmentTypeCommon', { NominalDiameter: w.len(seg.sizeX) });
+        if (el.attrs.material) this.singleMaterial(rec.handle, el.attrs.material);
+      }
       return;
     }
     if (t === 'equipment' || t === 'terminal') {

@@ -7,6 +7,7 @@
  * family …), so every product has a type and equal ones share it, as in a
  * Revit export. Schema-neutral: the writer picks the entity per schema.
  */
+import { mepTypeName } from '../../mep/mepTypes.ts';
 import type { CanonicalElement } from '../../model/elements.ts';
 import { typeOfElement, type TypeCatalog } from '../../model/types/catalog.ts';
 
@@ -67,19 +68,20 @@ export function elementTypeSig(el: CanonicalElement, catalog: TypeCatalog | unde
       return { key: k(a.height, a.material), name: `Railing ${mm(a.height, upm)}`.trim() };
     case 'furniture':
       return { key: k(a.family, a.variant), name: [cap(a.family || 'furniture'), a.variant].filter(Boolean).join(' · ') };
+    // MEP: the names schedules use (mep/mepTypes.ts): "Pipe DN50 Copper", "AHU: 5000 m³/h", "Gate valve DN80" …
     case 'duct': case 'pipe': case 'cable_tray': case 'conduit': {
       const round = a.shape === 'round' || el.tableName === 'pipe' || el.tableName === 'conduit';
       const size = round ? `Ø${mm(a.size_x, upm)}` : join(mm(a.size_x, upm), mm(a.size_y, upm));
-      return { key: k(a.shape, a.size_x, round ? '' : a.size_y, a.flexible), name: `${cap(el.tableName)} ${size}`.trim() };
+      return { key: k(a.shape, a.size_x, round ? '' : a.size_y, a.flexible, a.material), name: mepTypeName(el, undefined, upm) ?? `${cap(el.tableName)} ${size}`.trim() };
     }
     case 'equipment':
-      return { key: k(a.equipment_type, a.family, a.type), name: a.type || a.family || cap(a.equipment_type || 'equipment') };
+      return { key: k(a.equipment_type, a.family, a.type), name: mepTypeName(el, undefined, upm) ?? cap(a.equipment_type || 'equipment') };
     case 'terminal':
-      return { key: k(a.terminal_type, a.family, a.type), name: a.type || a.family || cap(a.terminal_type || 'terminal') };
+      return { key: k(a.terminal_type, a.family, a.type), name: mepTypeName(el, undefined, upm) ?? cap(a.terminal_type || 'terminal') };
     case 'mep_node': {
       const kind = a.kind || a.fitting || 'fitting';
       const size = join(mm(a.size_w, upm), mm(a.size_h, upm));
-      return { key: k(kind, a.size_w, a.size_h), name: `${cap(kind)} ${size}`.trim() };
+      return { key: k(kind, a.size_w, a.size_h, a.shape), name: mepTypeName(el, undefined, upm) ?? `${cap(kind)} ${size}`.trim() };
     }
   }
   return null;
