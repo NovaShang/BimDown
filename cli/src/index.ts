@@ -264,27 +264,39 @@ program
   });
 
 // ─── clash ────────────────────────────────────────────────
+/** A length argument in metres: a bare number in `bareM` metres, or with a unit (mm, cm, m). Null when invalid or negative. */
+function parseLengthM(s: string, bareM: number): number | null {
+  const m = /^\s*([0-9]*\.?[0-9]+(?:e[-+]?\d+)?)\s*(mm|cm|m)?\s*$/i.exec(s);
+  if (!m) return null;
+  const v = Number(m[1]) * (m[2] ? { mm: 0.001, cm: 0.01, m: 1 }[m[2].toLowerCase() as 'mm' | 'cm' | 'm'] : bareM);
+  return Number.isFinite(v) && v >= 0 ? v : null;
+}
+
 program
   .command('clash')
   .argument('<dir>', 'BimDown project directory')
-  .option('--tolerance <mm>', 'Smallest overlap to report, mm', '10')
-  .option('--clearance <mm>', 'Also report MEP closer than this to MEP / structure, mm (0 = off)', '0')
+  .option('--tolerance <m>', 'Overlaps no deeper than this are within tolerance, not clashes: metres, or with a unit (50mm, 5cm); 0 = every overlap', '0.05')
+  .option('--clearance <mm>', 'Also report MEP closer than this to MEP / structure without touching: mm, or with a unit (0 = off)', '0')
+  .option('--minor', 'Also list the overlaps within tolerance')
   .option('--level <id>', 'Only MEP on this level (obstacles from every level)')
   .option('--json', 'Print the report as JSON')
   .option('--mep-only', 'Only MEP vs MEP')
-  .description('MEP clash detection: ducts / pipes / conduits / cable trays and devices against structure (high), against other MEP they do not connect to (medium), through slabs / roofs / non-structural walls with no opening (low penetration), and closer than --clearance (low). Exit code 0 unless the project cannot be read.')
-  .action(async (dir: string, opts: { tolerance: string; clearance: string; level?: string; json?: boolean; mepOnly?: boolean }) => {
+  .description('MEP clash detection: ducts / pipes / conduits / cable trays and devices against structure (high), against other MEP they do not connect to (medium), through slabs / roofs / non-structural walls with no opening (low penetration), and closer than --clearance (low). Overlaps up to --tolerance (5 cm) are modelling slack, not clashes. Exit code 0 unless the project cannot be read.')
+  .action(async (dir: string, opts: { tolerance: string; clearance: string; minor?: boolean; level?: string; json?: boolean; mepOnly?: boolean }) => {
     const absDir = resolve(dir);
-    const tolerance = Number(opts.tolerance), clearance = Number(opts.clearance);
+    const tolerance = parseLengthM(opts.tolerance, 1), clearance = parseLengthM(opts.clearance, 0.001);
     if (!existsSync(absDir)) { console.error(`No such directory: ${dir}`); process.exitCode = 1; return; }
-    if (!Number.isFinite(tolerance) || tolerance < 0 || !Number.isFinite(clearance) || clearance < 0) {
-      console.error('--tolerance and --clearance take a length in mm (>= 0)'); process.exitCode = 1; return;
+    if (tolerance === null || clearance === null) {
+      console.error('--tolerance takes a length in metres, --clearance in mm (>= 0; or with a unit: 50mm, 5cm, 0.05m)'); process.exitCode = 1; return;
+    }
+    if (tolerance > 1 && !/[a-z]$/i.test(opts.tolerance.trim())) {
+      console.error(`--tolerance is in metres (0.05 = 5 cm); for millimetres write ${opts.tolerance}mm`); process.exitCode = 1; return;
     }
     if (opts.level && !discoverLayout(absDir).levelDirs.some(d => d.name === opts.level) && opts.level !== 'global') {
       console.error(`No level directory ${opts.level} in ${dir}`); process.exitCode = 1; return;
     }
     const { clashReport, formatClashReport } = await import('./mep/clash-load.js');
-    const report = clashReport(absDir, { toleranceMm: tolerance, clearanceMm: clearance, level: opts.level, mepOnly: opts.mepOnly });
+    const report = clashReport(absDir, { toleranceM: tolerance, clearanceMm: clearance * 1000, level: opts.level, mepOnly: opts.mepOnly, minor: opts.minor });
     if (opts.json) console.log(JSON.stringify(report, null, 2));
     else for (const line of formatClashReport(report)) console.log(line);
   });

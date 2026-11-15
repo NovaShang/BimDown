@@ -271,28 +271,41 @@ export function loadClashModel(dir: string, level?: string): ClashModelIn {
 }
 
 export interface ClashReportOptions {
-  /** Minimum overlap, mm (default 10). */
-  toleranceMm?: number;
+  /** Overlaps no deeper than this are within tolerance, not clashes; metres (default 0.05, 0 = every overlap). */
+  toleranceM?: number;
   /** Clearance distance, mm (default 0 = off). */
   clearanceMm?: number;
   level?: string;
   mepOnly?: boolean;
+  /** Also list the overlaps within tolerance (`minor`). */
+  minor?: boolean;
 }
 
 export interface ClashReport {
   units: string;
+  /** Tolerance used, metres. */
+  tolerance: number;
   counts: Record<ClashSeverity, number>;
   clashes: Clash[];
+  /** Overlaps within tolerance: their count, and the list with `minor`. */
+  minorCount: number;
+  minor?: Clash[];
 }
 
 export function clashReport(dir: string, opts: ClashReportOptions = {}): ClashReport {
   const model = loadClashModel(dir, opts.level);
-  const clashes = detectClashes(model, {
-    tolerance: metersToProject(dir, (opts.toleranceMm ?? 10) / 1000),
+  const tolerance = opts.toleranceM ?? 0.05;
+  const all = detectClashes(model, {
+    tolerance: metersToProject(dir, tolerance),
     clearance: metersToProject(dir, (opts.clearanceMm ?? 0) / 1000),
     mepOnly: opts.mepOnly,
+    minor: true,
   });
-  return { units: projectUnits(dir), counts: clashCounts(clashes), clashes };
+  const clashes = all.filter(c => !c.minor), minor = all.filter(c => c.minor);
+  return {
+    units: projectUnits(dir), tolerance, counts: clashCounts(clashes), clashes,
+    minorCount: minor.length, ...(opts.minor ? { minor } : {}),
+  };
 }
 
 const SEVERITIES: ClashSeverity[] = ['high', 'medium', 'low'];
@@ -302,20 +315,28 @@ export function formatClashReport(r: ClashReport): string[] {
   const unitM = UNIT_TO_M[r.units] ?? 1;
   const mm = (v: number) => `${Math.round(v * unitM * 1000)} mm`;
   const fmt = (p: Vec3) => `(${p.map(v => v.toFixed(2)).join(', ')})`;
+  const row = (c: Clash) => {
+    const a = `${c.aScope ? `${c.aScope}/` : ''}${c.aTable} ${c.a}`;
+    const b = `${c.bScope && c.bScope !== c.aScope ? `${c.bScope}/` : ''}${c.bTable} ${c.b}`;
+    const what = c.kind === 'clearance' ? `gap ${mm(c.depth)}` : `${c.kind} ${mm(c.depth)}`;
+    return `  ${a}  x  ${b}  ${what}  at ${fmt(c.at)}${c.systems.length ? `  [${c.systems.join(', ')}]` : ''}`;
+  };
   const out: string[] = [];
   for (const sev of SEVERITIES) {
     const list = r.clashes.filter(c => c.severity === sev);
     if (list.length === 0) continue;
     out.push(`${sev.toUpperCase()} (${list.length})`);
-    for (const c of list) {
-      const a = `${c.aScope ? `${c.aScope}/` : ''}${c.aTable} ${c.a}`;
-      const b = `${c.bScope && c.bScope !== c.aScope ? `${c.bScope}/` : ''}${c.bTable} ${c.b}`;
-      const what = c.kind === 'clearance' ? `gap ${mm(c.depth)}` : `${c.kind} ${mm(c.depth)}`;
-      out.push(`  ${a}  x  ${b}  ${what}  at ${fmt(c.at)}${c.systems.length ? `  [${c.systems.join(', ')}]` : ''}`);
-    }
+    for (const c of list) out.push(row(c));
+    out.push('');
+  }
+  const tol = `${Math.round(r.tolerance * 1000)} mm`;
+  if (r.minor && r.minor.length > 0) {
+    out.push(`MINOR, WITHIN TOLERANCE ${tol} (${r.minor.length})`);
+    for (const c of r.minor) out.push(row(c));
     out.push('');
   }
   const total = r.clashes.length;
   out.push(total === 0 ? 'No clashes.' : `${total} clash(es): ${r.counts.high} high, ${r.counts.medium} medium, ${r.counts.low} low.`);
+  if (r.minorCount > 0) out.push(`${r.minorCount} minor overlap(s) within the ${tol} tolerance not reported${r.minor ? '' : ' (--minor lists them)'}.`);
   return out;
 }

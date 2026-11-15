@@ -56,6 +56,44 @@ describe('bimdown clash', () => {
     expect(r.clashes.map(c => c.a)).toEqual(['du-2']);
   });
 
+  it('tolerance: a duct 46 mm into a joist chord is minor at the default 5 cm, 60 mm clashes, 0 reports both', () => {
+    // 14K1-like joist, top chord z 2.968 – 3.0. Ø150 ducts below it, poking up into the chord.
+    put('global/beam_type.csv', 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\nbmt-1,14K1,,steel,open_web,0.073,0.356,0.032,,0.0035,,14K1,\n');
+    put('lv-1/beam.csv', 'id,type_id\nbm-1,bmt-1\n');
+    put('lv-1/beam.geojson', fc([line('bm-1', [0, 0, 3], [10, 0, 3])]));
+    put('lv-1/duct.csv', 'id,shape,size_x,size_y,system_type,from,to\ndu-1,round,0.15,,SA,,\ndu-2,round,0.15,,SA,,\n');
+    put('lv-1/duct.geojson', fc([line('du-1', [3, -3, 2.939], [3, 3, 2.939]), line('du-2', [7, -3, 2.953], [7, 3, 2.953])]));
+    let r = clashReport(dir);
+    expect(r.tolerance).toBe(0.05);
+    expect(r.clashes.map(c => c.a)).toEqual(['du-2']);
+    expect(r.clashes[0].depth).toBeCloseTo(0.06, 6);
+    expect(r.counts).toEqual({ high: 1, medium: 0, low: 0 });
+    expect(r.minorCount).toBe(1);
+    expect(r.minor).toBeUndefined();
+    expect(formatClashReport(r).join('\n')).toMatch(/1 minor overlap\(s\) within the 50 mm tolerance not reported \(--minor lists them\)/);
+    // --minor lists it in its own group, not counted
+    r = clashReport(dir, { minor: true });
+    expect(r.minor!.map(c => [c.a, c.minor, c.severity])).toEqual([['du-1', true, 'high']]);
+    expect(r.minor![0].depth).toBeCloseTo(0.046, 6);
+    expect(r.counts.high).toBe(1);
+    expect(formatClashReport(r).join('\n')).toMatch(/MINOR, WITHIN TOLERANCE 50 mm \(1\)\n {2}lv-1\/duct du-1 {2}x {2}beam bm-1 {2}hard 46 mm/);
+    // 0: every overlap, as before the tolerance; 7 cm hides both
+    r = clashReport(dir, { toleranceM: 0 });
+    expect(r.clashes.map(c => c.a)).toEqual(['du-2', 'du-1']);
+    expect(r.minorCount).toBe(0);
+    expect(clashReport(dir, { toleranceM: 0.07 }).clashes).toEqual([]);
+    // Project units: a mm project gets the same answer from the same metres
+    put('project_metadata.json', JSON.stringify({ format_version: 2, units: 'mm' }));
+    put('global/level.csv', 'id,number,name,elevation\nlv-1,1,1F,0\nlv-2,2,2F,4000\n');
+    put('global/beam_type.csv', 'id,name,description,material,shape,size_x,size_y,flange,web,thickness,root_radius,designation,material_grade\nbmt-1,14K1,,steel,open_web,73,356,32,,3.5,,14K1,\n');
+    put('lv-1/beam.geojson', fc([line('bm-1', [0, 0, 3000], [10000, 0, 3000])]));
+    put('lv-1/duct.csv', 'id,shape,size_x,size_y,system_type,from,to\ndu-1,round,150,,SA,,\ndu-2,round,150,,SA,,\n');
+    put('lv-1/duct.geojson', fc([line('du-1', [3000, -3000, 2939], [3000, 3000, 2939]), line('du-2', [7000, -3000, 2953], [7000, 3000, 2953])]));
+    r = clashReport(dir);
+    expect(r.clashes.map(c => c.a)).toEqual(['du-2']);
+    expect(r.minorCount).toBe(1);
+  });
+
   it('a run split where it crosses a beam is one clash', () => {
     put('lv-1/beam.csv', 'id,shape,size_x,size_y,material\nbm-1,rect,0.3,0.5,concrete\n');
     put('lv-1/beam.geojson', fc([line('bm-1', [0, 0, 3], [10, 0, 3])]));
@@ -107,9 +145,12 @@ describe('bimdown clash', () => {
     expect(r.clashes[0].depth).toBeCloseTo(0.2, 6);
     expect(r.clashes[0].at[2]).toBeGreaterThanOrEqual(3.8);
     expect(r.clashes[0].at[2]).toBeLessThanOrEqual(4);
-    // An opening smaller than the pipe still clashes
+    // An opening smaller than the pipe still clashes, as deep as the pipe bites into its edge (30 mm: within the default tolerance)
     put('lv-2/opening.geojson', fc([poly('op-1', [[4.98, 4.98], [5.02, 4.98], [5.02, 5.02], [4.98, 5.02]])]));
-    expect(clashReport(dir).clashes.map(c => c.a).sort()).toEqual(['pi-1', 'pi-2']);
+    r = clashReport(dir, { toleranceM: 0.01 });
+    expect(r.clashes.map(c => c.a).sort()).toEqual(['pi-1', 'pi-2']);
+    expect(r.clashes.find(c => c.a === 'pi-2')!.depth).toBeCloseTo(0.03, 6);
+    expect(clashReport(dir, { minor: true }).minor!.map(c => c.a)).toEqual(['pi-2']);
     // A shaft from lv-1 up to lv-2 + 0.5 covers pi-1
     put('lv-2/opening.geojson', fc([poly('op-1', [[4.7, 4.7], [5.3, 4.7], [5.3, 5.3], [4.7, 5.3]])]));
     put('lv-1/opening.csv', 'id,host_id,top_level_id,top_offset\nop-9,,lv-2,0.5\n');
@@ -151,9 +192,11 @@ describe('bimdown clash', () => {
     // pi-1 grazes the column face by 5 mm; pi-2 passes 30 mm clear of it
     put('lv-1/pipe.geojson', fc([line('pi-1', [0, 0.245, 2], [10, 0.245, 2]), line('pi-2', [0, -0.28, 2], [10, -0.28, 2])]));
     expect(clashReport(dir).clashes).toEqual([]);
-    expect(clashReport(dir, { toleranceMm: 1 }).clashes.map(c => c.a)).toEqual(['pi-1']);
+    expect(clashReport(dir, { toleranceM: 0.001 }).clashes.map(c => c.a)).toEqual(['pi-1']);
+    // Clearance is the gap required between elements that don't touch; pi-1's graze stays a minor overlap
     const r = clashReport(dir, { clearanceMm: 50 });
-    expect(r.clashes.map(c => `${c.a}:${c.kind}`).sort()).toEqual(['pi-1:clearance', 'pi-2:clearance']);
+    expect(r.clashes.map(c => `${c.a}:${c.kind}`)).toEqual(['pi-2:clearance']);
+    expect(r.minorCount).toBe(1);
     const gap = r.clashes.find(c => c.a === 'pi-2')!.depth;
     expect(gap).toBeGreaterThan(0.025);
     expect(gap).toBeLessThan(0.035);
@@ -169,7 +212,7 @@ describe('detectClashes core', () => {
     const m = { curves: [pipe('a', [0, 0, 0], [10, 10, 0], 0.1, 'X'), pipe('b', [10, 0, 0.12], [0, 10, 0.12], 0.1, 'Y')], hosts: [] };
     expect(detectClashes(m)).toEqual([]);
     const near = { curves: [pipe('a', [0, 0, 0], [10, 10, 0], 0.1, 'X'), pipe('b', [10, 0, 0.07], [0, 10, 0.07], 0.1, 'Y')], hosts: [] };
-    const [c] = detectClashes(near);
+    const [c] = detectClashes(near, { tolerance: 0.01 });
     expect(c.depth).toBeCloseTo(0.03, 3);
     expect(c.at[0]).toBeCloseTo(5, 2);
     expect(c.at[1]).toBeCloseTo(5, 2);
@@ -179,7 +222,7 @@ describe('detectClashes core', () => {
     const bare = { curves: [pipe('a', [0, 0, 0], [10, 0, 0], 0.1, 'X'), pipe('b', [5, -5, 0.11], [5, 5, 0.11], 0.1, 'Y')], hosts: [] };
     expect(detectClashes(bare)).toEqual([]);
     bare.curves[0].insulation = 0.025;
-    expect(detectClashes(bare)).toHaveLength(1);
+    expect(detectClashes(bare, { tolerance: 0.01 })).toHaveLength(1);
     const elbow = { curves: [pipe('a', [0, 0, 0], [5, 0, 0], 0.3, 'X'), pipe('b', [5, 0, 0], [5, 0.2, 0], 0.3, 'X'), pipe('c', [5, 0.2, 0], [9, 0.2, 0], 0.3, 'X')], hosts: [] };
     expect(detectClashes(elbow)).toEqual([]);
   });
