@@ -25,6 +25,7 @@ import { collectViewParts, type PartClass, type ViewModelInput, type ViewPart } 
 import { LAYERS, type DrawingLayer } from './layers.ts';
 import { itemsBounds, paperMm, unitsPerMetre } from './plan.ts';
 import { annotationItems } from '../annotationExport.ts';
+import { elevationSurfaces } from './elevationSurfaces.ts';
 import { drawingLabel, type DrawingLang } from './labels.ts';
 import type { Box, DrawItem, ViewDrawing } from './types.ts';
 
@@ -37,6 +38,9 @@ export const VIEW_LAYERS = {
   cut:      L('A-SECT-MCUT', '#000000', 7, 0.5,  'solid',  'Section: material cut outline'),
   cutPatt:  L('A-SECT-PATT', '#4d4d4d', 8, 0.05, 'solid',  'Section: cut poché'),
   layerSeam: L('A-SECT-LAYR', '#ffffff', 7, 0.13, 'solid', 'Section: compound wall layer seams (1:50 and finer)'),
+  surface:  L('A-ELEV-SURF', '#efefec', 9, 0.05, 'solid', 'Elevation: material surfaces'),
+  surfacePatt: L('A-ELEV-PATT', '#9a8f86', 8, 0.05, 'solid', 'Elevation: surface patterns (brick coursing, roof tiles)'),
+  shadow:   L('A-ELEV-SHAD', '#9a9a9a', 8, 0.05, 'solid', 'Elevation: cast shadows'),
   sCutPatt: L('S-SECT-PATT', '#1f1f1f', 7, 0.05, 'solid',  'Section: structural cut poché'),
   beyond:   L('A-SECT-MBND', '#1a1a1a', 7, 0.18, 'solid',  'Section: material beyond'),
   elev:     L('A-ELEV-OTLN', '#1a1a1a', 7, 0.18, 'solid',  'Elevation: outlines'),
@@ -469,6 +473,8 @@ function clipRingX(ring: Point[], x0: number, x1: number): Point[] {
 export interface ViewRenderOptions {
   /** Draw hidden edges dashed (default off). */
   hidden?: boolean;
+  /** Elevations: material tints, coursing and cast shadows on the faces (default on). */
+  rendered?: boolean;
   lang?: DrawingLang;
   /** Add the view's annotations (dimensions / text notes). Default true. */
   annotations?: boolean;
@@ -476,6 +482,8 @@ export interface ViewRenderOptions {
 
 class Out {
   readonly layers = new Map<string, DrawingLayer>();
+  /** Elevation surfaces (fills, coursing, shadows), under everything. */
+  readonly surf: DrawItem[] = [];
   readonly back: DrawItem[] = [];
   readonly mid: DrawItem[] = [];
   readonly front: DrawItem[] = [];
@@ -653,6 +661,13 @@ export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: V
     }
   }
 
+  // Rendered elevation: material tints, brick / tile coursing, cast shadows
+  if (ref.kind === 'elevation' && opts.rendered !== false) {
+    out.surf.push(...elevationSurfaces(src.parts, (x, y, z) => toView(basis, x, y, z), frame.dir, {
+      upm, pm, fillLayer: out.layer(VIEW_LAYERS.surface), hatchLayer: out.layer(VIEW_LAYERS.surfacePatt), shadowLayer: out.layer(VIEW_LAYERS.shadow),
+    }));
+  }
+
   // 1:50 and finer: the layers of compound walls inside their cut poché (Revit's medium detail)
   if (d0 != null && scale <= 50) {
     const wallRings = cutLoops.filter(c => c.cls === 'wall' || c.cls === 'swall').flatMap(c => [...c.outer, ...c.holes]);
@@ -717,7 +732,7 @@ export function renderView(src: ViewSource, ref: ViewRef, scale: number, opts: V
     }
   }
 
-  const items = [...out.back, ...out.mid, ...out.front, ...out.anno];
+  const items = [...out.surf, ...out.back, ...out.mid, ...out.front, ...out.anno];
   const title = ref.kind === 'elevation'
     ? drawingLabel(lang, 'views.elevationOf', { dir: drawingLabel(lang, `views.dir.${ref.id}`) })
     : drawingLabel(lang, 'views.sectionOf', { name: section?.name || ref.id });

@@ -69,6 +69,10 @@ export interface ViewPart {
   /** Edges always drawn when visible, 6 numbers each. */
   sharp: number[];
   smooth: SmoothEdge[];
+  /** Surface material (elevation tints). */
+  material?: string;
+  /** Walls whose two faces differ (type layers): materials on the left / right of the plan direction `axis`. */
+  faceMaterials?: { axis: Point; left: string; right: string };
   /** Layered straight walls: centre line (plan) and the offsets (left of it) where one type layer meets the next. */
   layerSeams?: { a: Point; b: Point; offsets: number[] };
 }
@@ -362,6 +366,12 @@ function wallPart(id: string, el: CanonicalElement, f: LineWallFacts, ctx: Geome
     b.smooth.push(...e.smooth);
   }
   const part = b.part(id, el.tableName, el.tableName === 'structure_wall' ? 'swall' : 'wall');
+  part.material = f.material;
+  if (f.layers && f.layers.length > 1 && !f.centerline.arc) {
+    const { start: a, end: e, length } = f.centerline;
+    const outer = f.layers.reduce((m, l) => (l.hi > m.hi ? l : m)), inner = f.layers.reduce((m, l) => (l.lo < m.lo ? l : m));
+    if (length > 0) part.faceMaterials = { axis: { x: (e.x - a.x) / length, y: (e.y - a.y) / length }, left: outer.material || f.material, right: inner.material || f.material };
+  }
   if (f.layers && f.layers.length > 1 && !f.centerline.arc) {
     const half = f.thickness / 2;
     const offsets = [...new Set(f.layers.flatMap(l => [l.lo, l.hi]).map(v => Math.round(v * 1e6) / 1e6))]
@@ -434,7 +444,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
         solid = geo ? brepFromBuffer(geo) : null;
         geo?.dispose();
       }
-      push(solidsPart(id, t, 'roof', [solid ?? extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]));
+      const roofPart = solidsPart(id, t, 'roof', [solid ?? extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]);
+      if (roofPart) roofPart.material = f.material;
+      push(roofPart);
       break;
     }
     case 'foundation':
