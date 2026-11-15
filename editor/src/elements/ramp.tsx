@@ -8,6 +8,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, LineElement, SpatialLineElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD } from './_options.ts';
+import { drawingLabel, drawingLang } from '../export/drawing/labels.ts';
 
 const RAMP_THICKNESS = 0.15;
 
@@ -115,7 +116,7 @@ export const rampModule: ElementModule<RampFacts> = {
             fill={stroke} textAnchor="middle" dominantBaseline="central"
             transform={`translate(${labelPos.x},${labelPos.y + 0.3}) scale(1,-1) translate(${-labelPos.x},${-(labelPos.y + 0.3)})`}
           >
-            {`UP ${slopePct.toFixed(1)}%`}
+            {`${drawingLabel(drawingLang(), 'plan.up')} ${slopePct.toFixed(1)}%`}
           </text>
         )}
       </g>

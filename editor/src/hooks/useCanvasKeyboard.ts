@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import type { EditorState, EditorAction, Tool } from '../state/editorTypes.ts';
-import { toSelectionId } from '../model/ids.ts';
-import { isLayerSelectableInView } from '../state/selectors.ts';
+import { requestDelete, selectAllInView } from '../state/selectionOps.ts';
 import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
 import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
@@ -69,9 +68,7 @@ export function useCanvasKeyboard({
           break;
         case 'Delete': case 'Backspace':
           if (stateRef.current.readonly) break;
-          if (stateRef.current.selectedIds.size > 0) {
-            globalDispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stateRef.current.selectedIds) });
-          }
+          if (stateRef.current.selectedIds.size > 0) requestDelete(stateRef.current, globalDispatch);
           break;
         case ' ':
           e.preventDefault();
@@ -119,19 +116,8 @@ export function useCanvasKeyboard({
         case 'a': case 'A':
           if (e.ctrlKey || e.metaKey) {
             e.preventDefault();
-            const allIds: string[] = [];
-            const s = stateRef.current;
-            const floor = s.project?.floors.get(s.currentLevel);
-            if (floor) {
-              for (const layer of floor.layers) {
-                if (isLayerSelectableInView(layer.discipline, layer.tableName, s)) {
-                  for (const id of layer.csvRows.keys()) {
-                    allIds.push(s.currentLevel ? toSelectionId(s.currentLevel, id) : id);
-                  }
-                }
-              }
-            }
-            globalDispatch({ type: 'SELECT', ids: allIds });
+            // Only what this view lets you pick (not MEP's walls, nor hidden layers)
+            globalDispatch({ type: 'SELECT', ids: selectAllInView(stateRef.current), exact: true });
           }
           break;
       }

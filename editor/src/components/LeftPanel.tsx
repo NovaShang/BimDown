@@ -20,6 +20,7 @@ import { useDataSource } from '../utils/DataSourceContext.tsx';
 import { persistMepSystems } from '../utils/persist.ts';
 import UnderlayPanel from '../underlay/UnderlayPanel.tsx';
 import { openDialog, showNotice } from '../state/modifyUi.ts';
+import { levelLabel } from '../model/displayNames.ts';
 
 interface LeftPanelProps {
   levels: Level[];
@@ -268,9 +269,9 @@ export default function LeftPanel({
                 e.preventDefault();
                 if (!readonly) setContextMenu({ x: e.clientX, y: e.clientY, level });
               }}
-              title={`${level.name} (${formatElevation(level.elevation, projectUnit)})`}
+              title={`${levelLabel(t, level)} (${formatElevation(level.elevation, projectUnit)})`}
             >
-              <span className="flex-1 truncate">{level.name || level.id}</span>
+              <span className="flex-1 truncate">{levelLabel(t, level)}</span>
               <span className={cn(
                 'ml-2 text-[9px] tabular-nums',
                 currentLevel === level.id ? 'text-[var(--color-accent)] opacity-60' : 'text-muted-foreground'
@@ -373,7 +374,7 @@ export default function LeftPanel({
                     <div
                       key={sys.id || `${sys.system_type}-${sys.name}`}
                       className="group flex items-center gap-2 rounded px-2 py-[3px] text-[11px] text-muted-foreground hover:bg-accent"
-                      title={sys.discipline ? `${label} · ${sys.discipline}` : label}
+                      title={sys.discipline ? `${label} · ${t(`mepDiscipline.${sys.discipline}`, sys.discipline)}` : label}
                     >
                       <span
                         className="size-3 shrink-0 rounded-sm border border-black/20"

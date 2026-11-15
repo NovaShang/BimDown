@@ -259,6 +259,24 @@ export function redoMulti(state: EditorState, cmd: EditCommand, openLevel: (s: E
  * Copies of `ids` (raw ids on `fromLevel`, children included) placed on each
  * target level at the same plan position. Returns the per-level patches.
  */
+/** Rooms and their boundaries: another discipline's copy must not cut the target level's rooms. */
+const ROOM_TABLES = new Set(['space', 'room_separator']);
+
+/**
+ * The ids a Copy to Levels takes: rooms, room separators (and tags on them)
+ * only when copied from the architecture (or all-disciplines) view.
+ */
+export function levelCopyIds(state: EditorState, ids: readonly string[]): string[] {
+  const els = state.document?.elements;
+  const d = state.activeDiscipline;
+  if (!els || !d || d === 'architecture' || d === 'all') return [...ids];
+  const isRoom = (id: string | undefined) => !!id && ROOM_TABLES.has(els.get(id)?.tableName ?? '');
+  return ids.filter(id => {
+    const el = els.get(id);
+    return !isRoom(id) && !(el?.tableName === 'tag' && isRoom(el.attrs.host_id));
+  });
+}
+
 export function copyToLevelsPatches(
   state: EditorState,
   source: ReadonlyMap<string, CanonicalElement>,

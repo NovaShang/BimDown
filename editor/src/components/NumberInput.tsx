@@ -19,26 +19,32 @@ interface NumberInputProps {
   placeholder?: string;
 }
 
-function clampAndRound(val: number, step: number, min?: number, max?: number) {
-  const decimals = (step.toString().split('.')[1] || '').length;
+/** Digits after the decimal point (at most MAX_DECIMALS; float noise ignored). */
+const MAX_DECIMALS = 6;
+function decimalsOf(n: number): number {
+  if (!Number.isFinite(n)) return 0;
+  const s = String(Number(n.toFixed(MAX_DECIMALS)));
+  return s.includes('e') ? MAX_DECIMALS : (s.split('.')[1] || '').length;
+}
+
+/** A nudge result: at the step's precision or the value's own, whichever is finer
+ *  (1.05 + 0.1 → 1.15, not 1.2). */
+export function clampAndRound(val: number, step: number, min?: number, max?: number, base?: number) {
+  const decimals = Math.max(decimalsOf(step), base != null ? decimalsOf(base) : 0);
   let v = parseFloat(val.toFixed(decimals));
   if (min != null && v < min) v = min;
   if (max != null && v > max) v = max;
   return v;
 }
 
-/** Format the displayed value to match the step's precision. Avoids surfacing
- *  things like "0.30000000000000004" caused by upstream float arithmetic.
- *  Keeps the raw string if it's still being edited (tracked separately by
- *  pendingValue). */
-function formatForDisplay(raw: string, step: number): string {
+/** The displayed value: the stored precision (DN65 is 0.065, not the step's
+ *  0.07), without float artifacts like "0.30000000000000004". Keeps the raw
+ *  string if it's still being edited (tracked separately by pendingValue). */
+export function formatForDisplay(raw: string): string {
   if (raw === '' || raw === '-') return raw;
   const n = Number(raw);
   if (!Number.isFinite(n)) return raw;
-  const decimals = (step.toString().split('.')[1] || '').length;
-  // Trim trailing zeros after the decimal point so "0.300" reads as "0.3".
-  const fixed = n.toFixed(decimals);
-  return decimals > 0 ? fixed.replace(/\.?0+$/, '') || '0' : fixed;
+  return String(Number(n.toFixed(MAX_DECIMALS)));
 }
 
 export function NumberInput({ value, onChange, step = 1, min, max, className, parseImperial, placeholder }: NumberInputProps) {
@@ -52,7 +58,7 @@ export function NumberInput({ value, onChange, step = 1, min, max, className, pa
     // Read from pending (local) value if mid-scroll, otherwise from prop
     const base = pendingValue != null ? pendingValue : value;
     const current = parseFloat(base) || 0;
-    const next = clampAndRound(current + delta * step, step, min, max);
+    const next = clampAndRound(current + delta * step, step, min, max, current);
     const nextStr = String(next);
 
     // Update local display immediately
@@ -112,8 +118,8 @@ export function NumberInput({ value, onChange, step = 1, min, max, className, pa
   }, [parseImperial, pendingValue, onChange]);
 
   // While editing (focused), show whatever the user has typed verbatim;
-  // otherwise format to step precision so float artifacts don't leak through.
-  const displayValue = pendingValue ?? (focused ? value : formatForDisplay(value, step));
+  // otherwise drop float artifacts (never round to the step).
+  const displayValue = pendingValue ?? (focused ? value : formatForDisplay(value));
 
   return (
     <Tooltip open={focused}>

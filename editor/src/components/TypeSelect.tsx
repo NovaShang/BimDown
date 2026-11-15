@@ -4,6 +4,7 @@ import { findType, typeTableFor, typesForInstanceTable } from '../model/types/ca
 import { withStarterTypes } from '../model/types/starter.ts';
 import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
+import { typeLabel } from '../model/displayNames.ts';
 
 /** Select value standing for "no type" (base-ui selects need a non-empty value). */
 const NO_TYPE = '__none__';
@@ -29,7 +30,7 @@ export function TypeSelect({ instanceTable, value, onChange, triggerClassName, s
   const types = state.project?.types;
   const options = typesForInstanceTable(types, instanceTable);
   const current = findType(types, value);
-  const label = mixed ? t('type.varies') : value ? (current?.name ?? value) : t('type.none');
+  const label = mixed ? t('type.varies') : value ? (current ? typeLabel(t, current) : value) : t('type.none');
   // A project whose type files predate this category (e.g. no furniture_type.csv) can pull in the starter rows.
   const typeTable = typeTableFor(instanceTable)?.table;
   const starter = types && typeTable && options.length === 0 && !state.readonly
@@ -51,7 +52,7 @@ export function TypeSelect({ instanceTable, value, onChange, triggerClassName, s
         <SelectItem value={NO_TYPE}><span className="text-muted-foreground">{t('type.none')}</span></SelectItem>
         {value && !current && <SelectItem value={value}>{value}</SelectItem>}
         {options.map(o => (
-          <SelectItem key={o.id} value={o.id}>{o.name}</SelectItem>
+          <SelectItem key={o.id} value={o.id}>{typeLabel(t, o)}</SelectItem>
         ))}
         {starter && (
           <SelectItem value={ADD_STARTER} data-testid="type-add-starter">

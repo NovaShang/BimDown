@@ -108,7 +108,7 @@ export default function ViewToolbar({ onZoomToFit, scale }: ViewToolbarProps) {
                 <rect x="4" y="4" width="4" height="3" rx="0.5" strokeWidth="1" />
               </svg>
             </TooltipTrigger>
-            <TooltipContent side="top">{t('view.toggleMinimap')} (M)</TooltipContent>
+            <TooltipContent side="top">{t('view.toggleMinimap')}</TooltipContent>
           </Tooltip>
         </>
       )}

@@ -188,8 +188,8 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
       if (id) {
         // Global-prefixed IDs (from globalLayers) are already fully qualified
         if (id.startsWith('global:')) return id;
-        // Regular element IDs: prefix with current level
-        if (/^[a-z]+-\d+$/i.test(id)) {
+        // Regular element IDs (w-1, and named ones like grid gr-A): prefix with current level
+        if (/^[a-z]+-[a-z0-9]+$/i.test(id)) {
           return state.currentLevel ? toSelectionId(state.currentLevel, id) : id;
         }
       }

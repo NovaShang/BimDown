@@ -20,6 +20,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
 import { NumberInput } from './NumberInput.tsx';
 import { countTypeUsage } from '../state/typeEdits.ts';
 import { cn } from '../lib/utils';
+import { typeLabel } from '../model/displayNames.ts';
 
 type Option = { value: string; label: string };
 
@@ -245,10 +246,10 @@ export default function EditTypeDialog({ open, instanceTable, typeId, onClose, o
           <div className="mb-3 flex items-center gap-2">
             <Select value={selId} onValueChange={v => { if (v) setSelId(v); }}>
               <SelectTrigger size="sm" className="h-8 min-w-0 flex-1 rounded-md border border-input px-2 text-[12px]" data-testid="type-dialog-select">
-                <span className="truncate">{sel?.name ?? '—'}</span>
+                <span className="truncate">{sel ? typeLabel(t, sel) : '—'}</span>
               </SelectTrigger>
               <SelectContent>
-                {categoryTypes.map(x => <SelectItem key={x.id} value={x.id}>{x.name}</SelectItem>)}
+                {categoryTypes.map(x => <SelectItem key={x.id} value={x.id}>{typeLabel(t, x)}</SelectItem>)}
               </SelectContent>
             </Select>
             <button type="button" className={BTN} disabled={!sel} data-testid="type-duplicate"

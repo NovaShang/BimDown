@@ -209,8 +209,10 @@ export function reresolveTypeAttrs(
 
 /**
  * Attrs after switching an element to `typeId` ('' = no type). Overrides of the
- * old type are dropped (the new type's values apply, as in Revit); going
- * untyped keeps the current effective values as plain instance values.
+ * old type are dropped (the new type's values apply, as in Revit), and so are
+ * the old type's parameters the new type leaves empty (an RC type picked after
+ * a steel one carries no flange / web); going untyped keeps the current
+ * effective values as plain instance values.
  */
 export function retypeAttrs(
   instanceTable: string,
@@ -222,11 +224,31 @@ export function retypeAttrs(
   if (!typeId) return next;
   const t = typeOfAttrs(instanceTable, next, catalog);
   if (!t) return next;
+  const hadType = !!typeOfAttrs(instanceTable, attrs, catalog);
   const values = typeValues(t);
   for (const k of typeParamKeys(instanceTable)) {
     if (values[k] !== undefined) next[k] = values[k];
+    else if (hadType) delete next[k];
   }
+  if (values.shape !== undefined) for (const k of unusedSectionParams(values.shape)) delete next[k];
   return next;
+}
+
+/** Section parameters each structural shape uses (spec structural_section_profile). */
+const SECTION_PARAMS: Record<string, string[]> = {
+  rect: ['size_x', 'size_y'],
+  round: ['size_x'],
+  i_shape: ['size_x', 'size_y', 'flange', 'web'],
+  t_shape: ['size_x', 'size_y', 'flange', 'web'],
+  c_shape: ['size_x', 'size_y', 'flange', 'web'],
+  l_shape: ['size_x', 'size_y', 'thickness'],
+  cross: ['size_x', 'size_y', 'thickness'],
+};
+
+/** Section parameters a shape doesn't use (round: size_y, flange, web, thickness). Unknown shapes: none. */
+export function unusedSectionParams(shape: string | undefined): string[] {
+  const used = SECTION_PARAMS[(shape ?? '').trim()];
+  return used ? SECTION.filter(k => k !== 'shape' && !used.includes(k)) : [];
 }
 
 /** 'type' when the field shows the type's value, 'override' when the instance differs, null when untyped/not a parameter. */
@@ -326,13 +348,20 @@ export function duplicateType(catalog: TypeCatalog, t: ElementType): ElementType
     ...t,
     id: nextTypeId(catalog, t.table),
     name: `${base} ${n}`,
-    values: { ...t.values },
+    values: normalizeType(t).values,
     layers: t.layers.map((l, i) => ({ ...l, id: layerIds[i] })),
   };
 }
 
-/** Layers renumbered 1..n in array order; a layered type's thickness column follows the total. */
+/** Layers renumbered 1..n in array order; a layered type's thickness column follows the total;
+ *  a section type keeps only the parameters its shape uses. */
 export function normalizeType(t: ElementType): ElementType {
+  const unused = t.values.shape !== undefined && typeTableDef(t.table)?.columns.includes('flange') ? unusedSectionParams(t.values.shape) : [];
+  if (unused.some(k => (t.values[k] ?? '') !== '')) {
+    const values = { ...t.values };
+    for (const k of unused) if (k in values) values[k] = '';
+    t = { ...t, values };
+  }
   if (!typeTableDef(t.table)?.layered) return t;
   const layers = t.layers.map((l, i) => ({ ...l, seq: i + 1 }));
   const total = layers.length ? round6(layers.reduce((s, l) => s + l.thickness, 0)) : undefined;

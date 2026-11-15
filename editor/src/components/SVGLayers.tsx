@@ -2,6 +2,7 @@ import React from 'react';
 import type { ProcessedLayer } from '../state/editorTypes.ts';
 import { ElementNode } from './ElementNode.tsx';
 import { ARCH_SHARED_WITH_STRUCTURE } from '../state/selectors.ts';
+import { pickOrder } from '../utils/pickOrder.ts';
 
 interface SVGLayersProps {
   layers: ProcessedLayer[];
@@ -40,7 +41,7 @@ const SVGLayers = React.memo(function SVGLayers({ layers, activeFilter, activeDi
         const className = `data-layer ${activeFilter && layer.tableName !== activeFilter ? 'dimmed' : ''} ${isArchContext || isReferenceContext ? 'background-layer' : ''}`;
         return (
           <g key={layer.key} className={className} data-layer={layer.key} style={layerStyle}>
-            {layer.elements.map(el => (
+            {pickOrder(layer.elements).map(el => (
               <ElementNode key={el.id} element={el} />
             ))}
           </g>

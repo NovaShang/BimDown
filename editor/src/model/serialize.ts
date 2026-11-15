@@ -333,10 +333,13 @@ export function serializeToCsv(elements: CanonicalElement[], tableName: string, 
   const headers = ['id', ...headerSet];
   const lines: string[] = [headers.join(',')];
 
+  // Round MEP runs have a diameter only: no stale size_y from a rectangular past
+  const roundRuns = ROUND_RUN_TABLES.has(tableName);
   for (const el of elements) {
     const values = headers.map(h => {
       if (h === 'id') return el.id;
-      const v = el.attrs[h] ?? '';
+      if (roundRuns && h === 'size_y' && (el.attrs.shape || (tableName === 'duct' ? '' : 'round')) === 'round') return '';
+      const v = cleanNumber(el.attrs[h] ?? '');
       // Quote if contains comma or quote
       if (v.includes(',') || v.includes('"')) {
         return `"${v.replace(/"/g, '""')}"`;
@@ -347,6 +350,13 @@ export function serializeToCsv(elements: CanonicalElement[], tableName: string, 
   }
 
   return lines.join('\n');
+}
+
+const ROUND_RUN_TABLES = new Set(['duct', 'pipe', 'conduit']);
+
+/** Float noise off numeric values (2.6999998092651367 → 2.7, 25.200000000000003 → 25.2); 6 decimals kept. */
+export function cleanNumber(v: string): string {
+  return /^-?\d*\.\d{7,}$/.test(v) ? String(Number(Number(v).toFixed(6))) : v;
 }
 
 function getCsvHeaders(tableName: string): string[] {

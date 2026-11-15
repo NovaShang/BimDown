@@ -12,7 +12,7 @@ import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { pointInPolygon } from '../geometry/spaceBoundary.ts';
 import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
 import { circuitsIn, type CircuitSummary } from '../mep/circuits.ts';
-import { OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
+import { MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
 import { drawingLabel, drawingLang, type DrawingLang } from '../export/drawing/labels.ts';
 
 export type ColumnKind = 'text' | 'length' | 'area' | 'volume' | 'count';
@@ -144,6 +144,13 @@ export function sizeLabel(el: CanonicalElement, unit: ProjectUnit): string {
   return sx;
 }
 
+/** A material as its option label in `lang` (wood → "Wood" / 木材); unknown values stay raw. */
+export function materialLabel(value: string | undefined, lang: DrawingLang = drawingLang()): string {
+  if (!value) return '';
+  const label = MATERIAL_OPTIONS?.find(o => o.value === value)?.label;
+  return label ? drawingLabel(lang, `option.${label}`) : value;
+}
+
 /** Door / window operation as its option label in `lang` (single_swing → "Single" / 单开); unknown values stay raw. */
 export function operationLabel(table: string, value: string | undefined, lang: DrawingLang = drawingLang()): string {
   if (!value) return '';
@@ -163,7 +170,7 @@ function rowValues(el: CanonicalElement, level: Level, q: ElementQuantities, uni
     name: a.name ?? '',
     level: level.name || level.id,
     category: displayName(el.tableName),
-    material: a.material ?? '',
+    material: materialLabel(a.material, lang),
     host_id: a.host_id ?? el.hostId ?? '',
     width: num(a.width),
     height: num(a.height),

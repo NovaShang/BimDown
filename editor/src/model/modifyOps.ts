@@ -14,7 +14,7 @@
 import type { CanonicalElement, LineElement, Point, SpatialLineElement } from './elements.ts';
 
 type AnyLine = LineElement | SpatialLineElement;
-import { expandCopySet, cloneElements, type NumberPool } from './copySet.ts';
+import { expandCopySet, cloneElements, gridNames, type NumberPool } from './copySet.ts';
 import { isPinned } from './pins.ts';
 import { applyXform, isMirror, rotationAbout, transformElements, translation, type Xform, elementsBounds, boundsCenter } from './transform.ts';
 import { applyReshapeJoins, findWallJoins, isJoinable, wallFrame } from '../geometry/wallJoins.ts';
@@ -147,10 +147,11 @@ export function arrayPatch(
   }
   const set = expandCopySet(source, selected);
   const taken = new Set(source.keys());
+  const names = gridNames(source.values()); // copies 2, 3, 4 of grid 1
   const select: string[] = [];
   for (const T of transforms) {
     // Instances of one group stay identical: no renumbering there
-    const { clones, idMap } = cloneElements(source, set, { taken, keepOutsideRefs: true, numbers: group ? undefined : numbers });
+    const { clones, idMap } = cloneElements(source, set, { taken, keepOutsideRefs: true, numbers: group ? undefined : numbers, gridNames: names });
     for (const [src, nid] of idMap) {
       const el = source.get(src)!;
       if (el.hostId && !set.has(el.hostId) && el.tableName !== 'connector') { clones.delete(nid); idMap.delete(src); }

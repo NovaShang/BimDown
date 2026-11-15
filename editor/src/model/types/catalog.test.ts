@@ -13,7 +13,7 @@ import {
   duplicateType, findType, parseTypeFiles, resolvedLayers, serializeTypeFiles,
   typeParamState, typesForInstanceTable, upsertType, type TypeCatalog,
 } from './catalog.ts';
-import { withDefaultDrawingType } from './drawingType.ts';
+import { drawingAttrsForType, withDefaultDrawingType } from './drawingType.ts';
 import { flipWalls } from '../../state/typeEdits.ts';
 
 /** lv-1: two typed walls (w-2 overrides thickness), one untyped; a typed door on w-1. */
@@ -208,5 +208,34 @@ describe('element types in the editor', () => {
     const mid = (l: LineElement) => ({ x: (l.start.x + l.end.x) / 2, y: (l.start.y + l.end.y) / 2 });
     expect(mid(d).x).toBeCloseTo(mid(before).x);
     expect(editorReducer(s1, { type: 'UNDO' }).document!.elements.get('w-1')).toEqual(el(s0, 'w-1'));
+  });
+
+  it('picking another type drops the previous type\'s parameters (no flange / web on RC columns)', () => {
+    const catalog = { ...starterCatalog(), saved: true };
+    const hea = findType(catalog, 'colt-steel-hea-300')!;
+    // A tuned duplicate of the steel type, then the RC type in the drawing bar
+    const steel = { ...duplicateType(catalog, hea), values: { ...hea.values, flange: '0.015', web: '0.01' } };
+    const types = upsertType(catalog, steel);
+    const onSteel = drawingAttrsForType('structure_column', { base_offset: '0' }, steel.id, types);
+    expect(onSteel).toMatchObject({ flange: '0.015', web: '0.01', shape: 'i_shape' });
+    const onRc = drawingAttrsForType('structure_column', onSteel, 'colt-concrete-600', types);
+    expect(onRc).toMatchObject({ type_id: 'colt-concrete-600', shape: 'rect', size_x: '0.6', size_y: '0.6', base_offset: '0' });
+    expect(onRc.flange).toBeUndefined();
+    expect(onRc.web).toBeUndefined();
+    // Round: no depth either
+    const onRound = drawingAttrsForType('structure_column', onSteel, 'colt-concrete-round-400', types);
+    expect(onRound.size_y).toBeUndefined();
+  });
+
+  it('a section type keeps only its shape\'s parameters (duplicate, shape change)', () => {
+    const catalog = { ...starterCatalog(), saved: true };
+    const hea = findType(catalog, 'colt-steel-hea-300')!;
+    const round = upsertType(catalog, { ...hea, values: { ...hea.values, shape: 'round' } });
+    expect(findType(round, hea.id)!.values).toMatchObject({ shape: 'round', size_x: '0.3', size_y: '', flange: '', web: '' });
+    const messy = { ...hea, values: { ...hea.values, shape: 'rect' } };
+    const copy = duplicateType(catalog, messy);
+    expect(copy.values).toMatchObject({ shape: 'rect', size_x: '0.3', size_y: '0.29', flange: '', web: '' });
+    // Unknown shapes (newer spec) keep everything
+    expect(findType(upsertType(catalog, { ...hea, values: { ...hea.values, shape: 'future_shape' } }), hea.id)!.values.flange).toBe('0.014');
   });
 });

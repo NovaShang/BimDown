@@ -8,6 +8,7 @@ import type { ToolContext } from '../../tools/types.ts';
 import { useEditorState } from '../../state/EditorContext.tsx';
 import { resolveBatchElementId } from '../staticBatch.ts';
 import { isPointVisible } from '../clipHit.ts';
+import { requestDelete } from '../../state/selectionOps.ts';
 
 /**
  * Resolves an element ID from a raycast intersection.
@@ -248,9 +249,7 @@ export function useInteraction3D({ toolCtx, hitElementIdRef, floorElevation: _fl
           break;
         case 'Delete': case 'Backspace':
           if (stRef.current.readonly) break;
-          if (stRef.current.selectedIds.size > 0) {
-            dispatch({ type: 'DELETE_ELEMENTS', ids: Array.from(stRef.current.selectedIds) });
-          }
+          if (stRef.current.selectedIds.size > 0) requestDelete(stRef.current, dispatch);
           break;
         case 'Escape':
           toolCtx.setSnap(null);

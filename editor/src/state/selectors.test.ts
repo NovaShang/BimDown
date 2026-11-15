@@ -79,6 +79,25 @@ describe('getContentBounds', () => {
     }
   });
 
+  it('a level with a few columns still fits the grid through them', async () => {
+    // 4 columns near the middle of a 30 x 20 m grid: the bubbles are far, but the axes cross the columns
+    const grids: GridData[] = [
+      { id: 'gr-1', number: '1', x1: 0, y1: -3, x2: 0, y2: 23 },
+      { id: 'gr-2', number: '2', x1: 15, y1: -3, x2: 15, y2: 23 },
+      { id: 'gr-3', number: '3', x1: 30, y1: -3, x2: 30, y2: 23 },
+      { id: 'gr-A', number: 'A', x1: -3, y1: 10, x2: 33, y2: 10 },
+    ];
+    const cols = createDocument('lv-2', [...gridsToElements(grids), ...[0, 15].map((x, i) => ({
+      id: `c-${i}`, tableName: 'column', discipline: 'architecture', geometry: 'point' as const,
+      position: { x, y: 10 }, width: 0.4, height: 0.4, attrs: { id: `c-${i}` },
+    }))]);
+    const state = { ...(await stateFor('lv-2', null)), document: cols, grids };
+    const b = getContentBounds(state)!;
+    expect(b.y + b.h).toBeGreaterThan(3 - 0.1); // bubble of 1 / 2 at y = -3 (svg +3)
+    expect(b.x).toBeLessThan(-3); // bubble of A
+    expect(b.x + b.w).toBeGreaterThan(30); // axis 3 crosses A, which crosses the columns
+  });
+
   it('is null for an empty level, where the viewBox falls back to a default square', async () => {
     const state = await stateFor('lv-3', 'lv-3');
     expect(getContentBounds(state)).toBeNull();

@@ -23,7 +23,9 @@ import { TypeSelect } from './TypeSelect.tsx';
 import EditTypeDialog from './EditTypeDialog.tsx';
 import { findType, isTypedTable, typeParamState, typeValues } from '../model/types/catalog.ts';
 import QuantitiesSection from './QuantitiesSection.tsx';
+import { selectedElsewhere } from '../state/selectionOps.ts';
 import ModulePropertyPanel from './ModulePropertyPanel.tsx';
+import { levelLabel } from '../model/displayNames.ts';
 
 // Shared input styling so number / text / select / level controls read as one
 // system: transparent until interaction, soft fill on hover, accent border on
@@ -66,6 +68,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
 
   const [firstId, firstData] = selectedData.entries().next().value!;
   const isSingleSelection = selectedData.size === 1;
+  const elsewhere = selectedElsewhere(state);
   const tables = new Set([...selectedData.values()].map(d => d.tableName));
   const mixedTables = tables.size > 1;
   const style = mixedTables ? undefined : LAYER_STYLES[firstData.tableName];
@@ -94,7 +97,7 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
     if (!mod) return [];
     // Mixed tables: only the fields every selected type has.
     const shared = (key: string) => [...tables].every(tb => getElementModule(tb)?.propertyFields.some(f => f.key === key));
-    const levelOptions = levels.map(l => ({ value: l.id, label: l.name || l.id }));
+    const levelOptions = levels.map(l => ({ value: l.id, label: levelLabel(t, l) }));
     // Inject dynamic options at render time. Level + MEP system definitions
     // live in project state, not in the static element module. For MEP line
     // tables (duct / pipe / etc.) filter to the disciplines that make sense
@@ -163,8 +166,12 @@ function PropertiesContent({ selectedData, levels, readonly }: { selectedData: M
         >
           &#x2715;
         </Button>
-        {selectedData.size > 1 && (
-          <div className="mt-1 text-[10px] text-muted-foreground">{t('prop.elementsSelected', { count: selectedData.size })}</div>
+        {(selectedData.size > 1 || elsewhere > 0) && (
+          <div className="mt-1 text-[10px] text-muted-foreground" data-testid="prop-selected-count">
+            {elsewhere > 0
+              ? t('prop.elementsSelectedLevels', { count: selectedData.size + elsewhere, elsewhere })
+              : t('prop.elementsSelected', { count: selectedData.size })}
+          </div>
         )}
       </div>
 
