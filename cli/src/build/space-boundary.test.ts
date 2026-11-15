@@ -269,6 +269,13 @@ describe('computeSpaceBoundaries', () => {
       expect(w).toContain('lv-1/space.csv');
       expect(w).toContain('sp-1, sp-2');
       expect(w).toContain('50.0 m²');
+      expect(w).toContain('sp-2 is a redundant room');
+      // Revit semantics: the first room keeps the area, the redundant one gets 0
+      const fc = JSON.parse(readFileSync(join(levelDir.path, 'space.geojson'), 'utf-8'));
+      const props = Object.fromEntries(fc.features.map((f: { properties: { id: string } }) => [f.properties.id, f.properties]));
+      expect(props['sp-1'].net_area).toBeGreaterThan(40);
+      expect(props['sp-1'].redundant).toBeUndefined();
+      expect(props['sp-2']).toMatchObject({ net_area: 0, redundant: true });
     });
 
     it('warns when a partition leaks (stops short) and merges two rooms', () => {

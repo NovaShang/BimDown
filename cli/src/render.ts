@@ -11,12 +11,13 @@ import { effectiveRows } from './catalog/index.js';
 import { parseGeoJsonFile, type BimDownFeature, type ArcParams } from './utils/geojson.js';
 import { GEOJSON_FILE_NAMES } from './schema/registry.js';
 import { renderAnnotations } from './annotations.js';
-import { projectUnits } from './utils/units.js';
+import { projectUnits, UNIT_TO_M } from './utils/units.js';
 import { renderFurniture } from './furniture/render.js';
 import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
 import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
 import { cellKinds, gridLines, parsePanels } from './curtain-grid.js';
 import { renderStairs } from './stair/render.js';
+import { curtainEmbedSpan } from './curtain-embed.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -99,9 +100,11 @@ interface RenderedElement {
 
 interface WallRef {
   id: string;
+  table: string;
   start: { x: number; y: number };
   end: { x: number; y: number };
   thickness: number;
+  arc?: boolean;
 }
 
 export interface RenderOptions {
@@ -168,6 +171,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
       const thicknessMap = csvThicknesses.get(tableName);
       const rows = SIZED_TABLES.has(tableName) ? readRows(src.path, tableName) : undefined;
       for (const feat of fc.features) {
+        if (tableName === 'curtain_wall') elements.push(...embedMasks(feat, wallById, projectDir));
         const rendered = renderFeature(tableName, feat, thicknessMap, rows?.get(String(feat.properties?.id ?? '')));
         if (rendered) elements.push(rendered);
       }
@@ -294,6 +298,37 @@ function renderFeature(
 }
 
 // ─── Curtain walls ─────────────────────────────────────────
+
+/**
+ * Embedded curtain wall (curtain-embed.ts): blank out the host wall along the
+ * overlap so the wall reads as cut, as the editor and IFC do. Skipped when the
+ * curtain wall starts above the plan cut plane (1.2 m).
+ */
+function embedMasks(feat: BimDownFeature, wallById: Map<string, WallRef>, projectDir: string): RenderedElement[] {
+  const g = feat.geometry;
+  if (g.type !== 'LineString' || g.coordinates.length < 2 || feat.properties.arc) return [];
+  const upm = 1 / UNIT_TO_M[projectUnits(projectDir)];
+  if ((Number(feat.properties.base_offset) || 0) > 1.2 * upm) return [];
+  const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
+  const cw = { start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] } };
+  const out: RenderedElement[] = [];
+  for (const w of wallById.values()) {
+    if ((w.table !== 'wall' && w.table !== 'structure_wall') || w.arc) continue;
+    const span = curtainEmbedSpan(w, w.thickness, cw, 0.005 * upm);
+    if (!span) continue;
+    const len = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
+    const ux = (w.end.x - w.start.x) / len, uy = (w.end.y - w.start.y) / len;
+    const p = (t: number) => [w.start.x + ux * t, w.start.y + uy * t];
+    const [x1, y1] = p(span.lo), [x2, y2] = p(span.hi);
+    const sw = w.thickness + 0.01 * upm;
+    out.push({
+      tableName: 'curtain_wall',
+      svg: `    <line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`,
+      bounds: { minX: Math.min(x1, x2), minY: Math.min(y1, y2), maxX: Math.max(x1, x2), maxY: Math.max(y1, y2) },
+    });
+  }
+  return out;
+}
 
 const CURTAIN_STROKE = '#2f8fb8';
 const CURTAIN_FILL = '#d6eaf8';
@@ -692,6 +727,8 @@ function indexWalls(dirPath: string, out: Map<string, WallRef>): void {
       const a = f.geometry.coordinates[0], b = f.geometry.coordinates[f.geometry.coordinates.length - 1];
       out.set(id, {
         id,
+        table: t,
+        arc: !!f.properties.arc,
         start: { x: a[0], y: a[1] },
         end: { x: b[0], y: b[1] },
         thickness: thicknessMap.get(id) ?? 0.2,

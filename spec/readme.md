@@ -316,7 +316,7 @@ Both define a strict subset and a canonical form (GeoJSON: Point/LineString/Poly
 
 Some elements have no geometry file:
 - **Door/Window/Wall-Opening**: Fully defined by `host_id` + `position`. Absolute coordinates would require re-syncing when the host wall moves.
-- **Space**: Defined by seed point `(x, y)` in CSV. Boundary polygon is auto-computed by `bimdown build` from surrounding walls, curtain walls, room separators, and structure walls using a half-edge face tracing algorithm. The generated `space.geojson` contains `Polygon` features whose IDs match the space CSV rows.
+- **Space**: Defined by seed point `(x, y)` in CSV. Boundary polygon is auto-computed by `bimdown build` from surrounding walls, curtain walls, room separators, and structure walls using a half-edge face tracing algorithm. The generated `space.geojson` contains `Polygon` features whose IDs match the space CSV rows. Two seeds in one enclosed area (Revit "redundant room"): the first row keeps the area, later ones get `redundant: true` and `net_area` 0 (a build warning; add a room_separator or delete the extra row). A seed outside every closed loop gets no polygon.
 - **Grid/Level**: Global reference data with coordinates in CSV.
 - **Dimension/Text note/Tag**: Annotations with inline CSV coordinates. A dimension end with a reference is re-derived from the referenced element (location line: the stored point projected onto it; `:start`/`:end`; wall face `:left`/`:right`; `:center`); the stored coordinates are the last resolved points and the fallback. Tags read their text (number, name, size, room area) from the host.
 
@@ -336,6 +336,10 @@ The top face is level + `base_offset`; the body hangs down by `thickness` (a pil
 Structural tables also carry an optional `material_grade` (C30, Q355, GL24h…) next to `material`, and `structure_slab.span_direction` (degrees CCW from +X) marks a one-way slab or deck. `volume` is computed at query time for structural tables; slabs also get `net_area` (inner rings and hosted Polygon openings deducted), and slab volume uses it.
 
 Marks (`number`) can be generated per category; `project_metadata.json` `numbering` maps a table (or `table.kind`: `foundation.pile`, `equipment.ahu`, `beam.secondary`) to its prefix.
+
+### Model Checks
+
+`bimdown validate` rejects non-positive `thickness`, `width`, `height`, `size_x` / `size_y`, `step_count`, grid spacings and mullion sizes (empty = inherited from the type) and negative `position`. `bimdown build` warns about doors / windows / openings overlapping on one wall (not ones stacked one above the other), walls overlapping each other (parallel, one centre line inside the other's thickness), redundant / unbounded rooms, stair calculator failures and MEP connectivity. The editor's Warnings panel shows the same checks.
 
 ### Opening: Wall and Slab Voids
 
@@ -424,6 +428,7 @@ A curtain wall is a grid of cells: columns along the wall (col 0 at the start), 
 - **Explicit**: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, semicolon-separated (`1.2;2.4;3.9`); they override the counts. Lines must lie inside the wall.
 - **Panels**: `panels` = `col:row=kind` overrides, `;`-separated, `*` = every col / row (`*:0=solid;1:0=door`). Kinds: `glass` (default, `panel_material`), `solid` (opaque spandrel, `solid_material`), `door`, `double_door` (hinged on the cell's start side, swinging to the wall's left; no bottom transom), `empty` (mullions only).
 - **Mullions**: `mullion_width` (along the wall; Ø when round), `mullion_depth`, `mullion_profile` (`rect`/`round`, interior members only), all type parameters. Two curtain walls meeting at an endpoint share one corner mullion.
+- **Embedded** (Revit "Automatically Embed"): a straight curtain wall drawn along a straight wall or structure_wall (parallel within ~1°, both ends inside the wall's thickness) cuts that wall over the overlap, from the curtain wall's base to its top; exporters write it as an opening in the host filled by the curtain wall. Derived, nothing stored: move or delete the curtain wall and the host follows. To keep both, offset the curtain wall out of the wall.
 
 ```csv
 id,v_grids,u_grids,panels

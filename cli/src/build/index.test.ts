@@ -42,6 +42,22 @@ describe('build — room issues', () => {
     expect(result.roomIssues).toEqual([{ kind: 'shared', level: 'lv-1', spaceIds: ['sp-1', 'sp-2'] }]);
     expect(result.warnings.some((w) => w.includes('sp-1, sp-2 share one enclosed area'))).toBe(true);
   });
+  it('warns about overlapping doors / windows (not stacked ones) and overlapping walls', () => {
+    const lv = setup();
+    writeFileSync(join(lv, 'door.csv'), 'id,number,host_id,position,width,height\nd-1,,w-1,2,0.9,2.1\nd-2,,w-1,2.4,0.9,2.1\n');
+    // w-1-high sits over the door (sill 2.2): stacked, not overlapping
+    writeFileSync(join(lv, 'window.csv'), 'id,number,host_id,position,width,height,base_offset\nwn-1,,w-1,2,0.9,0.6,2.2\nwn-2,,w-3,5,1.2,1.2,0.9\n');
+    const walls = JSON.parse(readFileSync(join(lv, 'wall.geojson'), 'utf-8'));
+    walls.features.push(line('w-5', [3, 0.05], [8, 0.05]), line('w-6', [3, 0.25], [8, 0.25]));
+    writeFileSync(join(lv, 'wall.geojson'), JSON.stringify(walls));
+    writeFileSync(join(lv, 'wall.csv'), 'id,number,thickness,material\nw-1,,0.2,concrete\nw-2,,0.2,concrete\nw-3,,0.2,concrete\nw-4,,0.2,concrete\nw-5,,0.1,concrete\nw-6,,0.1,concrete\n');
+    const result = build(testDir);
+    const overlaps = result.warnings.filter((w) => w.includes(' overlap '));
+    expect(overlaps.some((w) => w.includes('d-1 and d-2 overlap on w-1'))).toBe(true);
+    expect(overlaps.some((w) => w.includes('wn-1'))).toBe(false);
+    expect(overlaps.some((w) => w.includes('w-1 and w-5 overlap for 5.000m'))).toBe(true);
+    expect(overlaps.some((w) => w.includes('w-6'))).toBe(false);
+  });
 });
 
 describe('validate is read-only', () => {

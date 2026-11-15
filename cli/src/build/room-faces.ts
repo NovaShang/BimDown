@@ -43,7 +43,9 @@ export interface Segment {
  * A derived-room problem: the polygons are still written (backward compatible),
  * but their areas are wrong.
  *   shared    — several seeds land in one enclosed area, so the rooms get
- *               identical polygons (usually a wall gap or a missing room_separator)
+ *               identical polygons (usually a wall gap or a missing room_separator);
+ *               the first seed (CSV order) keeps the area, the others are
+ *               redundant rooms (Revit): area 0
  *   contains  — the polygon of spaceIds encloses the rooms in `inside`, whose
  *               walls don't touch it, so its area double-counts them
  *   unbounded — the seed is outside every closed loop; no polygon is generated
@@ -155,7 +157,7 @@ function findRoomOverlaps(
     if (ids.length < 2) continue;
     roomIssues.push({ kind: 'shared', level, spaceIds: ids });
     warnings.push(
-      `[warn] ${level}/space.csv  ${ids.join(', ')} share one enclosed area (${fmtArea(face.signedArea, units)}) and get identical polygons — a wall gap or missing room_separator likely merges these rooms`,
+      `[warn] ${level}/space.csv  ${ids.join(', ')} share one enclosed area (${fmtArea(face.signedArea, units)}): ${ids.slice(1).join(', ')} ${ids.length > 2 ? 'are redundant rooms' : 'is a redundant room'} (area 0, the area counts once in ${ids[0]}) — a wall gap or missing room_separator likely merges these rooms, or delete the extra room`,
     );
   }
 

@@ -30,3 +30,8 @@ fields:
     type: float
     computed: true
     description: Net space area at the wall finish faces — each boundary edge moved inward by half the thickness of its wall (room separators 0); the area drawings, tags and schedules show. Written by build into space.geojson
+
+  - name: redundant
+    type: boolean
+    computed: true
+    description: True for a redundant room (Revit) — a seed in an enclosed area an earlier space.csv row already occupies. Its area and net_area are 0, so the area counts once. Written by build into space.geojson
