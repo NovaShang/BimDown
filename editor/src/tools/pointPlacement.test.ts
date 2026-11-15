@@ -30,12 +30,12 @@ describe('point placement', () => {
     expect(nearGeometry(els.values(), { x: 10.75, y: 10.75 }, 2)).toBe(true);
     expect(nearGeometry(els.values(), { x: 20, y: 20 }, 2)).toBe(false);
 
-    // The round-distance snap itself: 10.95 m off a grid rounds to 11 at this zoom unless off
+    // The round-distance snap itself: 10.99 m off a grid rounds to 11 at this zoom unless off
     const grids = [{ id: 'gr-1', number: '1', x1: 0, y1: -5, x2: 0, y2: 30 }];
-    const on = computeSnap({ x: 10.95, y: 3 }, 0.01, new Map(), undefined, undefined, undefined, grids, undefined, undefined, 'm', new Set(['gridline', 'angle', 'length']));
+    const on = computeSnap({ x: 10.99, y: 3 }, 0.01, new Map(), undefined, undefined, undefined, grids, undefined, undefined, 'm', new Set(['gridline', 'angle', 'length']));
     expect(on.point.x).toBeCloseTo(11);
-    const off = computeSnap({ x: 10.95, y: 3 }, 0.01, new Map(), undefined, undefined, undefined, grids, undefined, undefined, 'm', new Set(['gridline', 'angle', 'length', 'grid']));
-    expect(off.point.x).toBeCloseTo(10.95);
+    const off = computeSnap({ x: 10.99, y: 3 }, 0.01, new Map(), undefined, undefined, undefined, grids, undefined, undefined, 'm', new Set(['gridline', 'angle', 'length', 'grid']));
+    expect(off.point.x).toBeCloseTo(10.99);
   });
 });
 

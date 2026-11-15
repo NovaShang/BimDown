@@ -95,6 +95,24 @@ const SNAP_THRESHOLD_PX = 10;
 /** Axis-only alignment reaches this many thresholds along the other axis (~500px at default zoom). */
 const ALIGN_PERP_FACTOR = 50;
 
+/** Round-value steps (distance off a grid, segment length) are at least this many pixels apart. */
+const ROUND_STEP_MIN_PX = 8;
+/** A round value pulls the point by at most this many pixels (and a fifth of the step):
+ *  enough to land a hand click on it, never a visible offset from the click. */
+const ROUND_PULL_PX = 2;
+/** Axis-only alignment with a point far along the other axis captures within this many pixels. */
+const ALIGN_THRESHOLD_PX = 5;
+
+/** Step of the round-distance / round-length snaps at this zoom: the finest one ≥ ROUND_STEP_MIN_PX. */
+export function roundSnapStep(pixelSize: number): number {
+  return GRID_LEVELS.find(g => g / pixelSize >= ROUND_STEP_MIN_PX) ?? GRID_LEVELS[GRID_LEVELS.length - 1];
+}
+
+/** How far a round-value snap may move the point (model units). */
+export function roundSnapPull(pixelSize: number): number {
+  return Math.min(roundSnapStep(pixelSize) * 0.2, pixelSize * ROUND_PULL_PX);
+}
+
 export function adaptiveGridSpacing(pixelSize: number): number {
   const target = pixelSize * GRID_TARGET_PX;
   let best = GRID_LEVELS[0];
@@ -533,20 +551,25 @@ export function computeSnap(
   // For direct snap (both axes close), use full threshold.
   // For axis-only alignment, require the other axis within ALIGN_PERP_FACTOR * threshold.
   const alignPerpLimit = threshold * ALIGN_PERP_FACTOR;
+  // Aligning with a point far along the other axis captures in a narrower band
+  // than a point under the cursor, so a click near a far terminal's X stays put.
+  const alignThreshold = pixelSize * ALIGN_THRESHOLD_PX;
 
   for (const t of targets) {
     if (t.type === 'edge') continue; // handled in pass 2
 
     const dx = Math.abs(input.x - t.x);
     const dy = Math.abs(input.y - t.y);
+    const tx = dy < threshold ? threshold : alignThreshold;
+    const ty = dx < threshold ? threshold : alignThreshold;
 
-    if (dx < threshold && dy < alignPerpLimit) {
+    if (dx < tx && dy < alignPerpLimit) {
       if (!snapX || t.priority < snapX.priority || (t.priority === snapX.priority && dx < bestDx)) {
         bestDx = dx;
         snapX = { type: t.type, value: t.x, priority: t.priority };
       }
     }
-    if (dy < threshold && dx < alignPerpLimit) {
+    if (dy < ty && dx < alignPerpLimit) {
       if (!snapY || t.priority < snapY.priority || (t.priority === snapY.priority && dy < bestDy)) {
         bestDy = dy;
         snapY = { type: t.type, value: t.y, priority: t.priority };
@@ -632,9 +655,12 @@ export function computeSnap(
 
   // ── Pass 4: Grid-distance snap (snap to round distances from nearest 轴网) ──
   // Own toggle ("Round distance"); point placements turn it off near geometry.
+  // Measured from the nearest grid line on each axis only (a far grid's round
+  // distances are meaningless here), in a fine step with a pull of a pixel or two.
   if (grids && grids.length > 0 && !disabledSnapTypes.has('grid')) {
-    const gridSpacing = adaptiveGridSpacing(pixelSize);
-    const gridThreshold = gridSpacing * 0.45;
+    const gridSpacing = roundSnapStep(pixelSize);
+    const pull = roundSnapPull(pixelSize);
+    const nearest: [{ d: number; shift: Point } | null, { d: number; shift: Point } | null] = [null, null];
 
     for (const g of grids) {
       const gdx = g.x2 - g.x1, gdy = g.y2 - g.y1;
@@ -646,26 +672,19 @@ export function computeSnap(
       // Perpendicular distance from input to this grid line
       const perpDist = (input.x - g.x1) * nx + (input.y - g.y1) * ny;
       const snappedDist = Math.round(perpDist / gridSpacing) * gridSpacing;
-      const diff = Math.abs(perpDist - snappedDist);
-
-      if (diff < Math.min(gridThreshold, threshold) && diff > 1e-9) {
-        // Shift input along the normal to achieve snappedDist
-        const shiftedX = input.x + (snappedDist - perpDist) * nx;
-        const shiftedY = input.y + (snappedDist - perpDist) * ny;
-
-        // Classify by grid line orientation
-        if (Math.abs(ux) < Math.abs(uy)) {
-          // Vertical-ish grid → snaps X
-          if (!snapX || 4 < snapX.priority) {
-            snapX = { type: 'grid', value: shiftedX, priority: 4 };
-          }
-        } else {
-          // Horizontal-ish grid → snaps Y
-          if (!snapY || 4 < snapY.priority) {
-            snapY = { type: 'grid', value: shiftedY, priority: 4 };
-          }
-        }
+      // Vertical-ish grid → X, horizontal-ish → Y
+      const axis = Math.abs(ux) < Math.abs(uy) ? 0 : 1;
+      const cur = nearest[axis];
+      if (!cur || Math.abs(perpDist) < cur.d) {
+        nearest[axis] = { d: Math.abs(perpDist), shift: { x: input.x + (snappedDist - perpDist) * nx, y: input.y + (snappedDist - perpDist) * ny } };
       }
+    }
+    const [nx, ny] = nearest;
+    if (nx && Math.abs(nx.shift.x - input.x) < pull && Math.abs(nx.shift.x - input.x) > 1e-9 && (!snapX || 4 < snapX.priority)) {
+      snapX = { type: 'grid', value: nx.shift.x, priority: 4 };
+    }
+    if (ny && Math.abs(ny.shift.y - input.y) < pull && Math.abs(ny.shift.y - input.y) > 1e-9 && (!snapY || 4 < snapY.priority)) {
+      snapY = { type: 'grid', value: ny.shift.y, priority: 4 };
     }
   }
 
@@ -713,12 +732,10 @@ export function computeSnap(
 
     if (bestOriginT !== null) {
       const along = tCursor - bestOriginT;
-      const gridSpacingLen = adaptiveGridSpacing(pixelSize);
+      const gridSpacingLen = roundSnapStep(pixelSize);
       const alongSnapped = Math.round(along / gridSpacingLen) * gridSpacingLen;
       const lenDiff = Math.abs(along - alongSnapped);
-      const lenThreshold = gridSpacingLen * 0.3;
-      // Pull range is 30% of grid spacing — generous because cursor is
-      // already perpendicular-locked onto A, so all wiggle is along the line.
+      const lenThreshold = roundSnapPull(pixelSize);
       if (Math.abs(along) > 1e-9 && lenDiff < lenThreshold) {
         const tNew = bestOriginT + alongSnapped;
         const newX = lineA.x + tNew * ux;
@@ -757,12 +774,12 @@ export function computeSnap(
       const rawLen = Math.sqrt(adx * adx + ady * ady);
 
       if (rawLen > 1e-9) {
-        const gridSpacingLen = adaptiveGridSpacing(pixelSize);
+        const gridSpacingLen = roundSnapStep(pixelSize);
         const snappedLen = Math.round(rawLen / gridSpacingLen) * gridSpacingLen;
         const lenDiff = Math.abs(rawLen - snappedLen);
-        const lenThreshold = gridSpacingLen * 0.3;
+        const lenThreshold = roundSnapPull(pixelSize);
 
-        if (snappedLen > 0 && lenDiff < lenThreshold && lenDiff < threshold) {
+        if (snappedLen > 0 && lenDiff < lenThreshold) {
           const scale = snappedLen / rawLen;
           const newX = anchor.x + adx * scale;
           const newY = anchor.y + ady * scale;
