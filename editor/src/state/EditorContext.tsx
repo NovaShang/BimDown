@@ -1,4 +1,4 @@
-import { createContext, useContext, useReducer, useMemo, type ReactNode, type Dispatch } from 'react';
+import { createContext, useContext, useReducer, useMemo, useRef, type ReactNode, type Dispatch } from 'react';
 import type { EditorState, EditorAction } from './editorTypes.ts';
 import { editorReducer, initialState } from './editorReducer.ts';
 import { syncAnnotations } from '../annotation/sync.ts';
@@ -80,9 +80,16 @@ export function EditorProvider({ children, readonly }: { children: ReactNode; re
     state.documentVersion, state.lastMutation, state.views,
   ]);
 
+  // Full state for useEditorState(): a hover-only change keeps the previous
+  // object, so panels and toolbars don't re-render as the pointer crosses
+  // elements (hover readers use useSelectionState()).
+  const fullRef = useRef(state);
+  if (fullRef.current !== state && !onlyHoverChanged(fullRef.current, state)) fullRef.current = state;
+  const fullState = fullRef.current;
+
   return (
     <DispatchContext.Provider value={dispatch}>
-      <StateContext.Provider value={state}>
+      <StateContext.Provider value={fullState}>
         <CoreStateContext.Provider value={coreState}>
           <SelectionContext.Provider value={selection}>
             {children}
@@ -93,7 +100,13 @@ export function EditorProvider({ children, readonly }: { children: ReactNode; re
   );
 }
 
-/** Full editor state — re-renders on ANY state change including hover.
+function onlyHoverChanged(a: EditorState, b: EditorState): boolean {
+  if (a.hoveredId === b.hoveredId) return false;
+  for (const k of Object.keys(b) as (keyof EditorState)[]) if (k !== 'hoveredId' && a[k] !== b[k]) return false;
+  return Object.keys(a).length === Object.keys(b).length;
+}
+
+/** Full editor state — re-renders on any state change except hover-only ones (use useSelectionState() for hover).
  *  Prefer useCoreEditorState() for heavy render trees, or useSelectionState()
  *  for components that only need highlight info. */
 export function useEditorState() {

@@ -680,7 +680,7 @@ function coreReducer(state: EditorState, action: EditorAction): EditorState {
       return { ...state, selectedIds: new Set(), activeFilter: null, editMode: false };
 
     case 'SET_HOVER':
-      return { ...state, hoveredId: action.id };
+      return state.hoveredId === action.id ? state : { ...state, hoveredId: action.id };
 
     case 'SET_MARQUEE':
       return { ...state, marquee: action.marquee };
