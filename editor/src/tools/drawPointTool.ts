@@ -1,4 +1,5 @@
 import type { ToolHandler, ToolContext } from './types.ts';
+import { autoNumberCreated } from '../state/numbering.ts';
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import { generateId } from '../model/ids.ts';
 import { defaultAttrs } from '../model/defaults.ts';
@@ -169,7 +170,10 @@ function placePoint(ctx: ToolContext, pt: { x: number; y: number }, clicked: { x
     if (inline && doc) {
       const hit = findPipeBodyHit(clicked, doc, { tolerance: 0.2, pickPadding: 0.15, endZoneRatio: 0.02 });
       if (hit && hit.pipe.tableName === inline.table) {
-        const els = insertInlineEquipment(hit.pipe, hit.point, starter, levelId, reservedIds(doc), doc);
+        const inserted = insertInlineEquipment(hit.pipe, hit.point, starter, levelId, reservedIds(doc), doc);
+        // The new device takes its mark like any placed equipment (VAV-3, P-2 …)
+        const els = inserted && autoNumberCreated(state, inserted.filter(e => !doc.has(e.id)))
+          .concat(inserted.filter(e => doc.has(e.id)));
         if (els) {
           ctx.dispatch({ type: 'APPLY_PATCH', patches: new Map<string, CanonicalElement | null>(els.map(el => [el.id, el])), description: `Insert ${starter.label_en}` });
           ctx.setSnap(null);
