@@ -69,3 +69,26 @@ describe('dormer cheek walls', () => {
     expect(validateGeometry(dir).filter(w => w.includes('no connected'))).toHaveLength(2);
   });
 });
+
+describe('arc walls', () => {
+  it('an end on an arc wall body is connected (arc curtain wall embedded in an arc wall)', () => {
+    dir = mkdtempSync(join(tmpdir(), 'bimdown-geo-'));
+    const lv = join(dir, 'lv-1');
+    mkdirSync(join(dir, 'global'), { recursive: true });
+    mkdirSync(lv, { recursive: true });
+    writeFileSync(join(dir, 'project_metadata.json'), JSON.stringify({ format_version: 2, units: 'm' }));
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\nlv-1,1,L1,0\n');
+    const arc = { radius: 6, large_arc: false, sweep: true };
+    const P = (deg: number) => [6 * Math.cos(deg * Math.PI / 180), 6 * Math.sin(deg * Math.PI / 180)];
+    const f = (id: string, a: number[], b: number[], props = {}) => ({ type: 'Feature', properties: { id, ...props }, geometry: { type: 'LineString', coordinates: [a, b] } });
+    writeFileSync(join(lv, 'wall.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [f('w-1', P(0), P(180), { arc }), f('w-2', P(180), P(0))] }));
+    writeFileSync(join(lv, 'wall.csv'), 'id,thickness\nw-1,0.3\nw-2,0.3\n');
+    writeFileSync(join(lv, 'curtain_wall.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [f('cw-1', P(50), P(130), { arc }), f('cw-2', P(200), P(250), { arc })] }));
+    writeFileSync(join(lv, 'curtain_wall.csv'), 'id\ncw-1\ncw-2\n');
+    const w = validateGeometry(dir).filter(x => x.includes('no connected'));
+    // cw-1 sits on the arc; cw-2 is on the far (missing) half of the circle
+    expect(w.some(x => x.includes('cw-1'))).toBe(false);
+    expect(w.filter(x => x.includes('cw-2'))).toHaveLength(2);
+  });
+});
+
