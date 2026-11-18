@@ -117,14 +117,14 @@ function redundantOf(el: CanonicalElement, context: CanonicalElement[], walls: L
   return m.get(el.id);
 }
 
-/** Face area of the curtain walls embedded in a straight wall (geometry/curtainEmbed.ts). */
+/** Face area of the curtain walls embedded in a wall (geometry/curtainEmbed.ts). */
 function embeddedCurtainArea(wall: CanonicalElement, wallHeight: number, level: Level, levels: Level[], context: CanonicalElement[]): number {
-  if (wall.tableName === 'curtain_wall' || wall.geometry !== 'line' || (wall as LineElement).arc) return 0;
+  if (wall.tableName === 'curtain_wall' || wall.geometry !== 'line') return 0;
   const w = wall as LineElement;
   const num = (v: string | undefined) => parseFloat(v ?? '') || 0;
   let a = 0;
   for (const c of context) {
-    if (c.tableName !== 'curtain_wall' || c.geometry !== 'line' || (c as LineElement).arc) continue;
+    if (c.tableName !== 'curtain_wall' || c.geometry !== 'line') continue;
     const span = curtainEmbedSpan(w, w.strokeWidth, c as LineElement, 0.005 * metre());
     const h = spanHeight(c, level, levels);
     if (!span || h === undefined) continue;

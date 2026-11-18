@@ -11,7 +11,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- web-ifc schema classes and enum values are untyped here */
 import type { GridData, Level, ProjectData, SystemDef } from '../types.ts';
-import type { CanonicalElement, LineElement, PointElement, PolygonElement, SpatialLineElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, Point, PointElement, PolygonElement, SpatialLineElement } from '../model/elements.ts';
 import type { GeometryContext } from '../elements/archetypes.ts';
 import '../elements/registerAll.ts';
 import { getElementModule } from '../elements/registry.ts';
@@ -26,7 +26,8 @@ import { bimMaterialAppearance, resolveBimMaterial } from '../three/utils/bimMat
 import { MEP_LINE_TABLES } from '../model/mepTopology.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { BOUNDARY_TABLES, deriveBoundedFaces, pickSpaceFace, type BoundedFace } from '../geometry/spaceBoundary.ts';
-import { arcLength } from '../geometry/arc.ts';
+import { arcLength, type ArcParams } from '../geometry/arc.ts';
+import { embedPointAt } from '../geometry/curtainEmbed.ts';
 import { doorParts, windowParts, type OpeningPart } from '../elements/_opening3D.tsx';
 import type { LineWallFacts, WallOpening } from '../elements/_lineWallShared.tsx';
 import type { SlabFacts } from '../elements/_slabShared.tsx';
@@ -655,7 +656,10 @@ class Exporter {
     // Voids for hosted doors / windows / openings, filled later by the hosted element.
     for (const op of f.openings) {
       const frame = wallOpeningFrame(f, op.position, op.sillHeight);
-      const solid = wallOpeningSolid(frame, op.width, op.height, f.thickness, op.shape);
+      // A curtain wall embedded in an arc wall voids the curved band, not a chord box.
+      const solid = f.centerline.arc && op.hostedTable === 'curtain_wall'
+        ? extrudePlan(arcBand(f.centerline, op.position - op.width / 2, op.position + op.width / 2, f.thickness / 2 + Math.max(0.05, f.thickness / 2)), f.baseY + op.sillHeight, op.height)
+        : wallOpeningSolid(frame, op.width, op.height, f.thickness, op.shape);
       const placement = w.placement(rec.placement, rec.frame, frame);
       const shape = w.productShapeStyled([solid], frame);
       const handle = w.add('IfcOpeningElement', w.guid(`${rec.key}#void:${op.hostedId}`), w.ownerHistory,
@@ -2124,4 +2128,19 @@ function distributionSystem(d: SystemDef): string {
   if (/^(POWER|PWR)/.test(t)) return 'ELECTRICAL';
   if (d.discipline === 'electrical') return 'ELECTRICAL';
   return 'NOTDEFINED';
+}
+
+/** Plan band of half-width `hw` along an arc line between distances s0 and s1 from its start. */
+function arcBand(line: { start: Point; end: Point; arc?: ArcParams }, s0: number, s1: number, hw: number): Point[] {
+  const n = Math.max(2, Math.ceil((s1 - s0) / 0.15));
+  const left: Point[] = [], right: Point[] = [];
+  for (let i = 0; i <= n; i++) {
+    const d = s0 + (s1 - s0) * i / n;
+    const p = embedPointAt(line, d), q = embedPointAt(line, d + 1e-4);
+    const l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const nx = -(q.y - p.y) / l, ny = (q.x - p.x) / l;
+    left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+    right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+  }
+  return [...left, ...right.reverse()];
 }

@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import '../elements/registerAll.ts';
-import { curtainEmbedSpan } from './curtainEmbed.ts';
+import { curtainEmbedSpan, embedLength, embedPointAt } from './curtainEmbed.ts';
 import { collectWallOpenings, wallGeometryFor } from '../elements/_lineWallShared.tsx';
 import { buildGeometryContext } from '../adapters/svg/buildContext.ts';
 import type { CanonicalElement, LineElement } from '../model/elements.ts';
@@ -89,5 +89,58 @@ describe('curtain wall embedded in a wall', () => {
     expect(step.get(ref(voids[0].args[4]))!.type).toBe('IFCWALL');
     expect(ref(fills[0].args[4])).toBe(ref(voids[0].args[5]));
     expect(step.get(ref(fills[0].args[5]))!.type).toBe('IFCCURTAINWALL');
+  });
+
+  describe('arc walls', () => {
+    const arc = (r: number, sweep = true) => ({ rx: r, ry: r, rotation: 0, largeArc: false, sweep });
+    const at = (r: number, deg: number) => ({ x: r * Math.cos(deg * Math.PI / 180), y: r * Math.sin(deg * Math.PI / 180) });
+    // Half circle of radius 10 from (10,0) counter-clockwise through (0,10)
+    const wall = { start: at(10, 0), end: at(10, 180), arc: arc(10) };
+
+    it('embeds a concentric arc curtain wall as arc-length distances from the wall start', () => {
+      expect(embedLength(wall)).toBeCloseTo(10 * Math.PI, 6);
+      const span = curtainEmbedSpan(wall, 0.3, { start: at(10, 30), end: at(10, 60), arc: arc(10) }, 0.005)!;
+      expect(span.lo).toBeCloseTo(10 * Math.PI / 6, 6);
+      expect(span.hi).toBeCloseTo(10 * Math.PI / 3, 6);
+      // Drawn the other way (clockwise), on the face, overhanging the wall start
+      const back = curtainEmbedSpan(wall, 0.3, { start: at(10.1, 40), end: at(10.1, -20), arc: arc(10.1, false) }, 0.005)!;
+      expect(back.lo).toBeCloseTo(0, 6);
+      expect(back.hi).toBeCloseTo(10 * 40 * Math.PI / 180, 6);
+      expect(embedPointAt(wall, 10 * Math.PI / 2).y).toBeCloseTo(10, 6);
+    });
+
+    it('rejects other radii, other centres and straight / arc pairs', () => {
+      expect(curtainEmbedSpan(wall, 0.3, { start: at(11, 30), end: at(11, 60), arc: arc(11) }, 0.005)).toBeNull();
+      const off = { start: { x: at(10, 30).x + 1, y: at(10, 30).y }, end: { x: at(10, 60).x + 1, y: at(10, 60).y }, arc: arc(10) };
+      expect(curtainEmbedSpan(wall, 0.3, off, 0.005)).toBeNull();
+      expect(curtainEmbedSpan(wall, 0.3, { start: at(10, 30), end: at(10, 60) }, 0.005)).toBeNull();
+      expect(curtainEmbedSpan({ start: { x: 0, y: 0 }, end: { x: 20, y: 0 } }, 0.3, { start: at(10, 30), end: at(10, 60), arc: arc(10) }, 0.005)).toBeNull();
+    });
+
+    it('cuts the arc host wall in plan and 3D, deducts its area and voids it in IFC', async () => {
+      const w = { ...line('wall', 'w-1', [10, 0], [-10, 0], 0.3, { top_level_id: 'lv-2' }), arc: arc(10) };
+      const c = { ...line('curtain_wall', 'cw-1', [at(10, 30).x, at(10, 30).y], [at(10, 60).x, at(10, 60).y], 0.1, { top_level_id: 'lv-2' }), arc: arc(10) };
+      const ctx = ctxOf([w, c]);
+      const ops = collectWallOpenings(w, ctx);
+      expect(ops).toHaveLength(1);
+      expect(ops[0].position).toBeCloseTo(10 * Math.PI / 4, 6);
+      expect(ops[0].width).toBeCloseTo(10 * Math.PI / 6, 6);
+      expect(wallGeometryFor(w, ctx, 'wall')!.segments).toHaveLength(2);
+      const q = elementQuantities(w, L1, [L1, L2], [w, c]);
+      expect(q.gross_area! - q.area!).toBeCloseTo(10 * Math.PI / 6 * 3.6, 4);
+      const files = {
+        'project_metadata.json': JSON.stringify({ format_version: 2, units: 'm', spatial_z: 'absolute' }),
+        'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3.6\n',
+        'global/grid.csv': 'id,number,start_x,start_y,end_x,end_y\n',
+        'lv-1/wall.csv': 'id,number,thickness,top_level_id,material\nw-1,,0.3,lv-2,brick\n',
+        'lv-1/wall.geojson': fc([{ type: 'Feature', properties: { id: 'w-1', arc: { radius: 10, large_arc: false, sweep: true } }, geometry: { type: 'LineString', coordinates: [[10, 0], [-10, 0]] } }]),
+        'lv-1/curtain_wall.csv': 'id,number,top_level_id\ncw-1,,lv-2\n',
+        'lv-1/curtain_wall.geojson': fc([{ type: 'Feature', properties: { id: 'cw-1', arc: { radius: 10, large_arc: false, sweep: true } }, geometry: { type: 'LineString', coordinates: [[at(10, 30).x, at(10, 30).y], [at(10, 60).x, at(10, 60).y]] } }]),
+      };
+      const project = await loadProject(memoryDataSource(files));
+      const step = indexStep(new TextDecoder().decode(await buildIfc(project, 'test')));
+      expect(countTypes(step).IFCOPENINGELEMENT).toBe(1);
+      expect([...step.values()].filter(e => e.type === 'IFCRELFILLSELEMENT')).toHaveLength(1);
+    });
   });
 });
