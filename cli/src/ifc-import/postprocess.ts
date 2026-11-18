@@ -413,7 +413,7 @@ export interface RoomCheck {
   netArea: Map<string, number>;
 }
 
-/** Trace rooms per level exactly like `bimdown build`. */
+/** Trace rooms per level from the import's lines: net areas for the IFC area comparison (the report's room problems come from the written files, build/project-rooms.ts). */
 export function checkRooms(ctx: ImportContext, spaces: SpaceRef[]): RoomCheck {
   const issues: RoomIssue[] = [];
   const warnings: string[] = [];

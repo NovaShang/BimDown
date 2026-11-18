@@ -1,4 +1,4 @@
-import { readdirSync, statSync, existsSync } from 'node:fs';
+import { readdirSync, statSync, existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Top-level asset directories: mesh/ (GLB, mesh.mesh_file) and underlays/ (underlay.file). */
@@ -35,4 +35,15 @@ export function listFiles(dir: string): string[] {
     const full = join(dir, f);
     return statSync(full).isFile();
   });
+}
+
+/** A project folder as project-relative text files (build/project-rooms.ts). */
+export function dirFiles(root: string): { read(path: string): string | undefined; write(path: string, text: string): void } {
+  return {
+    read: (p) => {
+      const full = join(root, p);
+      return existsSync(full) ? readFileSync(full, 'utf-8') : undefined;
+    },
+    write: (p, t) => writeFileSync(join(root, p), t, 'utf-8'),
+  };
 }

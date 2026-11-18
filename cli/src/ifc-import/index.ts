@@ -28,6 +28,7 @@ import { addSeparators, checkRooms, danglingEnds, extendIntoBodies, joinEnds, ro
 import { emitFiles } from './emit.js';
 import { ID_PREFIXES } from '../schema/prefixes.js';
 import type { RoomIssue } from '../build/room-faces.js';
+import { deriveLevelRooms, memoryFiles, snapProjectEndpoints } from '../build/project-rooms.js';
 
 export type { RoomIssue };
 
@@ -319,6 +320,10 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
   progress('write', 0.97);
   const projectName = opts.projectName ?? projectNameOf(model) ?? opts.fileName?.replace(/\.ifc$/i, '') ?? 'IFC import';
   const files = emitFiles(ctx, { projectName, source: `IFC ${model.schema}${opts.fileName ? ` (${opts.fileName})` : ''} via bimdown import-ifc` });
+  // Room problems as `bimdown build` finds them: its endpoint snap, then its room check, on the files written
+  const written = memoryFiles(files);
+  snapProjectEndpoints(written, ['global', ...ctx.levels.map(l => l.id)]);
+  rooms.issues = ctx.levels.flatMap(l => deriveLevelRooms(written, l.id).rooms?.roomIssues ?? []);
   const mepReport = mep.curveEnds || systemCount ? { ...mep, systems: systemCount } : null;
   const report = buildReport(ctx, [...products, ...grids], data, opts, rooms, spaceRefs, { snapped, corners, tees, separators: separators.length, freeEnds }, offset, mepReport, {
     parseMs: tParse - t0, geometryMs: tGeom - tParse, convertMs: tConvert - tGeom, cleanupMs: tCleanup - tConvert, totalMs: now() - t0,
