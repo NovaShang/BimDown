@@ -60,6 +60,15 @@
   filter: drop-shadow(0 0 calc(0.24px / var(--canvas-scale, 1)) var(--color-accent)) drop-shadow(0 0 calc(0.45px / var(--canvas-scale, 1)) var(--color-accent));
   cursor: pointer;
 }
+/* No glow while the view zooms / pans, nor on an element over an eighth of the view (Canvas
+   HoverHighlight): re-blurring it each frame stalled zooming. A wide element is outlined. */
+.canvas-svg.view-moving .hover-highlight,
+.canvas-svg .hover-highlight-wide { filter: none; }
+.canvas-svg .hover-highlight-wide:not(g):not(text),
+.canvas-svg .hover-highlight-wide :not(g):not(text) { stroke: var(--color-accent); }
+/* A room is tinted like a selected one (its glow used to fill it) */
+polygon.hover-highlight-wide[data-id^="sp-"],
+.hover-highlight-wide[data-id^="sp-"] polygon { fill: rgba(58, 134, 255, 0.18); }
 
 /* ─── Selection Overlay ──────────────────────── */
 .selection-overlay rect {
