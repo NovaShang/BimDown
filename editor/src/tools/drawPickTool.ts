@@ -7,6 +7,7 @@
  *     slopes from the roof type, the base sits so the underside meets the
  *     wall tops at their outer face, and `__attach` attaches the walls' tops.
  *   - ceiling · by_room: click inside a room; boundary at the wall faces.
+ *   - roof · dormer: click a sloped roof plane (tools/dormerTool.ts).
  * One undo step per pick. The hovered boundary previews in the overlay.
  */
 import type { ToolHandler, ToolContext, ToolStateSnapshot } from './types.ts';
@@ -18,6 +19,7 @@ import { variantDefaults } from './variantDefaults.ts';
 import { pickLoop, boundaryAt, loopWallIds, type BoundaryFace, type PickedLoop } from '../geometry/pickBoundary.ts';
 import { legacyEdgeSlopes, formatNumberList } from '../geometry/roofSolver.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
+import { dormerClick, dormerHover, isDormerTarget } from './dormerTool.ts';
 
 export const FACE_KEY = '__face';
 export const OVERHANG_KEY = '__overhang';
@@ -147,6 +149,7 @@ export const drawPickTool: ToolHandler = {
   onPointerMove(ctx: ToolContext, e: React.PointerEvent) {
     const p = cursorPoint(ctx, e);
     if (!p) return;
+    if (isDormerTarget(ctx.getState())) { dormerHover(ctx, p); return; }
     const pick = pickAt(ctx.getState(), p);
     ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: pick ? pick.boundary : [], cursor: p } });
   },
@@ -156,6 +159,7 @@ export const drawPickTool: ToolHandler = {
     const p = cursorPoint(ctx, e);
     if (!p) return;
     const state = ctx.getState();
+    if (isDormerTarget(state)) { dormerClick(ctx, p); return; }
     const pick = pickAt(state, p);
     if (!pick) return;
     const patches = buildPick(state, pick);

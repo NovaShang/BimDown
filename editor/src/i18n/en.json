@@ -449,6 +449,7 @@
   "hint.split": "Click a wall where to split it · Esc to finish",
   "hint.matchType": "Match type: click the source element · Esc to finish",
   "hint.matchType2": "Match type: click elements to give them the source's type · Esc / right-click to finish",
+  "hint.dormer": "Click a sloped roof where the dormer's front goes · Esc to finish",
 
   "prop.meshFallback": "Mesh Fallback",
 
@@ -1161,11 +1162,14 @@
   "layer.ceiling_by_room": "Ceiling by room",
   "layer.roof_sketch": "Roof",
   "layer.roof_by_walls": "Roof by walls",
+  "layer.roof_dormer": "Dormer",
   "layer.opening_wall": "Wall opening",
   "layer.opening_sketch": "Floor opening",
   "layer.shaft": "Shaft",
   "field.Boundary": "Boundary",
   "field.Overhang": "Overhang",
+  "field.Dormer": "Dormer",
+  "field.Front Height": "Front Height",
   "field.Attach walls": "Attach walls",
   "option.Interior face": "Interior face",
   "option.Core face": "Core face",
@@ -1388,6 +1392,10 @@
   "notice.matched": "{{count}} elements changed to the source's type",
   "notice.matchIncompatible": "Pick an element of the source's category",
   "notice.matchUntyped": "This element has no types to match",
+  "notice.dormerNoRoof": "Click on a roof to place a dormer",
+  "notice.dormerFlat": "A dormer needs a sloped roof plane",
+  "notice.dormerShallow": "A shed dormer must be flatter than the roof",
+  "notice.dormerTall": "The dormer would run past this roof plane: click lower or reduce its height / width",
   "tempHide.active": "Temporary hide / isolate",
   "tempHide.reset": "Reset (HR)"
 }

@@ -157,6 +157,18 @@ export const roofModule: ElementModule<RoofFacts> = {
         { key: '__attach', label: 'Attach walls', type: 'select', options: YES_NO_OPTIONS },
       ],
     },
+    // Dormer: click a sloped roof plane; opening + small roof + walls in one step (tools/dormerTool.ts).
+    {
+      id: 'dormer', label: 'layer.roof_dormer', icon: '⌂', iconName: 'roof', placementType: 'pick',
+      defaults: { __dormer_kind: 'gable', __dormer_width: '1.6', __dormer_front: '1.3', slope: '35', __overhang: '0.2', material: 'wood' },
+      fields: ['slope', 'thickness', 'material'],
+      extraFields: [
+        { key: '__dormer_kind', label: 'Dormer', type: 'select', options: [{ value: 'gable', label: 'Gable' }, { value: 'shed', label: 'Shed' }] },
+        { key: '__dormer_width', label: 'Width', type: 'number', unit: 'm', min: 0.6, step: 0.1 },
+        { key: '__dormer_front', label: 'Front Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+        { key: '__overhang', label: 'Overhang', type: 'number', unit: 'm', min: 0, step: 0.1 },
+      ],
+    },
   ],
 
   geometry(el: CanonicalElement, ctx: GeometryContext): RoofFacts | null {

@@ -449,6 +449,7 @@
   "hint.split": "在墙上点击拆分位置 · Esc 结束",
   "hint.matchType": "匹配类型：点击源图元 · Esc 结束",
   "hint.matchType2": "匹配类型：逐个点击目标图元，赋予源类型 · Esc / 右键结束",
+  "hint.dormer": "在坡屋面上点击老虎窗正面中点 · Esc 结束",
 
   "prop.meshFallback": "网格体回退",
 
@@ -1161,11 +1162,14 @@
   "layer.ceiling_by_room": "按房间生成天花",
   "layer.roof_sketch": "屋顶",
   "layer.roof_by_walls": "由墙生成屋顶",
+  "layer.roof_dormer": "老虎窗",
   "layer.opening_wall": "墙洞口",
   "layer.opening_sketch": "楼板洞口",
   "layer.shaft": "竖井",
   "field.Boundary": "边界",
   "field.Overhang": "出檐",
+  "field.Dormer": "老虎窗",
+  "field.Front Height": "正面高度",
   "field.Attach walls": "附着墙",
   "option.Interior face": "内表面",
   "option.Core face": "核心层表面",
@@ -1388,6 +1392,10 @@
   "notice.matched": "{{count}} 个图元已改为源类型",
   "notice.matchIncompatible": "请选择与源同类别的图元",
   "notice.matchUntyped": "该图元没有可匹配的类型",
+  "notice.dormerNoRoof": "请在屋顶上点击放置老虎窗",
+  "notice.dormerFlat": "老虎窗需要放在坡屋面上",
+  "notice.dormerShallow": "单坡老虎窗的坡度须小于屋面坡度",
+  "notice.dormerTall": "老虎窗会越过该屋面（屋脊或边缘）：请点得更低，或减小高度 / 宽度",
   "tempHide.active": "临时隐藏 / 隔离",
   "tempHide.reset": "重设 (HR)"
 }

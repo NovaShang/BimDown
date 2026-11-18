@@ -35,6 +35,7 @@ const VARIANT_HINTS: Record<string, string> = {
   'slab:by_walls': 'hint.pick.slab',
   'structure_slab:by_walls': 'hint.pick.slab',
   'roof:by_walls': 'hint.pick.roof',
+  'roof:dormer': 'hint.dormer',
   'ceiling:by_room': 'hint.pick.ceiling',
   'opening:sketch': 'hint.opening.sketch',
   'opening:shaft': 'hint.opening.shaft',
