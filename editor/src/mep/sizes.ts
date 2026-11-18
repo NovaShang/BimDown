@@ -138,7 +138,9 @@ export function formatMepSize(table: string, shape: string, sizeX: number, sizeY
     }
     return `Ø${lenLabel(mmX, unit)}`;
   }
-  return `${lenLabel(mmX, unit)}×${lenLabel((sizeY > 0 ? sizeY : sizeX) * 1000, unit)}`;
+  const rect = `${lenLabel(mmX, unit)}×${lenLabel((sizeY > 0 ? sizeY : sizeX) * 1000, unit)}`;
+  // Flat oval ducts: "500×250 oval" (Revit: 500x250 with the oval shape)
+  return shape === 'oval' && table === 'duct' ? `${rect} oval` : rect;
 }
 
 /** Pick-list options for a size field: value = stored (project units), label = DN65 / 400 / Ø250. */

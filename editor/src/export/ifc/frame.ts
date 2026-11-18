@@ -14,6 +14,8 @@ export interface Frame { o: V3; z: V3; x: V3 }
 export type Profile =
   | { kind: 'rect'; w: number; d: number; cx?: number; cy?: number; name?: string }
   | { kind: 'circle'; r: number; cx?: number; cy?: number; name?: string }
+  /** IfcRoundedRectangleProfileDef (a flat oval duct: r = half the smaller side). */
+  | { kind: 'rounded_rect'; w: number; d: number; r: number; cx?: number; cy?: number; name?: string }
   | { kind: 'ishape'; w: number; d: number; web: number; flange: number; fillet?: number; cx?: number; cy?: number; name?: string }
   /** Channel, web on −X, open towards +X (IfcUShapeProfileDef, bounding-box centred). */
   | { kind: 'ushape'; w: number; d: number; web: number; flange: number; fillet?: number; cx?: number; cy?: number; name?: string }

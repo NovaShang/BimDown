@@ -36,6 +36,8 @@ export interface ScheduleColumn {
   defaultOn?: boolean;
   /** Decimals shown and exported (per project unit, or one for all). */
   digits?: number | Partial<Record<ProjectUnit, number>>;
+  /** Group / grand total computed from the rows instead of summed (e.g. a panel's phase imbalance). */
+  aggregate?: (rows: ScheduleRow[]) => number | undefined;
 }
 
 export interface ScheduleCategory {
@@ -49,6 +51,10 @@ export interface ScheduleCategory {
   filter?: (el: CanonicalElement) => boolean;
   /** false: one row per group (totals summed) until the user ticks "Itemize". */
   itemize?: boolean;
+  /** Initial sort. */
+  sort?: SortState;
+  /** Printed on sheets with a subtotal row per group (panel schedules). */
+  printGroups?: boolean;
 }
 
 export interface ScheduleRow {
@@ -376,6 +382,11 @@ export function totalsOf(rows: ScheduleRow[], columns: ScheduleColumn[]): Record
   const t: Record<string, number> = {};
   for (const c of columns) {
     if (!c.total) continue;
+    if (c.aggregate) {
+      const v = c.aggregate(rows);
+      if (v !== undefined) t[c.key] = v;
+      continue;
+    }
     let s = 0;
     for (const r of rows) {
       const v = r.values[c.key];

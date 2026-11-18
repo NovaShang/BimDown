@@ -42,7 +42,7 @@ export function sectionFrame(f: V3, rightHint?: V3): Frame {
   return { right, up: norm(cross(fw, right)) };
 }
 
-export interface Section { shape: 'round' | 'rect'; w: number; h: number }
+export interface Section { shape: 'round' | 'rect' | 'oval'; w: number; h: number }
 
 /** Section outline in local (x = right, y = up) coords. Rect corners are
  *  doubled so normals stay flat; round uses `n` shared points. */
@@ -56,6 +56,7 @@ export function sectionRing(s: Section, n = 24): [number, number][] {
     }
     return out;
   }
+  if (s.shape === 'oval') return sectionRingByAngle(s, Math.max(n, 32));
   const hw = Math.max(s.w, 0.005) / 2, hh = Math.max(s.h, 0.005) / 2;
   const c: [number, number][] = [[-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]];
   const out: [number, number][] = [];
@@ -71,10 +72,31 @@ export function sectionRingByAngle(s: Section, n = 32): [number, number][] {
     const a = (i / n) * Math.PI * 2 + Math.PI / n;
     const c = Math.cos(a), sn = Math.sin(a);
     if (s.shape === 'round') { out.push([c * hw, sn * hw]); continue; }
+    if (s.shape === 'oval') { out.push(ovalRay(hw, hh, c, sn)); continue; }
     const k = Math.min(hw / Math.max(Math.abs(c), 1e-9), hh / Math.max(Math.abs(sn), 1e-9));
     out.push([c * k, sn * k]);
   }
   return out;
+}
+
+/** Point where the ray (c, s) from the centre leaves a flat oval (semicircle ends on the shorter side). */
+export function ovalRay(hw: number, hh: number, c: number, s: number): [number, number] {
+  const r = Math.min(hw, hh);
+  // Straight part: half length along the long axis
+  const flat = Math.abs(hw - hh);
+  const wide = hw >= hh;
+  // Work with the long axis as x
+  const ux = wide ? c : s, uy = wide ? s : c;
+  let t: number;
+  if (Math.abs(uy) > 1e-12 && Math.abs((r / Math.abs(uy)) * ux) <= flat) t = r / Math.abs(uy);
+  else {
+    // Ray against the end circle centred at (±flat, 0): |t·u − C| = r
+    const cx = ux >= 0 ? flat : -flat;
+    const b = ux * cx;
+    t = b + Math.sqrt(Math.max(0, b * b - (cx * cx - r * r)));
+  }
+  const x = ux * t, y = uy * t;
+  return wide ? [x, y] : [y, x];
 }
 
 interface RingAt { center: V3; frame: Frame; ring: [number, number][] }

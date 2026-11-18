@@ -24,6 +24,8 @@ export interface MepViewState {
   showCircuits: boolean;
   /** Circuit id to highlight. */
   circuit: string | null;
+  /** Cable tray fill warning threshold, percent (a tray's max_fill wins). */
+  trayFillLimit: number;
 }
 
 let state: MepViewState = {
@@ -34,6 +36,7 @@ let state: MepViewState = {
   showTags: true,
   showCircuits: true,
   circuit: null,
+  trayFillLimit: 40,
 };
 
 const listeners = new Set<() => void>();

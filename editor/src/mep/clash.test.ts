@@ -37,6 +37,23 @@ describe('clash core (editor copy)', () => {
   });
 });
 
+describe('clash core: sloped slabs (roof planes)', () => {
+  // 30 deg plane rising along +y from z 3 at y = 0, 0.2 m thick across it
+  const g = Math.tan(Math.PI / 6);
+  const roof = { id: 'rf-1', table: 'roof', outer: [[0, 0], [10, 0], [10, 3], [0, 3]] as [number, number][], z0: 3, z1: 3 + 0.2 / Math.cos(Math.PI / 6), grad: [0, g] as [number, number] };
+  it('measures depth across the plane and finds runs inside it', () => {
+    const riser = detectClashes({ curves: [pipe('v', [5, 1, 0], [5, 1, 6], 0.1, 'VENT')], hosts: [], slabs: [roof] });
+    expect(riser.map(c => [c.a, c.kind])).toEqual([['v', 'penetration']]);
+    expect(riser[0].depth).toBeCloseTo(0.2, 6);
+    expect(riser[0].at[2]).toBeGreaterThanOrEqual(3 + g - 1e-6);
+    expect(riser[0].at[2]).toBeLessThanOrEqual(3 + g + 0.231 + 1e-6);
+    const along = (y: number, z: number) => detectClashes({ curves: [pipe('h', [1, y, z], [9, y, z], 0.1, 'X')], hosts: [], slabs: [roof] }).length;
+    expect(along(2, 3 + 2 * g + 0.1)).toBe(1);   // inside the roof slab
+    expect(along(2, 3 + 2 * g - 0.2)).toBe(0);   // under it
+    expect(along(1, 3 + 2 * g)).toBe(0);         // over it (the plane is lower at y = 1)
+  });
+});
+
 describe('clash detection in the editor', () => {
   it('a duct drawn across a beam is high; a tee drawn with the router is not a clash', () => {
     const h = createHarness();
@@ -142,5 +159,21 @@ describe('clash detection in the editor', () => {
     expect([b.minX, b.maxX, b.minY, b.maxY]).toEqual([2, 8, 1, 7]);
     expect(b.minZ).toBeCloseTo(4.4, 6);
     expect(b.maxZ).toBeCloseTo(7.0, 6);
+  });
+});
+
+describe('clash model: roofs', () => {
+  it('a gable roof becomes one sloped band per plane; a flat roof stays one slab', async () => {
+    const { roofFaces } = await import('./clashModel.ts');
+    const el = { id: 'rf-1', tableName: 'roof', discipline: 'architecture', geometry: 'polygon', vertices: [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 6 }, { x: 0, y: 6 }],
+      attrs: { roof_type: 'gable', slope: '30', thickness: '0.2' } } as never;
+    const base = { id: 'rf-1', table: 'roof', outer: [], z0: 3, z1: 3.2 };
+    const faces = roofFaces(base, el, 0.2);
+    expect(new Set(faces.map(f => Math.sign(f.grad![1]))).size).toBe(2); // two planes (in convex pieces)
+    expect(faces.every(f => Math.abs(Math.abs(f.grad![1]) - Math.tan(Math.PI / 6)) < 1e-6)).toBe(true);
+    expect(faces[0].z1 - faces[0].z0).toBeCloseTo(0.2 / Math.cos(Math.PI / 6), 6);
+    const clashes = detectClashes({ curves: [pipe('v', [5, 1, 0], [5, 1, 6], 0.1, 'VENT'), pipe('h', [1, 3, 3.5], [9, 3, 3.5], 0.2, 'SA')], hosts: [], slabs: faces });
+    expect(clashes.map(c => c.a)).toEqual(['v']);
+    expect(roofFaces(base, { ...(el as object), attrs: { roof_type: 'flat', thickness: '0.2' } } as never, 0.2)).toEqual([base]);
   });
 });

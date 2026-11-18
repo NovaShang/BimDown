@@ -48,8 +48,19 @@ export function equivalentDiameter(w: number, h: number): number {
   return 1.3 * Math.pow(w * h, 0.625) / Math.pow(w + h, 0.25);
 }
 
+/** Flat oval duct (major a, minor b): section area and equivalent round diameter (ASHRAE: 1.55 A^0.625 / P^0.25). */
+export function ovalArea(a: number, b: number): number {
+  const mj = Math.max(a, b), mn = Math.min(a, b);
+  return (Math.PI * mn * mn) / 4 + mn * (mj - mn);
+}
+export function ovalEquivalentDiameter(a: number, b: number): number {
+  const mj = Math.max(a, b), mn = Math.min(a, b);
+  const P = Math.PI * mn + 2 * (mj - mn);
+  return (1.55 * Math.pow(ovalArea(a, b), 0.625)) / Math.pow(P, 0.25);
+}
+
 export interface SizeSuggestion {
-  shape: 'round' | 'rect';
+  shape: 'round' | 'rect' | 'oval';
   sizeX: number;
   sizeY: number;
   velocity: number;
@@ -67,7 +78,7 @@ const plasticBore = (de: number) => de * (1 - 2 / 11);
  * Rectangular ducts keep their height when it gives aspect ≤ 4, else pick a
  * height for aspect ~2; widths round up to 50 mm.
  */
-export function sizeDuct(flowLs: number, shape: 'round' | 'rect', currentH: number, rate = 1.0): SizeSuggestion | null {
+export function sizeDuct(flowLs: number, shape: 'round' | 'rect' | 'oval', currentH: number, rate = 1.0): SizeSuggestion | null {
   const q = flowLs / 1000;
   if (!(q > 0)) return null;
   let lo = 0.05, hi = 3;
@@ -80,6 +91,12 @@ export function sizeDuct(flowLs: number, shape: 'round' | 'rect', currentH: numb
     // Standard spiral duct diameters.
     const d = upToSeries(D * 1000, ROUND_DUCT_MM) / 1000;
     return { shape, sizeX: d, sizeY: d, velocity: q / (Math.PI * d * d / 4), friction: frictionRate(q, d, 'air') };
+  }
+  if (shape === 'oval') {
+    // Keep the minor axis (default 250 mm); the smallest standard major axis that carries the flow
+    const b = currentH > 0 ? currentH : 0.25;
+    const a = RECT_M.find(w => w >= b && ovalEquivalentDiameter(w, b) >= D) ?? RECT_M[RECT_M.length - 1];
+    return { shape, sizeX: a, sizeY: b, velocity: q / ovalArea(a, b), friction: frictionRate(q, ovalEquivalentDiameter(a, b), 'air') };
   }
   // Smallest standard width giving the equivalent diameter at height hh.
   const widthFor = (hh: number) => RECT_M.find(w => equivalentDiameter(w, hh) >= D) ?? RECT_M[RECT_M.length - 1];
@@ -153,9 +170,11 @@ export function runHydraulics(curve: CanonicalElement, flowLs: number): { veloci
   const w = parseFloat(curve.attrs.size_x || '0') || 0;
   const h = parseFloat(curve.attrs.size_y || '0') || w;
   if (!(w > 0)) return null;
-  const round = (curve.attrs.shape || (curve.tableName === 'duct' ? 'rect' : 'round')) === 'round';
-  const A = round ? Math.PI * w * w / 4 : w * h;
-  const D = round ? w : equivalentDiameter(w, h);
+  const shape = curve.attrs.shape || (curve.tableName === 'duct' ? 'rect' : 'round');
+  const round = shape === 'round' || curve.tableName === 'pipe' || curve.tableName === 'conduit';
+  const oval = !round && shape === 'oval';
+  const A = round ? Math.PI * w * w / 4 : oval ? ovalArea(w, h) : w * h;
+  const D = round ? w : oval ? ovalEquivalentDiameter(w, h) : equivalentDiameter(w, h);
   const fluid = curve.tableName === 'duct' ? 'air' : 'water';
   return { velocity: q / A, friction: frictionRate(q, D, fluid) };
 }
@@ -299,7 +318,8 @@ export function sizeSystem(elements: ReadonlyMap<string, CanonicalElement>, syst
     members.push(el as MepCurve);
     if (isPortStub(el as MepCurve, elements)) { stubs.add(el.id); continue; }
     const f = flows.get(el.id) ?? 0;
-    const shape = (el.attrs.shape || (el.tableName === 'duct' ? 'rect' : 'round')) === 'round' ? 'round' : 'rect';
+    const raw = el.attrs.shape || (el.tableName === 'duct' ? 'rect' : 'round');
+    const shape = raw === 'round' ? 'round' : raw === 'oval' ? 'oval' : 'rect';
     const s = el.tableName === 'duct'
       ? sizeDuct(f, shape, parseFloat(el.attrs.size_y || '0') || 0, rate)
       : DOMESTIC_WATER.test(system) ? sizeDomesticPipe(f, el.attrs.material) : sizePipe(f, el.attrs.material);

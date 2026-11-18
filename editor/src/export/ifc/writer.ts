@@ -144,6 +144,9 @@ export class IfcWriter {
       case 'rect':
         return this.add('IfcRectangleProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
           this.plen(p.w), this.plen(p.d));
+      case 'rounded_rect':
+        return this.add('IfcRoundedRectangleProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }),
+          this.plen(p.w), this.plen(p.d), this.plen(Math.min(p.r, p.w / 2, p.d / 2)));
       case 'circle':
         return this.add('IfcCircleProfileDef', AREA, name, this.axis2({ x: p.cx ?? 0, y: p.cy ?? 0 }), this.plen(p.r));
       case 'ishape':

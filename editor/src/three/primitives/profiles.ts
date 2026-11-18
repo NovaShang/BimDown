@@ -21,6 +21,12 @@ function roundedRect<T extends Path>(p: T, hw: number, hd: number, r: number): T
   return p;
 }
 
+/** Flat oval duct section (semicircle ends on the shorter side), centred. */
+export function ovalShape(width: number, depth: number): Shape {
+  const hw = Math.max(width, 0.005) / 2, hd = Math.max(depth, 0.005) / 2;
+  return roundedRect(new Shape(), hw, hd, Math.min(hw, hd) - 1e-6);
+}
+
 /**
  * Profile factory: converts Shape2D specs to THREE.Shape for ExtrudeGeometry.
  *

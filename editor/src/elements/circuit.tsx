@@ -11,6 +11,7 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import type { CanonicalElement, PointElement, Point } from '../model/elements.ts';
 import { wiringOrder } from '../mep/circuits.ts';
+import { PHASE_OPTIONS } from '../mep/mepCheck.ts';
 import { useMepView } from '../mep/mepView.ts';
 import { PlanText } from '../mep/planSymbols.tsx';
 
@@ -67,10 +68,19 @@ export const circuitModule: ElementModule<CircuitFacts> = {
   prefix: 'ci',
   hostTables: ['equipment'],
   csvOnly: true,
-  csvHeaders: ['number', 'host_id', 'name', 'voltage', 'poles', 'rating'],
-  defaults: { host_id: '', name: '', voltage: '230', poles: '1', rating: '16' },
+  csvHeaders: ['number', 'host_id', 'name', 'voltage', 'poles', 'rating', 'phase', 'power_factor', 'cable_size', 'cable_trays'],
+  defaults: { host_id: '', name: '', voltage: '230', poles: '1', rating: '16', phase: '', power_factor: '', cable_size: '', cable_trays: '' },
   drawingFields: [],
-  propertyFields: [],
+  propertyFields: [
+    { key: 'name', label: 'Name', type: 'text', group: 'identity' },
+    { key: 'voltage', label: 'Voltage (V)', type: 'number', step: 1, group: 'system' },
+    { key: 'poles', label: 'Poles', type: 'select', options: [{ value: '1', label: '1' }, { value: '2', label: '2' }, { value: '3', label: '3' }], group: 'system' },
+    { key: 'rating', label: 'Breaker (A)', type: 'number', step: 1, group: 'system' },
+    { key: 'phase', label: 'Phase', type: 'select', options: [{ value: '', label: '—' }, ...PHASE_OPTIONS.map(p => ({ value: p, label: p }))], group: 'system' },
+    { key: 'power_factor', label: 'Power Factor', type: 'number', min: 0.1, max: 1, step: 0.05, group: 'system' },
+    { key: 'cable_size', label: 'Cable Diameter', type: 'number', unit: 'm', min: 0, step: 0.001, group: 'system' },
+    { key: 'cable_trays', label: 'Cable Trays', type: 'text', group: 'system' },
+  ],
   layerStyle: { displayName: 'Circuits', color: WIRE, icon: '⌒', order: 13.8 },
   renderZIndex: 94,
   hiddenFromToolbar: true,

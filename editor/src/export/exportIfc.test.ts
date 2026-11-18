@@ -224,11 +224,14 @@ describe('IFC export of MEP runs', () => {
     const mep = {
       'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
       'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\n',
-      'lv-1/pipe.csv': 'id,number,shape,size_x,system_type,from,to,insulation_thickness\n'
-        + 'pi-1,,round,0.1,CHWS,,mn-1,0.025\npi-2,,round,0.1,CHWS,mn-1,mn-2,\npi-3,,round,0.05,CHWS,mn-1,,\n',
-      'lv-1/pipe.geojson': fc([F('pi-1', [[0, 0, 2.8], [4, 0, 2.8]]), F('pi-2', [[4, 0, 2.8], [8, 0, 2.8]]), F('pi-3', [[4, 0, 2.8], [4, 3, 2.8]])]),
-      'lv-1/duct.csv': 'id,number,shape,size_x,size_y,system_type,from,to,flexible\ndu-1,,rect,0.4,0.3,SA,,mn-3,\ndu-2,,round,0.2,,SA,mn-3,,true\n',
-      'lv-1/duct.geojson': fc([F('du-1', [[0, 5, 3], [5, 5, 3]]), F('du-2', [[5, 5, 3], [7, 5, 3]])]),
+      'lv-1/pipe.csv': 'id,number,shape,size_x,system_type,from,to,insulation_thickness,flexible\n'
+        + 'pi-1,,round,0.1,CHWS,,mn-1,0.025,\npi-2,,round,0.1,CHWS,mn-1,mn-2,,\npi-3,,round,0.05,CHWS,mn-1,,,\n'
+        + 'pi-4,,round,0.02,DCW,,,,true\n',
+      'lv-1/pipe.geojson': fc([F('pi-1', [[0, 0, 2.8], [4, 0, 2.8]]), F('pi-2', [[4, 0, 2.8], [8, 0, 2.8]]), F('pi-3', [[4, 0, 2.8], [4, 3, 2.8]]),
+        F('pi-4', [[10, 0, 0.5], [11, 0, 0.5]])]),
+      'lv-1/duct.csv': 'id,number,shape,size_x,size_y,system_type,from,to,flexible\ndu-1,,rect,0.4,0.3,SA,,mn-3,\ndu-2,,round,0.2,,SA,mn-3,,true\n'
+        + 'du-3,,oval,0.5,0.25,EA,,,\n',
+      'lv-1/duct.geojson': fc([F('du-1', [[0, 5, 3], [5, 5, 3]]), F('du-2', [[5, 5, 3], [7, 5, 3]]), F('du-3', [[0, 6, 3], [4, 6, 3]])]),
       'lv-1/mep_node.csv': 'id,system_type,kind\nmn-1,CHWS,\nmn-2,CHWS,balancing_valve\nmn-3,SA,fire_damper\n',
       'lv-1/mep_node.geojson': fc([F('mn-1', [4, 0, 2.8]), F('mn-2', [8, 0, 2.8]), F('mn-3', [5, 5, 3])]),
       'lv-1/terminal.csv': 'id,number,terminal_type,system_type,load,circuit_id\n'
@@ -253,6 +256,8 @@ describe('IFC export of MEP runs', () => {
         expect(type('terminal:tm-4')).toBe('IFCJUNCTIONBOX');
         expect(type('equipment:eq-1')).toBe('IFCAIRTERMINALBOX');
         expect(pre('duct:du-2')).toBe('.FLEXIBLESEGMENT.');
+        expect(countTypes(ents).IFCROUNDEDRECTANGLEPROFILEDEF).toBe(1);
+        expect([type('pipe:pi-4'), pre('pipe:pi-4')]).toEqual(['IFCPIPESEGMENT', '.FLEXIBLESEGMENT.']);
         const circuit = [...ents.values()].find(e => e.type === 'IFCDISTRIBUTIONCIRCUIT')!;
         expect(str(circuit.args[2])).toBe('Lighting');
         const group = [...ents.values()].find(e => e.type === 'IFCRELASSIGNSTOGROUP' && ref(e.args[6]) === circuit.id)!;

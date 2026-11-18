@@ -146,9 +146,15 @@ export function orthoActive(da: Record<string, string>, shift: boolean): boolean
 const REMEMBER = ['system_type', 'shape', 'size_x', 'size_y', SLOPE_KEY, ORTHO_KEY, 'start_z', 'flexible', 'material', 'insulation_thickness'];
 const memory = new Map<string, Record<string, string>>();
 
-/** Drawing attrs last used for `table` (placement defaults of the MEP line tools). */
-export function rememberedRouteAttrs(table: string): Record<string, string> {
-  return { ...(memory.get(table) ?? {}) };
+/** Drawing attrs last used for `table` / toolbar variant (placement defaults of the MEP line tools). */
+export function rememberedRouteAttrs(table: string, variantId?: string): Record<string, string> {
+  return { ...(memory.get(variantId ? `${table}:${variantId}` : table) ?? {}) };
+}
+
+/** Memory key: rigid, flex and oval tools of one table keep their own settings. */
+function memKey(api: RouteApi): string {
+  const t = api.getState().drawingTarget!;
+  return t.variantId ? `${t.tableName}:${t.variantId}` : t.tableName;
 }
 
 function remember(table: string, da: Record<string, string>): void {
@@ -462,7 +468,7 @@ export function startRoute(api: RouteApi, pt: Point, portRef: string | undefined
   }
   da.start_z = String(round(z));
   chain.z = z;
-  remember(table, da);
+  remember(memKey(api), da);
   api.dispatch({ type: 'SET_DRAWING_ATTRS', attrs: da });
   api.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [at], cursor: at, startPortRef: startRef } });
   notify();
@@ -674,7 +680,7 @@ export function continueRoute(api: RouteApi, pt: Point, portRef: string | undefi
   return finish(api, b, da, z, ended, endPoint, table);
 }
 
-function finish(api: RouteApi, b: Builder, da: Record<string, string>, z: number, ended: boolean, endPoint: Point, table: string): void {
+function finish(api: RouteApi, b: Builder, da: Record<string, string>, z: number, ended: boolean, endPoint: Point, _table: string): void {
   const state = api.getState();
   if (b.out.length > 0) {
     if (b.patches.length > 0) {
@@ -685,7 +691,7 @@ function finish(api: RouteApi, b: Builder, da: Record<string, string>, z: number
     for (const s of b.out) chain.ids.add(s.id);
   }
   chain.typed = '';
-  remember(table, da);
+  remember(memKey(api), da);
   if (ended) {
     resetChain(NaN);
     endedByItself = b.out.length > 0;
@@ -695,7 +701,7 @@ function finish(api: RouteApi, b: Builder, da: Record<string, string>, z: number
     if (Math.abs(num(da.start_z) - z) > EPS_Z) {
       const next = { ...state.drawingAttrs, start_z: String(round(z)) };
       api.dispatch({ type: 'SET_DRAWING_ATTRS', attrs: next });
-      remember(table, next);
+      remember(memKey(api), next);
     }
     api.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [endPoint], cursor: endPoint } });
   }

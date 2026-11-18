@@ -13,17 +13,20 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { isMepLineTable } from '../model/mepTopology.ts';
 import { endZ } from '../model/mepSplit.ts';
-import { checkDocument, externalMep, systemRows, systemMemberIds } from './mepModel.ts';
+import { checkDocument, documentTrayFills, externalMep, systemRows, systemMemberIds } from './mepModel.ts';
 import { setMepView, useMepView, UNASSIGNED, type ProblemMarker } from './mepView.ts';
 import { computeRunFlows, runHydraulics, sizeDuct, sizePipe, sizeSystem } from './calc.ts';
-import { circuitsIn, isPanel, newCircuit } from './circuits.ts';
-import type { MepProblem } from './mepCheck.ts';
+import { balancePhases, circuitsIn, isPanel, newCircuit, panelLoads } from './circuits.ts';
+import { loadScheduleSettings, saveScheduleSettings, SCHEDULE_TOGGLE_EVENT } from '../components/SchedulePanel.tsx';
+import { PHASE_OPTIONS, type MepProblem, type TrayFill } from './mepCheck.ts';
 import { cn } from '../lib/utils.ts';
 import { reservedIds } from './reservedIds.ts';
 import { transitionAtPort } from './transitions.ts';
 import { panelLabel } from '../schedule/mepSchedules.ts';
 import { drawingLang } from '../export/drawing/labels.ts';
 import ClashTab from './ClashTab.tsx';
+import { autoVent, type AutoVentResult } from './autoVent.ts';
+import { getProjectUnits, unitsPerMetreOf } from '../utils/units.ts';
 
 type Tab = 'systems' | 'check' | 'circuits' | 'clash';
 type MepCurve = LineElement | SpatialLineElement;
@@ -38,6 +41,7 @@ export default function MepPanel() {
   const view = useMepView();
   const [tab, setTab] = useState<Tab>('systems');
   const [deadEnds, setDeadEnds] = useState(true);
+  const [vent, setVent] = useState<AutoVentResult | null>(null);
   const elements = state.document?.elements;
   const level = state.currentLevel;
   const readonly = state.readonly;
@@ -46,7 +50,9 @@ export default function MepPanel() {
   const rows = useMemo(() => (elements ? systemRows(elements) : []), [elements]);
   const project = state.project;
   const ext = useMemo(() => externalMep(project, level), [project, level]);
-  const problems = useMemo(() => (elements && (tab === 'check' || view.showProblems) ? checkDocument(elements, ext) : []), [elements, ext, tab, view.showProblems]);
+  const problems = useMemo(() => (elements && (tab === 'check' || view.showProblems) ? checkDocument(elements, ext, { trayFillLimit: view.trayFillLimit }) : []),
+    [elements, ext, tab, view.showProblems, view.trayFillLimit]);
+  const fills = useMemo(() => (elements && tab === 'check' ? documentTrayFills(elements, view.trayFillLimit) : []), [elements, tab, view.trayFillLimit]);
   const warnings = problems.filter(p => p.severity === 'warning');
 
   // Problem markers follow the document while the check is on.
@@ -83,7 +89,13 @@ export default function MepPanel() {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
         {tab === 'systems' && (
-          <SystemsTab rows={rows} colorOf={colorOf} readonly={readonly} deadEnds={deadEnds} onDeadEnds={setDeadEnds}
+          <SystemsTab rows={rows} colorOf={colorOf} readonly={readonly} deadEnds={deadEnds} onDeadEnds={setDeadEnds} vent={vent}
+            onVent={() => {
+              // One undoable patch: tees on the drains and the stack, risers, branches
+              const r = autoVent(elements, { levelId: level, upm: unitsPerMetreOf(getProjectUnits(state)) });
+              if (r.patch.length) dispatch({ type: 'APPLY_PATCH', patches: new Map(r.patch.map(e => [e.id, e])), description: 'Auto vent' });
+              setVent(r);
+            }}
             onSelect={sys => sel(systemMemberIds(elements, sys))}
             onSize={sys => {
               const resized = sizeSystem(elements, sys, { deadEnds, levelId: level });
@@ -91,7 +103,7 @@ export default function MepPanel() {
             }} />
         )}
         {tab === 'check' && (
-          <CheckTab problems={problems} readonly={readonly} onSelect={id => sel([id])}
+          <CheckTab problems={problems} fills={fills} readonly={readonly} onSelect={id => sel([id])}
             onDelete={p => dispatch({ type: 'DELETE_ELEMENTS', ids: [level ? toSelectionId(level, p.id) : p.id] })}
             onTransition={p => {
               const el = elements.get(p.id);
@@ -123,7 +135,21 @@ export default function MepPanel() {
         {tab === 'circuits' && (
           <CircuitsTab elements={elements} selectedIds={selectedIds} readonly={readonly} level={level}
             onCreate={c => dispatch({ type: 'CREATE_ELEMENTS', elements: [c], description: 'New circuit', selectPrimary: false })}
-            onAssign={(ids, circuitId) => dispatch({ type: 'UPDATE_ATTRS_MANY', ids, attrs: { circuit_id: circuitId } })} />
+            onAssign={(ids, circuitId) => dispatch({ type: 'UPDATE_ATTRS_MANY', ids, attrs: { circuit_id: circuitId } })}
+            onPatch={(attrsById, description) => {
+              const patches = new Map<string, CanonicalElement>();
+              for (const [id, attrs] of attrsById) {
+                const el = elements.get(id);
+                if (el) patches.set(id, { ...el, attrs: { ...el.attrs, ...attrs } });
+              }
+              if (patches.size) dispatch({ type: 'APPLY_PATCH', patches, description });
+            }}
+            onSchedule={() => {
+              // Open the Schedule view on the panel schedule
+              saveScheduleSettings(state.modelName, { ...loadScheduleSettings(state.modelName), catKey: 'panel' });
+              window.dispatchEvent(new CustomEvent(SCHEDULE_TOGGLE_EVENT, { detail: { open: false } }));
+              setTimeout(() => window.dispatchEvent(new CustomEvent(SCHEDULE_TOGGLE_EVENT, { detail: { open: true } })), 0);
+            }} />
         )}
         {tab === 'clash' && <ClashTab />}
         <SelectedRun elements={elements} selectedIds={selectedIds} readonly={readonly}
@@ -133,21 +159,32 @@ export default function MepPanel() {
   );
 }
 
-function SystemsTab({ rows, colorOf, readonly, deadEnds, onDeadEnds, onSelect, onSize }: {
+function SystemsTab({ rows, colorOf, readonly, deadEnds, onDeadEnds, vent, onVent, onSelect, onSize }: {
   rows: ReturnType<typeof systemRows>; colorOf: (s: string) => string; readonly: boolean;
-  deadEnds: boolean; onDeadEnds: (v: boolean) => void;
+  deadEnds: boolean; onDeadEnds: (v: boolean) => void; vent: AutoVentResult | null; onVent: () => void;
   onSelect: (s: string) => void; onSize: (s: string) => void;
 }) {
   const { t } = useTranslation();
   const view = useMepView();
   if (rows.length === 0) return <div className="px-2 py-3 text-center text-[10px] text-muted-foreground/70">{t('mep.systems.empty')}</div>;
+  const skipped = new Map<string, number>();
+  for (const s of vent?.skipped ?? []) skipped.set(s.reason, (skipped.get(s.reason) ?? 0) + 1);
   return (
     <div className="flex flex-col gap-px">
       {!readonly && (
-        <label className="flex cursor-pointer items-center gap-1 px-1 text-[10px] text-muted-foreground" title={t('mep.systems.deadEndsTip')}>
-          <input type="checkbox" checked={deadEnds} onChange={e => onDeadEnds(e.target.checked)} data-testid="mep-dead-ends" />
-          {t('mep.systems.deadEnds')}
-        </label>
+        <div className="flex items-center gap-1 px-1">
+          <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-1 text-[10px] text-muted-foreground" title={t('mep.systems.deadEndsTip')}>
+            <input type="checkbox" checked={deadEnds} onChange={e => onDeadEnds(e.target.checked)} data-testid="mep-dead-ends" />
+            {t('mep.systems.deadEnds')}
+          </label>
+          <button type="button" className={btn} onClick={onVent} title={t('mep.vent.tip')} data-testid="mep-auto-vent">{t('mep.vent.run')}</button>
+        </div>
+      )}
+      {vent && (
+        <div className="px-1 text-[10px] text-muted-foreground" data-testid="mep-vent-result">
+          {t('mep.vent.done', { groups: vent.groups.length, n: vent.groups.reduce((s, g) => s + g.fixtures.length, 0) })}
+          {[...skipped].map(([reason, n]) => <span key={reason} className="block text-amber-600">{t(`mep.vent.skip.${reason}`, { n })}</span>)}
+        </div>
       )}
       {rows.map(r => (
         <div key={r.system} className="group rounded px-1.5 py-[3px] text-[11px] text-muted-foreground hover:bg-accent"
@@ -177,8 +214,8 @@ function SystemsTab({ rows, colorOf, readonly, deadEnds, onDeadEnds, onSelect, o
   );
 }
 
-function CheckTab({ problems, readonly, onSelect, onCap, onTransition, onDelete }: {
-  problems: MepProblem[]; readonly: boolean; onSelect: (id: string) => void; onCap: (p: MepProblem) => void;
+function CheckTab({ problems, fills, readonly, onSelect, onCap, onTransition, onDelete }: {
+  problems: MepProblem[]; fills: TrayFill[]; readonly: boolean; onSelect: (id: string) => void; onCap: (p: MepProblem) => void;
   onTransition: (p: MepProblem) => void; onDelete: (p: MepProblem) => void;
 }) {
   const { t } = useTranslation();
@@ -213,13 +250,39 @@ function CheckTab({ problems, readonly, onSelect, onCap, onTransition, onDelete 
           )}
         </div>
       ))}
+      {fills.length > 0 && (
+        <div className="mt-1 border-t border-border pt-1" data-testid="mep-tray-fill">
+          <div className="flex items-center gap-1 px-1 text-[10px] font-semibold text-foreground">
+            <span className="flex-1">{t('mep.check.trayFill')}</span>
+            <label className="flex items-center gap-1 font-normal text-muted-foreground" title={t('mep.check.trayLimitTip')}>
+              {t('mep.check.trayLimit')}
+              <input type="number" min={5} max={100} step={5} value={view.trayFillLimit} data-testid="mep-tray-limit"
+                onChange={e => { const v = parseFloat(e.target.value); if (v > 0) setMepView({ trayFillLimit: v }); }}
+                className="h-[18px] w-11 rounded border border-border bg-transparent px-1 text-[10px] tabular-nums" />%
+            </label>
+          </div>
+          {fills.map(f => (
+            <button key={f.id} type="button" onClick={() => onSelect(f.id)}
+              className="flex w-full cursor-pointer items-center gap-1.5 rounded border-none bg-transparent px-1.5 py-[2px] text-left text-[10px] text-muted-foreground hover:bg-accent">
+              <span className="w-12 shrink-0 font-semibold text-foreground">{f.id}</span>
+              <span className="h-1.5 min-w-0 flex-1 overflow-hidden rounded bg-muted">
+                <span className={cn('block h-full', f.fill > f.limit ? 'bg-red-500' : 'bg-emerald-500')} style={{ width: `${Math.min(100, f.fill)}%` }} />
+              </span>
+              <span className={cn('w-24 shrink-0 text-right tabular-nums', f.fill > f.limit && 'text-red-500')}>
+                {t('mep.check.trayFillRow', { fill: f.fill.toFixed(1), limit: f.limit, n: f.cables + f.conduits })}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
 
-function CircuitsTab({ elements, selectedIds, readonly, level, onCreate, onAssign }: {
+function CircuitsTab({ elements, selectedIds, readonly, level, onCreate, onAssign, onPatch, onSchedule }: {
   elements: ReadonlyMap<string, CanonicalElement>; selectedIds: Set<string>; readonly: boolean; level: string;
   onCreate: (c: CanonicalElement) => void; onAssign: (ids: string[], circuitId: string) => void;
+  onPatch: (attrsById: Map<string, Record<string, string>>, description: string) => void; onSchedule: () => void;
 }) {
   const { t } = useTranslation();
   const view = useMepView();
@@ -232,6 +295,9 @@ function CircuitsTab({ elements, selectedIds, readonly, level, onCreate, onAssig
     ?? (selCircuit ? elements.get(selCircuit.hostId || selCircuit.attrs.host_id || '') : undefined)
     ?? (panels.length === 1 ? panels[0] : undefined);
   const devices = selected.filter(e => (e.tableName === 'terminal' || e.tableName === 'equipment') && !isPanel(e));
+  const trays = selected.filter(e => e.tableName === 'cable_tray').map(e => e.id);
+  const loads = panelLoads(circuits);
+  const fmtW = (w: number) => (w >= 10000 ? `${(w / 1000).toFixed(1)} kW` : `${Math.round(w)} W`);
   return (
     <div className="flex flex-col gap-1">
       <div className="flex items-center gap-1 px-1">
@@ -239,26 +305,78 @@ function CircuitsTab({ elements, selectedIds, readonly, level, onCreate, onAssig
           <input type="checkbox" checked={view.showCircuits} onChange={e => setMepView({ showCircuits: e.target.checked })} />
           {t('mep.circuits.wiring')}
         </label>
+        <button type="button" className={cn(btn, 'ml-auto')} disabled={circuits.length === 0} onClick={onSchedule}
+          title={t('mep.circuits.scheduleTip')} data-testid="mep-panel-schedule">
+          {t('mep.circuits.schedule')}
+        </button>
         {!readonly && (
-          <button type="button" className={cn(btn, 'ml-auto')} disabled={!panel}
+          <button type="button" className={btn} disabled={!panel}
             onClick={() => panel && onCreate(newCircuit(panel.id, elements, level))} title={t('mep.circuits.newTip')}>
             {t('mep.circuits.new')}
           </button>
         )}
       </div>
       {panels.length === 0 && <div className="px-2 py-2 text-center text-[10px] text-muted-foreground/70">{t('mep.circuits.noPanel')}</div>}
+      {loads.map(pl => {
+        const panelEl = elements.get(pl.panelId);
+        const bal = balancePhases(pl.circuits);
+        const high = pl.imbalance > 15;
+        return (
+          <div key={pl.panelId} className="rounded-lg border border-border px-1.5 py-1" data-testid="mep-panel-load">
+            <div className="flex items-center gap-1 text-[10px]">
+              <span className="min-w-0 flex-1 truncate font-semibold text-foreground">{panelLabel(panelEl, pl.panelId, drawingLang())}</span>
+              <span className={cn('shrink-0 tabular-nums', high ? 'text-red-500' : 'text-muted-foreground')} data-testid="mep-panel-imbalance">
+                {t('mep.circuits.imbalance', { pct: pl.imbalance.toFixed(1) })}
+              </span>
+            </div>
+            <div className="grid grid-cols-3 gap-1 text-[9px] tabular-nums text-muted-foreground">
+              {(['L1', 'L2', 'L3'] as const).map(ph => <span key={ph}>{ph} {fmtW(pl.perPhase[ph])}</span>)}
+            </div>
+            {pl.unassigned > 0 && <div className="text-[9px] text-amber-600">{t('mep.circuits.unassigned', { load: fmtW(pl.unassigned) })}</div>}
+            {!readonly && (
+              <div className="mt-[2px] flex items-center gap-1 text-[9px] text-muted-foreground">
+                {bal.changes.size > 0 ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate" title={[...bal.changes].map(([id, ph]) => `${pl.circuits.find(c => c.id === id)?.number ?? id} → ${ph}`).join(', ')}>
+                      {t('mep.circuits.balanceHint', { n: bal.changes.size, pct: bal.imbalance.toFixed(1) })}
+                    </span>
+                    <button type="button" className={btn} data-testid="mep-balance"
+                      onClick={() => onPatch(new Map([...bal.changes].map(([id, ph]) => [id, { phase: ph }])), 'Balance phases')}
+                      title={t('mep.circuits.balanceTip')}>{t('mep.circuits.balance')}</button>
+                  </>
+                ) : <span className="flex-1">{t('mep.circuits.balanced')}</span>}
+              </div>
+            )}
+          </div>
+        );
+      })}
       {circuits.map(c => {
         const panelEl = elements.get(c.panelId);
-        const over = c.voltage > 0 && c.rating > 0 && c.load > c.voltage * c.rating * 0.8;
+        const over = c.rating > 0 && c.current > c.rating * 0.8;
         return (
           <div key={c.id} className="flex items-center gap-1.5 rounded px-1.5 py-[2px] text-[10px] text-muted-foreground hover:bg-accent"
             onMouseEnter={() => setMepView({ circuit: c.id })} onMouseLeave={() => setMepView({ circuit: null })}>
             <span className="min-w-0 flex-1">
-              <span className="block truncate font-semibold text-foreground" title={panelLabel(panelEl, c.panelId, drawingLang())}>{panelLabel(panelEl, c.panelId, drawingLang())} · {c.number}</span>
-              <span className={cn('block truncate tabular-nums', over && 'text-red-500')}>
-                {t('mep.circuits.summary', { devices: c.devices.length, load: Math.round(c.load) })}{c.rating ? ` / ${c.rating} A` : ''}
+              <span className="block truncate font-semibold text-foreground" title={panelLabel(panelEl, c.panelId, drawingLang())}>
+                {panelLabel(panelEl, c.panelId, drawingLang())} · {c.number}{c.phases.length ? ` · ${c.phases.join('-')}` : ''}
+              </span>
+              <span className={cn('block truncate tabular-nums', over && 'text-red-500')} data-testid="mep-circuit-summary">
+                {t('mep.circuits.summary', { devices: c.devices.length, load: Math.round(c.load) })}
+                {c.current > 0 ? ` · ${c.current.toFixed(1)} A` : ''}{c.rating ? ` / ${c.rating} A` : ''}
               </span>
             </span>
+            {!readonly && (
+              <select className="h-[18px] shrink-0 cursor-pointer rounded border border-border bg-transparent px-0.5 text-[9px] text-muted-foreground"
+                value={c.phase} title={t('mep.circuits.phaseTip')} data-testid="mep-circuit-phase"
+                onChange={e => onPatch(new Map([[c.id, { phase: e.target.value, ...(e.target.value === 'L1L2L3' ? { poles: '3' } : e.target.value.length === 4 ? { poles: '2' } : e.target.value ? { poles: '1' } : {}) }]]), 'Circuit phase')}>
+                <option value="">—</option>
+                {PHASE_OPTIONS.map(p => <option key={p} value={p}>{p}</option>)}
+              </select>
+            )}
+            {!readonly && trays.length > 0 && (
+              <button type="button" className={btn} onClick={() => onPatch(new Map([[c.id, { cable_trays: trays.join(';') }]]), 'Route cable')}
+                title={t('mep.circuits.routeTip')}>{t('mep.circuits.route', { n: trays.length })}</button>
+            )}
             {!readonly && (
               <button type="button" className={btn} disabled={devices.length === 0}
                 onClick={() => onAssign(devices.map(d => d.id), c.id)} title={t('mep.circuits.assignTip')}>
@@ -282,10 +400,11 @@ function SelectedRun({ elements, selectedIds, readonly, onApply }: {
   if (!el || !flows || (el.tableName !== 'duct' && el.tableName !== 'pipe')) return null;
   const flow = flows.get(el.id) ?? 0;
   const hyd = runHydraulics(el, flow);
-  const shape = (el.attrs.shape || (el.tableName === 'duct' ? 'rect' : 'round')) === 'round' ? 'round' : 'rect';
+  const raw = el.attrs.shape || (el.tableName === 'duct' ? 'rect' : 'round');
+  const shape = raw === 'round' ? 'round' : raw === 'oval' ? 'oval' : 'rect';
   const s = el.tableName === 'duct' ? sizeDuct(flow, shape, parseFloat(el.attrs.size_y || '0') || 0) : sizePipe(flow);
   const mm = (v: number) => Math.round(v * 1000);
-  const suggested = s ? (s.shape === 'round' ? `Ø${mm(s.sizeX)}` : `${mm(s.sizeX)}×${mm(s.sizeY)}`) : '';
+  const suggested = s ? (s.shape === 'round' ? `Ø${mm(s.sizeX)}` : `${mm(s.sizeX)}×${mm(s.sizeY)}${s.shape === 'oval' ? ' oval' : ''}`) : '';
   const c = el as MepCurve;
   const len = Math.hypot(c.end.x - c.start.x, c.end.y - c.start.y);
   const slope = len > 1e-6 ? (endZ(c, 'end') - endZ(c, 'start')) / len : 0;

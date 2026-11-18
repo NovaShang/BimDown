@@ -61,7 +61,7 @@ import { getProjectUnits } from '../utils/units.ts';
 import { unitsPerMetre } from './drawing/plan.ts';
 import { IfcWriter, type H, type IfcSchema } from './ifc/writer.ts';
 import {
-  type Frame, type Solid, type V2, type V3,
+  type Frame, type Profile, type Solid, type V2, type V3,
   add, frameAt, length, memberFrame, normalize, planFrame, polygonArea, polygonPerimeter, sub, v3,
 } from './ifc/frame.ts';
 import {
@@ -268,8 +268,17 @@ interface Segment {
   start: V3;
   end: V3;
   round: boolean;
+  /** Flat oval duct. */
+  oval?: boolean;
   sizeX: number;
   sizeY: number;
+}
+
+/** Section profile of a run (insulation grown by `t`). */
+function segmentProfile(seg: Segment, t = 0): Profile {
+  if (seg.round) return { kind: 'circle', r: seg.sizeX / 2 + t };
+  const w = seg.sizeX + 2 * t, d = seg.sizeY + 2 * t;
+  return seg.oval ? { kind: 'rounded_rect', w, d, r: Math.min(w, d) / 2 } : { kind: 'rect', w, d };
 }
 
 const num = (s: string | undefined, fallback = 0): number => {
@@ -1376,9 +1385,10 @@ class Exporter {
     if (length(sub(end, start)) < 0.001) return null;
     const defaultShape = el.tableName === 'pipe' || el.tableName === 'conduit' ? 'round' : 'rect';
     const round = (el.attrs.shape || defaultShape) === 'round';
+    const oval = !round && el.tableName === 'duct' && el.attrs.shape === 'oval';
     const sizeX = num(el.attrs.size_x) || 0.2;
     const sizeY = round ? sizeX : num(el.attrs.size_y) || 0.2;
-    return { scope, el: raw, start, end, round, sizeX, sizeY };
+    return { scope, el: raw, start, end, round, ...(oval ? { oval } : {}), sizeX, sizeY };
   }
 
   /** Segments are collected up front so fittings know their legs. */
@@ -1443,8 +1453,7 @@ class Exporter {
     if (MEP_SEGMENTS.has(t)) {
       const seg = this.segmentByEl.get(el);
       if (!seg) return;
-      const profile = seg.round ? { kind: 'circle' as const, r: seg.sizeX / 2 } : { kind: 'rect' as const, w: seg.sizeX, d: seg.sizeY };
-      const solid = sweep(seg.start, seg.end, profile);
+      const solid = sweep(seg.start, seg.end, segmentProfile(seg));
       if (!solid) return;
       geom = { frame: memberFrame(seg.start, seg.end)!, solids: [solid], axis: [seg.start, seg.end] };
       const flexible = el.attrs.flexible === 'true';
@@ -1458,7 +1467,7 @@ class Exporter {
       seg.rec = rec;
       const insulation = num(el.attrs.insulation_thickness);
       this.pset(rec, 'BimDown_MEP', {
-        Shape: w.label(seg.round ? 'round' : 'rect'), Width: w.len(seg.sizeX), Height: w.len(seg.sizeY),
+        Shape: w.label(seg.round ? 'round' : seg.oval ? 'oval' : 'rect'), Width: w.len(seg.sizeX), Height: w.len(seg.sizeY),
         Length: w.len(length(sub(seg.end, seg.start))), SystemType: w.label(el.attrs.system_type),
         InsulationThickness: insulation > 0 ? w.len(insulation) : null, Flexible: flexible ? w.bool(true) : null,
       });
@@ -1563,7 +1572,7 @@ class Exporter {
   /** Insulation around a duct / pipe: an IfcCovering (INSULATION) of the insulated outer size, covering the segment. */
   private insulationCovering(scope: Scope, el: CanonicalElement, rec: Rec, seg: Segment, t: number): void {
     const { w } = this;
-    const profile = seg.round ? { kind: 'circle' as const, r: seg.sizeX / 2 + t } : { kind: 'rect' as const, w: seg.sizeX + 2 * t, d: seg.sizeY + 2 * t };
+    const profile = segmentProfile(seg, t);
     const solid = sweep(seg.start, seg.end, profile);
     if (!solid) return;
     const cov = this.product({

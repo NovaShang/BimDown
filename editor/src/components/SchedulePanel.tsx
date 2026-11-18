@@ -23,7 +23,7 @@ export const ZOOM_TO_EVENT = 'bimdown:zoom-to';
 interface Config { columns: string[]; groupBy: string; sort: SortState; itemize: boolean }
 
 function defaultConfig(cat: ScheduleCategory): Config {
-  return { columns: cat.columns.filter(c => c.defaultOn !== false).map(c => c.key), groupBy: cat.groupBy ?? '', sort: null, itemize: cat.itemize !== false };
+  return { columns: cat.columns.filter(c => c.defaultOn !== false).map(c => c.key), groupBy: cat.groupBy ?? '', sort: cat.sort ?? null, itemize: cat.itemize !== false };
 }
 
 const fileSafe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, '_').trim() || 'schedule';

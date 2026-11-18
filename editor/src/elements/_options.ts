@@ -113,6 +113,12 @@ export const SHAPE_OPTIONS: DrawingField['options'] = [
   { value: 'round', label: 'Round' },
 ];
 
+/** Duct sections: rect, round, flat oval. */
+export const DUCT_SHAPE_OPTIONS: DrawingField['options'] = [
+  ...(SHAPE_OPTIONS ?? []),
+  { value: 'oval', label: 'Oval' },
+];
+
 /** Spec v3 structural_section_profile.shape enum */
 export const STRUCTURAL_SHAPE_OPTIONS: DrawingField['options'] = [
   { value: 'rect', label: 'Rect' },
