@@ -10,7 +10,9 @@
  * (equipment / terminal / mep_node) and their declared ports with world
  * positions. Output is a list of problems: open ends, references that don't
  * resolve, ends that don't sit on the port they reference, system and domain
- * mismatches, devices with no connection, orphan fittings, circuit problems.
+ * mismatches, devices with no connection, orphan fittings, circuit problems,
+ * cable tray fill. Also the electrical basics the editor and CLI share:
+ * circuit phases and current (I = P / (U · cosφ), × √3 for three-phase).
  */
 
 export type Vec3 = [number, number, number];
@@ -30,6 +32,8 @@ export interface MepCurveIn {
   shape?: string;
   w?: number;
   h?: number;
+  /** cable_tray.max_fill, percent (omitted = the model's limit). */
+  maxFill?: number;
 }
 
 export interface MepHostIn {
@@ -70,6 +74,14 @@ export interface MepCircuitIn {
   number: string;
   voltage: number;
   rating: number;
+  /** circuit.phase (L1 / L2 / L3 / L1L2 / L2L3 / L3L1 / L1L2L3) and poles. */
+  phase?: string;
+  poles?: number;
+  /** cosφ (omitted / 0 = DEFAULT_POWER_FACTOR). */
+  powerFactor?: number;
+  /** Cable outer diameter (model units) and the trays it runs in. */
+  cableSize?: number;
+  trays?: string[];
 }
 
 export interface MepModelIn {
@@ -87,6 +99,8 @@ export interface MepModelIn {
   /** Incomplete models: host ids that exist outside the model; a ref to a
    *  host found nowhere is a broken reference. */
   externalHosts?: string[];
+  /** Cable tray fill limit, percent (default DEFAULT_TRAY_FILL); a tray's own maxFill wins. */
+  trayFillLimit?: number;
 }
 
 export type MepProblemCode =
@@ -94,7 +108,7 @@ export type MepProblemCode =
   | 'system_mismatch' | 'domain_mismatch' | 'disconnected_device'
   | 'unconnected_port' | 'unused_port' | 'orphan_fitting'
   | 'no_circuit' | 'circuit_overload' | 'external_ref'
-  | 'duplicate_segment' | 'size_mismatch' | 'flow_balance';
+  | 'duplicate_segment' | 'size_mismatch' | 'flow_balance' | 'tray_fill';
 
 export interface MepProblem {
   severity: 'warning' | 'info';
@@ -118,6 +132,92 @@ export interface MepProblem {
 export const PORT_TOLERANCE = 0.05;
 /** Revit puts curve ends at fitting faces, an arm away from the node centre. */
 export const NODE_TOLERANCE = 2.0;
+
+// ─── Electrical ───────────────────────────────────────────
+
+export type Phase = 'L1' | 'L2' | 'L3';
+export const PHASES: Phase[] = ['L1', 'L2', 'L3'];
+export const PHASE_OPTIONS = ['L1', 'L2', 'L3', 'L1L2', 'L2L3', 'L3L1', 'L1L2L3'];
+export const DEFAULT_POWER_FACTOR = 0.9;
+/** Cable tray fill limit, percent of the tray section. */
+export const DEFAULT_TRAY_FILL = 40;
+
+/** Phases a circuit is on: its `phase`, else all three for a 3-pole breaker, else none (unassigned). */
+export function circuitPhases(phase: string | undefined, poles?: number): Phase[] {
+  const p = (phase ?? '').trim().toUpperCase();
+  if (p) return PHASES.filter(x => p.includes(x));
+  return poles === 3 ? [...PHASES] : [];
+}
+
+/** Line current, A: P / (U · cosφ); three-phase P / (√3 · U · cosφ) with U line-to-line. */
+export function circuitCurrent(loadW: number, voltage: number, phases: number, powerFactor?: number): number {
+  const pf = powerFactor! > 0 && powerFactor! <= 1 ? powerFactor! : DEFAULT_POWER_FACTOR;
+  if (!(voltage > 0) || !(loadW > 0)) return 0;
+  return loadW / ((phases === 3 ? Math.sqrt(3) : 1) * voltage * pf);
+}
+
+export interface TrayFill {
+  id: string;
+  scope?: string;
+  /** Percent of the tray section taken by cables and conduits. */
+  fill: number;
+  limit: number;
+  cables: number;
+  conduits: number;
+  at: Vec3;
+}
+
+/**
+ * Fill of every cable tray: the sections of the circuit cables routed
+ * through it (`trays`, `cableSize`) plus conduits laid in it (parallel,
+ * centre line inside the tray section over part of its length), as a
+ * percentage of size_x × size_y.
+ */
+export function trayFills(model: MepModelIn): TrayFill[] {
+  const limit = model.trayFillLimit! > 0 ? model.trayFillLimit! : DEFAULT_TRAY_FILL;
+  const conduits = model.curves.filter(c => c.table === 'conduit' && c.w! > 0);
+  const out: TrayFill[] = [];
+  for (const t of model.curves) {
+    if (t.table !== 'cable_tray' || !(t.w! > 0)) continue;
+    const w = t.w!, h = t.h! > 0 ? t.h! : t.w!;
+    let area = 0, cables = 0, inTray = 0;
+    for (const c of model.circuits ?? []) {
+      if (!(c.cableSize! > 0) || !(c.trays ?? []).includes(t.id)) continue;
+      if (c.scope !== undefined && t.scope !== undefined && c.scope !== t.scope && c.scope !== 'global' && t.scope !== 'global') continue;
+      area += Math.PI * (c.cableSize! / 2) ** 2;
+      cables++;
+    }
+    const L = dist(t.a, t.b);
+    if (L > 1e-9) {
+      const u: Vec3 = [(t.b[0] - t.a[0]) / L, (t.b[1] - t.a[1]) / L, (t.b[2] - t.a[2]) / L];
+      const hz = Math.hypot(u[0], u[1]);
+      // Across the tray (horizontal) and up (perpendicular to it)
+      const side: Vec3 = hz > 1e-6 ? [-u[1] / hz, u[0] / hz, 0] : [1, 0, 0];
+      const up: Vec3 = [u[1] * side[2] - u[2] * side[1], u[2] * side[0] - u[0] * side[2], u[0] * side[1] - u[1] * side[0]];
+      const local = (p: Vec3) => {
+        const v: Vec3 = [p[0] - t.a[0], p[1] - t.a[1], p[2] - t.a[2]];
+        return [v[0] * u[0] + v[1] * u[1] + v[2] * u[2], v[0] * side[0] + v[1] * side[1] + v[2] * side[2], v[0] * up[0] + v[1] * up[1] + v[2] * up[2]];
+      };
+      for (const c of conduits) {
+        if ((c.scope ?? '') !== (t.scope ?? '')) continue;
+        const la = local(c.a), lb = local(c.b);
+        const cl = dist(c.a, c.b);
+        if (!(cl > 1e-9) || Math.abs(lb[0] - la[0]) < 0.9 * cl) continue; // not parallel
+        const s0 = Math.max(0, Math.min(la[0], lb[0])), s1 = Math.min(L, Math.max(la[0], lb[0]));
+        if (s1 - s0 <= Math.min(0.1 * L, 0.5 * cl)) continue;
+        const r = c.w! / 2;
+        const inside = (q: number[]) => Math.abs(q[1]) <= w / 2 - r + 1e-6 && Math.abs(q[2]) <= h / 2 + 1e-6;
+        if (!inside(la) || !inside(lb)) continue;
+        area += Math.PI * r * r;
+        inTray++;
+      }
+    }
+    const fill = (100 * area) / (w * h);
+    const mid: Vec3 = [(t.a[0] + t.b[0]) / 2, (t.a[1] + t.b[1]) / 2, (t.a[2] + t.b[2]) / 2];
+    out.push({ id: t.id, scope: t.scope, fill, limit: t.maxFill! > 0 ? t.maxFill! : limit, cables, conduits: inTray, at: mid });
+  }
+  return out;
+}
 
 const DOMAIN_TABLES: Record<string, string[]> = {
   hvac: ['duct'],
@@ -367,13 +467,23 @@ export function checkMep(model: MepModelIn): MepProblem[] {
     }
     if (c.voltage > 0 && c.rating > 0) {
       const load = model.hosts.filter(h => h.circuitId === c.id).reduce((s, h) => s + (h.load || 0), 0);
-      const cap = c.voltage * c.rating * 0.8;
-      if (load > cap) {
+      const current = circuitCurrent(load, c.voltage, circuitPhases(c.phase, c.poles).length, c.powerFactor);
+      if (current > c.rating * 0.8) {
+        const amps = Math.round(current * 10) / 10;
         out.push({ severity: 'warning', code: 'circuit_overload', id: c.id, scope: c.scope, table: 'circuit',
-          message: `circuit ${c.number || c.id}: ${Math.round(load)} W exceeds 80 % of ${c.rating} A × ${c.voltage} V`,
-          key: 'circuit_overload', vars: { id: c.number || c.id, load: Math.round(load), rating: c.rating, voltage: c.voltage } });
+          message: `circuit ${c.number || c.id}: ${Math.round(load)} W draws ${amps} A, over 80 % of its ${c.rating} A breaker (${c.voltage} V)`,
+          key: 'circuit_overload', vars: { id: c.number || c.id, load: Math.round(load), current: amps, rating: c.rating, voltage: c.voltage } });
       }
     }
+  }
+
+  // Cable trays over their fill limit.
+  for (const f of trayFills(model)) {
+    if (f.fill <= f.limit + 1e-9) continue;
+    const pct = Math.round(f.fill * 10) / 10;
+    out.push({ severity: 'warning', code: 'tray_fill', id: f.id, scope: f.scope, table: 'cable_tray', at: f.at,
+      message: `cable_tray ${f.id} is ${pct} % full (${f.cables} cable(s), ${f.conduits} conduit(s)), over its ${f.limit} % limit`,
+      key: 'tray_fill', vars: { id: f.id, fill: pct, limit: f.limit, cables: f.cables, conduits: f.conduits } });
   }
 
   out.push(...duplicateSegments(model.curves));

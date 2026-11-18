@@ -218,6 +218,45 @@ describe('import-ifc MEP connectivity', () => {
       expect(mepReport(dir).problems.filter(p => p.severity === 'warning').map(p => p.code)).toEqual(['open_end']);
     } finally { rmSync(dir, { recursive: true, force: true }); }
   });
+
+  it('classifies VAV / terminal boxes as equipment (vav) with their inlet / outlet ports', () => {
+    const ifc = fixtureIfc({
+      walls: [],
+      extra: h => {
+        // An IFC2x3 flow controller typed IfcAirTerminalBoxType, and a flow terminal named "VAV"
+        const v1 = host(h, 'IFCFLOWCONTROLLER', 'Box:Single Duct:401', [2000, 0, 2800], [2900, 450, 3150]);
+        const t1 = h.add(`IFCAIRTERMINALBOXTYPE(${g(h)},$,'Single Duct',$,$,$,$,$,$,.CONSTANTFLOW.)`);
+        h.add(`IFCRELDEFINESBYTYPE(${g(h)},$,$,$,(${v1}),${t1})`);
+        const v2 = host(h, 'IFCFLOWTERMINAL', 'VAV Box:Fan Powered:402', [2000, 3000, 2800], [2900, 3450, 3150]);
+        const S1 = segment(h, 'Round Duct:Standard:403', [0, 225, 2975], [2000, 225, 2975], 250, 250);
+        const S2 = segment(h, 'Rectangular Duct:Standard:404', [2900, 225, 2975], [5000, 225, 2975], 400, 250);
+        const S3 = segment(h, 'Rectangular Duct:Standard:405', [2900, 3225, 2975], [5000, 3225, 2975], 400, 250);
+        link(h, port(h, S1, 'SOURCE', [2000, 225, 2975]), port(h, v1, 'SINK', [2000, 225, 2975]));
+        port(h, S1, 'SINK', [0, 225, 2975]);
+        link(h, port(h, v1, 'SOURCE', [2900, 225, 2975]), port(h, S2, 'SINK', [2900, 225, 2975]));
+        port(h, S2, 'SOURCE', [5000, 225, 2975]);
+        link(h, port(h, v2, 'SOURCE', [2900, 3225, 2975]), port(h, S3, 'SINK', [2900, 3225, 2975]));
+        port(h, S3, 'SOURCE', [5000, 3225, 2975]);
+        pset(h, 'Mechanical', { 'System Classification': 'Supply Air' }, [S1, S2, S3]);
+        return [v1, v2, S1, S2, S3];
+      },
+    });
+    const { files } = importIfc(api, enc(ifc));
+    const eq = [...table(files, 'equipment').values()];
+    expect(eq.map(e => [e.family, e.equipment_type]).sort()).toEqual([['Box', 'vav'], ['VAV Box', 'vav']]);
+    expect(table(files, 'terminal').size).toBe(0);
+    expect([...table(files, 'mep_node').values()].filter(n => n.kind)).toEqual([]);
+    const conns = [...table(files, 'connector').values()];
+    const box = eq.find(e => e.family === 'Box')!;
+    expect(conns.filter(c => c.host_id === box.id).map(c => c.flow_dir).sort()).toEqual(['in', 'out']);
+    const ducts = [...table(files, 'duct').values()];
+    expect(ducts.some(d => d.to?.startsWith(`${box.id}:`))).toBe(true);
+    expect(ducts.some(d => d.from?.startsWith(`${box.id}:`))).toBe(true);
+    const dir = writeProject(files);
+    try {
+      expect(build(dir).issues).toEqual([]);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
 });
 
 // ─── Structure ───────────────────────────────────────────────────────────────
