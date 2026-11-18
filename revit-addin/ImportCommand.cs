@@ -42,6 +42,31 @@ public class ImportCommand : IExternalCommand
 
     static Result RunImport(Document doc, string inputDir)
     {
+        var report = ImportFolder(doc, inputDir);
+        Autodesk.Revit.UI.TaskDialog.Show("BimDown Import", report.Summary);
+        return Result.Succeeded;
+    }
+
+    internal sealed record ImportReport(int Tables, int Created, int Updated, int Deleted, List<string> Errors)
+    {
+        public string Summary
+        {
+            get
+            {
+                var msg = $"Import complete ({Tables} tables):\n" +
+                          $"  Created: {Created}\n" +
+                          $"  Updated: {Updated}\n" +
+                          $"  Deleted: {Deleted}";
+                if (Errors.Count > 0)
+                    msg += $"\n\nErrors ({Errors.Count}):\n" + string.Join("\n", Errors);
+                return msg;
+            }
+        }
+    }
+
+    /// <summary>UI-free import of an extracted BimDown folder into <paramref name="doc"/>.</summary>
+    internal static ImportReport ImportFolder(Document doc, string inputDir)
+    {
         var idMap = new IdMap();
         var allErrors = new List<string>();
 
@@ -136,6 +161,8 @@ public class ImportCommand : IExternalCommand
             }
         }
 
+        AssignLevelsByElevation(tableRows);
+
         // Types (wall_type, …, type_layer): typed rows inherit their type's values.
         ImportContext.Load(tableRows);
         AnnotationImporter.Reset();
@@ -204,16 +231,34 @@ public class ImportCommand : IExternalCommand
 
         AttachWallTops(doc, idMap, allErrors);
 
-        var msg = $"Import complete ({tablesProcessed} tables):\n" +
-                  $"  Created: {totalCreated}\n" +
-                  $"  Updated: {totalUpdated}\n" +
-                  $"  Deleted: {totalDeleted}";
+        return new ImportReport(tablesProcessed, totalCreated, totalUpdated, totalDeleted, allErrors);
+    }
 
-        if (allErrors.Count > 0)
-            msg += $"\n\nErrors ({allErrors.Count}):\n" + string.Join("\n", allErrors);
-
-        Autodesk.Revit.UI.TaskDialog.Show("BimDown Import", msg);
-        return Result.Succeeded;
+    /// <summary>
+    /// Rows in global/ without a level (spatial elements such as beams or terminals that
+    /// Revit kept on no level): the highest level at or below their lowest Z.
+    /// </summary>
+    static void AssignLevelsByElevation(Dictionary<string, List<Dictionary<string, string?>>> tableRows)
+    {
+        if (!tableRows.TryGetValue("level", out var levelRows)) return;
+        var levels = levelRows
+            .Select(r => (Id: r.GetValueOrDefault("id"), Elevation: UnitConverter.ParseNullableDouble(r.GetValueOrDefault("elevation"))))
+            .Where(l => l.Id is not null && l.Elevation is not null)
+            .OrderBy(l => l.Elevation).ToList();
+        if (levels.Count == 0) return;
+        foreach (var (table, rows) in tableRows)
+        {
+            if (table is "level" or "grid") continue;
+            foreach (var row in rows)
+            {
+                if (row.GetValueOrDefault("_dir") != "global" || row.GetValueOrDefault("level_id") is not null) continue;
+                var zs = new[] { "z", "start_z", "end_z" }
+                    .Select(k => UnitConverter.ParseNullableDouble(row.GetValueOrDefault(k))).Where(z => z is not null).Select(z => z!.Value).ToList();
+                if (zs.Count == 0) continue;
+                var bottom = zs.Min();
+                row["level_id"] = levels.LastOrDefault(l => l.Elevation <= bottom + 0.01).Id ?? levels[0].Id;
+            }
+        }
     }
 
     /// <summary>Walls with top_attach_id: Attach Top to the roof / floor once every table is in.</summary>

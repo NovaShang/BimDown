@@ -33,10 +33,10 @@ static class TypeResolver
         if (cs is not null)
         {
             var layers = cs.GetLayers();
-            if (layers.Count > 0)
+            if (layers.Count > 0 && thicknessFeet > 0)
             {
                 cs.SetLayerWidth(0, thicknessFeet);
-                newType.SetCompoundStructure(cs);
+                SetStructure(newType, cs);
             }
         }
 
@@ -69,10 +69,10 @@ static class TypeResolver
         if (cs is not null)
         {
             var layers = cs.GetLayers();
-            if (layers.Count > 0)
+            if (layers.Count > 0 && thicknessFeet > 0)
             {
                 cs.SetLayerWidth(0, thicknessFeet);
-                newType.SetCompoundStructure(cs);
+                SetStructure(newType, cs);
             }
         }
 
@@ -205,10 +205,19 @@ static class TypeResolver
             .OfClass(typeof(FamilySymbol))
             .Cast<FamilySymbol>()
             .FirstOrDefault()
+            ?? LibrarySymbol(doc, category, LibraryKeywords.GetValueOrDefault(category) ?? [])
             ?? throw new InvalidOperationException($"No FamilySymbol found for {category}");
         if (!symbol.IsActive) symbol.Activate();
         return symbol;
     }
+
+    /// <summary>Content-library file names to load when a template has no family of a category.</summary>
+    static readonly Dictionary<BuiltInCategory, string[]> LibraryKeywords = new()
+    {
+        [BuiltInCategory.OST_StructuralFoundation] = ["Footing-Rectangular", "Footing"],
+        [BuiltInCategory.OST_StructuralColumns] = ["Concrete-Rectangular-Column", "Column"],
+        [BuiltInCategory.OST_StructuralFraming] = ["Concrete-Rectangular Beam", "Beam"],
+    };
 
     static FamilySymbol ResolveOrCreateOpeningType(Document doc, BuiltInCategory category, string targetName,
         double widthMeters, double heightMeters)
@@ -313,8 +322,67 @@ static class TypeResolver
             if (cs is not null && cs.GetLayers().Count > 0)
                 cs.SetLayerWidth(Math.Max(0, cs.GetFirstCoreLayerIndex()), UnitConverter.LengthToFeet(th));
         }
-        if (cs is not null) created.SetCompoundStructure(cs);
+        if (cs is not null) SetStructure(created, cs);
         return created;
+    }
+
+    static readonly Dictionary<string, FamilySymbol?> LibrarySymbols = new();
+
+    /// <summary>
+    /// A family from Revit's content library (Options ▸ File Locations ▸ Places) for a
+    /// category the model has no family of, picked by file-name keywords in order
+    /// (hosted / face-based and tag families skipped). Null when nothing matches.
+    /// </summary>
+    public static FamilySymbol? LibrarySymbol(Document doc, BuiltInCategory category, params string[] keywords)
+    {
+        var key = $"{doc.PathName}|{doc.Title}|{category}|{string.Join(",", keywords)}";
+        if (LibrarySymbols.TryGetValue(key, out var cached) && (cached is null || cached.IsValidObject)) return cached;
+        FamilySymbol? found = null;
+        try
+        {
+            var files = doc.Application.GetLibraryPaths().Values.Where(Directory.Exists).Distinct()
+                .SelectMany(root => Directory.EnumerateFiles(root, "*.rfa", SearchOption.AllDirectories))
+                .Where(f => !Path.GetFileName(f).Contains("Tag", StringComparison.OrdinalIgnoreCase)
+                            && !Path.GetFileName(f).Contains("Hosted", StringComparison.OrdinalIgnoreCase)
+                            && !Path.GetFileName(f).Contains("Face Based", StringComparison.OrdinalIgnoreCase)
+                            && !f.Contains("Annotation", StringComparison.OrdinalIgnoreCase)
+                            && !f.Contains("Detail Items", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            foreach (var kw in keywords)
+            {
+                foreach (var file in files.Where(f => Path.GetFileNameWithoutExtension(f).Contains(kw, StringComparison.OrdinalIgnoreCase)).OrderBy(f => Path.GetFileName(f).Length))
+                {
+                    var name = Path.GetFileNameWithoutExtension(file);
+                    var family = new FilteredElementCollector(doc).OfClass(typeof(Family)).Cast<Family>().FirstOrDefault(f => f.Name == name);
+                    if (family is null && !doc.LoadFamily(file, out family)) continue;
+                    if (family?.FamilyCategory?.BuiltInCategory != category) continue;
+                    if (family.GetFamilySymbolIds().Select(doc.GetElement).OfType<FamilySymbol>().FirstOrDefault() is not { } symbol) continue;
+                    if (!symbol.IsActive) symbol.Activate();
+                    found = symbol;
+                    break;
+                }
+                if (found is not null) break;
+            }
+        }
+        catch { found = null; }
+        LibrarySymbols[key] = found;
+        return found;
+    }
+
+    /// <summary>
+    /// Floors and roofs reject a structure built for walls ("wrong EndCap condition for
+    /// this element type"): retry with the other end-cap conditions; keep the duplicated
+    /// type's own structure when none is accepted.
+    /// </summary>
+    static void SetStructure(HostObjAttributes type, CompoundStructure cs)
+    {
+        try { type.SetCompoundStructure(cs); return; }
+        catch (Exception) { }
+        foreach (var cap in Enum.GetValues<EndCapCondition>().Where(c => c != cs.EndCap))
+        {
+            try { cs.EndCap = cap; type.SetCompoundStructure(cs); return; }
+            catch (Exception) { }
+        }
     }
 
     /// <summary>The family type named like a BimDown type (door / window / column / beam / foundation / furniture type).</summary>

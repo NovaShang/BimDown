@@ -8,6 +8,30 @@ namespace BimDown.RevitAddin.Import;
 
 static class MepHelper
 {
+    /// <summary>Absolute Z of a point element (GeoJSON 3rd coordinate), else its level.</summary>
+    internal static double PointZ(Dictionary<string, string?> row, Level level) =>
+        UnitConverter.ParseNullableDouble(row.GetValueOrDefault("z")) is { } z ? UnitConverter.LengthToFeet(z) : level.Elevation;
+
+    /// <summary>Level-based families ignore the point's Z: set the offset from the level.</summary>
+    internal static void SetElevation(FamilyInstance instance, Level level, double z)
+    {
+        if (instance.Location is not LocationPoint lp || Math.Abs(lp.Point.Z - z) < 1e-6) return;
+        var offset = instance.get_Parameter(BuiltInParameter.INSTANCE_ELEVATION_PARAM)
+                     ?? instance.get_Parameter(BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM);
+        if (offset is { IsReadOnly: false }) offset.Set(z - level.Elevation);
+    }
+
+    /// <summary>The symbol matching the row's family / type names, if loaded.</summary>
+    internal static FamilySymbol? Named(IEnumerable<FamilySymbol> symbols, Dictionary<string, string?> row)
+    {
+        var family = row.GetValueOrDefault("family");
+        var type = row.GetValueOrDefault("type");
+        if (string.IsNullOrWhiteSpace(family) && string.IsNullOrWhiteSpace(type)) return null;
+        var list = symbols.ToList();
+        return list.FirstOrDefault(fs => fs.FamilyName == family && fs.Name == type)
+               ?? list.FirstOrDefault(fs => !string.IsNullOrWhiteSpace(family) && fs.FamilyName == family);
+    }
+
     /// <summary>insulation_thickness → a Revit duct / pipe insulation of the first insulation type.</summary>
     internal static void SetInsulation(Document doc, Element curve, Dictionary<string, string?> row)
     {
@@ -215,9 +239,10 @@ class EquipmentImporter() : TableImporterBase(
             ?? throw new InvalidOperationException("level_id is required");
         var level = (Level)doc.GetElement(levelId);
 
-        var symbol = FindEquipmentSymbol(doc);
-        var pt = new XYZ(x, y, level.Elevation);
+        var symbol = FindEquipmentSymbol(doc, row);
+        var pt = new XYZ(x, y, MepHelper.PointZ(row, level));
         var instance = doc.Create.NewFamilyInstance(pt, symbol, level, StructuralType.NonStructural);
+        MepHelper.SetElevation(instance, level, pt.Z);
 
         var rotationStr = row.GetValueOrDefault("rotation");
         if (rotationStr is not null)
@@ -262,22 +287,42 @@ class EquipmentImporter() : TableImporterBase(
         SetMark(element, row);
     }
 
-    static FamilySymbol FindEquipmentSymbol(Document doc)
+    static readonly Dictionary<string, (BuiltInCategory Category, string[] Keywords)> LibraryEquipment = new()
     {
-        var symbol = new FilteredElementCollector(doc)
-            .OfCategory(BuiltInCategory.OST_MechanicalEquipment)
-            .OfClass(typeof(FamilySymbol))
-            .Cast<FamilySymbol>()
-            .FirstOrDefault();
+        ["ahu"] = (BuiltInCategory.OST_MechanicalEquipment, ["Air Handling Unit"]),
+        ["fcu"] = (BuiltInCategory.OST_MechanicalEquipment, ["Fan Coil"]),
+        ["vav"] = (BuiltInCategory.OST_MechanicalEquipment, ["VAV"]),
+        ["chiller"] = (BuiltInCategory.OST_MechanicalEquipment, ["Chiller"]),
+        ["boiler"] = (BuiltInCategory.OST_MechanicalEquipment, ["Boiler"]),
+        ["cooling_tower"] = (BuiltInCategory.OST_MechanicalEquipment, ["Cooling Tower"]),
+        ["fan"] = (BuiltInCategory.OST_MechanicalEquipment, ["Fan"]),
+        ["pump"] = (BuiltInCategory.OST_MechanicalEquipment, ["Pump"]),
+        ["coil"] = (BuiltInCategory.OST_MechanicalEquipment, ["Coil"]),
+        ["water_heater"] = (BuiltInCategory.OST_MechanicalEquipment, ["Water Heater"]),
+        ["tank"] = (BuiltInCategory.OST_MechanicalEquipment, ["Tank"]),
+        ["transformer"] = (BuiltInCategory.OST_ElectricalEquipment, ["Transformer"]),
+        ["panelboard"] = (BuiltInCategory.OST_ElectricalEquipment, ["Panelboard"]),
+        ["generator"] = (BuiltInCategory.OST_ElectricalEquipment, ["Generator"]),
+    };
 
-        symbol ??= new FilteredElementCollector(doc)
-            .OfCategory(BuiltInCategory.OST_ElectricalEquipment)
-            .OfClass(typeof(FamilySymbol))
-            .Cast<FamilySymbol>()
-            .FirstOrDefault();
+    /// <summary>
+    /// The family named in family / type when loaded, else any equipment family in the model,
+    /// else one from Revit's content library matching equipment_type.
+    /// </summary>
+    static FamilySymbol FindEquipmentSymbol(Document doc, Dictionary<string, string?> row)
+    {
+        BuiltInCategory[] categories = [BuiltInCategory.OST_MechanicalEquipment, BuiltInCategory.OST_ElectricalEquipment];
+        var symbols = categories.SelectMany(c => new FilteredElementCollector(doc).OfCategory(c).OfClass(typeof(FamilySymbol)).Cast<FamilySymbol>()).ToList();
+        var symbol = MepHelper.Named(symbols, row) ?? symbols.FirstOrDefault();
+        if (symbol is null)
+        {
+            var (category, keywords) = LibraryEquipment.GetValueOrDefault(row.GetValueOrDefault("equipment_type") ?? "",
+                (BuiltInCategory.OST_MechanicalEquipment, ["Air Handling Unit"]));
+            symbol = TypeResolver.LibrarySymbol(doc, category, keywords);
+        }
 
         if (symbol is null)
-            throw new InvalidOperationException("No equipment FamilySymbol found");
+            throw new InvalidOperationException("No equipment FamilySymbol found (none in the model or the content library)");
 
         if (!symbol.IsActive) symbol.Activate();
         return symbol;
@@ -287,8 +332,7 @@ class EquipmentImporter() : TableImporterBase(
 class TerminalImporter() : TableImporterBase(
     "terminal",
     30,
-    [BuiltInCategory.OST_DuctTerminal, BuiltInCategory.OST_Sprinklers,
-     BuiltInCategory.OST_LightingFixtures, BuiltInCategory.OST_ElectricalFixtures])
+    TerminalCategories)
 {
     protected override Element? CreateElement(Document doc, Dictionary<string, string?> row)
     {
@@ -298,9 +342,10 @@ class TerminalImporter() : TableImporterBase(
             ?? throw new InvalidOperationException("level_id is required");
         var level = (Level)doc.GetElement(levelId);
 
-        var symbol = FindTerminalSymbol(doc);
-        var pt = new XYZ(x, y, level.Elevation);
+        var symbol = FindTerminalSymbol(doc, row);
+        var pt = new XYZ(x, y, MepHelper.PointZ(row, level));
         var instance = doc.Create.NewFamilyInstance(pt, symbol, level, StructuralType.NonStructural);
+        MepHelper.SetElevation(instance, level, pt.Z);
 
         var rotationStr = row.GetValueOrDefault("rotation");
         if (rotationStr is not null)
@@ -345,31 +390,46 @@ class TerminalImporter() : TableImporterBase(
         SetMark(element, row);
     }
 
+    // Same categories as the terminal exporter, so re-imports match what was exported.
     static readonly BuiltInCategory[] TerminalCategories =
     [
-        BuiltInCategory.OST_DuctTerminal,
-        BuiltInCategory.OST_Sprinklers,
-        BuiltInCategory.OST_LightingFixtures,
-        BuiltInCategory.OST_ElectricalFixtures,
+        BuiltInCategory.OST_DuctTerminal, BuiltInCategory.OST_Sprinklers, BuiltInCategory.OST_LightingFixtures,
+        BuiltInCategory.OST_ElectricalFixtures, BuiltInCategory.OST_PlumbingFixtures, BuiltInCategory.OST_LightingDevices,
+        BuiltInCategory.OST_FireAlarmDevices, BuiltInCategory.OST_DataDevices, BuiltInCategory.OST_CommunicationDevices,
+        BuiltInCategory.OST_TelephoneDevices,
     ];
 
-    static FamilySymbol FindTerminalSymbol(Document doc)
+    /// <summary>terminal_type → the category it belongs to and content-library file keywords.</summary>
+    static (BuiltInCategory Category, string[] Keywords) TerminalKind(string? type) => type switch
     {
-        foreach (var cat in TerminalCategories)
-        {
-            var symbol = new FilteredElementCollector(doc)
-                .OfCategory(cat)
-                .OfClass(typeof(FamilySymbol))
-                .Cast<FamilySymbol>()
-                .FirstOrDefault();
-            if (symbol is not null)
-            {
-                if (!symbol.IsActive) symbol.Activate();
-                return symbol;
-            }
-        }
+        "supply_air_diffuser" => (BuiltInCategory.OST_DuctTerminal, ["Supply Diffuser", "Diffuser"]),
+        "return_air_grille" => (BuiltInCategory.OST_DuctTerminal, ["Return Grille", "Return Diffuser", "Grille"]),
+        "exhaust_air_grille" => (BuiltInCategory.OST_DuctTerminal, ["Exhaust Grille", "Exhaust Diffuser", "Grille"]),
+        "sprinkler_head" => (BuiltInCategory.OST_Sprinklers, ["Sprinkler"]),
+        "light_fixture" or "emergency_light" => (BuiltInCategory.OST_LightingFixtures, ["Downlight", "Light"]),
+        "power_outlet" or "data_outlet" or "switch" or "junction_box" or "fire_alarm_device" => (BuiltInCategory.OST_ElectricalFixtures, ["Receptacle", "Outlet"]),
+        "plumbing_fixture" or "water_closet" or "urinal" or "lavatory" or "sink" or "shower" or "floor_drain"
+            => (BuiltInCategory.OST_PlumbingFixtures, type switch { "water_closet" => ["Toilet", "Water Closet"], "lavatory" or "sink" => ["Sink", "Lavatory"], "urinal" => ["Urinal"], "shower" => ["Shower"], "floor_drain" => ["Drain"], _ => ["Sink"] }),
+        _ => (BuiltInCategory.OST_DuctTerminal, ["Supply Diffuser", "Diffuser"]),
+    };
 
-        throw new InvalidOperationException("No terminal FamilySymbol found");
+    /// <summary>
+    /// The family named in family / type when loaded, else a family of the terminal_type's
+    /// category (then any terminal category), else one from Revit's content library.
+    /// </summary>
+    static FamilySymbol FindTerminalSymbol(Document doc, Dictionary<string, string?> row)
+    {
+        var (category, keywords) = TerminalKind(row.GetValueOrDefault("terminal_type"));
+        var symbols = new[] { category }.Concat(TerminalCategories.Where(c => c != category))
+            .SelectMany(c => new FilteredElementCollector(doc).OfCategory(c).OfClass(typeof(FamilySymbol)).Cast<FamilySymbol>()).ToList();
+        var symbol = MepHelper.Named(symbols, row)
+                     ?? symbols.FirstOrDefault(fs => fs.Category?.BuiltInCategory == category)
+                     ?? TypeResolver.LibrarySymbol(doc, category, keywords)
+                     ?? symbols.FirstOrDefault();
+        if (symbol is null)
+            throw new InvalidOperationException("No terminal FamilySymbol found (none in the model or the content library)");
+        if (!symbol.IsActive) symbol.Activate();
+        return symbol;
     }
 }
 
