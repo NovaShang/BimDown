@@ -128,6 +128,20 @@ public class OpeningTableExporter : ITableExporter
         row["top_level_id"] = LevelUid(doc, topLevel);
         var bo = e.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.AsDouble() ?? 0;
         var to = e.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.AsDouble() ?? 0;
+        // Unconnected shaft (a height, no top constraint): the level nearest its top + offset,
+        // so it stays a shaft (a top_level_id) rather than a hostless floor opening.
+        if (row["top_level_id"] is null && doc.GetElement(baseLevel ?? ElementId.InvalidElementId) is Level bl
+            && e.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM)?.AsDouble() is { } height and > 0)
+        {
+            var top = bl.Elevation + bo + height;
+            var nearest = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
+                .OrderBy(l => Math.Abs(l.Elevation - top)).FirstOrDefault();
+            if (nearest is not null)
+            {
+                row["top_level_id"] = nearest.UniqueId;
+                to = top - nearest.Elevation;
+            }
+        }
         row["base_offset"] = Math.Abs(bo) > 1e-9 ? Names.Num(M(bo), 3) : null;
         row["top_offset"] = Math.Abs(to) > 1e-9 ? Names.Num(M(to), 3) : null;
         // A shaft stays on its base level although it spans storeys.
@@ -192,36 +206,43 @@ public class OpeningTableExporter : ITableExporter
     }
 
     /// <summary>
-    /// Splits a flat CurveArray into connected loops by detecting discontinuities.
-    /// Each loop is returned as a list of vertex points.
+    /// Chains a sketch's CurveArray into closed loops. Sketch curves come in no particular
+    /// order or direction, so each loop is grown from whichever curve touches its open end
+    /// (reversed when needed); arcs are tessellated. Loops with fewer than three vertices
+    /// are dropped.
     /// </summary>
     static List<List<XYZ>> SplitCurvesIntoLoops(CurveArray curves)
     {
+        const double tol = 1e-4; // ft
+        var pending = new List<Curve>();
+        foreach (Curve c in curves) pending.Add(c);
         var loops = new List<List<XYZ>>();
-        List<XYZ>? current = null;
-
-        foreach (Curve curve in curves)
+        while (pending.Count > 0)
         {
-            var start = curve.GetEndPoint(0);
-
-            if (current is null || !current[^1].IsAlmostEqualTo(start))
+            var first = pending[0];
+            pending.RemoveAt(0);
+            var loop = Points(first, false);
+            while (!loop[^1].IsAlmostEqualTo(loop[0], tol))
             {
-                // Start a new loop
-                current = [start];
-                loops.Add(current);
+                var end = loop[^1];
+                var i = pending.FindIndex(c => c.GetEndPoint(0).IsAlmostEqualTo(end, tol) || c.GetEndPoint(1).IsAlmostEqualTo(end, tol));
+                if (i < 0) break; // open chain
+                var next = pending[i];
+                pending.RemoveAt(i);
+                var pts = Points(next, !next.GetEndPoint(0).IsAlmostEqualTo(end, tol));
+                loop.AddRange(pts.Skip(1));
             }
-
-            current.Add(curve.GetEndPoint(1));
+            if (loop.Count > 1 && loop[^1].IsAlmostEqualTo(loop[0], tol)) loop.RemoveAt(loop.Count - 1);
+            if (loop.Count >= 3) loops.Add(loop);
         }
-
-        // Remove closing duplicate point (last == first) from each loop
-        foreach (var loop in loops)
-        {
-            if (loop.Count > 1 && loop[^1].IsAlmostEqualTo(loop[0]))
-                loop.RemoveAt(loop.Count - 1);
-        }
-
         return loops;
+
+        static List<XYZ> Points(Curve c, bool reversed)
+        {
+            var pts = c is Line ? new List<XYZ> { c.GetEndPoint(0), c.GetEndPoint(1) } : c.Tessellate().ToList();
+            if (reversed) pts.Reverse();
+            return pts;
+        }
     }
 
     /// <summary>

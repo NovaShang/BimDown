@@ -23,17 +23,12 @@ namespace BimDown.RevitAddin.Tables;
 /// </summary>
 public class ConnectorTableExporter : ITableExporter
 {
+    // Every equipment / terminal category the instance tables export (plumbing fixtures,
+    // devices, …) plus active accessories (mep_node with explicit kind): a curve's
+    // "host:port" reference needs its port row.
     static readonly BuiltInCategory[] HostCategories =
     [
-        // Equipment
-        BuiltInCategory.OST_MechanicalEquipment,
-        BuiltInCategory.OST_ElectricalEquipment,
-        // Terminals
-        BuiltInCategory.OST_DuctTerminal,
-        BuiltInCategory.OST_Sprinklers,
-        BuiltInCategory.OST_LightingFixtures,
-        BuiltInCategory.OST_ElectricalFixtures,
-        // Active accessories (mep_node with explicit kind)
+        .. MepTableExporters.DeviceCategories,
         BuiltInCategory.OST_PipeAccessory,
         BuiltInCategory.OST_DuctAccessory,
     ];
@@ -88,7 +83,9 @@ public class ConnectorTableExporter : ITableExporter
 
                         // Outward direction = -BasisZ of the connector's CoordinateSystem.
                         // CoordinateSystem may be unset on logical connectors; guard.
-                        var worldDir = -conn.CoordinateSystem.BasisZ;
+                        XYZ worldDir;
+                        try { worldDir = -conn.CoordinateSystem.BasisZ; }
+                        catch { worldDir = XYZ.Zero; }
                         var localDirX = worldDir.X * cosNeg - worldDir.Y * sinNeg;
                         var localDirY = worldDir.X * sinNeg + worldDir.Y * cosNeg;
                         var localDirZ = worldDir.Z;
@@ -175,22 +172,37 @@ public class ConnectorTableExporter : ITableExporter
         catch { return null; }
     }
 
-    static string? DeriveFlowDir(Connector conn) => conn.Direction switch
+    // Direction / Domain throw on some connector kinds: a missing value, not a missing port.
+    static string? DeriveFlowDir(Connector conn)
     {
-        FlowDirectionType.In => "in",
-        FlowDirectionType.Out => "out",
-        FlowDirectionType.Bidirectional => "bidirectional",
-        _ => null,
-    };
+        try
+        {
+            return conn.Direction switch
+            {
+                FlowDirectionType.In => "in",
+                FlowDirectionType.Out => "out",
+                FlowDirectionType.Bidirectional => "bidirectional",
+                _ => null,
+            };
+        }
+        catch { return null; }
+    }
 
-    static string? DeriveDomain(Connector conn) => conn.Domain switch
+    static string? DeriveDomain(Connector conn)
     {
-        Domain.DomainHvac => "hvac",
-        Domain.DomainPiping => "piping",
-        Domain.DomainElectrical => "electrical",
-        Domain.DomainCableTrayConduit => "cable_tray_conduit",
-        _ => null,
-    };
+        try
+        {
+            return conn.Domain switch
+            {
+                Domain.DomainHvac => "hvac",
+                Domain.DomainPiping => "piping",
+                Domain.DomainElectrical => "electrical",
+                Domain.DomainCableTrayConduit => "cable_tray_conduit",
+                _ => null,
+            };
+        }
+        catch { return null; }
+    }
 
     static string FormatMeters(double feet) =>
         UnitConverter.FormatDouble(UnitConverter.Length(feet));

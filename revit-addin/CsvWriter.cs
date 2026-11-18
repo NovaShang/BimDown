@@ -29,6 +29,9 @@ static class CsvWriter
 
     static string EscapeCsvField(string field)
     {
+        // One record per line: multi-line Revit text (type comments, descriptions) is flattened.
+        if (field.Contains('\n') || field.Contains('\r'))
+            field = string.Join(" ", field.Split(["\r\n", "\n", "\r"], StringSplitOptions.None).Select(p => p.Trim()).Where(p => p.Length > 0));
         if (field.Contains(',') || field.Contains('"') || field.Contains('\n') || field.Contains('\r'))
         {
             return "\"" + field.Replace("\"", "\"\"") + "\"";

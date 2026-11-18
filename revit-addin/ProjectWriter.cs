@@ -55,6 +55,7 @@ static class ProjectWriter
     /// </summary>
     internal static Dictionary<string, int> AssignIds(List<ExportedTable> tables, ShortIdGenerator idGen)
     {
+        PlaceConnectorsWithHosts(tables);
         foreach (var t in tables.Where(t => t.IsGlobal))
             foreach (var row in t.Rows)
                 idGen.AssignRowId(t.TableName, row, "global");
@@ -65,10 +66,37 @@ static class ProjectWriter
         foreach (var t in tables.Where(t => !t.IsGlobal))
             foreach (var row in t.Rows)
                 idGen.AssignRowId(t.TableName, row, GetPartitionDir(row, levelIndex));
+        DropUnplaceableTags(tables, levelIndex);
         foreach (var t in tables)
             foreach (var row in t.Rows)
                 idGen.ResolveOtherReferences(row);
         return levelIndex;
+    }
+
+    /// <summary>
+    /// A connector lives in its host's directory (port references "host:port" resolve
+    /// there): take the host row's level span, whatever Revit reports on the connector's
+    /// family instance (face-hosted terminals have no LevelId but a schedule level).
+    /// </summary>
+    static void PlaceConnectorsWithHosts(List<ExportedTable> tables)
+    {
+        var connectors = tables.Where(t => t.TableName == "connector").SelectMany(t => t.Rows).ToList();
+        if (connectors.Count == 0) return;
+        var hosts = new Dictionary<string, Dictionary<string, string?>>();
+        foreach (var t in tables.Where(t => t.TableName != "connector"))
+            foreach (var r in t.Rows)
+                if (r.GetValueOrDefault("id") is { } id) hosts.TryAdd(id, r);
+        foreach (var c in connectors)
+        {
+            if (c.GetValueOrDefault("host_id") is not { } hid || !hosts.TryGetValue(hid, out var host)) continue;
+            c["level_id"] = host.GetValueOrDefault("level_id");
+            c["top_level_id"] = host.GetValueOrDefault("top_level_id");
+        }
+        // Ports of elements no table exported (e.g. a device filtered out as furniture)
+        // would be written with an empty host_id.
+        foreach (var t in tables.Where(t => t.TableName == "connector"))
+            t.Rows.RemoveAll(c => c.GetValueOrDefault("host_id") is not { } hid || !hosts.ContainsKey(hid));
+        tables.RemoveAll(t => t.Rows.Count == 0);
     }
 
     /// <summary>
@@ -90,6 +118,43 @@ static class ProjectWriter
         }
         foreach (var t in tables.Where(t => t.TableName == "model_group"))
             t.Rows.RemoveAll(r => !members.Contains($"{GetPartitionDir(r, levelIndex)}/{r.GetValueOrDefault("id")}"));
+
+        // Sizes Revit reports as 0 (a flat 2D family, a roof whose thickness varies, an
+        // instance whose size lives on its type): empty, so the value inherits from the type.
+        foreach (var row in tables.SelectMany(t => t.Rows))
+            foreach (var field in PositiveFields)
+                if (row.GetValueOrDefault(field) is { } v && Names.Parse(v) is { } d && !(d > 0)) row[field] = null;
+
+        tables.RemoveAll(t => t.Rows.Count == 0);
+    }
+
+    /// <summary>Numeric fields the format requires to be greater than 0 when set.</summary>
+    static readonly string[] PositiveFields =
+    [
+        "thickness", "width", "height", "size_x", "size_y", "flange", "web", "step_count",
+        "u_spacing", "v_spacing", "mullion_width", "mullion_depth", "frame_width",
+        "baluster_spacing", "baluster_size", "top_rail_size",
+    ];
+
+    /// <summary>
+    /// A tag needs its host on its own level or in global/: drop tags of elements that were
+    /// not exported, or that sit on another storey (seen from this plan, e.g. a slab below).
+    /// </summary>
+    static void DropUnplaceableTags(List<ExportedTable> tables, Dictionary<string, int> levelIndex)
+    {
+        // Runs after the short ids are assigned and before references are: host_id is still
+        // a Revit UniqueId, the hosts' own UniqueIds are kept in "_uid".
+        var tags = tables.Where(t => t.TableName == "tag").ToList();
+        if (tags.Count == 0) return;
+        var dirOf = new Dictionary<string, string>();
+        foreach (var t in tables.Where(t => t.TableName != "tag"))
+            foreach (var r in t.Rows)
+                if ((r.GetValueOrDefault("_uid") ?? r.GetValueOrDefault("id")) is { } uid)
+                    dirOf.TryAdd(uid, t.IsGlobal ? "global" : GetPartitionDir(r, levelIndex));
+        foreach (var t in tags)
+            t.Rows.RemoveAll(r => r.GetValueOrDefault("host_id") is not { Length: > 0 } host
+                                  || !dirOf.TryGetValue(host, out var hostDir)
+                                  || (hostDir != "global" && hostDir != GetPartitionDir(r, levelIndex)));
         tables.RemoveAll(t => t.Rows.Count == 0);
     }
 

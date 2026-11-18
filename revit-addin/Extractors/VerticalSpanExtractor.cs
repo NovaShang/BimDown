@@ -17,6 +17,9 @@ public class VerticalSpanExtractor : IFieldExtractor
         // Base level — explicit so multi-story elements in global/ still know their bottom
         if (element.LevelId is { } baseLevelId && baseLevelId != ElementId.InvalidElementId)
             fields["base_level_id"] = element.Document.GetElement(baseLevelId)?.UniqueId;
+        // Stairs report no LevelId: their base level is a parameter.
+        else if (element.get_Parameter(BuiltInParameter.STAIRS_BASE_LEVEL_PARAM)?.AsElementId() is { } stairBase && stairBase != ElementId.InvalidElementId)
+            fields["base_level_id"] = element.Document.GetElement(stairBase)?.UniqueId;
 
         // Top level
         var topLevelId = element.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.AsElementId()

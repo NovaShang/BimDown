@@ -163,6 +163,24 @@ public static class TypeTableExporters
              ?? t.get_Parameter(BuiltInParameter.FURNITURE_WIDTH).AsPositiveDouble();
         var h = t.get_Parameter(isDoor ? BuiltInParameter.DOOR_HEIGHT : BuiltInParameter.WINDOW_HEIGHT).AsPositiveDouble()
              ?? t.get_Parameter(BuiltInParameter.FAMILY_HEIGHT_PARAM).AsPositiveDouble();
+        if (w is null || h is null)
+        {
+            // Families that size by rough opening or by instance parameters: rough size on the
+            // type, else the size of a placed instance (width is required on the type row).
+            w ??= t.get_Parameter(BuiltInParameter.FAMILY_ROUGH_WIDTH_PARAM).AsPositiveDouble()
+                  ?? Positive(Extractors.ParameterUtils.FindDoubleParameterByNames(t, "Width", "Rough Width", "宽度", "洞口宽度"));
+            h ??= t.get_Parameter(BuiltInParameter.FAMILY_ROUGH_HEIGHT_PARAM).AsPositiveDouble()
+                  ?? Positive(Extractors.ParameterUtils.FindDoubleParameterByNames(t, "Height", "Rough Height", "高度", "洞口高度"));
+            if ((w is null || h is null) && new FilteredElementCollector(t.Document).WherePasses(new FamilyInstanceFilter(t.Document, t.Id)).FirstElement() is { } inst)
+            {
+                w ??= inst.get_Parameter(isDoor ? BuiltInParameter.DOOR_WIDTH : BuiltInParameter.WINDOW_WIDTH).AsPositiveDouble()
+                      ?? inst.get_Parameter(BuiltInParameter.FAMILY_WIDTH_PARAM).AsPositiveDouble()
+                      ?? Positive(Extractors.ParameterUtils.FindDoubleParameterByNames(inst, "Width", "Rough Width", "宽度"));
+                h ??= inst.get_Parameter(isDoor ? BuiltInParameter.DOOR_HEIGHT : BuiltInParameter.WINDOW_HEIGHT).AsPositiveDouble()
+                      ?? inst.get_Parameter(BuiltInParameter.FAMILY_HEIGHT_PARAM).AsPositiveDouble()
+                      ?? Positive(Extractors.ParameterUtils.FindDoubleParameterByNames(inst, "Height", "Rough Height", "高度"));
+            }
+        }
         var explicitOp = Extractors.ParameterUtils.FindStringParameterByNames(t, "Operation", "Swing", "操作", "开启", "开启方式");
         var frame = Extractors.ParameterUtils.FindDoubleParameterByNames(t, "Frame Width", "Frame width", "框宽", "门框宽度", "窗框宽度");
         return new Dictionary<string, string?>
@@ -181,6 +199,8 @@ public static class TypeTableExporters
             ["vt"] = Names.Num(Fraction(t.get_Parameter(BuiltInParameter.ANALYTICAL_VISUAL_LIGHT_TRANSMITTANCE)), 3),
         };
     }
+
+    static double? Positive(double? v) => v is > 0 ? v : null;
 
     static double? Fraction(Parameter? p)
     {

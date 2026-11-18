@@ -85,6 +85,15 @@ public class ElementExtractor : IFieldExtractor
             return element.Document.GetElement(scheduleLevelId)?.UniqueId;
         }
 
+        // Framing / braces: the reference level; beam systems: their level.
+        levelParam = element.get_Parameter(BuiltInParameter.INSTANCE_REFERENCE_LEVEL_PARAM);
+        if (levelParam?.AsElementId() is { } refLevelId && refLevelId != ElementId.InvalidElementId)
+        {
+            return element.Document.GetElement(refLevelId)?.UniqueId;
+        }
+        if (element is Autodesk.Revit.DB.BeamSystem { Level: { } beamSystemLevel })
+            return beamSystemLevel.UniqueId;
+
         // Try STAIRS_BASE_LEVEL_PARAM
         levelParam = element.get_Parameter(BuiltInParameter.STAIRS_BASE_LEVEL_PARAM);
         if (levelParam?.AsElementId() is { } stairLevelId && stairLevelId != ElementId.InvalidElementId)

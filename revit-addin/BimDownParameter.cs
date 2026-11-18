@@ -128,7 +128,10 @@ static class BimDownParameter
 
     internal static void Set(Element element, string shortId)
     {
+        // Read-only on some elements (e.g. group members, multistory stair copies): skip them
+        // instead of failing the whole "Write short IDs" transaction.
         var param = element.get_Parameter(ParamGuid);
-        param?.Set(shortId);
+        if (param is null || param.IsReadOnly || param.AsString() == shortId) return;
+        param.Set(shortId);
     }
 }
