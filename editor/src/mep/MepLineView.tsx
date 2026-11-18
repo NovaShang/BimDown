@@ -42,11 +42,15 @@ export function MepLine2D({ facts, fill, stroke, strokeWidth, selected }: {
     const pts = facts.footprint;
     const points = pts.map(p => `${p.x},${p.y}`).join(' ');
     const sym = riserSymbol(facts);
+    const riser = <>
+      <polygon points={points} fill={fillColor} stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" data-id={facts.id} />
+      {sym.length > 0 && <path d={segmentsPath(sym)} stroke={color} strokeWidth={strokeWidth * 0.8} data-id={facts.id} />}
+    </>;
+    if (!highlighted && !markers && opacity === 1) return riser;
     return (
       <g data-id={facts.id} opacity={opacity}>
         {highlighted && <polygon points={points} fill="none" stroke={color} strokeWidth={0.12} strokeOpacity={0.35} />}
-        <polygon points={points} fill={fillColor} stroke={color} strokeWidth={strokeWidth} strokeLinejoin="miter" data-id={facts.id} />
-        {sym.length > 0 && <path d={segmentsPath(sym)} stroke={color} strokeWidth={strokeWidth * 0.8} data-id={facts.id} />}
+        {riser}
         {markers && <ProblemMarkers points={markers} />}
       </g>
     );
@@ -111,15 +115,20 @@ export function MepLine2D({ facts, fill, stroke, strokeWidth, selected }: {
   // Horizontal run: paint fill polygons with no stroke, then stroke only the
   // junction-aware outline edges so chains of same-Z MEP look like a
   // continuous band (matches wallDraw2D).
+  // One fill and one outline path per run (a large imported model has thousands of runs)
+  const body = <>
+    {fills.length > 0 && <path d={polygonsPath(fills)} fill={fillColor} stroke="none" data-id={facts.id} />}
+    {edges.length > 0 && <path d={segmentsPath(edges)} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="butt" data-id={facts.id} />}
+  </>;
+  // A bare run needs no group: both paths carry the id
+  if (!highlighted && extras.length === 0 && !markers && opacity === 1) return body;
   return (
     <g data-id={facts.id} opacity={opacity}>
       {highlighted && (
         <line x1={facts.start.x} y1={facts.start.y} x2={facts.end.x} y2={facts.end.y}
           stroke={color} strokeWidth={facts.sizeX + 0.2} strokeOpacity={0.25} strokeLinecap="round" />
       )}
-      {/* One fill and one outline path per run (a large imported model has thousands of runs) */}
-      {fills.length > 0 && <path d={polygonsPath(fills)} fill={fillColor} stroke="none" data-id={facts.id} />}
-      {edges.length > 0 && <path d={segmentsPath(edges)} fill="none" stroke={color} strokeWidth={strokeWidth} strokeLinecap="butt" data-id={facts.id} />}
+      {body}
       {extras}
       {markers && <ProblemMarkers points={markers} />}
     </g>

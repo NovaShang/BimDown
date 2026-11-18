@@ -134,6 +134,7 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         stroke={highlight ? '#3a7bff' : '#3a86ff'}
         strokeWidth={highlight ? 0.05 : 0.03}
         strokeDasharray={highlight ? undefined : '0.15,0.08'}
+        data-id={facts.id}
       />
     ) : null;
 
@@ -165,9 +166,11 @@ export const spaceModule: ElementModule<SpaceFacts> = {
       );
     })() : null;
 
+    // The room without its label: the outline alone needs no group (it carries the id)
+    const shape = outline && !marker && !redundant ? outline : <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
     if ((!facts.number && !facts.name) || facts.tagged) {
       if (drawCtx.labels === 'only') return null;
-      return <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
+      return shape;
     }
     const { x, y } = facts.anchor;
     // Revit room tag style: the name big, the number small under it, then the area
@@ -181,27 +184,21 @@ export const spaceModule: ElementModule<SpaceFacts> = {
         {text}
       </text>
     );
-    const roomLabel = (
-      <g className="room-label">
-        {label(big, y, 0.36, 700, '#3a86ff')}
-        {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
-        {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
-      </g>
-    );
-    // The label pass over furniture and equipment (SVGLayers) draws the label alone
-    if (drawCtx.labels === 'only') return <g data-id={facts.id}>{roomLabel}</g>;
-    if (drawCtx.labels === 'none') return <g data-id={facts.id}>{outline}{marker}{redundant}</g>;
+    const labelTexts = <>
+      {label(big, y, 0.36, 700, '#3a86ff')}
+      {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
+      {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
+    </>;
+    // The label pass over furniture and equipment (SVGLayers) draws the label alone, one group per room
+    if (drawCtx.labels === 'only') return <g data-id={facts.id} className="room-label">{labelTexts}</g>;
+    if (drawCtx.labels === 'none') return shape;
     return (
       <g data-id={facts.id}>
         {outline}
         {marker}
         {redundant}
         {/* Drawn again over furniture and equipment (SVGLayers' room label pass) */}
-        <g className="room-label">
-          {label(big, y, 0.36, 700, '#3a86ff')}
-          {small && label(small, y - NAME_LABEL_OFFSET, 0.22, 500, '#5a9fff')}
-          {facts.area !== undefined && facts.area > 0 && label(formatArea(facts.area), areaY, 0.18, 400, '#7aa7ff')}
-        </g>
+        <g className="room-label">{labelTexts}</g>
       </g>
     );
   },

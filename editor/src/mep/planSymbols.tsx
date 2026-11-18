@@ -67,6 +67,22 @@ export function ProblemMarkers({ points }: { points: readonly ProblemMarker[] })
 
 const line = (a: P, b: P, k: string | number, stroke: string, sw: number) =>
   <line key={k} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={stroke} strokeWidth={sw} />;
+/** Several strokes of one pen as one path (a large model has hundreds of terminals). */
+const lines = (segs: [P, P][], k: string, stroke: string, sw: number) =>
+  <path key={k} d={segmentsPath(segs)} fill="none" stroke={stroke} strokeWidth={sw} />;
+
+/** Terminal types whose symbol starts with the filled footprint rectangle (it is its own hit area). */
+export function terminalCoversFootprint(type: string, w: number, d: number): boolean {
+  switch (type) {
+    case 'supply_air_diffuser': case 'return_air_grille': case 'exhaust_air_grille':
+    case 'emergency_light': case 'sink': case 'shower':
+      return true;
+    case 'light_fixture':
+      return !(Math.abs(w - d) < 1e-3 && w <= 0.35);
+    default:
+      return false;
+  }
+}
 
 /**
  * Terminal symbol in its local frame (origin = terminal, x along its
@@ -82,29 +98,28 @@ export function terminalSymbol(type: string, w: number, d: number, stroke: strin
   switch (type) {
     case 'supply_air_diffuser':
       return [rect('o'), rect('i', -hw * 0.55, -hd * 0.55, w * 0.55, d * 0.55),
-        line({ x: -hw, y: -hd }, { x: hw, y: hd }, 'd1', stroke, sw), line({ x: -hw, y: hd }, { x: hw, y: -hd }, 'd2', stroke, sw)];
+        lines([[{ x: -hw, y: -hd }, { x: hw, y: hd }], [{ x: -hw, y: hd }, { x: hw, y: -hd }]], 'd', stroke, sw)];
     case 'return_air_grille':
       return [rect('o'), line({ x: -hw, y: -hd }, { x: hw, y: hd }, 'd1', stroke, sw)];
     case 'exhaust_air_grille':
-      return [rect('o'), line({ x: -hw, y: hd }, { x: hw, y: -hd }, 'd1', stroke, sw),
-        line({ x: -hw, y: 0 }, { x: 0, y: -hd }, 'd2', stroke, sw), line({ x: 0, y: hd }, { x: hw, y: 0 }, 'd3', stroke, sw)];
+      return [rect('o'), lines([[{ x: -hw, y: hd }, { x: hw, y: -hd }], [{ x: -hw, y: 0 }, { x: 0, y: -hd }], [{ x: 0, y: hd }, { x: hw, y: 0 }]], 'd', stroke, sw)];
     case 'sprinkler_head': {
       const rr = Math.max(r, 0.06);
       return [<circle key="c" cx={0} cy={0} r={rr} fill={fill} stroke={stroke} strokeWidth={sw} />,
-        line({ x: -rr * 1.5, y: 0 }, { x: rr * 1.5, y: 0 }, 'h', stroke, sw), line({ x: 0, y: -rr * 1.5 }, { x: 0, y: rr * 1.5 }, 'v', stroke, sw),
+        lines([[{ x: -rr * 1.5, y: 0 }, { x: rr * 1.5, y: 0 }], [{ x: 0, y: -rr * 1.5 }, { x: 0, y: rr * 1.5 }]], 'hv', stroke, sw),
         <circle key="d" cx={0} cy={0} r={rr * 0.35} fill={stroke} />];
     }
     case 'light_fixture':
       if (Math.abs(w - d) < 1e-3 && w <= 0.35) {
         return [<circle key="c" cx={0} cy={0} r={r} fill={fill} stroke={stroke} strokeWidth={sw} />,
-          line({ x: -r * 0.7, y: -r * 0.7 }, { x: r * 0.7, y: r * 0.7 }, 'd1', stroke, sw), line({ x: -r * 0.7, y: r * 0.7 }, { x: r * 0.7, y: -r * 0.7 }, 'd2', stroke, sw)];
+          lines([[{ x: -r * 0.7, y: -r * 0.7 }, { x: r * 0.7, y: r * 0.7 }], [{ x: -r * 0.7, y: r * 0.7 }, { x: r * 0.7, y: -r * 0.7 }]], 'd', stroke, sw)];
       }
-      return [rect('o'), line({ x: -hw, y: -hd }, { x: hw, y: hd }, 'd1', stroke, sw), line({ x: -hw, y: hd }, { x: hw, y: -hd }, 'd2', stroke, sw)];
+      return [rect('o'), lines([[{ x: -hw, y: -hd }, { x: hw, y: hd }], [{ x: -hw, y: hd }, { x: hw, y: -hd }]], 'd', stroke, sw)];
     case 'emergency_light':
       return [rect('o'), <polygon key="t" points={`${-hw},${-hd} ${hw},${-hd} ${hw},${hd}`} fill={stroke} />];
     case 'power_outlet':
       return [<circle key="c" cx={0} cy={0} r={r} fill={fill} stroke={stroke} strokeWidth={sw} />,
-        line({ x: -r * 0.5, y: -r * 0.9 }, { x: -r * 0.5, y: r * 0.9 }, 'l1', stroke, sw), line({ x: r * 0.5, y: -r * 0.9 }, { x: r * 0.5, y: r * 0.9 }, 'l2', stroke, sw)];
+        lines([[{ x: -r * 0.5, y: -r * 0.9 }, { x: -r * 0.5, y: r * 0.9 }], [{ x: r * 0.5, y: -r * 0.9 }, { x: r * 0.5, y: r * 0.9 }]], 'l', stroke, sw)];
     case 'data_outlet':
       return [<polygon key="t" points={`${-hw},${-hd} ${hw},${-hd} 0,${hd}`} fill={fill} stroke={stroke} strokeWidth={sw} />];
     case 'switch':
@@ -127,12 +142,12 @@ export function terminalSymbol(type: string, w: number, d: number, stroke: strin
     case 'sink':
       return [rect('o'), rect('i', -hw * 0.8, -hd * 0.7, w * 0.8, d * 0.75, 0.03)];
     case 'shower':
-      return [rect('o'), line({ x: -hw, y: -hd }, { x: hw, y: hd }, 'd1', stroke, sw * 0.7), line({ x: -hw, y: hd }, { x: hw, y: -hd }, 'd2', stroke, sw * 0.7),
+      return [rect('o'), lines([[{ x: -hw, y: -hd }, { x: hw, y: hd }], [{ x: -hw, y: hd }, { x: hw, y: -hd }]], 'd', stroke, sw * 0.7),
         <circle key="dr" cx={0} cy={0} r={Math.min(hw, hd) * 0.12} fill={fill} stroke={stroke} strokeWidth={sw} />];
     case 'floor_drain':
       return [<circle key="c" cx={0} cy={0} r={r} fill={fill} stroke={stroke} strokeWidth={sw} />,
-        line({ x: -r * 0.6, y: -r * 0.3 }, { x: r * 0.6, y: -r * 0.3 }, 'g1', stroke, sw * 0.7), line({ x: -r * 0.6, y: r * 0.3 }, { x: r * 0.6, y: r * 0.3 }, 'g2', stroke, sw * 0.7),
-        line({ x: -r * 0.3, y: -r * 0.6 }, { x: -r * 0.3, y: r * 0.6 }, 'g3', stroke, sw * 0.7), line({ x: r * 0.3, y: -r * 0.6 }, { x: r * 0.3, y: r * 0.6 }, 'g4', stroke, sw * 0.7)];
+        lines([[{ x: -r * 0.6, y: -r * 0.3 }, { x: r * 0.6, y: -r * 0.3 }], [{ x: -r * 0.6, y: r * 0.3 }, { x: r * 0.6, y: r * 0.3 }],
+          [{ x: -r * 0.3, y: -r * 0.6 }, { x: -r * 0.3, y: r * 0.6 }], [{ x: r * 0.3, y: -r * 0.6 }, { x: r * 0.3, y: r * 0.6 }]], 'g', stroke, sw * 0.7)];
     case 'plumbing_fixture':
       return [rect('o', -hw, -hd, w, d, Math.min(hw, hd) * 0.4)];
     default:

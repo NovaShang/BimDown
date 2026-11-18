@@ -176,7 +176,7 @@
 
 /* ─── Room labels over furniture (SVGLayers) ─── */
 .data-layer .room-label { display: none; }
-.room-labels-top [data-id] > :not(.room-label) { display: none; }
+.room-labels-top [data-id]:not(.room-label) > :not(.room-label) { display: none; }
 .room-labels-top.dimmed { opacity: 0.12; }
 
 /* ─── Layer Dimming ──────────────────────────── */
