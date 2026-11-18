@@ -93,7 +93,7 @@ describe('IFC export vertical placement', () => {
 });
 
 describe('IFC fitting bodies are light swept solids shaped like the 3D view (audit r3: 81 MB of breps)', () => {
-  it('elbows revolve, tee arms extrude; their extents match the 3D view bodies', async () => {
+  it('elbows are light faceted bends with exact end faces, tee arms extrude; their extents match the 3D view bodies', async () => {
     const { parseFloorLayers } = await import('../model/parse.ts');
     const { buildGeometryContext } = await import('../adapters/svg/buildContext.ts');
     const { getElementModule } = await import('../elements/registry.ts');
@@ -125,18 +125,23 @@ describe('IFC fitting bodies are light swept solids shaped like the 3D view (aud
       ]),
     };
     const { data, ents, keys, step } = await exportFiles(files, 'IFC4');
-    expect(step).toContain('IFCREVOLVEDAREASOLID');
     const shapeOf = (key: string) => {
       const prod = byKey(ents, keys, key);
       const rep = ents.get(ref(prod.args[6]))!;
       const body = refs(rep.args[2]).map(id => ents.get(id)!).find(r => str(r.args[1]) === 'Body')!;
       return refs(body.args[3]).map(id => ents.get(id)!.type);
     };
-    expect(shapeOf('mep_node:mn-1')).toEqual(['IFCREVOLVEDAREASOLID']);
-    expect(shapeOf('mep_node:mn-3')).toEqual(['IFCREVOLVEDAREASOLID']);
-    expect(shapeOf('mep_node:mn-4')).toEqual(['IFCREVOLVEDAREASOLID']);
+    expect(shapeOf('mep_node:mn-1')).toEqual(['IFCFACETEDBREP']);
+    expect(shapeOf('mep_node:mn-3')).toEqual(['IFCFACETEDBREP']);
+    expect(shapeOf('mep_node:mn-4')).toEqual(['IFCFACETEDBREP']);
     expect(new Set(shapeOf('mep_node:mn-2'))).toEqual(new Set(['IFCEXTRUDEDAREASOLID']));
-    expect(step).not.toContain('IFCFACETEDBREP');
+    // Light: a rect elbow's top and bottom are one face each (2 × 12 chords + 4 faces for 90°)
+    const brepOf = (key: string) => {
+      const prod = byKey(ents, keys, key);
+      const body = refs(ents.get(ref(prod.args[6]))!.args[2]).map(id => ents.get(id)!).find(r => str(r.args[1]) === 'Body')!;
+      return ents.get(ref(ents.get(refs(body.args[3])[0])!.args[0]))!;
+    };
+    expect(refs(brepOf('mep_node:mn-1').args[0])).toHaveLength(28);
     // One fitting type per kind (elbow BEND, tee JUNCTION), not a single BEND type for all
     const fitTypes = [...ents.values()].filter(e => e.type === 'IFCDUCTFITTINGTYPE').map(e => `${str(e.args[2])}:${e.args[9]}`).sort();
     expect(fitTypes).toEqual(['Elbow (rect):.BEND.', 'Tee (rect):.JUNCTION.']);
@@ -154,9 +159,9 @@ describe('IFC fitting bodies are light swept solids shaped like the 3D view (aud
       for (const s of breps) if (s.kind === 'brep') for (const f of s.faces) for (const p of f) {
         [p.x, p.y, p.z].forEach((v, k) => { lo[k] = Math.min(lo[k], v); hi[k] = Math.max(hi[k], v); });
       }
-      // web-ifc tessellates a revolution coarsely (its inner corner overshoots by ~2 cm on a 600 duct)
-      expectBox(got, `mep_node:${id}`, lo, hi, 1);
-      for (let k = 0; k < 3; k++) expect(Math.abs(got.get(`mep_node:${id}`)!.min[k] - lo[k]) + Math.abs(got.get(`mep_node:${id}`)!.max[k] - hi[k]), id).toBeLessThan(0.03);
+      // End faces exact (web-ifc's own tessellation of a revolved solid stuck out 2 cm); the bend chorded
+      expectBox(got, `mep_node:${id}`, lo, hi, 2);
+      for (let k = 0; k < 3; k++) expect(Math.abs(got.get(`mep_node:${id}`)!.min[k] - lo[k]) + Math.abs(got.get(`mep_node:${id}`)!.max[k] - hi[k]), id).toBeLessThan(0.003);
     }
   });
 });
@@ -206,9 +211,8 @@ describe('IFC export of MEP runs', () => {
     expectBox(got, 'pipe:pi-1', [5.95, 5.95, 0.5], [6.05, 6.05, 5], 2); // round riser (tessellated circle)
     expectBox(got, 'equipment:eq-1', [0, 0.5, 0], [2, 1.5, 2]);
     expectBox(got, 'terminal:tm-1', [4.7, 0.7, 2.6], [5.3, 1.3, 2.8]);
-    // Elbow: the 3D view's radiused bend from the riser top (z 2.6) round to the run (x 1.4),
-    // a revolved section (web-ifc tessellates the revolution: within ~2 cm).
-    expectBox(got, 'mep_node:mn-1', [0.8, 0.7, 2.6], [1.4, 1.3, 3.2], 1);
+    // Elbow: the 3D view's radiused bend from the riser top (z 2.6) round to the run (x 1.4).
+    expectBox(got, 'mep_node:mn-1', [0.8, 0.7, 2.6], [1.4, 1.3, 3.2], 3);
     expect(Object.fromEntries([...got].map(([n, r]) => [n, r.type]))).toEqual({
       'duct:du-1': 'IfcFlowSegment', 'duct:du-2': 'IfcFlowSegment', 'duct:du-3': 'IfcFlowSegment',
       'pipe:pi-1': 'IfcFlowSegment',
