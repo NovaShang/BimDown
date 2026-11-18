@@ -178,6 +178,35 @@ describe('MEP connectivity', () => {
     expect(svg).toContain('data-mep="supply_air_diffuser"');
   });
 
+  it('oval ducts and flexible ducts / pipes validate, build and render (size tag, hose zigzag, oval riser)', () => {
+    put('lv-1/duct.csv', 'id,shape,size_x,size_y,system_type,from,to,flexible\ndu-1,oval,0.5,0.25,SA,,,\ndu-2,round,0.2,,SA,,,true\ndu-3,oval,0.5,0.25,SA,,,\n');
+    put('lv-1/duct.geojson', fc([line('du-1', [0, 0, 3], [6, 0, 3]), line('du-2', [6, 0, 3], [8, 2, 3]), line('du-3', [0, 4, 1], [0, 4, 3])]));
+    put('lv-1/pipe.csv', 'id,shape,size_x,system_type,from,to,flexible\npi-1,round,0.02,DCW,,,true\n');
+    put('lv-1/pipe.geojson', fc([line('pi-1', [2, 2, 0.5], [3, 2, 0.5])]));
+    expect(build(dir).issues).toEqual([]);
+    const svg = renderLevel(dir, 'lv-1');
+    expect(svg).toContain('SA 500×250 oval');
+    expect(svg).toMatch(/<g id="du-3"[^>]*>.*rx="0\.125"/);
+    // Flex runs get the hose zigzag
+    expect(svg.match(/<polyline points=/g)?.length ?? 0).toBeGreaterThanOrEqual(2);
+  });
+
+  it('circuit phases and power factor set the current for the overload check; trays over their fill limit warn', () => {
+    put('lv-1/equipment.csv', 'id,number,equipment_type,load,circuit_id\neq-1,LP-1,panelboard,,\neq-2,M-1,fan,9000,ci-2\n');
+    put('lv-1/equipment.geojson', fc([point('eq-1', [0, 0, 0]), point('eq-2', [5, 0, 0])]));
+    // 9 kW three-phase at 400 V, cosφ 0.85: 15.3 A > 0.8 × 16; the same load on one phase at 230 V: 46 A
+    put('lv-1/circuit.csv', 'id,number,host_id,name,voltage,poles,rating,phase,power_factor,cable_size,cable_trays\n'
+      + 'ci-1,1,eq-1,Spare,230,1,16,L1,,0.03,ct-1\nci-2,2,eq-1,Fan,400,3,16,L1L2L3,0.85,0.03,ct-1\n');
+    put('lv-1/cable_tray.csv', 'id,shape,size_x,size_y,system_type,from,to,max_fill\nct-1,rect,0.1,0.05,PWR,,,25\n');
+    put('lv-1/cable_tray.geojson', fc([line('ct-1', [0, 1, 3], [6, 1, 3])]));
+    expect(build(dir).issues).toEqual([]);
+    const w = mepReport(dir).problems.filter(p => p.severity === 'warning');
+    const over = w.find(p => p.code === 'circuit_overload')!;
+    expect(over.vars).toMatchObject({ id: '2', current: 15.3 });
+    // 2 × π·0.015² / 0.005 = 28.3 % > 25 %
+    expect(w.find(p => p.code === 'tray_fill')?.vars).toMatchObject({ id: 'ct-1', fill: 28.3, limit: 25, cables: 2 });
+  });
+
   it('render draws a 45° drainage branch as a wye', () => {
     put('lv-1/mep_node.csv', 'id,system_type\nmn-1,SAN\n');
     put('lv-1/mep_node.geojson', fc([point('mn-1', [5, 0, 0.5])]));

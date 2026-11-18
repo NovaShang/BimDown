@@ -5,4 +5,11 @@ bases:
   - mep_system_tag
   - mep_connectable
 
-fields: []
+fields:
+  - name: max_fill
+    type: float
+    unit: none
+    description: >
+      Allowed fill ratio, percent of the tray's size_x × size_y section
+      (cables routed through it by circuit.cable_trays plus conduits laid in
+      it). Empty = 40.

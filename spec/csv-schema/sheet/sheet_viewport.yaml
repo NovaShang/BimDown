@@ -37,7 +37,7 @@ fields:
 
   - name: schedule
     type: enum
-    values: [rooms, doors, windows, walls, slabs, columns, framing, mep, equipment]
+    values: [rooms, doors, windows, walls, slabs, columns, framing, foundations, mep, equipment, terminals, accessories, circuits, panel, furniture]
     description: Schedule shown by a schedule viewport.
 
   - name: discipline

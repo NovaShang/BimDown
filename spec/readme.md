@@ -119,7 +119,7 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `terminal`   | Point        | `Point` 3D | MEP terminal (diffuser, outlet...) |
 | `mep_node`   | Point        | `Point` 3D | Topology node (fitting/accessory in Revit) |
 | `connector`  | None (CSV)   | — | Connection port on equipment/terminal/mep_node — host-local offset + outward direction, cross-section, flow direction, domain. Curves reference it via `from`/`to` (`host_id:name`). CSV-only. |
-| `circuit`    | None (CSV)   | — | Electrical branch circuit hosted on a panel (`host_id`); devices join through `circuit_id`. CSV-only. |
+| `circuit`    | None (CSV)   | — | Electrical branch circuit hosted on a panel (`host_id`); devices join through `circuit_id`. `phase` / `power_factor` give the current (I = P / (U·cosφ), ×√3 three-phase); `cable_size` + `cable_trays` count toward tray fill. CSV-only. |
 
 ### Annotation
 
@@ -418,7 +418,7 @@ MEP networks form a **bipartite graph**: `mep_curve` (duct, pipe, cable_tray, co
 1. Place equipment and terminals (anchors) with their `connector` rows
 2. Draw duct/pipe segments whose ends sit exactly on port points, on other run ends, or on another run's body; add a vertical segment wherever heights differ
 3. Call CLI `resolve-topology` — ends on ports get `host:port`, meeting ends get a passive `mep_node`, an end on a run's body splits that run with a tee (same table and system only), and the remaining problems are listed
-4. `build` (and `mep-check`) report MEP connectivity warnings: open ends, refs that don't resolve, ends off their port, system / domain mismatches, disconnected devices, orphan fittings, overloaded circuits. Ids resolve in the curve's own level first, then `global/`.
+4. `build` (and `mep-check`) report MEP connectivity warnings: open ends, refs that don't resolve, ends off their port, system / domain mismatches, disconnected devices, orphan fittings, overloaded circuits (current over 80 % of the breaker), cable trays over their fill limit (`max_fill`, default 40 %). Ids resolve in the curve's own level first, then `global/`.
 
 **Revit export**: Fittings and accessories are exported as `mep_node`. Curve endpoints are taken from connector positions (not `LocationCurve`), so they naturally coincide with node positions. `from`/`to` are derived from Revit's connector relationships and reference the specific port via `host_id:port_name`. See [`mep-port-conventions.md`](mep-port-conventions.md) for port naming conventions.
 

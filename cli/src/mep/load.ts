@@ -74,6 +74,7 @@ export function loadMep(dir: string): LoadedMep {
           from: row.from ?? '', to: row.to ?? '', system: (row.system_type ?? '').trim(),
           shape: (row.shape ?? '').trim() || (t === 'duct' || t === 'cable_tray' ? 'rect' : 'round'),
           w: num(row.size_x), h: num(row.size_y),
+          ...(t === 'cable_tray' && num(row.max_fill) > 0 ? { maxFill: num(row.max_fill) } : {}),
         });
         rowOf.set(`${d.name}/${row.id}`, row);
       }
@@ -99,7 +100,11 @@ export function loadMep(dir: string): LoadedMep {
     if (files.has('connector.csv')) for (const r of readCsv(join(d.path, 'connector.csv')).rows) connectorRows.push({ ...r, __dir: d.name });
     if (files.has('circuit.csv')) {
       for (const r of readCsv(join(d.path, 'circuit.csv')).rows) {
-        circuits.push({ id: r.id, scope: d.name, hostId: r.host_id ?? '', number: r.number ?? '', voltage: num(r.voltage), rating: num(r.rating) });
+        circuits.push({
+          id: r.id, scope: d.name, hostId: r.host_id ?? '', number: r.number ?? '', voltage: num(r.voltage), rating: num(r.rating),
+          phase: (r.phase ?? '').trim(), poles: num(r.poles), powerFactor: num(r.power_factor), cableSize: num(r.cable_size),
+          trays: (r.cable_trays ?? '').split(/[;,\s]+/).map(x => x.trim()).filter(Boolean),
+        });
       }
     }
   }

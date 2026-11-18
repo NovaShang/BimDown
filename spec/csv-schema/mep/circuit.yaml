@@ -35,3 +35,36 @@ fields:
     type: float
     unit: none
     description: Breaker rating, A.
+
+  - name: phase
+    type: enum
+    values:
+      - L1
+      - L2
+      - L3
+      - L1L2
+      - L2L3
+      - L3L1
+      - L1L2L3
+    description: >
+      Phase(s) the circuit is connected to. One phase = single-phase load at
+      the phase-neutral voltage; two = a line-to-line load split evenly over
+      both; L1L2L3 = three-phase load (I = P / (√3 · U · cosφ), U line-to-line).
+      Empty = L1L2L3 when poles = 3, else unassigned single-phase.
+
+  - name: power_factor
+    type: float
+    unit: none
+    description: cosφ of the connected load (0 < pf ≤ 1). Empty = 0.9.
+
+  - name: cable_size
+    type: float
+    description: >
+      Outer diameter of the circuit's cable (length unit). Used with
+      cable_trays for the tray fill ratio.
+
+  - name: cable_trays
+    type: string
+    description: >
+      Cable trays the circuit's cable runs in: cable_tray ids separated by
+      ";" (e.g. "ct-1;ct-2"). Each tray's fill counts the cable's section.
