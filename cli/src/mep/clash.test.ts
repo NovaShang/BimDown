@@ -161,6 +161,30 @@ describe('bimdown clash', () => {
     expect(clashReport(dir, { level: 'lv-2' }).clashes).toEqual([]);
   });
 
+  it('sloped roofs: a vent through a gable roof plane penetrates; runs under or over the plane are clear', () => {
+    // 10 x 6 gable, eaves along x at 3.0, 30 deg, 200 mm thick (231 mm vertically); ridge at y = 3, 3 + 1.732
+    put('lv-1/roof.csv', 'id,roof_type,slope,thickness\nrf-1,gable,30,0.2\n');
+    put('lv-1/roof.geojson', fc([poly('rf-1', [[0, 0], [10, 0], [10, 6], [0, 6]], { base_offset: 3 })]));
+    put('lv-1/pipe.csv', 'id,shape,size_x,size_y,system_type,from,to\npi-1,round,0.1,,VENT,,\n');
+    put('lv-1/pipe.geojson', fc([line('pi-1', [5, 1, 1], [5, 1, 6])]));
+    put('lv-1/duct.csv', 'id,shape,size_x,size_y,system_type,from,to\ndu-1,rect,0.3,0.2,SA,,\ndu-2,rect,0.3,0.2,SA,,\ndu-3,rect,0.3,0.2,SA,,\n');
+    put('lv-1/duct.geojson', fc([
+      line('du-1', [1, 3, 3.5], [9, 3, 3.5]),   // under the ridge
+      line('du-2', [1, 0.5, 4], [9, 0.5, 4]),   // above the plane near the eave
+      line('du-3', [1, 1.5, 3.95], [9, 1.5, 3.95]), // inside the roof slab (underside 3.866 there)
+    ]));
+    const r = clashReport(dir);
+    expect(r.clashes.map(c => `${c.a}>${c.b}:${c.kind}`).sort()).toEqual(['du-3>rf-1:penetration', 'pi-1>rf-1:penetration']);
+    const vent = r.clashes.find(c => c.a === 'pi-1')!;
+    // Across the plane: the roof's 200 mm
+    expect(vent.depth).toBeCloseTo(0.2, 3);
+    expect(vent.at[2]).toBeGreaterThan(3 + Math.tan(Math.PI / 6) - 0.01);
+    expect(vent.at[2]).toBeLessThan(3 + Math.tan(Math.PI / 6) * 1.06 + 0.24);
+    // A flat roof at the same height only catches the riser
+    put('lv-1/roof.csv', 'id,roof_type,slope,thickness\nrf-1,flat,0,0.2\n');
+    expect(clashReport(dir).clashes.map(c => c.a)).toEqual(['pi-1']);
+  });
+
   it('walls: structural = high, partitions = low unless a door or opening takes the run through', () => {
     put('lv-1/structure_wall.csv', 'id,thickness\nsw-1,0.25\n');
     put('lv-1/structure_wall.geojson', fc([line('sw-1', [0, 0], [0, 10])]));

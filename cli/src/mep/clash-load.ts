@@ -12,6 +12,7 @@ import { discoverLayout, listFiles } from '../utils/fs.js';
 import { effectiveRows } from '../catalog/index.js';
 import { metersToProject, projectUnits, UNIT_TO_M } from '../utils/units.js';
 import { MEP_CURVE_TABLES, num, levelElevations, featuresById } from './load.js';
+import { roofInputFor, solveRoof, verticalThickness } from '../geo/roof-solver.js';
 import {
   detectClashes, clashCounts,
   type Clash, type ClashModelIn, type ClashSeverity, type ClashSlabIn, type ClashWallIn, type Vec2, type Vec3, type WallOpeningIn,
@@ -22,6 +23,18 @@ const MEMBER_DEFAULTS: Record<string, [number, number]> = { beam: [0.3, 0.5], br
 const WALL_TABLES = ['wall', 'structure_wall', 'curtain_wall'];
 const COLUMN_TABLES = ['column', 'structure_column'];
 const SLAB_TABLES = ['slab', 'structure_slab', 'roof'];
+
+/** A roof as clash slabs: flat as it is, sloped one band per roof plane piece (as the editor's clashModel.roofFaces). */
+function roofFaces(base: ClashSlabIn, outline: { x: number; y: number }[], attrs: Record<string, string>, thickness: number): ClashSlabIn[] {
+  const sol = solveRoof(roofInputFor(outline, attrs));
+  if (!(sol.maxSlopeDeg > 0) || sol.pieces.length === 0) return [base];
+  const vThick = verticalThickness(thickness, sol.maxSlopeDeg);
+  return sol.pieces.map(pc => {
+    const pl = sol.planes[pc.plane];
+    const z0 = base.z0 + pl.c;
+    return { ...base, outer: pc.poly.map(p => [p.x, p.y] as Vec2), z0, z1: z0 + vThick, grad: [pl.a, pl.b] as Vec2 };
+  });
+}
 
 interface Dir { name: string; path: string; base: number; files: Set<string> }
 
@@ -255,7 +268,6 @@ export function loadClashModel(dir: string, level?: string): ClashModelIn {
       for (const row of rowsOf(dir, d, t)) {
         const f = geo(d, t).get(row.id);
         if (!f || f.geometry.type !== 'Polygon') continue;
-        if (t === 'roof' && ((row.roof_type && row.roof_type !== 'flat') || num(row.slope) > 0)) continue; // sloped roofs: not modelled
         const pg = extractPolygonGeometry(f);
         const off = d.base + num(f.properties?.base_offset ?? row.base_offset);
         const th = num(row.thickness, 0.2 / unitM);
@@ -263,7 +275,8 @@ export function loadClashModel(dir: string, level?: string): ClashModelIn {
         const holes: Vec2[][] = [...pg.holes.map(h => h.map(p => [p.x, p.y] as Vec2)), ...(slabHoles.get(row.id) ?? [])];
         for (const s of shafts) if (s.z0 < z1 - 1e-6 && s.z1 > z0 + 1e-6) holes.push(s.ring);
         const slab: ClashSlabIn = { id: row.id, scope, table: t, outer: pg.outer.map(p => [p.x, p.y]), holes, z0, z1 };
-        m.slabs!.push(slab);
+        if (t === 'roof') m.slabs!.push(...roofFaces(slab, pg.outer, row, th));
+        else m.slabs!.push(slab);
       }
     }
   }
