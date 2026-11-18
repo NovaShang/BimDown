@@ -8,6 +8,7 @@
  * support (Step 6 Part B) will extend WallFacts-style facts to expose
  * connector slots when the schema lands.
  */
+import { sectionRingByAngle } from '../mep/geom3d.ts';
 import { formatMepSize } from '../mep/sizes.ts';
 import type { ReactNode } from 'react';
 import type { GeometryContext } from './archetypes.ts';
@@ -339,6 +340,11 @@ function buildVerticalRiserFootprint(
   const rl = Math.hypot(r.x, r.y) || 1;
   const ux = r.x / rl, uy = r.y / rl;      // width axis
   const vx = -uy, vy = ux;                 // depth axis
+  if (shape === 'oval') {
+    // Flat oval: straight sides along the width, semicircle ends
+    return sectionRingByAngle({ shape: 'oval', w: hx * 2, h: hy * 2 }, 24)
+      .map(([a, b]) => ({ x: center.x + ux * a + vx * b, y: center.y + uy * a + vy * b }));
+  }
   return [
     { x: center.x - ux * hx - vx * hy, y: center.y - uy * hx - vy * hy },
     { x: center.x + ux * hx - vx * hy, y: center.y + uy * hx - vy * hy },

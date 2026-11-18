@@ -114,7 +114,7 @@ function dedupeClosing(pts: V2[]): V2[] {
 /** Shift a centred profile so its top edge sits on the local X axis (beam line = member top). */
 export function hangFromTop(p: Profile): Profile {
   switch (p.kind) {
-    case 'rect': return { ...p, cy: (p.cy ?? 0) - p.d / 2 };
+    case 'rect': case 'rounded_rect': return { ...p, cy: (p.cy ?? 0) - p.d / 2 };
     case 'ishape': case 'ushape': case 'lshape': case 'rect_hollow': return { ...p, cy: (p.cy ?? 0) - p.d / 2 };
     case 'circle': case 'circle_hollow': return { ...p, cy: (p.cy ?? 0) - p.r };
     case 'poly': {

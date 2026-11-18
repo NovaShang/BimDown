@@ -370,8 +370,19 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
   });
   // Aggregated schedules (MEP runs) print one row per group, like the Schedule view
   if (cat.itemize === false && cat.groupBy) rows = scheduleGroups(rows, columns, cat.groupBy, null, false)[0].rows;
-  let cells = rows.map(r => columns.map(c => formatCell(r.values[c.key], c.kind, unit, columnDigits(c, unit))));
+  const rowCells = (list: typeof rows) => list.map(r => columns.map(c => formatCell(r.values[c.key], c.kind, unit, columnDigits(c, unit))));
+  let cells = rowCells(rows);
   const totals = totalsOf(rows, columns);
+  // Panel schedules: each panel's circuits, then its subtotal row (bold)
+  const boldRows = new Set<number>();
+  if (cat.printGroups && cat.groupBy) {
+    cells = [];
+    for (const g of scheduleGroups(rows, columns, cat.groupBy, null, true)) {
+      cells.push(...rowCells(g.rows));
+      boldRows.add(cells.length);
+      cells.push(columns.map((c, i) => (i === 0 ? `${drawingLabel(lang, 'schedule.total')}: ${g.key || '—'}` : c.total ? formatCell(g.totals[c.key], c.kind, unit, columnDigits(c, unit)) : '')));
+    }
+  }
   if (byType) {
     const ci = columns.findIndex(c => c.key === 'count');
     const groups = new Map<string, string[]>();
@@ -408,7 +419,7 @@ function scheduleTable(vp: ViewportDef, ctx: ComposeContext, k: number): Paper {
       p.text(def, { x: right ? x + w - pad : x + pad, y }, text, th, { valign: 'middle', align: right ? 'right' : 'left', bold, maxW: w - 2 * pad });
     };
     write(0, header[i], true);
-    cells.forEach((r, j) => write(j + 1, r[i]));
+    cells.forEach((r, j) => write(j + 1, r[i], boldRows.has(j)));
     write(nRows - 1, totalRow[i], true);
     x += w;
   });

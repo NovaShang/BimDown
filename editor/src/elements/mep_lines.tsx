@@ -11,7 +11,8 @@ import type { ElementModule, GeometryContext } from './archetypes.ts';
 import { registerElement } from './registry.ts';
 import { resolvePropertyFields } from './_propertyFields.ts';
 import type { CanonicalElement } from '../model/elements.ts';
-import { BOOLEAN_OPTIONS, PIPE_MATERIAL_OPTIONS, SHAPE_OPTIONS } from './_options.ts';
+import { BOOLEAN_OPTIONS, DUCT_SHAPE_OPTIONS, PIPE_MATERIAL_OPTIONS } from './_options.ts';
+import type { ToolbarVariant } from './archetypes.ts';
 import { SLOPE_KEY, rememberedRouteAttrs } from '../mep/routeTool.ts';
 
 /** Run height while routing; a change mid-run inserts a rise / drop. */
@@ -35,6 +36,8 @@ interface MepModuleOpts {
   strokeWidth2D: number;
   layerStyle: any;
   renderZIndex: number;
+  /** Toolbar tools (rigid / flexible / oval); each remembers its own settings. */
+  toolbarVariants?: ToolbarVariant[];
 }
 
 function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
@@ -52,7 +55,8 @@ function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
     defaults: opts.defaults,
     drawingFields: opts.drawingFields,
     // Re-picking the tool keeps the last system / size / offset / slope.
-    placementDefaults: () => rememberedRouteAttrs(opts.table),
+    placementDefaults: ctx => rememberedRouteAttrs(opts.table, ctx.variantId),
+    ...(opts.toolbarVariants ? { toolbarVariants: opts.toolbarVariants } : {}),
     // The toolbar's Offset / Riser Top relabel start_z / end_z for routing;
     // the property panel keeps the plain Start Z / End Z.
     propertyFields: resolvePropertyFields(csvHeaders, opts.drawingFields.filter(f => f.key !== 'start_z' && f.key !== 'end_z')),
@@ -93,7 +97,7 @@ export const ductModule = makeMepLineModule({
     { key: 'system_type', label: 'System Type', type: 'select' },
     { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
     { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
-    { key: 'shape', label: 'Shape', type: 'select', options: SHAPE_OPTIONS },
+    { key: 'shape', label: 'Shape', type: 'select', options: DUCT_SHAPE_OPTIONS },
     OFFSET_FIELD,
     RISER_TOP_FIELD,
     { key: 'flexible', label: 'Flexible', type: 'select', options: BOOLEAN_OPTIONS },
@@ -104,11 +108,18 @@ export const ductModule = makeMepLineModule({
   strokeWidth2D: 0.025,
   layerStyle: { displayName: 'Ducts', color: '#00b4d8', icon: '═', order: 10 },
   renderZIndex: 80,
+  toolbarVariants: [
+    { id: 'rigid', label: 'layer.duct', icon: '═', iconName: 'duct', placementType: 'spatial_line' },
+    { id: 'flex', label: 'layer.flex_duct', icon: '≈', iconName: 'duct', placementType: 'spatial_line',
+      defaults: { flexible: 'true', shape: 'round', size_x: '0.2', size_y: '0.2' } },
+    { id: 'oval', label: 'layer.oval_duct', icon: '⬭', iconName: 'duct', placementType: 'spatial_line',
+      defaults: { flexible: 'false', shape: 'oval', size_x: '0.5', size_y: '0.25' } },
+  ],
 });
 
 export const pipeModule = makeMepLineModule({
   table: 'pipe', prefix: 'pi',
-  extraHeaders: ['insulation_thickness', 'material'],
+  extraHeaders: ['insulation_thickness', 'material', 'flexible'],
   defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: '' },
   drawingFields: [
     { key: 'system_type', label: 'System Type', type: 'select' },
@@ -117,6 +128,7 @@ export const pipeModule = makeMepLineModule({
     OFFSET_FIELD,
     { key: SLOPE_KEY, label: 'Slope', type: 'number', unit: '%', min: -10, max: 10, step: 0.5 },
     RISER_TOP_FIELD,
+    { key: 'flexible', label: 'Flexible', type: 'select', options: BOOLEAN_OPTIONS },
   ],
   defaultShape: 'round',
   fill2D: '#06d6a015',
@@ -124,6 +136,11 @@ export const pipeModule = makeMepLineModule({
   strokeWidth2D: 0.02,
   layerStyle: { displayName: 'Pipes', color: '#06d6a0', icon: '║', order: 11 },
   renderZIndex: 81,
+  toolbarVariants: [
+    { id: 'rigid', label: 'layer.pipe', icon: '║', iconName: 'pipe', placementType: 'spatial_line' },
+    { id: 'flex', label: 'layer.flex_pipe', icon: '≈', iconName: 'pipe', placementType: 'spatial_line',
+      defaults: { flexible: 'true', size_x: '0.02', size_y: '0.02' } },
+  ],
 });
 
 export const conduitModule = makeMepLineModule({

@@ -8,11 +8,12 @@
  * 3D: section swept along the centre line, insulation as a translucent shell.
  */
 import { useMemo } from 'react';
-import { ExtrudeGeometry, Matrix4, Quaternion, Vector3, type MeshStandardMaterial } from 'three';
+import { ExtrudeGeometry, Matrix4, Quaternion, Vector3, type BufferGeometry, type MeshStandardMaterial } from 'three';
 import type { MepLineFacts } from '../elements/_mepLineShared.tsx';
 import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
 import { getBimMaterial, getSystemColorMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
-import { shapeFromAttrs, createProfile } from '../three/primitives/profiles.ts';
+import { shapeFromAttrs, createProfile, ovalShape } from '../three/primitives/profiles.ts';
+import { sectionRing, skinRings, type Section } from './geom3d.ts';
 import { uprightAxisQuaternion } from '../three/utils/memberAxis.ts';
 import { clipPolygon, clipSegment } from './crossings.ts';
 import { useMepView, isolateOpacity, inSystem } from './mepView.ts';
@@ -144,6 +145,23 @@ function riserSymbol(facts: MepLineFacts): [P, P][] {
   return facts.riser === 'down' ? [d1] : [d1, d2];
 }
 
+/**
+ * Corrugated flex hose along local +z (the extrusion frame): rings every
+ * pitch, alternating full and 92 % size.
+ */
+function flexBody(sec: Section, length: number): BufferGeometry {
+  const pitch = Math.max(0.02, Math.min(0.06, sec.w * 0.25));
+  const n = Math.max(2, Math.round(length / pitch));
+  const base = sectionRing(sec, 20);
+  const rings = [];
+  for (let i = 0; i <= n; i++) {
+    const k = i === 0 || i === n || i % 2 === 0 ? 1 : 0.92;
+    rings.push({ center: [0, 0, (i / n) * length] as [number, number, number], frame: { right: [1, 0, 0] as [number, number, number], up: [0, 1, 0] as [number, number, number] },
+      ring: base.map(([x, y]) => [x * k, y * k] as [number, number]) });
+  }
+  return skinRings(rings);
+}
+
 /** Rotation for a run's section: upright, or for risers aligned with the run they join. */
 function sectionQuaternion(facts: MepLineFacts, dx: number, dy: number, dz: number): Quaternion {
   if (facts.riserRight && Math.hypot(dx, dy) < 1e-6) {
@@ -166,13 +184,16 @@ export function MepLine3D({ facts, isHL }: { facts: MepLineFacts; isHL: boolean 
   const len3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
   const geos = useMemo(() => {
     if (len3D < 0.001) return null;
-    const body = new ExtrudeGeometry(createProfile(shapeFromAttrs(facts.shape, facts.sizeX, facts.sizeY)), { depth: len3D, bevelEnabled: false });
+    const profile = (w: number, h: number) => (facts.shape === 'oval' ? ovalShape(w, h) : createProfile(shapeFromAttrs(facts.shape, w, h)));
+    const body: BufferGeometry = facts.flexible
+      ? flexBody(facts.shape === 'round' || facts.table === 'pipe' ? { shape: 'round', w: facts.sizeX, h: facts.sizeX } : { shape: facts.shape === 'oval' ? 'oval' : 'rect', w: facts.sizeX, h: facts.sizeY }, len3D)
+      : new ExtrudeGeometry(profile(facts.sizeX, facts.sizeY), { depth: len3D, bevelEnabled: false });
     const t = facts.insulation;
     const shell = t > 0
-      ? new ExtrudeGeometry(createProfile(shapeFromAttrs(facts.shape, facts.sizeX + 2 * t, facts.sizeY + 2 * t)), { depth: len3D, bevelEnabled: false })
+      ? new ExtrudeGeometry(profile(facts.sizeX + 2 * t, facts.sizeY + 2 * t), { depth: len3D, bevelEnabled: false })
       : null;
     return { body, shell };
-  }, [len3D, facts.shape, facts.sizeX, facts.sizeY, facts.insulation]);
+  }, [len3D, facts.shape, facts.sizeX, facts.sizeY, facts.insulation, facts.flexible, facts.table]);
   if (!geos) return null;
 
   const quat = sectionQuaternion(facts, dx, dy, dz);

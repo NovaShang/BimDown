@@ -148,6 +148,18 @@ export function profileRings(p: Profile): { outer: V2[]; holes: V2[][]; smooth: 
       holes = [box(p.w / 2 - p.t, p.d / 2 - p.t)];
       break;
     }
+    case 'rounded_rect': {
+      // Flat oval / rounded rectangle: straight sides, quarter arcs of radius r
+      const r = Math.max(0, Math.min(p.r, p.w / 2, p.d / 2));
+      const hw = p.w / 2 - r, hd = p.d / 2 - r;
+      const corners: [number, number, number][] = [[hw, hd, 0], [-hw, hd, Math.PI / 2], [-hw, -hd, Math.PI], [hw, -hd, Math.PI * 1.5]];
+      outer = corners.flatMap(([x, y, a0]) => Array.from({ length: 7 }, (_, i) => {
+        const a = a0 + (i / 6) * (Math.PI / 2);
+        return { x: cx + x + r * Math.cos(a), y: cy + y + r * Math.sin(a) };
+      }));
+      smooth = true;
+      break;
+    }
     case 'circle_hollow': {
       const n = 32;
       const ring = (r: number) => Array.from({ length: n }, (_, i) => ({ x: cx + r * Math.cos((i / n) * Math.PI * 2), y: cy + r * Math.sin((i / n) * Math.PI * 2) }));

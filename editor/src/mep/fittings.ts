@@ -80,7 +80,8 @@ export function curveZ(ln: MepCurve): { startZ: number; endZ: number } {
 export function curveSection(ln: CanonicalElement): Section {
   const table = ln.tableName;
   const defaultShape = table === 'pipe' || table === 'conduit' ? 'round' : 'rect';
-  const shape = (ln.attrs.shape || defaultShape) === 'round' ? 'round' : 'rect';
+  const raw = ln.attrs.shape || defaultShape;
+  const shape = raw === 'round' ? 'round' : raw === 'oval' && table === 'duct' ? 'oval' : 'rect';
   const w = parseFloat(ln.attrs.size_x || '0.2') || 0.2;
   const h = shape === 'round' ? w : (parseFloat(ln.attrs.size_y || '0.2') || 0.2);
   return { shape, w, h };
@@ -290,7 +291,7 @@ function classify(nodeId: string, node: PointElement, center: V3, legs: FittingL
     // Ducts: a small or round branch off a rectangular main is a tap
     // (spin-in / shoe), not a full tee — unless the node says otherwise.
     const autoTap = table === 'duct'
-      && ((br.sec.shape === 'round' && mainBig.sec.shape === 'rect') || brExt <= 0.5 * mainBig.planWidth);
+      && ((br.sec.shape === 'round' && mainBig.sec.shape !== 'round') || brExt <= 0.5 * mainBig.planWidth);
     const tap = hint === 'tap' || (hint !== 'tee' && autoTap);
     // A branch joining the main at an angle (45° drainage branch) is a wye.
     const angled = Math.abs(dot(br.dir, m1.dir)) > 0.3;
