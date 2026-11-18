@@ -36,19 +36,7 @@ class StructureWallImporter() : TableImporterBase(
         var wall = Wall.Create(doc, curve, typeId, levelId, heightFeet, 0, false, true);
         QueueTopAttachment(wall, row);
 
-        var baseOffsetStr = row.GetValueOrDefault("base_offset");
-        if (baseOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(baseOffsetStr)));
-
-        var topLevelId = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
-        if (topLevelId is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.Set(topLevelId);
-
-        var topOffsetStr = row.GetValueOrDefault("top_offset");
-        if (topOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(topOffsetStr)));
+        ApplyWallSpan(doc, wall, row);
 
         SetMark(wall, row);
         return wall;
@@ -61,24 +49,7 @@ class StructureWallImporter() : TableImporterBase(
         if (wall.Location is LocationCurve lc)
             lc.Curve = ParseCurve2D(row);
 
-        var heightStr = row.GetValueOrDefault("height");
-        if (heightStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(heightStr)));
-
-        var baseOffsetStr = row.GetValueOrDefault("base_offset");
-        if (baseOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(baseOffsetStr)));
-
-        var topLevelId = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
-        if (topLevelId is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.Set(topLevelId);
-
-        var topOffsetStr = row.GetValueOrDefault("top_offset");
-        if (topOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(topOffsetStr)));
+        ApplyWallSpan(doc, wall, row);
 
         var thicknessStr = row.GetValueOrDefault("thickness");
         if (thicknessStr is not null)

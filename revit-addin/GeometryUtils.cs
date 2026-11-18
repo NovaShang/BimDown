@@ -185,10 +185,12 @@ static class GeometryUtils
         var px = -dy / chordLen;
         var py = dx / chordLen;
 
-        // Choose side based on flags
-        // In standard SVG math (Y down): sweep=1 means clockwise
-        // We're in Revit (Y up), so we need to account for the flip
-        var sign = (largeArc == sweep) ? 1.0 : -1.0;
+        // Choose side based on flags. sweep=1 runs counterclockwise from start to end in
+        // this Y-up frame (as the exporter's ComputeArcFlags and the CLI write it): a minor
+        // CCW arc has its centre left of the chord, a major one right of it. (The opposite
+        // choice put the centre on the wrong side, so the CCW run became the major arc —
+        // near-full circles for gently curved walls.)
+        var sign = (largeArc != sweep) ? 1.0 : -1.0;
         var cx = mx + px * h * sign;
         var cy = my + py * h * sign;
 

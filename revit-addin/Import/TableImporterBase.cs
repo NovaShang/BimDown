@@ -118,6 +118,46 @@ abstract class TableImporterBase(string tableName, int order, BuiltInCategory[] 
         IdMap.Register(csvId, element.Id);
     }
 
+    /// <summary>
+    /// Levels above <paramref name="baseLevel"/>, lowest first. "The level immediately above"
+    /// counts BimDown levels only (when the model has any), so a template's leftover
+    /// "Level 2" does not cap walls that belong under the project's next level.
+    /// </summary>
+    internal static List<Level> LevelsAbove(Document doc, Level baseLevel)
+    {
+        var above = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
+            .Where(l => l.Elevation > baseLevel.Elevation + 1e-6).OrderBy(l => l.Elevation).ToList();
+        var ours = above.Where(l => BimDownParameter.Get(l) is not null).ToList();
+        return ours.Count > 0 ? ours : above;
+    }
+
+    /// <summary>
+    /// A wall's vertical span: base offset; top constraint from top_level_id (empty = the
+    /// level immediately above, unless only an unconnected height is given); top offset on
+    /// a constrained top (read-only on an unconnected one), else the unconnected height.
+    /// </summary>
+    protected void ApplyWallSpan(Document doc, Wall wall, Dictionary<string, string?> row)
+    {
+        double? Feet(string key) => UnitConverter.ParseNullableDouble(row.GetValueOrDefault(key)) is { } m ? UnitConverter.LengthToFeet(m) : null;
+        if (Feet("base_offset") is { } baseOffset) wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(baseOffset);
+        var topOffset = Feet("top_offset");
+        var height = Feet("height");
+        var top = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
+        if (top is null && (height is null || topOffset is not null) && doc.GetElement(wall.LevelId) is Level baseLevel)
+            top = LevelsAbove(doc, baseLevel).FirstOrDefault()?.Id;
+        var heightType = wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE);
+        if (top is not null)
+        {
+            if (heightType?.AsElementId() != top) heightType?.Set(top);
+            if (topOffset is { } to && wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET) is { IsReadOnly: false } p) p.Set(to);
+        }
+        else if (height is { } h)
+        {
+            if (heightType is not null && heightType.AsElementId() != ElementId.InvalidElementId) heightType.Set(ElementId.InvalidElementId);
+            if (wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM) is { IsReadOnly: false } p) p.Set(h);
+        }
+    }
+
     protected abstract Element? CreateElement(Document doc, Dictionary<string, string?> row);
     protected abstract void UpdateElement(Document doc, Dictionary<string, string?> row, Element element);
 

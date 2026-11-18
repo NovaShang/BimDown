@@ -9,14 +9,41 @@ class LevelImporter() : TableImporterBase("level", 0, [BuiltInCategory.OST_Level
         var elevationStr = row.GetValueOrDefault("elevation")
             ?? throw new InvalidOperationException("elevation is required");
         var elevationFeet = UnitConverter.LengthToFeet(UnitConverter.ParseDouble(elevationStr));
-
-        var level = Level.Create(doc, elevationFeet);
-
         var name = row.GetValueOrDefault("name");
-        if (name is not null) level.Name = name;
+
+        // A level without a BimDown id (e.g. the template's "Level 1" / "Level 2") with the
+        // same name or elevation is adopted: creating another would clash on the name
+        // ("Name must be unique") or leave a duplicate level with its own views.
+        var adopted = Unclaimed(doc, name, elevationFeet);
+        var level = adopted ?? Level.Create(doc, elevationFeet);
+        if (Math.Abs(level.Elevation - elevationFeet) > 1e-9) level.Elevation = elevationFeet;
+        if (name is not null && level.Name != name)
+        {
+            var oldName = level.Name;
+            level.Name = name;
+            // An adopted level's plan views keep the template's name ("Level 1"): follow the level.
+            foreach (var view in new FilteredElementCollector(doc).OfClass(typeof(ViewPlan)).Cast<ViewPlan>()
+                         .Where(v => !v.IsTemplate && v.GenLevel?.Id == level.Id && v.Name == oldName))
+            {
+                try { view.Name = name; } catch { /* name taken by another view of that type */ }
+            }
+        }
         SetMark(level, row);
+        // A level made through the API has no views; Revit's Level tool adds a floor plan
+        // (text notes and tags are placed in it).
+        if (adopted is null && new FilteredElementCollector(doc).OfClass(typeof(ViewFamilyType)).Cast<ViewFamilyType>()
+                .FirstOrDefault(t => t.ViewFamily == ViewFamily.FloorPlan) is { } planType)
+            ViewPlan.Create(doc, planType.Id, level.Id);
 
         return level;
+    }
+
+    static Level? Unclaimed(Document doc, string? name, double elevationFeet)
+    {
+        var free = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
+            .Where(l => BimDownParameter.Get(l) is null).ToList();
+        return free.FirstOrDefault(l => name is not null && l.Name == name)
+               ?? free.FirstOrDefault(l => Math.Abs(l.Elevation - elevationFeet) < UnitConverter.LengthToFeet(1e-3));
     }
 
     protected override void UpdateElement(Document doc, Dictionary<string, string?> row, Element element)

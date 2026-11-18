@@ -107,10 +107,29 @@ class StairImporter() : TableImporterBase("stair", 16, [BuiltInCategory.OST_Stai
         var dir = row.GetValueOrDefault("_dir");
         var baseLevel = IdMap.ResolveLevel(doc, row.GetValueOrDefault("base_level_id") ?? row.GetValueOrDefault("level_id"))
             ?? throw new InvalidOperationException("base level does not resolve");
+        // Geometry Z (absolute, m): bottom of the first run, top of the last one.
+        var runZ = new[] { row }.Concat(ImportContext.Rows.GetValueOrDefault("stair_run")?
+                .Where(r => r.GetValueOrDefault("host_id") == id && r.GetValueOrDefault("_dir") == dir) ?? [])
+            .Select(r => (Z0: UnitConverter.ParseNullableDouble(r.GetValueOrDefault("start_z")), Z1: UnitConverter.ParseNullableDouble(r.GetValueOrDefault("end_z"))))
+            .ToList();
+        var bottomZ = runZ.Where(z => z.Z0 is not null).Select(z => z.Z0!.Value).DefaultIfEmpty(double.NaN).Min();
+        var topZ = runZ.Where(z => z.Z1 is not null).Select(z => z.Z1!.Value).DefaultIfEmpty(double.NaN).Max();
+        var levelsAbove = LevelsAbove(doc, baseLevel);
         var topLevel = IdMap.ResolveLevel(doc, row.GetValueOrDefault("top_level_id"))
-            ?? new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
-                .Where(l => l.Elevation > baseLevel.Elevation + 1e-6).OrderBy(l => l.Elevation).FirstOrDefault()
+            // No top level given: the first level at or above the stair's top (else the next one).
+            ?? (double.IsNaN(topZ) ? null : levelsAbove.FirstOrDefault(l => l.Elevation >= UnitConverter.LengthToFeet(topZ) - 1e-3))
+            ?? levelsAbove.FirstOrDefault()
             ?? throw new InvalidOperationException("no level above the stair's base");
+        // A top level at or below the base (exported from a stair whose base is offset up to
+        // its top level): Revit needs a higher one; the top offset then comes from the Z.
+        var topFromZ = row.GetValueOrDefault("top_level_id") is null;
+        if (topLevel.Elevation <= baseLevel.Elevation + 1e-6)
+        {
+            topLevel = (double.IsNaN(topZ) ? null : levelsAbove.FirstOrDefault(l => l.Elevation >= UnitConverter.LengthToFeet(topZ) - 1e-3))
+                       ?? levelsAbove.FirstOrDefault()
+                       ?? throw new InvalidOperationException("no level above the stair's base");
+            topFromZ = true;
+        }
 
         // Runs: the stair's own line (when it is not an overall axis) + its stair_run rows.
         var runs = new List<(Dictionary<string, string?> Row, double Z0, int Risers, double Width)>();
@@ -145,11 +164,25 @@ class StairImporter() : TableImporterBase("stair", 16, [BuiltInCategory.OST_Stai
             using (var tx = new Transaction(doc, "BimDown: stair runs"))
             {
                 tx.Start();
+                // A stair that starts above its level or stops below / above its top level
+                // (e.g. one flight of a two-flight stair written as two stairs).
+                if (doc.GetElement(stairsId) is Stairs span)
+                {
+                    if (!double.IsNaN(bottomZ) && UnitConverter.LengthToFeet(bottomZ) - baseLevel.Elevation is var baseOffset && Math.Abs(baseOffset) > 1e-4)
+                        span.get_Parameter(BuiltInParameter.STAIRS_BASE_OFFSET)?.Set(baseOffset);
+                    var topOffset = UnitConverter.ParseNullableDouble(row.GetValueOrDefault("top_offset")) is { } to
+                        ? UnitConverter.LengthToFeet(to)
+                        : !double.IsNaN(topZ) && topFromZ ? UnitConverter.LengthToFeet(topZ) - topLevel.Elevation : 0;
+                    if (Math.Abs(topOffset) > 1e-4)
+                        span.get_Parameter(BuiltInParameter.STAIRS_TOP_OFFSET)?.Set(topOffset);
+                }
                 if (doc.GetElement(stairsId) is Stairs st && runs.Sum(r => r.Risers) is var total and > 0)
                     st.DesiredRisersNumber = total;
+                var stairBase = baseLevel.Elevation + (double.IsNaN(bottomZ) ? 0 : UnitConverter.LengthToFeet(bottomZ) - baseLevel.Elevation);
                 foreach (var r in runs)
                 {
-                    var z = baseLevel.Elevation;
+                    // A run's path sits at its own bottom (its line's start Z), not at the level.
+                    var z = UnitConverter.ParseNullableDouble(r.Row.GetValueOrDefault("start_z")) is { } z0 ? UnitConverter.LengthToFeet(z0) : stairBase;
                     var line = Line.CreateBound(
                         new XYZ(ImportGeometry.Ft(r.Row["start_x"]), ImportGeometry.Ft(r.Row.GetValueOrDefault("start_y")), z),
                         new XYZ(ImportGeometry.Ft(r.Row.GetValueOrDefault("end_x")), ImportGeometry.Ft(r.Row.GetValueOrDefault("end_y")), z));
@@ -186,8 +219,8 @@ class StairImporter() : TableImporterBase("stair", 16, [BuiltInCategory.OST_Stai
             if (doc.GetElement(stairsId) is Stairs stairs && IdMap.ResolveLevel(doc, row.GetValueOrDefault("multistory_top_level_id")) is { } msTop)
             {
                 var ms = MultistoryStairs.Create(stairs);
-                var levels = new FilteredElementCollector(doc).OfClass(typeof(Level)).Cast<Level>()
-                    .Where(l => l.Elevation > topLevel.Elevation + 1e-6 && l.Elevation <= msTop.Elevation + 1e-6)
+                var levels = LevelsAbove(doc, topLevel)
+                    .Where(l => l.Elevation <= msTop.Elevation + 1e-6)
                     .Select(l => l.Id).ToHashSet();
                 if (levels.Count > 0) ms.ConnectLevels(levels);
             }
@@ -231,9 +264,13 @@ class RailingImporter() : TableImporterBase("railing", 17, [BuiltInCategory.OST_
             {
                 made = [];
                 var runs = StairReader.Runs(stairs);
-                foreach (var rid in Railing.Create(doc, stairs.Id, typeId, RailingPlacementPosition.Treads))
+                // A stair type with a default railing already made them with the stair:
+                // reuse those (Railing.Create refuses a stair that has railings).
+                var existing = stairs.GetAssociatedRailings();
+                foreach (var rid in existing.Count > 0 ? existing : Railing.Create(doc, stairs.Id, typeId, RailingPlacementPosition.Treads))
                 {
                     if (doc.GetElement(rid) is not Railing r) continue;
+                    if (r.GetTypeId() != typeId) r.ChangeTypeId(typeId);
                     var pts = r.GetPath().SelectMany(c => c.Tessellate()).ToList();
                     var mid = pts.Count > 0 ? pts[pts.Count / 2] : XYZ.Zero;
                     var side = runs.Count > 0 ? StairMapper.RailingSide(runs[0], UnitConverter.Length(mid.X), UnitConverter.Length(mid.Y)) : "left";
@@ -312,6 +349,8 @@ class FurnitureImporter() : TableImporterBase("furniture", 30,
         var sx = ImportGeometry.FtOrNull(row.GetValueOrDefault("size_x")) ?? 3.28;
         var sy = ImportGeometry.FtOrNull(row.GetValueOrDefault("size_y")) ?? 3.28;
         var h = ImportGeometry.FtOrNull(row.GetValueOrDefault("height")) ?? 3.28;
+        // Flat 2D families (clearance circles) report 0: a sliver, not a failure.
+        (sx, sy, h) = (Math.Max(sx, 0.01), Math.Max(sy, 0.01), Math.Max(h, 0.01));
         var c = Math.Cos(rot);
         var s = Math.Sin(rot);
         XYZ P(double lx, double ly) => new(x + lx * c - ly * s, y + lx * s + ly * c, z);

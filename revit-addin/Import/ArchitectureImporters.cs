@@ -33,19 +33,7 @@ class WallImporter() : TableImporterBase(
         var typeId = wallType?.Id ?? GetDefaultWallTypeId(doc);
         var wall = Wall.Create(doc, curve, typeId, levelId, heightFeet, 0, false, false);
 
-        var baseOffsetStr = row.GetValueOrDefault("base_offset");
-        if (baseOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(baseOffsetStr)));
-
-        var topLevelId = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
-        if (topLevelId is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.Set(topLevelId);
-
-        var topOffsetStr = row.GetValueOrDefault("top_offset");
-        if (topOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(topOffsetStr)));
+        ApplyWallSpan(doc, wall, row);
 
         SetMark(wall, row);
         QueueTopAttachment(wall, row);
@@ -63,28 +51,7 @@ class WallImporter() : TableImporterBase(
             lc.Curve = ParseCurve2D(row);
         }
 
-        // Update height
-        var heightStr = row.GetValueOrDefault("height");
-        if (heightStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(heightStr)));
-
-        // Update base offset
-        var baseOffsetStr = row.GetValueOrDefault("base_offset");
-        if (baseOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(baseOffsetStr)));
-
-        // Update top level
-        var topLevelId = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
-        if (topLevelId is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.Set(topLevelId);
-
-        // Update top offset
-        var topOffsetStr = row.GetValueOrDefault("top_offset");
-        if (topOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(topOffsetStr)));
+        ApplyWallSpan(doc, wall, row);
 
         // Update type if thickness changed
         var thicknessStr = row.GetValueOrDefault("thickness");
@@ -435,19 +402,7 @@ class CurtainWallImporter() : TableImporterBase(
 
         var wall = Wall.Create(doc, curve, wallType.Id, levelId, heightFeet, 0, false, false);
 
-        var baseOffsetStr = row.GetValueOrDefault("base_offset");
-        if (baseOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(baseOffsetStr)));
-
-        var topLevelId = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
-        if (topLevelId is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.Set(topLevelId);
-
-        var topOffsetStr = row.GetValueOrDefault("top_offset");
-        if (topOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(topOffsetStr)));
+        ApplyWallSpan(doc, wall, row);
 
         AddGridLines(doc, wall, row);
         SetMark(wall, row);
@@ -486,24 +441,7 @@ class CurtainWallImporter() : TableImporterBase(
         if (wall.Location is LocationCurve lc)
             lc.Curve = ParseCurve2D(row);
 
-        var heightStr = row.GetValueOrDefault("height");
-        if (heightStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_USER_HEIGHT_PARAM)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(heightStr)));
-
-        var baseOffsetStr = row.GetValueOrDefault("base_offset");
-        if (baseOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(baseOffsetStr)));
-
-        var topLevelId = IdMap.Resolve(doc, row.GetValueOrDefault("top_level_id"));
-        if (topLevelId is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.Set(topLevelId);
-
-        var topOffsetStr = row.GetValueOrDefault("top_offset");
-        if (topOffsetStr is not null)
-            wall.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.Set(
-                UnitConverter.LengthToFeet(UnitConverter.ParseDouble(topOffsetStr)));
+        ApplyWallSpan(doc, wall, row);
 
         SetMark(wall, row);
     }
@@ -541,7 +479,9 @@ class RoofImporter() : TableImporterBase("roof", 15, [BuiltInCategory.OST_Roofs]
             curveArray.Append(Line.CreateBound(p1, p2));
         }
 
-        var roof = doc.Create.NewFootPrintRoof(curveArray, level, roofType, out var modelCurves);
+        // The mapping must be passed in allocated: the API rejects a null array ("Value cannot be null").
+        var modelCurves = new ModelCurveArray();
+        var roof = doc.Create.NewFootPrintRoof(curveArray, level, roofType, out modelCurves);
         SetSlopes(roof, modelCurves, row, points.Count);
 
         var baseOffsetStr = row.GetValueOrDefault("base_offset");
