@@ -75,7 +75,8 @@ const COLUMN_TABLES = ['column', 'structure_column'];
 /**
  * A boundary-line end is connected when it meets another line's end, lands anywhere on another wall's
  * body (T-junction at the centre line or at the face, within that wall's half thickness), or ends on a
- * column. Only ends that touch nothing are reported — those are the gaps that keep rooms from closing.
+ * column, or ends on the edge of a roof opening (a dormer cheek wall dying into the roof). Only ends
+ * that touch nothing are reported — those are the gaps that keep rooms from closing.
  */
 function validateLineConnectivity(levelDir: { name: string; path: string }, unit: string): string[] {
   const warnings: string[] = [];
@@ -137,6 +138,23 @@ function validateLineConnectivity(levelDir: { name: string; path: string }, unit
     } catch { /* skip */ }
   }
 
+  // Roof openings (dormers): a cheek wall ends where it dies into the roof, on the opening's edge.
+  const roofOpenings: number[][][] = [];
+  {
+    const path = join(levelDir.path, 'opening.geojson');
+    const roofs = csvRows('roof');
+    const rows = csvRows('opening');
+    if (existsSync(path) && roofs.size > 0) {
+      try {
+        for (const f of parseGeoJsonFile(path).features) {
+          if (f.geometry.type !== 'Polygon') continue;
+          const host = rows.get(String(f.properties?.id ?? ''))?.host_id ?? '';
+          if (roofs.has(host)) roofOpenings.push((f.geometry.coordinates as number[][][])[0] ?? []);
+        }
+      } catch { /* skip */ }
+    }
+  }
+
   const same = (a: { elementId: string; table: string }, b: { elementId: string; table: string }) =>
     a.elementId === b.elementId && a.table === b.table;
 
@@ -153,6 +171,12 @@ function validateLineConnectivity(levelDir: { name: string; path: string }, unit
     const onColumn = columns.some((c) =>
       ep.x >= c.x0 - TOUCH_SLACK && ep.x <= c.x1 + TOUCH_SLACK && ep.y >= c.y0 - TOUCH_SLACK && ep.y <= c.y1 + TOUCH_SLACK);
     if (onColumn) continue;
+
+    const onRoofOpening = roofOpenings.some(ring => ring.some((a, i) => {
+      const b = ring[(i + 1) % ring.length];
+      return pointNearSegment(ep.x, ep.y, a[0], a[1], b[0], b[1], TOLERANCE + TOUCH_SLACK);
+    }));
+    if (onRoofOpening) continue;
 
     let nearestDist = Infinity;
     let nearestId = '';
