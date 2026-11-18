@@ -234,6 +234,8 @@ function run(api: W.IfcAPI, modelID: number, data: Uint8Array, opts: ImportIfcOp
     if (done(id)) continue;
     let kind = mepKind(model, id);
     if (!kind) continue;
+    // VAV boxes named as such are equipment (with their ports), not terminals / dampers
+    if ((kind === 'terminal' || kind === 'accessory') && TERMINAL_BOX_NAME.test(ctx.label(id) ?? '')) kind = 'equipment';
     // Our own exports say what each element was
     const bt = bimdownTable(id);
     if (bt === 'equipment' || bt === 'terminal') kind = bt;
@@ -406,16 +408,20 @@ const EQUIPMENT = new Set(['IfcEnergyConversionDevice', 'IfcFlowMovingDevice', '
   'IfcBoiler', 'IfcChiller', 'IfcCoolingTower', 'IfcUnitaryEquipment', 'IfcFan', 'IfcPump', 'IfcTank', 'IfcTransformer',
   'IfcElectricDistributionBoard', 'IfcElectricGenerator', 'IfcAirToAirHeatRecovery', 'IfcCoil', 'IfcCompressor', 'IfcCondenser',
   'IfcEvaporativeCooler', 'IfcEvaporator', 'IfcHeatExchanger', 'IfcHumidifier', 'IfcTubeBundle', 'IfcBurner', 'IfcEngine',
-  'IfcElectricMotor', 'IfcMotorConnection', 'IfcSolarDevice', 'IfcInterceptor', 'IfcElectricFlowStorageDevice', 'IfcCooledBeam']);
+  'IfcElectricMotor', 'IfcMotorConnection', 'IfcSolarDevice', 'IfcInterceptor', 'IfcElectricFlowStorageDevice', 'IfcCooledBeam',
+  'IfcAirTerminalBox']);
+
+/** VAV / CAV terminal units by name (Revit exports them as air terminals, flow controllers or proxies). */
+export const TERMINAL_BOX_NAME = /\b(vav|cav)\b|terminal.?box|terminal.?unit|air.?terminal.?box|volumenstromregler|变风量|定风量/i;
 
 function mepKind(model: IfcModel, id: number): 'segment' | 'fitting' | 'accessory' | 'terminal' | 'equipment' | null {
   const cls = model.className(id);
   if (SEGMENTS.has(cls)) return 'segment';
   if (FITTINGS.has(cls)) return 'fitting';
-  if (cls === 'IfcFlowController') {
-    // IFC2x3 distribution boards are flow controllers too
+  if (cls === 'IfcFlowController' || cls === 'IfcFlowTerminal') {
+    // IFC2x3 distribution boards and air terminal boxes (VAV) are flow controllers too
     const t = model.typeOf.get(id);
-    if (t && /ElectricDistributionPoint|DistributionBoard/.test(model.className(t))) return 'equipment';
+    if (t && /ElectricDistributionPoint|DistributionBoard|AirTerminalBox/.test(model.className(t))) return 'equipment';
   }
   if (ACCESSORIES.has(cls)) return 'accessory';
   if (TERMINALS.has(cls)) return 'terminal';

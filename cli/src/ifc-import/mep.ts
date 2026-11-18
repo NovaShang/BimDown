@@ -150,7 +150,7 @@ function terminalType(ctx: ImportContext, id: number, system: string | undefined
 const EQUIPMENT_CLASS: Record<string, string> = {
   IfcBoiler: 'boiler', IfcChiller: 'chiller', IfcCoolingTower: 'cooling_tower', IfcFan: 'fan', IfcPump: 'pump',
   IfcTank: 'tank', IfcTransformer: 'transformer', IfcElectricDistributionBoard: 'panelboard', IfcElectricGenerator: 'generator',
-  IfcCoil: 'coil',
+  IfcCoil: 'coil', IfcAirTerminalBox: 'vav',
 };
 
 function equipmentType(ctx: ImportContext, id: number): string {
@@ -163,6 +163,7 @@ function equipmentType(ctx: ImportContext, id: number): string {
   if (EQUIPMENT_CLASS[k]) return k === 'IfcBoiler' && pt === 'WATER' ? 'water_heater' : EQUIPMENT_CLASS[k];
   if (k === 'IfcUnitaryEquipment') return pt === 'AIRHANDLER' ? 'ahu' : 'fcu';
   const name = (ctx.label(id) ?? '').toLowerCase();
+  if (/\b(vav|cav)\b|terminal.?box|terminal.?unit|volumenstromregler|变风量|定风量/.test(name)) return 'vav';
   if (/\bahu\b|air.?handl|rlt|lüftungsgerät|klimagerät|wrg/.test(name)) return 'ahu';
   if (/fan.?coil|\bfcu\b|gebläsekonvektor/.test(name)) return 'fcu';
   if (/chiller|kälte|kaelte/.test(name)) return 'chiller';
