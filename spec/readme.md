@@ -85,8 +85,8 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `window`         | Hosted on wall   | No geometry file | Window with dimensions |
 | `opening`        | Hosted           | Conditional | Wall opening (no geometry file) or slab opening (`Polygon`) |
 | `stair`          | Spatial line     | `LineString` 3D | Stair (its own first run) with vertical span; optional multi-storey repetition |
-| `stair_run`      | Spatial line     | `LineString` 3D | Further flight of a stair (`host_id` → stair) |
-| `stair_landing`  | Polygon          | `Polygon` 2D | Landing between runs (`host_id` → stair), top at `base_offset` |
+| `stair_run`      | Spatial line     | `LineString` 3D | Further flight of a stair (`host_id` → stair); curved with a GeoJSON `arc` |
+| `stair_landing`  | Polygon          | `Polygon` 2D | Landing between runs (`host_id` → stair), top at `base_offset`; `step_count` > 0 = winders |
 | `ramp`           | Spatial line     | `LineString` 3D | Accessibility ramp |
 | `railing`        | Spatial line     | Conditional | Sketched railing (`LineString` 3D, optionally on a slab via `host_id`) or stair railing (`host_id` → stair + `side`, no geometry) |
 | `curtain_wall`   | Line             | `LineString` 2D | Curtain wall with grid parameters |

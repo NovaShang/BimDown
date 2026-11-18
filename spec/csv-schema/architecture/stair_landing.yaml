@@ -10,6 +10,12 @@ description: >
   of the run that arrives on it (tools keep them in step); the run leaving it
   starts at that height.
 
+  Winders: with `step_count` > 0 the landing is not flat but turns as that
+  many winder treads (riser lines radiating from the inner corner of an L, or
+  from the middle of the well side of a U, equal going on the walking line).
+  Tread i is base_offset + i risers; the run leaving it starts on the last one
+  (base_offset + step_count risers). Its risers count in the stair's riser rule.
+
 fields:
   - name: host_id
     type: reference
@@ -24,3 +30,7 @@ fields:
   - name: thickness
     type: float
     description: Slab thickness of the landing (m), hanging below its top. Defaults to 0.15 if blank.
+
+  - name: step_count
+    type: int
+    description: Winder risers in the turn (0 / empty = flat landing).

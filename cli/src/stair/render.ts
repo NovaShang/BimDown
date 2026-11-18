@@ -6,7 +6,7 @@
  * also draw on the storeys they repeat on.
  */
 import { loadStairs, type StairModel } from './model.js';
-import { railPlan, runPlan, walkingLine, STAIR_CUT_HEIGHT, type Point, type StairRun } from './geometry.js';
+import { railPlan, runDir, runPlan, walkingLine, winderGeometry, STAIR_CUT_HEIGHT, type Point, type StairRun } from './geometry.js';
 import { UNIT_TO_M, projectUnits } from '../utils/units.js';
 
 export interface StairRendered {
@@ -41,6 +41,11 @@ function stairSvg(s: StairModel, scale: number, cutZ: number, k: number): StairR
     const above = l.top * scale > cutZ;
     parts.push(`<polygon points="${pts(l.vertices)}" fill="rgba(244,162,97,0.15)" stroke="${STAIR}" stroke-width="${f(0.03 * k)}"${above ? ` stroke-dasharray="${f(0.12 * k)},${f(0.06 * k)}"` : ''} />`);
     all.push(...l.vertices);
+    // Winder risers
+    const w = winderGeometry(s.asm, l);
+    for (const ln of w?.lines ?? []) {
+      parts.push(`<line x1="${f(ln.a.x)}" y1="${f(ln.a.y)}" x2="${f(ln.b.x)}" y2="${f(ln.b.y)}" stroke="${STAIR}" stroke-width="${f(0.025 * k)}"${ln.z * scale > cutZ ? ` stroke-dasharray="${f(0.1 * k)},${f(0.06 * k)}"` : ''} />`);
+    }
   }
   for (const r0 of s.asm.runs) {
     const plan = runPlan(scaled(r0, scale), cutZ);
@@ -63,7 +68,8 @@ function stairSvg(s: StairModel, scale: number, cutZ: number, k: number): StairR
     parts.push(`<circle cx="${f(walk[0].x)}" cy="${f(walk[0].y)}" r="${f(0.06 * k)}" fill="${STAIR}" />`);
     const r0 = s.asm.runs[0];
     const off = Math.min(0.6 * k, r0.length * 0.25);
-    const lp = { x: walk[0].x + r0.u.x * off - r0.u.y * r0.width * 0.22, y: walk[0].y + r0.u.y * off + r0.u.x * r0.width * 0.22 };
+    const u0 = runDir(r0, 0);
+    const lp = { x: walk[0].x + u0.x * off - u0.y * r0.width * 0.22, y: walk[0].y + u0.y * off + u0.x * r0.width * 0.22 };
     const up = r0.endZ >= r0.startZ;
     parts.push(`<text x="0" y="0" transform="translate(${f(lp.x)},${f(lp.y)}) scale(1,-1)" font-size="${f(0.25 * k)}" font-family="sans-serif" font-weight="bold" fill="${STAIR}" text-anchor="middle" dominant-baseline="central">${up ? 'UP' : 'DN'}</text>`);
   }

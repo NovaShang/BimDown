@@ -10,7 +10,7 @@ import { readCsv } from '../utils/csv.js';
 import { parseGeoJsonFile, type BimDownFeature } from '../utils/geojson.js';
 import { loadCatalog, typeValues } from '../catalog/index.js';
 import {
-  stairRepetitions, stairRailPath, lineRailPath, repZ,
+  arcFromEnds, stairRepetitions, stairRailPath, lineRailPath, repZ,
   type Point, type RailSegment, type RailSide, type StairAssembly, type StairLanding, type StairRepetition, type StairRun,
 } from './geometry.js';
 
@@ -74,14 +74,18 @@ function runFrom(id: string, table: string, row: Record<string, string>, f: BimD
   if (c.length < 2) return null;
   const a = c[0], b = c[c.length - 1];
   const start = { x: a[0], y: a[1] }, end = { x: b[0], y: b[1] };
-  const length = Math.hypot(end.x - start.x, end.y - start.y);
-  if (length < 1e-3) return null;
+  const chord = Math.hypot(end.x - start.x, end.y - start.y);
+  if (chord < 1e-3) return null;
+  // Curved run: GeoJSON arc hint {radius, large_arc, sweep}
+  const h = f.properties.arc as { radius?: number; large_arc?: boolean; sweep?: boolean } | undefined;
+  const arc = h && typeof h.radius === 'number' ? arcFromEnds(start, end, h.radius, h.large_arc === true, h.sweep === true) ?? undefined : undefined;
   return {
     id, table, start, end,
     startZ: (a[2] ?? 0) - elevation, endZ: (b[2] ?? 0) - elevation,
     width: num(row.width, 1.2) || 1.2,
     stepCount: Math.max(1, Math.round(num(row.step_count, 18)) || 18),
-    length, u: { x: (end.x - start.x) / length, y: (end.y - start.y) / length },
+    length: arc ? Math.abs(arc.sweep) * arc.r : chord, u: { x: (end.x - start.x) / chord, y: (end.y - start.y) / chord },
+    ...(arc ? { arc } : {}),
   };
 }
 
@@ -95,7 +99,8 @@ function landingFrom(id: string, row: Record<string, string>, f: BimDownFeature 
   }
   if (vertices.length < 3) return null;
   const top = num(row.base_offset, typeof f.properties.base_offset === 'number' ? f.properties.base_offset : 0);
-  return { id, vertices, top, thickness: num(row.thickness, 0.15) || 0.15 };
+  const steps = Math.round(num(row.step_count, 0));
+  return { id, vertices, top, thickness: num(row.thickness, 0.15) || 0.15, ...(steps > 0 ? { steps } : {}) };
 }
 
 function levelElevations(globalDir: string): Map<string, number> {
