@@ -1407,5 +1407,19 @@
   "notice.matchIncompatible": "Pick an element of the source's category",
   "notice.matchUntyped": "This element has no types to match",
   "tempHide.active": "Temporary hide / isolate",
-  "tempHide.reset": "Reset (HR)"
+  "tempHide.reset": "Reset (HR)",
+  "hint.stairSketch": "Boundary: click the corners, the first again to close · Riser: two clicks per riser line, bottom first · Backspace undoes · Enter builds the stair",
+  "hint.stairCurved": "Click the centre, then a point on the walking line (radius and start), then the turning direction",
+  "layer.stair_component": "Stair",
+  "layer.stair_sketch": "Stair by Sketch",
+  "field.Turn": "Turn",
+  "option.Landing": "Landing",
+  "option.Winders": "Winders",
+  "field.Sketch": "Sketch",
+  "option.Boundary": "Boundary",
+  "option.Riser": "Riser",
+  "field.Winder Risers": "Winder Risers",
+  "notice.stairSketch_risers": "Draw at least two riser lines",
+  "notice.stairSketch_runs": "Could not find a run: draw parallel riser lines at even spacing",
+  "notice.stairSketch_boundary": "The boundary leaves no landing between the runs"
 }

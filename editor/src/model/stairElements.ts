@@ -7,12 +7,26 @@ import type { CanonicalElement, LineElement, PolygonElement, SpatialLineElement 
 import { generateId } from './ids.ts';
 import { defaultAttrs } from './defaults.ts';
 import type { Level } from '../types.ts';
-import { assembleStair, hostRefOf, planStairZ, type RailSide, type StairLayout } from '../geometry/stair.ts';
+import { arcHint, assembleStair, hostRefOf, planStairZ, type RailSide, type RunArc, type StairLayout } from '../geometry/stair.ts';
+import type { ArcParams } from '../geometry/arc.ts';
+
+/** Editor arc params of a curved run. */
+function arcParams(a: RunArc | undefined): { arc?: ArcParams } {
+  if (!a) return {};
+  const h = arcHint(a);
+  return { arc: { rx: h.radius, ry: h.radius, rotation: 0, largeArc: h.large_arc, sweep: h.sweep } };
+}
 
 export type StairRailingsOption = 'both' | 'left' | 'right' | 'none';
 
 /** Drawing-bar option of the stair tool: automatic railings (UI-only, never stored). */
 export const STAIR_RAILINGS_KEY = '__railings';
+
+/** Drawing-bar option of the stair tool: how L / U stairs turn, 'landing' (default) or 'winders' (UI-only). */
+export const STAIR_TURN_KEY = '__turn';
+
+/** Drawing-bar option of stair by sketch: 'boundary' (default) or 'riser' (UI-only). */
+export const SKETCH_MODE_KEY = '__sketch_mode';
 
 export const STAIR_PART_TABLES = new Set(['stair_run', 'stair_landing']);
 
@@ -69,11 +83,12 @@ export function stairElements(p: StairPlacement): CanonicalElement[] {
   const stairId = take('stair');
   const stair: SpatialLineElement = {
     id: stairId, tableName: 'stair', discipline: 'architecture', geometry: 'spatial_line',
-    start: first.start, end: first.end, startZ: first.startZ, endZ: first.endZ, strokeWidth: p.width,
+    start: first.start, end: first.end, startZ: first.startZ, endZ: first.endZ, strokeWidth: first.width ?? p.width,
+    ...arcParams(first.arc),
     attrs: {
       ...clean, id: stairId,
       start_z: String(first.startZ), end_z: String(first.endZ),
-      width: String(p.width), step_count: String(first.steps),
+      width: String(first.width ?? p.width), step_count: String(first.steps),
     },
   };
   out.push(stair);
@@ -87,6 +102,7 @@ export function stairElements(p: StairPlacement): CanonicalElement[] {
         attrs: {
           ...defaultAttrs('stair_landing', p.levelId), id: lid, host_id: stairId,
           base_offset: String(landing.top), material: clean.material || 'concrete',
+          ...(landing.steps ? { step_count: String(landing.steps) } : {}),
         },
       };
       out.push(el);
@@ -94,11 +110,12 @@ export function stairElements(p: StairPlacement): CanonicalElement[] {
     const rid = take('stair_run');
     const run: SpatialLineElement = {
       id: rid, tableName: 'stair_run', discipline: 'architecture', geometry: 'spatial_line',
-      start: r.start, end: r.end, startZ: r.startZ, endZ: r.endZ, strokeWidth: p.width, hostId: stairId,
+      start: r.start, end: r.end, startZ: r.startZ, endZ: r.endZ, strokeWidth: r.width ?? p.width, hostId: stairId,
+      ...arcParams(r.arc),
       attrs: {
         ...defaultAttrs('stair_run', p.levelId), id: rid, host_id: stairId,
         start_z: String(r.startZ), end_z: String(r.endZ),
-        width: String(p.width), step_count: String(r.steps),
+        width: String(r.width ?? p.width), step_count: String(r.steps),
         ...(clean.material ? { material: clean.material } : {}),
       },
     };

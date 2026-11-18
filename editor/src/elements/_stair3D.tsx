@@ -9,8 +9,9 @@ import {
   type Material,
 } from 'three';
 import type { Point } from '../model/elements.ts';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
-  flightProfile, railBalusters, repZ,
+  flightProfile, railBalusters, repZ, runTreads, treadBlocks,
   type RailSegment, type StairLanding, type StairRepetition, type StairRun,
 } from '../geometry/stair.ts';
 
@@ -25,6 +26,8 @@ function highlightMat(material: Material) {
 
 /** Solid flight of a run (in one multi-storey repetition), `baseY` = level elevation. */
 export function flightMesh(key: string, run: StairRun, baseY: number, rep: StairRepetition, material: Material, highlighted: boolean, elementId: string): ReactNode {
+  // Curved run: one block per (wedge) tread
+  if (run.arc) return treadsMesh(key, runTreads(run), undefined, baseY, rep, material, highlighted, elementId, Math.min(run.startZ, run.endZ));
   const z0 = repZ(rep, run.startZ), z1 = repZ(rep, run.endZ);
   const up = z1 >= z0;
   const start = up ? run.start : run.end;
@@ -61,6 +64,38 @@ export function landingMesh(key: string, landing: StairLanding, baseY: number, r
   const geo = new ExtrudeGeometry(shape, { depth: landing.thickness, bevelEnabled: false });
   geo.rotateX(-Math.PI / 2);
   geo.translate(0, baseY + repZ(rep, landing.top) - landing.thickness, 0);
+  return (
+    <mesh key={key} geometry={geo} material={highlighted ? undefined : material}
+      castShadow receiveShadow userData={{ elementId }}>
+      {highlighted && highlightMat(material)}
+    </mesh>
+  );
+}
+
+/**
+ * Stepped treads (curved runs, winders) as one mesh: each tread polygon from
+ * its top down one riser + the waist (geometry/stairCore.ts treadBlocks).
+ */
+export function treadsMesh(
+  key: string, treads: readonly { poly: Point[]; top: number }[], waist: number | undefined, baseY: number,
+  rep: StairRepetition, material: Material, highlighted: boolean, elementId: string, floor = -Infinity,
+): ReactNode {
+  const parts: BufferGeometry[] = [];
+  for (const b of treadBlocks(treads, waist, floor)) {
+    if (b.poly.length < 3) continue;
+    const top = repZ(rep, b.top), bottom = top - (b.top - b.bottom) * Math.max(rep.scale, 1e-6);
+    const shape = new Shape();
+    shape.moveTo(b.poly[0].x, b.poly[0].y);
+    for (let i = 1; i < b.poly.length; i++) shape.lineTo(b.poly[i].x, b.poly[i].y);
+    shape.closePath();
+    const g = new ExtrudeGeometry(shape, { depth: Math.max(0.01, top - bottom), bevelEnabled: false });
+    g.rotateX(-Math.PI / 2);
+    g.translate(0, baseY + bottom, 0);
+    parts.push(g.index ? g.toNonIndexed() : g);
+  }
+  if (parts.length === 0) return null;
+  const geo = mergeGeometries(parts, false) ?? parts[0];
+  geo.computeVertexNormals();
   return (
     <mesh key={key} geometry={geo} material={highlighted ? undefined : material}
       castShadow receiveShadow userData={{ elementId }}>

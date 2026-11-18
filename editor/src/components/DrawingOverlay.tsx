@@ -3,7 +3,8 @@ import type { CanonicalElement, Point } from '../model/elements.ts';
 import type { ProjectUnit } from '../types.ts';
 import { resolveLineStrokeWidth } from '../utils/geometry.ts';
 import { clicksRequired, isMultiClickStair } from '../tools/drawStairTool.ts';
-import { layoutStair } from '../geometry/stair.ts';
+import { layoutPlan } from '../geometry/stair.ts';
+import { sketchToLayout } from '../geometry/stairSketch.ts';
 import { gatherConnectorSnapPoints, isMepLineTable } from '../utils/connectorSnap.ts';
 import { formatLength } from '../utils/units.ts';
 import { isWallDrawTable } from '../tools/wallDrawTool.ts';
@@ -42,6 +43,31 @@ function LengthLabel({ from, to, scale, projectUnit }: { from: Point; to: Point;
     >
       {formatLength(len, projectUnit)}
     </text>
+  );
+}
+
+/** Stair by sketch in progress (tools/stairSketchTool.ts). */
+function StairSketchPreview({ drawingState, drawingAttrs, scale }: { drawingState: DrawingState; drawingAttrs: Record<string, string>; scale: number }) {
+  const sk = drawingState.stairSketch ?? { boundary: [], risers: [] };
+  const pts = drawingState.points;
+  const cursor = drawingState.cursor;
+  const riserMode = drawingAttrs.__sketch_mode === 'riser';
+  const boundaryOpen = !riserMode ? [...pts, ...(cursor ? [cursor] : [])] : [];
+  const boundary = sk.boundary.length >= 3 ? sk.boundary : [];
+  const layout = sketchToLayout({ boundary: boundary.length ? boundary : pts.length >= 3 && !riserMode ? pts : [], risers: sk.risers }, 0, 3);
+  const plan = 'error' in layout ? null : layoutPlan(layout, 1.2);
+  const sw = 0.08 / scale;
+  const poly = (p: { x: number; y: number }[]) => p.map(v => `${v.x},${v.y}`).join(' ');
+  return (
+    <g className="drawing-overlay" transform="scale(1,-1)" data-testid="stair-sketch-preview">
+      {plan?.runs.map((r, i) => <polygon key={`r${i}`} points={poly(r.outline)} fill="rgba(79,195,247,0.15)" stroke="none" />)}
+      {plan?.landings.map((l, i) => <polygon key={`l${i}`} points={poly(l.vertices)} fill="rgba(123,104,238,0.15)" stroke="none" />)}
+      {boundary.length > 0 && <polygon points={poly(boundary)} fill="none" stroke="#22c55e" strokeWidth={sw * 1.4} />}
+      {boundaryOpen.length > 1 && <polyline points={poly(boundaryOpen)} fill="none" stroke="#22c55e" strokeWidth={sw * 1.4} strokeDasharray={`${sw * 4},${sw * 2}`} />}
+      {sk.risers.map(([a, b], i) => <line key={`s${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#111827" strokeWidth={sw} />)}
+      {riserMode && pts.length === 1 && cursor && <line x1={pts[0].x} y1={pts[0].y} x2={cursor.x} y2={cursor.y} stroke="#111827" strokeWidth={sw} strokeDasharray={`${sw * 4},${sw * 2}`} />}
+      {[...pts].map((p, i) => <circle key={`p${i}`} cx={p.x} cy={p.y} r={sw * 2.5} fill={riserMode ? '#111827' : '#22c55e'} />)}
+    </g>
   );
 }
 
@@ -115,6 +141,10 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
   }
 
   if (activeTool === 'draw_line') {
+    // Stair by sketch: boundary (green), risers (black), the stair they make (blue)
+    if (tableName === 'stair' && (drawingState.stairSketch !== undefined || drawingAttrs.__sketch_mode)) {
+      return wrap(<StairSketchPreview drawingState={drawingState} drawingAttrs={drawingAttrs} scale={scale} />);
+    }
     // Multi-click stair (L / U) — show dots at each clicked point, plus
     // a dashed segment from the last point to the cursor.
     if (tableName === 'stair' && isMultiClickStair(drawingAttrs.stair_type)) {
@@ -122,7 +152,6 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
       const r1 = 0.45 / scale;
       const r2 = 0.3 / scale;
       const width = parseFloat(drawingAttrs.width || '1.2') || 1.2;
-      const hw = width / 2;
 
       // Preview thick band for the current segment (the run-in-progress).
       let bandLine: { from: Point; to: Point } | null = null;
@@ -130,40 +159,28 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
         bandLine = { from: points[points.length - 1], to: cursor };
       }
 
-      // Tentative runs + landing from the clicks so far and the cursor (a U
-      // stair's last run mirrors the first until it is clicked).
-      let previewPts: Point[] | null = null;
-      if (cursor) {
-        const pts = [...points, cursor];
-        if (pts.length === need) previewPts = pts;
-        else if (drawingAttrs.stair_type === 'half_turn' && pts.length === 3) {
-          previewPts = [...pts, { x: pts[2].x + pts[0].x - pts[1].x, y: pts[2].y + pts[0].y - pts[1].y }];
-        }
-      }
-      const layout = previewPts ? layoutStair(previewPts, width, parseFloat(drawingAttrs.step_count || '18') || 18, 0, 3) : null;
+      // Tentative runs + landings the tool computed from the clicks and the cursor
+      const layout = drawingState.stairPreview ? layoutPlan(drawingState.stairPreview, width) : null;
       if (layout) bandLine = null;
-      const runRects = (layout?.runs ?? []).map(r => {
-        const l = Math.hypot(r.end.x - r.start.x, r.end.y - r.start.y) || 1;
-        const nx = -(r.end.y - r.start.y) / l * hw, ny = (r.end.x - r.start.x) / l * hw;
-        return [
-          { x: r.start.x + nx, y: r.start.y + ny }, { x: r.end.x + nx, y: r.end.y + ny },
-          { x: r.end.x - nx, y: r.end.y - ny }, { x: r.start.x - nx, y: r.start.y - ny },
-        ].map(v => `${v.x},${v.y}`).join(' ');
-      });
-      const landingRect = layout?.landings[0] ? layout.landings[0].vertices.map(v => `${v.x},${v.y}`).join(' ') : null;
+      const runRects = (layout?.runs ?? []).map(r => r.outline.map(v => `${v.x},${v.y}`).join(' '));
+      const treadLines = (layout?.runs ?? []).flatMap(r => r.treads).concat((layout?.landings ?? []).flatMap(l => l.risers));
+      const landingRects = (layout?.landings ?? []).map(l => l.vertices.map(v => `${v.x},${v.y}`).join(' '));
 
       return wrap(
         <g className="drawing-overlay" transform="scale(1,-1)">
-          {landingRect && (
-            <polygon
-              points={landingRect}
+          {landingRects.map((pts, i) => (
+            <polygon key={`landing-${i}`}
+              points={pts}
               fill="rgba(123,104,238,0.15)"
               stroke="#7b68ee" strokeWidth={0.06 / scale}
               strokeDasharray={`${0.3 / scale},${0.15 / scale}`}
             />
-          )}
+          ))}
           {runRects.map((pts, i) => (
             <polygon key={`run-${i}`} points={pts} fill="rgba(79,195,247,0.18)" stroke="#4fc3f7" strokeWidth={0.05 / scale} />
+          ))}
+          {treadLines.map(([a, b], i) => (
+            <line key={`tread-${i}`} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke="#4fc3f7" strokeWidth={0.03 / scale} opacity={0.8} />
           ))}
           {bandLine && (
             <line

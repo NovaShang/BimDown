@@ -124,6 +124,9 @@ export interface DrawingState {
   rotation?: number;
   /** Rotate / mirror / array / align / offset / paste (tools/modifyTools.ts). */
   modify?: ModifyState;
+  /** Stair tool: the stair the clicks so far describe (preview), and the sketch of a stair by sketch. */
+  stairPreview?: import('../geometry/stairCore.ts').StairLayout;
+  stairSketch?: { boundary: { x: number; y: number }[]; risers: [{ x: number; y: number }, { x: number; y: number }][] };
 }
 
 export interface ModifyState {

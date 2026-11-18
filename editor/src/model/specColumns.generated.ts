@@ -45,7 +45,7 @@ export const SPEC_COLUMNS: Record<string, { csv: string[]; geojson: string[] }> 
   slab_type: { csv: ['id', 'name', 'description', 'material', 'thickness', 'material_grade'], geojson: [] },
   space: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'x', 'y', 'name'], geojson: ['base_offset'] },
   stair: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'base_level_id', 'top_level_id', 'material', 'width', 'step_count', 'stair_type', 'multistory_top_level_id'], geojson: ['base_offset', 'top_offset'] },
-  stair_landing: { csv: ['id', 'number', 'base_offset', 'mesh_file', 'group_id', 'pinned', 'material', 'host_id', 'thickness'], geojson: [] },
+  stair_landing: { csv: ['id', 'number', 'base_offset', 'mesh_file', 'group_id', 'pinned', 'material', 'host_id', 'thickness', 'step_count'], geojson: [] },
   stair_run: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'material', 'host_id', 'width', 'step_count'], geojson: ['base_offset'] },
   structure_column: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'base_level_id', 'top_level_id', 'material', 'shape', 'size_x', 'size_y', 'flange', 'web', 'thickness', 'root_radius', 'designation', 'type_id', 'material_grade'], geojson: ['base_offset', 'top_offset'] },
   structure_slab: { csv: ['id', 'number', 'mesh_file', 'group_id', 'pinned', 'material', 'boundary_walls', 'boundary_face', 'boundary_offset', 'function', 'thickness', 'type_id', 'material_grade', 'span_direction', 'slope_arrow'], geojson: ['base_offset'] },

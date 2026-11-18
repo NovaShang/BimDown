@@ -14,12 +14,12 @@ import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.
 import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS, STAIR_TYPE_OPTIONS } from './_options.ts';
 import { resolvePropertyFields } from './_propertyFields.ts';
 import {
-  runOf, runPlan, stairAssemblyIn, stairCalc, stairRepetitionsIn, walkingLine, STAIR_CUT_HEIGHT,
+  runDir, runOf, runPlan, stairAssemblyIn, stairCalc, stairRepetitionsIn, walkingLine, STAIR_CUT_HEIGHT,
   type StairAssembly, type StairCalc, type StairRepetition, type StairRun,
 } from '../geometry/stair.ts';
 import { flightMesh } from './_stair3D.tsx';
 import StairPropertyPanel from './StairPropertyPanel.tsx';
-import { STAIR_RAILINGS_KEY } from '../model/stairElements.ts';
+import { SKETCH_MODE_KEY, STAIR_RAILINGS_KEY, STAIR_TURN_KEY } from '../model/stairElements.ts';
 import { drawingLabel, drawingLang } from '../export/drawing/labels.ts';
 
 export interface StairFacts {
@@ -57,6 +57,12 @@ const DRAWING_FIELDS = [
       { value: 'right', label: 'Right' }, { value: 'none', label: 'None' },
     ],
   },
+  // L / U stairs: turn at a flat landing or by winder treads (UI-only)
+  {
+    key: STAIR_TURN_KEY, label: 'Turn', type: 'select' as const, options: [
+      { value: 'landing', label: 'Landing' }, { value: 'winders', label: 'Winders' },
+    ],
+  },
   BASE_OFFSET_FIELD,
 ];
 
@@ -80,19 +86,28 @@ export const stairModule: ElementModule<StairFacts> = {
   layerStyle: { displayName: 'Stairs', color: '#7b68ee', icon: '⊞', order: 9 },
   renderZIndex: 30,
   propertyPanel: StairPropertyPanel,
-  placementDefaults: () => ({ [STAIR_RAILINGS_KEY]: 'both' }),
+  placementDefaults: () => ({ [STAIR_RAILINGS_KEY]: 'both', [STAIR_TURN_KEY]: 'landing' }),
+  // By component (runs along clicked walking-line points / a curve) or by sketch (boundary + risers).
+  toolbarVariants: [
+    { id: 'component', label: 'layer.stair_component', icon: '⊞', iconName: 'stair', placementType: 'spatial_line' },
+    {
+      id: 'sketch', label: 'layer.stair_sketch', icon: '⊞', iconName: 'stair', placementType: 'spatial_line',
+      defaults: { [SKETCH_MODE_KEY]: 'boundary' },
+      fields: ['material', STAIR_RAILINGS_KEY, 'base_offset'],
+      hideFields: [STAIR_TURN_KEY],
+      extraFields: [{
+        key: SKETCH_MODE_KEY, label: 'Sketch', type: 'select', options: [
+          { value: 'boundary', label: 'Boundary' }, { value: 'riser', label: 'Riser' },
+        ],
+      }],
+    },
+  ],
 
   geometry(el: CanonicalElement, ctx: GeometryContext): StairFacts | null {
     const run = runOf(el);
     if (!run) return null;
-    const hw = run.width / 2;
-    const nx = -run.u.y, ny = run.u.x;
-    const footprint2D: Point[] = [
-      { x: run.start.x + nx * hw, y: run.start.y + ny * hw },
-      { x: run.end.x + nx * hw, y: run.end.y + ny * hw },
-      { x: run.end.x - nx * hw, y: run.end.y - ny * hw },
-      { x: run.start.x - nx * hw, y: run.start.y - ny * hw },
-    ];
+    // Plan outline (an annular band for a curved run)
+    const footprint2D: Point[] = runPlan(run, STAIR_CUT_HEIGHT).outline;
     const assembly = stairAssemblyIn(ctx, el);
     const reps = stairRepetitionsIn(el, ctx);
     return {
@@ -148,7 +163,7 @@ export function drawRunPlan(run: StairRun, stroke: string): ReactNode {
       <polygon points={fill} fill="rgba(123,104,238,0.10)" stroke="none" />
       {plan.lines.map((l, i) => (
         <line key={i} x1={l.a.x} y1={l.a.y} x2={l.b.x} y2={l.b.y}
-          stroke={stroke} strokeWidth={i < 4 ? 0.025 : 0.015}
+          stroke={stroke} strokeWidth={l.edge ? 0.025 : 0.015}
           strokeDasharray={l.above ? '0.08 0.05' : undefined} />
       ))}
       {plan.breakLine && (
@@ -174,7 +189,7 @@ function drawWalkingLine(asm: StairAssembly, stroke: string): ReactNode {
   const line = [...pts.slice(0, -1), back].map(p => `${p.x},${p.y}`).join(' ');
   // Label beside the first run, a little up from its start
   const s = pts[0];
-  const u0 = first?.u ?? { x: ux, y: uy };
+  const u0 = first ? runDir(first, 0) : { x: ux, y: uy };
   const off = Math.min(0.6, (first?.length ?? 1) * 0.25);
   const lp = { x: s.x + u0.x * off - u0.y * (first?.width ?? 1) * 0.22, y: s.y + u0.y * off + u0.x * (first?.width ?? 1) * 0.22 };
   return (

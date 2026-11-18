@@ -30,7 +30,7 @@ import type { StairFacts } from '../../elements/stair.tsx';
 import type { StairRunFacts } from '../../elements/stair_run.tsx';
 import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
 import type { RailingFacts } from '../../elements/railing.tsx';
-import { runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
+import { runDir, runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
 import { stairsRepeatingOn } from '../../geometry/stairRepeats.ts';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
@@ -512,7 +512,7 @@ function drawStair(env: DrawEnv, f: StairFacts) {
   const tipFrom = pts[pts.length - 2], tip = pts[pts.length - 1];
   const ut = unit(sub(tip, tipFrom));
   const back = add(tip, ut, -head);
-  const u0 = first.u;
+  const u0 = runDir(first, 0);
   const start = add(pts[0], u0, Math.min(1.2 * pm, first.length * 0.08));
   e.line(below, start, pts.length > 2 ? pts[1] : back);
   for (let i = 1; i + 2 < pts.length; i++) e.line(below, pts[i], pts[i + 1]);
@@ -961,6 +961,8 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       const f = facts as StairLandingFacts;
       e.phase = Phase.Floor;
       e.poly(f.landing.top > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, f.vertices, true);
+      // Winder risers
+      for (const l of f.winder?.lines ?? []) e.line(l.z > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, l.a, l.b);
       return;
     }
     case 'ramp':

@@ -67,7 +67,7 @@ import {
 } from './ifc/frame.ts';
 import {
   type ProductGeom, box, brepFromBuffer, curtainWallParts, extrudePlan, fittingStubs, hangFromTop,
-  openingPartSolids, railingGeom, rampGeom, sectionProfile, stairFlightGeom, sweep, wallGeom,
+  openingPartSolids, railingGeom, rampGeom, sectionProfile, stairFlightGeom, sweep, wallGeom, winderGeom,
   wallOpeningFrame, wallOpeningSolid, type FittingLeg,
 } from './ifc/geometry.ts';
 import { slopedSlabSolid } from './ifc/slabSolid.ts';
@@ -1108,6 +1108,14 @@ class Exporter {
     this.stairWholes.set(`${scope.id}/${el.id}`, wholes);
   }
 
+  /** stair_type of a stair, or of the stair a run is hosted on. */
+  private stairTypeOf(scope: Scope, el: CanonicalElement): string {
+    if (el.tableName === 'stair') return el.attrs.stair_type || '';
+    const host = el.attrs.host_id || el.hostId || '';
+    const stair = scope.elements.find(e => e.tableName === 'stair' && (e.id === host || e.id.endsWith(`:${host}`)));
+    return stair?.attrs.stair_type || '';
+  }
+
   /** The IfcStair records (per repetition) of a host stair reference. */
   private stairWholesOf(scope: Scope, hostRef: string): StairWhole[] | undefined {
     if (!hostRef) return undefined;
@@ -1122,7 +1130,7 @@ class Exporter {
     const rise = Math.abs(f.endZ - f.startZ) / f.stepCount;
     const tread = f.horLen / f.stepCount;
     const tail: any[] = w.ifc4
-      ? [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread), w.enumv('IfcStairFlightTypeEnum', 'STRAIGHT')]
+      ? [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread), w.enumv('IfcStairFlightTypeEnum', f.run.arc ? (this.stairTypeOf(scope, el) === 'spiral' ? 'SPIRAL' : 'CURVED') : 'STRAIGHT')]
       : [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread)];
     const part = this.product({
       scope, el, key, type: 'IfcStairFlight', geom, styles: this.styleFor(f.material, 'stair'), name,
@@ -1152,6 +1160,28 @@ class Exporter {
   private exportLanding(scope: Scope, el: CanonicalElement, f: StairLandingFacts): void {
     const wholes = this.stairWholesOf(scope, el.attrs.host_id || el.hostId || '');
     const key = this.recKey(scope, el);
+    // Winder landing: its treads are a winder flight (IfcStairFlight WINDER), not a slab.
+    if (f.winder) {
+      for (const whole of wholes ?? [null]) {
+        const rep = whole?.rep;
+        const geom = winderGeom(f.winder, f.levelY, rep);
+        if (!geom) continue;
+        const k = !rep || rep.index === 0 ? key : `${key}#rep${rep.index}`;
+        const steps = f.winder.treads.length;
+        const riser = steps > 1 ? (f.winder.treads[1].top - f.winder.treads[0].top) * (rep?.scale ?? 1) : 0;
+        const tail: any[] = this.w.ifc4
+          ? [this.w.int(steps), this.w.int(steps), this.w.plen(Math.max(riser, 1e-3)), this.w.plen(f.winder.path / Math.max(1, steps)), this.w.enumv('IfcStairFlightTypeEnum', 'WINDER')]
+          : [this.w.int(steps), this.w.int(steps), this.w.plen(Math.max(riser, 1e-3)), this.w.plen(f.winder.path / Math.max(1, steps))];
+        const rec = this.product({
+          scope, el, key: k, type: 'IfcStairFlight', geom, styles: this.styleFor(f.material, 'stair'),
+          objectType: 'winder', tail, contained: !whole, storey: whole?.storey, register: !rep || rep.index === 0,
+        });
+        this.singleMaterial(rec.handle, f.material);
+        if (whole) this.aggregates.find(a => a.whole === whole.handle)?.parts.push(rec.handle);
+        this.bimdownPset(rec);
+      }
+      return;
+    }
     // base_offset is the landing top: the slab hangs below it (like the 3D view).
     for (const whole of wholes ?? [null]) {
       const rep = whole?.rep;

@@ -1407,5 +1407,19 @@
   "notice.matchIncompatible": "请选择与源同类别的图元",
   "notice.matchUntyped": "该图元没有可匹配的类型",
   "tempHide.active": "临时隐藏 / 隔离",
-  "tempHide.reset": "重设 (HR)"
+  "tempHide.reset": "重设 (HR)",
+  "hint.stairSketch": "边界：依次点击角点，再点首点闭合 · 踢面：每条踢面线点两下，从底部开始 · Backspace 撤销 · Enter 生成楼梯",
+  "hint.stairCurved": "先点圆心，再点行走线上一点（半径和起点），最后点旋转方向",
+  "layer.stair_component": "楼梯",
+  "layer.stair_sketch": "草图楼梯",
+  "field.Turn": "转角",
+  "option.Landing": "平台",
+  "option.Winders": "斜踏步",
+  "field.Sketch": "草图",
+  "option.Boundary": "边界",
+  "option.Riser": "踢面",
+  "field.Winder Risers": "斜踏步踢面数",
+  "notice.stairSketch_risers": "至少画两条踢面线",
+  "notice.stairSketch_runs": "无法识别梯段：请画间距均匀的平行踢面线",
+  "notice.stairSketch_boundary": "边界在梯段之间没有留出平台"
 }

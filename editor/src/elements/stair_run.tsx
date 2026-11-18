@@ -12,7 +12,7 @@ import { registerElement } from './registry.ts';
 import type { CanonicalElement, Point } from '../model/elements.ts';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { BASE_OFFSET_FIELD } from './_options.ts';
-import { findStair, hostRefOf, runOf, stairRepetitionsIn, type StairRepetition, type StairRun } from '../geometry/stair.ts';
+import { runPlan, STAIR_CUT_HEIGHT, findStair, hostRefOf, runOf, stairRepetitionsIn, type StairRepetition, type StairRun } from '../geometry/stair.ts';
 import { flightMesh } from './_stair3D.tsx';
 import { drawRunPlan } from './stair.tsx';
 
@@ -57,14 +57,8 @@ export const stairRunModule: ElementModule<StairRunFacts> = {
   geometry(el: CanonicalElement, ctx: GeometryContext): StairRunFacts | null {
     const run = runOf(el);
     if (!run) return null;
-    const hw = run.width / 2;
-    const nx = -run.u.y, ny = run.u.x;
-    const footprint2D: Point[] = [
-      { x: run.start.x + nx * hw, y: run.start.y + ny * hw },
-      { x: run.end.x + nx * hw, y: run.end.y + ny * hw },
-      { x: run.end.x - nx * hw, y: run.end.y - ny * hw },
-      { x: run.start.x - nx * hw, y: run.start.y - ny * hw },
-    ];
+    // Plan outline (an annular band for a curved run)
+    const footprint2D: Point[] = runPlan(run, STAIR_CUT_HEIGHT).outline;
     const host = findStair(ctx, hostRefOf(el), el.id);
     return {
       id: el.id,

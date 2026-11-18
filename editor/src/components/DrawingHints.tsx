@@ -37,6 +37,7 @@ const VARIANT_HINTS: Record<string, string> = {
   'structure_slab:by_walls': 'hint.pick.slab',
   'roof:by_walls': 'hint.pick.roof',
   'roof:dormer': 'hint.dormer',
+  'stair:sketch': 'hint.stairSketch',
   'ceiling:by_room': 'hint.pick.ceiling',
   'opening:sketch': 'hint.opening.sketch',
   'opening:shaft': 'hint.opening.shaft',
@@ -76,7 +77,9 @@ export default function DrawingHints() {
     ? wallDrawOptions(drawingAttrs).mode : null;
   const isWallRun = activeTool === 'draw_dimension' && drawingAttrs.dim_mode === 'wall_run';
   // Placement variants with their own hint (pick by walls / room, opening sketch / shaft).
-  const variantHint = drawingTarget?.variantId ? VARIANT_HINTS[`${drawingTarget.tableName}:${drawingTarget.variantId}`] : undefined;
+  const variantHint = (drawingTarget?.variantId ? VARIANT_HINTS[`${drawingTarget.tableName}:${drawingTarget.variantId}`] : undefined)
+    // Curved / spiral stairs: centre, walking line, direction
+    ?? (drawingTarget?.tableName === 'stair' && (drawingAttrs.stair_type === 'curved' || drawingAttrs.stair_type === 'spiral') ? 'hint.stairCurved' : undefined);
   const text = modifyHint
     ? t(modifyHint)
     : variantHint

@@ -48,7 +48,7 @@ import type { FurnitureFacts } from '../../elements/furniture.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import {
   box, brepFromBuffer, curtainWallParts, extrudePlan, hangFromTop, openingPartSolids, railingGeom, rampGeom,
-  sectionProfile, stairFlightGeom, sweep, wallOpeningFrame,
+  sectionProfile, stairFlightGeom, sweep, wallOpeningFrame, winderGeom,
 } from '../ifc/geometry.ts';
 
 /** Drawing class of a part: decides poché, pen and layer. */
@@ -483,9 +483,10 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     case 'stair_landing': {
       const f = facts as StairLandingFacts;
       if (!f.vertices || f.vertices.length < 3) break;
-      push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).map(rep => {
+      push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).flatMap(rep => {
+        if (f.winder) return winderGeom(f.winder, f.levelY, rep)?.solids ?? [];
         const top = rep.index === 0 ? f.baseY : f.levelY + repZ(rep, f.landing.top);
-        return extrudePlan(f.vertices, top - f.thickness, f.thickness);
+        return [extrudePlan(f.vertices, top - f.thickness, f.thickness)];
       })));
       break;
     }
