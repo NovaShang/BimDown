@@ -11,6 +11,7 @@ import { typeWarnings } from '../catalog/index.js';
 import { mepErrors, mepWarnings } from '../mep/index.js';
 import { groupWarningsForDir } from './group-warnings.js';
 import { numberWarnings } from './number-warnings.js';
+import { authoringHints } from './hints.js';
 import { curtainWallWarnings } from '../validate/curtain-wall.js';
 import { validateStairs } from '../validate/stairs.js';
 
@@ -24,6 +25,8 @@ export interface BuildResult {
   snaps: SnapRecord[];
   /** Derived-room overlaps/leaks; each one also appears in `warnings`. */
   roomIssues: RoomIssue[];
+  /** Authoring advice, not problems: raw sizes where a type fits, unmarked doors / windows. */
+  hints: string[];
 }
 
 export function build(dir: string): BuildResult {
@@ -61,7 +64,7 @@ export function build(dir: string): BuildResult {
     }
   }
 
-  return { issues, warnings, artifacts, snappedEndpoints: snaps.length, snaps, roomIssues };
+  return { issues, warnings, artifacts, snappedEndpoints: snaps.length, snaps, roomIssues, hints: authoringHints(dir) };
 }
 
 /**

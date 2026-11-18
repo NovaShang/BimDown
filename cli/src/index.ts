@@ -3,10 +3,8 @@ import { resolve } from 'node:path';
 import { build, validateOnly } from './build/index.js';
 import { buildRegistry, getSpecDir } from './schema/registry.js';
 import { schemaIndexLines, schemaTableLines } from './schema/schema-text.js';
-import { discoverLayout, listFiles } from './utils/fs.js';
-import { readCsv } from './utils/csv.js';
+import { discoverLayout } from './utils/fs.js';
 import { existsSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
 
 declare const CLI_VERSION: string;
 
@@ -67,6 +65,11 @@ function runBuild(dir: string, opts: { verbose?: boolean } = {}, readOnly = fals
       console.log(`  ${s.level}/${s.table} ${s.elementId} ${s.side} (${s.from.x.toFixed(3)}, ${s.from.y.toFixed(3)}) -> (${s.to.x.toFixed(3)}, ${s.to.y.toFixed(3)})`);
     }
     if (shown.length < result.snaps.length) console.log(`  ... ${result.snaps.length - shown.length} more`);
+  }
+
+  if (result.hints.length > 0) {
+    console.log();
+    for (const h of result.hints) console.log(h);
   }
 
   if (result.artifacts.length > 0 && !readOnly) {
@@ -172,56 +175,10 @@ program
 program
   .command('info')
   .argument('<dir>', 'BimDown project directory')
-  .description('Print project summary')
-  .action((dir: string) => {
-    const absDir = resolve(dir);
-    const registry = buildRegistry(getSpecDir());
-    const layout = discoverLayout(absDir);
-
-    // Levels
-    const levelCsv = join(layout.globalDir, 'level.csv');
-    if (existsSync(levelCsv)) {
-      const levels = readCsv(levelCsv);
-      console.log('Levels:');
-      for (const row of levels.rows) {
-        console.log(`  ${row.id}  ${row.name || row.number || ''}  elevation=${row.elevation}`);
-      }
-      console.log();
-    }
-
-    // Element counts per level
-    const allDirs = [
-      { name: 'global', path: layout.globalDir },
-      ...layout.levelDirs,
-    ];
-
-    const totals: Record<string, number> = {};
-
-    for (const d of allDirs) {
-      if (!existsSync(d.path)) continue;
-      const files = listFiles(d.path);
-      const counts: string[] = [];
-      for (const f of files) {
-        if (!f.endsWith('.csv')) continue;
-        const tableName = f.replace('.csv', '');
-        if (!registry.has(tableName)) continue;
-        const data = readCsv(join(d.path, f));
-        counts.push(`${tableName}: ${data.rows.length}`);
-        totals[tableName] = (totals[tableName] ?? 0) + data.rows.length;
-      }
-      if (counts.length > 0) {
-        console.log(`${d.name}/  ${counts.join(', ')}`);
-      }
-    }
-
-    console.log();
-    console.log('Totals:');
-    let grand = 0;
-    for (const [table, count] of Object.entries(totals).sort(([a], [b]) => a.localeCompare(b))) {
-      console.log(`  ${table}: ${count}`);
-      grand += count;
-    }
-    console.log(`  TOTAL: ${grand}`);
+  .description('Print project summary: units, levels, element counts, element types')
+  .action(async (dir: string) => {
+    const { projectInfoLines } = await import('./commands/info.js');
+    for (const l of projectInfoLines(resolve(dir))) console.log(l);
   });
 
 // ─── resolve-topology ──────────────────────────────────────
