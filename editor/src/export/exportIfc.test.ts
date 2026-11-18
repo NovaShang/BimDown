@@ -124,7 +124,7 @@ describe('IFC fitting bodies are light swept solids shaped like the 3D view (aud
         { type: 'Feature', properties: { id: 'mn-4' }, geometry: { type: 'Point', coordinates: [7, 23, 2] } },
       ]),
     };
-    const { data, ents, keys, step } = await exportFiles(files, 'IFC4');
+    const { data, ents, keys } = await exportFiles(files, 'IFC4');
     const shapeOf = (key: string) => {
       const prod = byKey(ents, keys, key);
       const rep = ents.get(ref(prod.args[6]))!;
