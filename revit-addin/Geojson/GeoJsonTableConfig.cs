@@ -8,7 +8,9 @@ enum GeoJsonGeomKind { Line, Point, Polygon, Mixed }
 /// (3D LineString / 3D Point). Level-anchored tables (wall, slab, column, …) use 2D
 /// geometry with Z scalars stored in <c>properties.base_offset</c> / <c>top_offset</c>.</para>
 /// </summary>
-record GeoJsonTableMapping(string TableName, string FileName, GeoJsonGeomKind Kind, bool IsSpatial)
+/// <para><c>OffsetsInCsv</c>: base_offset / top_offset are CSV columns for this table
+/// (opening, stair_landing), so they are not repeated in the Feature properties.</para>
+record GeoJsonTableMapping(string TableName, string FileName, GeoJsonGeomKind Kind, bool IsSpatial, bool OffsetsInCsv = false)
 {
     public static IReadOnlyList<GeoJsonTableMapping> All { get; } =
     [
@@ -20,9 +22,12 @@ record GeoJsonTableMapping(string TableName, string FileName, GeoJsonGeomKind Ki
         new("ceiling",         "ceiling.geojson",         GeoJsonGeomKind.Polygon, IsSpatial: false),
         new("room_separator",  "room_separator.geojson",  GeoJsonGeomKind.Line,    IsSpatial: false),
         new("curtain_wall",    "curtain_wall.geojson",    GeoJsonGeomKind.Line,    IsSpatial: false),
-        new("opening",         "opening.geojson",         GeoJsonGeomKind.Mixed,   IsSpatial: false),
+        new("opening",         "opening.geojson",         GeoJsonGeomKind.Polygon, IsSpatial: false, OffsetsInCsv: true),
+        new("stair_landing",   "stair_landing.geojson",   GeoJsonGeomKind.Polygon, IsSpatial: false, OffsetsInCsv: true),
+        new("furniture",       "furniture.geojson",       GeoJsonGeomKind.Point,   IsSpatial: false),
         // Architecture — spatial
         new("stair",           "stair.geojson",           GeoJsonGeomKind.Line,    IsSpatial: true),
+        new("stair_run",       "stair_run.geojson",       GeoJsonGeomKind.Line,    IsSpatial: true),
         new("ramp",            "ramp.geojson",            GeoJsonGeomKind.Line,    IsSpatial: true),
         new("railing",         "railing.geojson",         GeoJsonGeomKind.Line,    IsSpatial: true),
         // Structure
@@ -32,6 +37,7 @@ record GeoJsonTableMapping(string TableName, string FileName, GeoJsonGeomKind Ki
         new("beam",            "beam.geojson",            GeoJsonGeomKind.Line,    IsSpatial: true),
         new("brace",           "brace.geojson",           GeoJsonGeomKind.Line,    IsSpatial: true),
         new("foundation",      "foundation.geojson",      GeoJsonGeomKind.Mixed,   IsSpatial: false),
+        new("beam_system",     "beam_system.geojson",     GeoJsonGeomKind.Polygon, IsSpatial: false),
         // MEP — spatial
         new("duct",            "duct.geojson",            GeoJsonGeomKind.Line,    IsSpatial: true),
         new("pipe",            "pipe.geojson",            GeoJsonGeomKind.Line,    IsSpatial: true),

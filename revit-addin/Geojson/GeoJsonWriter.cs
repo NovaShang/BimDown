@@ -41,7 +41,7 @@ static class GeoJsonWriter
                     {
                         GeoJsonGeomKind.Line    => RenderLine(row, mapping.IsSpatial),
                         GeoJsonGeomKind.Point   => RenderPoint(row, mapping.IsSpatial, baseElevation),
-                        GeoJsonGeomKind.Polygon => RenderPolygon(row),
+                        GeoJsonGeomKind.Polygon => RenderPolygon(row, mapping.OffsetsInCsv),
                         GeoJsonGeomKind.Mixed   => RenderMixed(row, baseElevation),
                         _ => null
                     };
@@ -67,6 +67,20 @@ static class GeoJsonWriter
         var x2 = ParseOrNull(row.GetValueOrDefault("end_x"));
         var y2 = ParseOrNull(row.GetValueOrDefault("end_y"));
         if (x1 is null || y1 is null || x2 is null || y2 is null) return null;
+
+        // Optional full vertex path (railings): "_path" = [[x,y,z],...] in meters.
+        var pathJson = row.GetValueOrDefault("_path");
+        if (pathJson is not null && TryPath(pathJson, isSpatial) is { } path)
+        {
+            var pprops = StartProps(id);
+            if (!isSpatial) AttachLevelOffset(pprops, row);
+            return new JsonObject
+            {
+                ["type"] = "Feature",
+                ["properties"] = pprops,
+                ["geometry"] = new JsonObject { ["type"] = "LineString", ["coordinates"] = path },
+            };
+        }
 
         JsonArray a, b;
         if (isSpatial)
@@ -136,7 +150,7 @@ static class GeoJsonWriter
         };
     }
 
-    static JsonObject? RenderPolygon(Dictionary<string, string?> row)
+    static JsonObject? RenderPolygon(Dictionary<string, string?> row, bool offsetsInCsv = false)
     {
         var id = row.GetValueOrDefault("id");
         var pointsJson = row.GetValueOrDefault("points");
@@ -158,7 +172,7 @@ static class GeoJsonWriter
         }
 
         var props = StartProps(id);
-        AttachLevelOffset(props, row);
+        if (!offsetsInCsv) AttachLevelOffset(props, row);
 
         return new JsonObject
         {
@@ -181,6 +195,21 @@ static class GeoJsonWriter
     }
 
     // ─── Helpers ─────────────────────────────────────────────
+
+    static JsonArray? TryPath(string json, bool isSpatial)
+    {
+        double[][]? pts;
+        try { pts = JsonSerializer.Deserialize<double[][]>(json); }
+        catch { return null; }
+        if (pts is null || pts.Length < 2) return null;
+        var arr = new JsonArray();
+        foreach (var p in pts)
+        {
+            if (p.Length < 2) return null;
+            arr.Add(isSpatial ? Coord(p[0], p[1], p.Length > 2 ? p[2] : 0) : Coord(p[0], p[1]));
+        }
+        return arr;
+    }
 
     static JsonObject StartProps(string id) => new() { ["id"] = id };
 

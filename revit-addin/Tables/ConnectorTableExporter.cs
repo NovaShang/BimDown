@@ -68,6 +68,7 @@ public class ConnectorTableExporter : ITableExporter
                 if (connectors is null) continue;
 
                 var hostId = fi.UniqueId;
+                var hostLevel = fi.LevelId != ElementId.InvalidElementId ? doc.GetElement(fi.LevelId)?.UniqueId : null;
                 var hostOrigin = (fi.Location as LocationPoint)?.Point ?? XYZ.Zero;
                 var hostRotation = (fi.Location as LocationPoint)?.Rotation ?? 0;
                 var cosNeg = Math.Cos(-hostRotation);
@@ -109,6 +110,9 @@ public class ConnectorTableExporter : ITableExporter
                             ["system_type"] = DeriveSystemType(conn),
                             ["flow_dir"] = DeriveFlowDir(conn),
                             ["domain"] = DeriveDomain(conn),
+                            // Partition with the host (the connector lives in its host's directory).
+                            ["level_id"] = hostLevel,
+                            ["top_level_id"] = null,
                         };
                         rows.Add(row);
                     }
@@ -167,23 +171,7 @@ public class ConnectorTableExporter : ITableExporter
 
     static string? DeriveSystemType(Connector conn)
     {
-        try
-        {
-            var sys = conn.MEPSystem;
-            if (sys is null) return null;
-            // MEPSystem.SystemType is a string-ish accessor; the human-readable
-            // tag is on the MEPSystem.GetTypeId()-resolved SystemType.Name. We
-            // prefer the Abbreviation for compactness.
-            var typeId = sys.GetTypeId();
-            if (typeId == ElementId.InvalidElementId) return null;
-            if (sys.Document.GetElement(typeId) is MEPSystemType mst)
-            {
-                var abbr = mst.get_Parameter(BuiltInParameter.RBS_SYSTEM_ABBREVIATION_PARAM)?.AsString();
-                if (!string.IsNullOrEmpty(abbr)) return abbr;
-                return mst.Name;
-            }
-            return null;
-        }
+        try { return Extractors.MepSystemExtractor.FromSystem(conn.Owner.Document, conn.MEPSystem); }
         catch { return null; }
     }
 

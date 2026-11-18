@@ -33,12 +33,15 @@ sealed class ExportSettingsForm : BaseForm
         new("ramp", L.CatRamp, L.GroupArchitecture),
         new("railing", L.CatRailing, L.GroupArchitecture),
         new("room_separator", L.CatRoomSeparator, L.GroupArchitecture),
+        new("furniture", L.CatFurniture, L.GroupArchitecture),
+        new("model_group", L.CatModelGroup, L.GroupArchitecture),
         // Structure
         new("structure_wall", L.CatStructureWall, L.GroupStructure),
         new("structure_column", L.CatStructureColumn, L.GroupStructure),
         new("structure_slab", L.CatStructureSlab, L.GroupStructure),
         new("beam", L.CatBeam, L.GroupStructure),
         new("brace", L.CatBrace, L.GroupStructure),
+        new("beam_system", L.CatBeamSystem, L.GroupStructure),
         new("foundation", L.CatFoundation, L.GroupStructure),
         // MEP
         new("duct", L.CatDuct, L.GroupMep),
@@ -49,6 +52,12 @@ sealed class ExportSettingsForm : BaseForm
         new("equipment", L.CatEquipment, L.GroupMep),
         new("terminal", L.CatTerminal, L.GroupMep),
         new("connector", L.CatConnector, L.GroupMep),
+        new("circuit", L.CatCircuit, L.GroupMep),
+        new("mep_system", L.CatMepSystem, L.GroupMep),
+        // Annotation
+        new("text_note", L.CatTextNote, L.GroupAnnotation),
+        new("tag", L.CatTag, L.GroupAnnotation),
+        new("dimension", L.CatDimension, L.GroupAnnotation),
     ];
 
     readonly TextBox _pathBox;
@@ -148,6 +157,8 @@ sealed class ExportSettingsForm : BaseForm
         // Load saved selections (default: all enabled)
         var savedTables = UserSettings.GetList("EnabledTables");
         var allEnabled = savedTables is null || savedTables.Count == 0;
+        // Tables added in a newer add-in version start checked.
+        var knownTables = UserSettings.GetList("KnownTables");
 
         string? lastGroup = null;
         foreach (var cat in AllCategories)
@@ -163,7 +174,9 @@ sealed class ExportSettingsForm : BaseForm
 
             var display = $"    {cat.DisplayName}";
             _categoryList.Items.Add(display);
-            var isChecked = allEnabled || savedTables!.Contains(cat.TableName);
+            var isChecked = allEnabled || savedTables!.Contains(cat.TableName)
+                || (knownTables is not null && !knownTables.Contains(cat.TableName))
+                || (knownTables is null && cat.TableName is "furniture" or "model_group" or "beam_system" or "circuit" or "mep_system" or "text_note" or "tag" or "dimension");
             _categoryList.SetItemChecked(_categoryList.Items.Count - 1, isChecked);
         }
 
@@ -264,6 +277,7 @@ sealed class ExportSettingsForm : BaseForm
         // Save to user settings
         UserSettings.LastExportPath = Result.OutputFile;
         UserSettings.SetList("EnabledTables", [.. Result.EnabledTables]);
+        UserSettings.SetList("KnownTables", [.. AllCategories.Select(c => c.TableName)]);
         UserSettings.SetBool("ExportMesh", Result.ExportMesh);
         UserSettings.SetBool("WriteIdsToModel", Result.WriteIdsToModel);
 

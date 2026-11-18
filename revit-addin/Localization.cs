@@ -115,4 +115,13 @@ static class L
     public static string CatConnector => S("Connector / Port", "连接器/端口");
     public static string CatLevel => S("Level", "标高");
     public static string CatGrid => S("Grid", "轴网");
+    public static string CatFurniture => S("Furniture / Casework / Planting", "家具/橱柜/植物");
+    public static string CatModelGroup => S("Model Group", "模型组");
+    public static string CatBeamSystem => S("Beam System", "梁系统");
+    public static string CatCircuit => S("Electrical Circuit", "电气回路");
+    public static string CatMepSystem => S("MEP System", "机电系统");
+    public static string CatTextNote => S("Text Note (plan)", "文字注释（平面）");
+    public static string CatTag => S("Tag (plan)", "标记（平面）");
+    public static string CatDimension => S("Dimension (plan)", "尺寸标注（平面）");
+    public static string GroupAnnotation => S("Annotation", "注释");
 }

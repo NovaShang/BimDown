@@ -7,11 +7,13 @@ public class CompositeExtractor(
     string[]? inlineFieldNames = null,
     Func<Element, Dictionary<string, string?>>? inlineExtract = null,
     string[]? computedInlineFieldNames = null,
-    string[]? geoJsonInlineFieldNames = null)
+    string[]? geoJsonInlineFieldNames = null,
+    Action<Element, Dictionary<string, string?>>? post = null,
+    string[]? csvFieldNames = null)
 {
     public IReadOnlyList<string> FieldNames { get; } = BuildFieldNames(extractors, inlineFieldNames);
     public IReadOnlyList<string> CsvColumns { get; } = BuildCsvColumns(extractors, inlineFieldNames,
-        [.. computedInlineFieldNames ?? [], .. geoJsonInlineFieldNames ?? []]);
+        [.. computedInlineFieldNames ?? [], .. geoJsonInlineFieldNames ?? []], csvFieldNames);
 
     public Dictionary<string, string?> Extract(Element element)
     {
@@ -26,6 +28,8 @@ public class CompositeExtractor(
             foreach (var kv in inlineExtract(element))
                 result[kv.Key] = kv.Value;
         }
+        // Row-level fix-ups that need the merged fields (reversed walls, boundaries, …)
+        post?.Invoke(element, result);
         return result;
     }
 
@@ -52,7 +56,8 @@ public class CompositeExtractor(
         return names;
     }
 
-    static List<string> BuildCsvColumns(IFieldExtractor[] extractors, string[]? inlineFieldNames, string[]? computedInlineFieldNames)
+    static List<string> BuildCsvColumns(IFieldExtractor[] extractors, string[]? inlineFieldNames, string[]? computedInlineFieldNames,
+        string[]? csvFieldNames)
     {
         // Both computed (CLI-derived) and geojson_property (stored in the paired
         // GeoJSON Feature properties) fields are kept out of the CSV.
@@ -69,6 +74,12 @@ public class CompositeExtractor(
             foreach (var name in computedInlineFieldNames)
                 excluded.Add(name);
         }
+
+        // Fields a table stores in CSV although a base extractor keeps them in GeoJSON
+        // (hosted elements' sill base_offset).
+        if (csvFieldNames is not null)
+            foreach (var name in csvFieldNames)
+                excluded.Remove(name);
 
         var allFields = BuildFieldNames(extractors, inlineFieldNames);
         return allFields.Where(f => !excluded.Contains(f)).ToList();

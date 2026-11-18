@@ -47,7 +47,7 @@ public class GridTableExporter : ITableExporter
 {
     public string TableName => "grid";
     public bool IsGlobal => true;
-    public IReadOnlyList<string> Columns { get; } = ["id", "number", "start_x", "start_y", "end_x", "end_y"];
+    public IReadOnlyList<string> Columns { get; } = ["id", "number", "start_x", "start_y", "end_x", "end_y", "pinned"];
     public IReadOnlyList<string> CsvColumns => Columns;
 
     public List<Dictionary<string, string?>> Export(Document doc)
@@ -71,6 +71,7 @@ public class GridTableExporter : ITableExporter
                 ["start_y"] = UnitConverter.FormatDouble(UnitConverter.Length(start.Y)),
                 ["end_x"] = UnitConverter.FormatDouble(UnitConverter.Length(end.X)),
                 ["end_y"] = UnitConverter.FormatDouble(UnitConverter.Length(end.Y)),
+                ["pinned"] = grid.Pinned ? "true" : null,
             });
         }
         return rows;
