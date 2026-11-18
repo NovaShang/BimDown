@@ -12,7 +12,10 @@ abstract class TableImporterBase(string tableName, int order, BuiltInCategory[] 
 
     public void SetIdMap(IdMap idMap) => IdMap = idMap;
 
-    public ImportResult Import(Document doc, List<Dictionary<string, string?>> csvRows, IReadOnlyDictionary<string, string>? uuidToIdMap = null)
+    /// <summary>True for importers that open their own transactions (stairs need a StairsEditScope).</summary>
+    public virtual bool OwnsTransactions => false;
+
+    public virtual ImportResult Import(Document doc, List<Dictionary<string, string?>> csvRows, IReadOnlyDictionary<string, string>? uuidToIdMap = null)
     {
         // Collect model elements for this category
         var modelElements = new List<Element>();
@@ -52,6 +55,7 @@ abstract class TableImporterBase(string tableName, int order, BuiltInCategory[] 
         // Create
         foreach (var row in diff.ToCreate)
         {
+            IdMap.CurrentDir = row.GetValueOrDefault("_dir") ?? "global";
             try
             {
                 var newElement = CreateElement(doc, row);
@@ -76,6 +80,7 @@ abstract class TableImporterBase(string tableName, int order, BuiltInCategory[] 
         // Update
         foreach (var (row, element) in diff.ToUpdate)
         {
+            IdMap.CurrentDir = row.GetValueOrDefault("_dir") ?? "global";
             try
             {
                 UpdateElement(doc, row, element);
@@ -95,6 +100,22 @@ abstract class TableImporterBase(string tableName, int order, BuiltInCategory[] 
         }
 
         return new ImportResult(created, updated, deleted, errors);
+    }
+
+    /// <summary>Remembers a wall's top_attach_id; ImportCommand attaches once roofs / slabs exist.</summary>
+    protected void QueueTopAttachment(Wall wall, Dictionary<string, string?> row)
+    {
+        if (row.GetValueOrDefault("top_attach_id") is { } target)
+            ImportContext.PendingAttachments.Add((wall.Id, IdMap.CurrentDir, target));
+    }
+
+    /// <summary>Registers an element created outside CreateElement (e.g. a re-created floor).</summary>
+    protected void Track(Dictionary<string, string?> row, Element element)
+    {
+        var csvId = row.GetValueOrDefault("id");
+        if (csvId is null) return;
+        BimDownParameter.Set(element, csvId);
+        IdMap.Register(csvId, element.Id);
     }
 
     protected abstract Element? CreateElement(Document doc, Dictionary<string, string?> row);
