@@ -111,7 +111,9 @@ public class ShareCommand : IExternalCommand
             "wall", "column", "slab", "space", "door", "window", "stair",
             "curtain_wall", "roof", "ceiling", "opening", "ramp", "railing", "room_separator",
             "structure_wall", "structure_column", "structure_slab", "beam", "brace", "foundation",
+            "furniture", "model_group", "beam_system",
             "duct", "pipe", "cable_tray", "conduit", "mep_node", "equipment", "terminal",
+            "connector", "circuit", "mep_system", "text_note", "tag", "dimension",
         ],
     };
 

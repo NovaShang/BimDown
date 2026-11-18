@@ -1,31 +1,35 @@
 using Autodesk.Revit.DB;
 using BimDown.RevitAddin.Extractors;
+using BimDown.RevitAddin.Mapping;
 using static BimDown.RevitAddin.Extractors.ParameterUtils;
+using static BimDown.RevitAddin.RevitReaders;
 
 namespace BimDown.RevitAddin.Tables;
 
 /// <summary>
-/// Exports openings from two sources:
-/// 1. Explicit Opening elements (wall rect openings, floor openings, shaft openings)
-/// 2. Slab boundary inner loops (holes drawn in the floor sketch)
+/// Exports openings from three sources:
+/// 1. Wall openings (rectangular Opening elements and opening families hosted on walls):
+///    host_id + position + width / height, sill in CSV base_offset.
+/// 2. Floor / roof openings and shafts: a Polygon; shafts carry top_level_id /
+///    top_offset and cut every slab, ceiling and roof they pass through.
+/// 3. Slab boundary inner loops (holes drawn in the floor sketch).
 /// </summary>
 public class OpeningTableExporter : ITableExporter
 {
     static readonly string[] AllColumns =
     [
         "id", "number", "level_id", "created_at", "updated_at",
-        "base_offset", "mesh_file", "volume",
+        "base_offset", "mesh_file", "volume", "group_id", "pinned",
         "bbox_min_x", "bbox_min_y", "bbox_min_z",
         "bbox_max_x", "bbox_max_y", "bbox_max_z",
-        "host_id", "position", "width", "height", "shape", "points", "area",
+        "host_id", "position", "width", "height", "shape", "top_level_id", "top_offset", "points", "area",
     ];
 
-    // level_id is computed; base_offset is a geojson_property — both kept out of CSV.
-    // (base_offset stays in the row dict so slab-opening polygons can carry it in GeoJSON.)
+    // Opening base_offset / top_offset are CSV fields (schema storage: csv), unlike other elements.
     static readonly string[] CsvOnly =
     [
-        "id", "number", "mesh_file",
-        "host_id", "position", "width", "height", "shape",
+        "id", "number", "mesh_file", "group_id", "pinned",
+        "host_id", "position", "width", "height", "shape", "base_offset", "top_level_id", "top_offset",
     ];
 
     public string TableName => "opening";
@@ -37,9 +41,9 @@ public class OpeningTableExporter : ITableExporter
         var rows = new List<Dictionary<string, string?>>();
         var elementExtractor = new ElementExtractor();
 
-        // Source 1: Explicit Opening elements
+        // Source 1 + 2: explicit Opening elements
         BuiltInCategory[] categories =
-            [BuiltInCategory.OST_SWallRectOpening, BuiltInCategory.OST_FloorOpening, BuiltInCategory.OST_ShaftOpening];
+            [BuiltInCategory.OST_SWallRectOpening, BuiltInCategory.OST_FloorOpening, BuiltInCategory.OST_RoofOpening, BuiltInCategory.OST_ShaftOpening];
 
         foreach (var category in categories)
         {
@@ -52,17 +56,27 @@ public class OpeningTableExporter : ITableExporter
                 try
                 {
                     var row = elementExtractor.Extract(element);
-                    ExtractOpeningFields(element, row);
-                    // host_id is required (opening schema). Shaft/standalone openings
-                    // with no host can't be represented as an opening — skip them.
-                    if (string.IsNullOrEmpty(row.GetValueOrDefault("host_id"))) continue;
+                    row["base_offset"] = null;
+                    var isShaft = category == BuiltInCategory.OST_ShaftOpening;
+                    if (isShaft) ExtractShaftFields(element, row);
+                    else ExtractOpeningFields(element, row);
+                    // host_id is required except for shafts.
+                    if (!isShaft && string.IsNullOrEmpty(row.GetValueOrDefault("host_id"))) continue;
+                    if (isShaft && row.GetValueOrDefault("points") is null) continue;
                     rows.Add(row);
                 }
                 catch { }
             }
         }
 
-        // Source 2: Slab boundary inner loops
+        var cutters = rows
+            .Select(r => r.GetValueOrDefault("points"))
+            .Where(p => p is not null)
+            .Select(p => System.Text.Json.JsonSerializer.Deserialize<double[][]>(p!)!)
+            .Where(p => p is { Length: >= 3 })
+            .ToList();
+
+        // Source 3: Slab boundary inner loops
         var slabCollector = new FilteredElementCollector(doc)
             .OfCategory(BuiltInCategory.OST_Floors)
             .WhereElementIsNotElementType();
@@ -74,9 +88,15 @@ public class OpeningTableExporter : ITableExporter
                 var innerLoops = GetSlabInnerLoops(element);
                 for (var i = 0; i < innerLoops.Count; i++)
                 {
+                    // Holes cut by an exported floor opening / shaft are that opening, not a sketch hole.
+                    var cx = innerLoops[i].Average(p => M(p.X));
+                    var cy = innerLoops[i].Average(p => M(p.Y));
+                    if (cutters.Any(poly => Inside(poly, cx, cy))) continue;
                     var row = elementExtractor.Extract(element);
                     // Synthetic ID to avoid collision with the host Floor's UniqueId
                     row["id"] = $"{element.UniqueId}:opening:{i}";
+                    row["number"] = null;
+                    row["base_offset"] = null;
                     row["host_id"] = element.UniqueId;
                     row["points"] = GeometryUtils.SerializePolygon(innerLoops[i]);
                     rows.Add(row);
@@ -88,42 +108,77 @@ public class OpeningTableExporter : ITableExporter
         return rows;
     }
 
+    static bool Inside(double[][] poly, double x, double y)
+    {
+        var inside = false;
+        for (int i = 0, j = poly.Length - 1; i < poly.Length; j = i++)
+        {
+            var (xi, yi, xj, yj) = (poly[i][0], poly[i][1], poly[j][0], poly[j][1]);
+            if ((yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi) inside = !inside;
+        }
+        return inside;
+    }
+
+    static void ExtractShaftFields(Element e, Dictionary<string, string?> row)
+    {
+        var doc = e.Document;
+        var baseLevel = e.get_Parameter(BuiltInParameter.WALL_BASE_CONSTRAINT)?.AsElementId();
+        var topLevel = e.get_Parameter(BuiltInParameter.WALL_HEIGHT_TYPE)?.AsElementId();
+        if (LevelUid(doc, baseLevel) is { } b) row["level_id"] = b;
+        row["top_level_id"] = LevelUid(doc, topLevel);
+        var bo = e.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.AsDouble() ?? 0;
+        var to = e.get_Parameter(BuiltInParameter.WALL_TOP_OFFSET)?.AsDouble() ?? 0;
+        row["base_offset"] = Math.Abs(bo) > 1e-9 ? Names.Num(M(bo), 3) : null;
+        row["top_offset"] = Math.Abs(to) > 1e-9 ? Names.Num(M(to), 3) : null;
+        // A shaft stays on its base level although it spans storeys.
+        row["_keep_level"] = "true";
+        if (e is Opening o && o.BoundaryCurves is { Size: > 0 } curves && SplitCurvesIntoLoops(curves) is { Count: > 0 } loops)
+            row["points"] = GeometryUtils.SerializePolygon(loops[0]);
+    }
+
     static void ExtractOpeningFields(Element e, Dictionary<string, string?> fields)
     {
-        Element? host = null;
-        if (e is Opening opening)
-            host = opening.Host;
-        else if (e is FamilyInstance fi)
-            host = fi.Host;
-
+        Element? host = e switch { Opening opening => opening.Host, FamilyInstance fi => fi.Host, _ => null };
         if (host is not null)
             fields["host_id"] = host.UniqueId;
 
-        // Wall opening mode
-        if (host is Wall)
+        if (host is Wall wall && wall.Location is LocationCurve hostLc)
         {
-            if (e is FamilyInstance fami && fami.Host is Wall hostWall
-                && hostWall.Location is LocationCurve hostLc && fami.Location is LocationPoint lp)
+            var curve = hostLc.Curve;
+            var levelZ = (e.Document.GetElement(wall.LevelId) as Level)?.Elevation ?? 0;
+            XYZ? center = null;
+            if (e is Opening { IsRectBoundary: true } rect && rect.BoundaryRect is { Count: 2 } br)
             {
-                var curve = hostLc.Curve;
-                var result = curve.Project(lp.Point);
-                if (result is not null)
-                {
-                    var normalizedParam = curve.ComputeNormalizedParameter(result.Parameter);
-                    var distanceMeters = UnitConverter.Length(normalizedParam * curve.Length);
-                    fields["position"] = UnitConverter.FormatDouble(distanceMeters);
-                }
+                var a = br[0];
+                var b = br[1];
+                center = (a + b) / 2;
+                fields["width"] = Names.Num(M(Math.Sqrt(Math.Pow(b.X - a.X, 2) + Math.Pow(b.Y - a.Y, 2))), 3);
+                fields["height"] = Names.Num(M(Math.Abs(b.Z - a.Z)), 3);
+                fields["base_offset"] = Names.Num(M(Math.Min(a.Z, b.Z) - levelZ), 3);
             }
-
-            var w = e.get_Parameter(BuiltInParameter.FAMILY_WIDTH_PARAM)?.AsDouble()
-                 ?? FindDoubleParameterByNames(e, "width", "w", "宽");
-            var h = e.get_Parameter(BuiltInParameter.FAMILY_HEIGHT_PARAM)?.AsDouble()
-                 ?? FindDoubleParameterByNames(e, "height", "h", "高");
-            fields["width"] = w is { } wv ? UnitConverter.FormatDouble(UnitConverter.Length(wv)) : null;
-            fields["height"] = h is { } hv ? UnitConverter.FormatDouble(UnitConverter.Length(hv)) : null;
-            fields["shape"] = "rect";
+            else
+            {
+                if (e.Location is LocationPoint lp) center = lp.Point;
+                var w = e.get_Parameter(BuiltInParameter.FAMILY_WIDTH_PARAM).AsPositiveDouble()
+                     ?? FindDoubleParameterByNames(e, "width", "w", "宽");
+                var h = e.get_Parameter(BuiltInParameter.FAMILY_HEIGHT_PARAM).AsPositiveDouble()
+                     ?? FindDoubleParameterByNames(e, "height", "h", "高");
+                fields["width"] = w is { } wv ? Names.Num(M(wv), 3) : null;
+                fields["height"] = h is { } hv ? Names.Num(M(hv), 3) : null;
+                var sill = e.get_Parameter(BuiltInParameter.INSTANCE_SILL_HEIGHT_PARAM)?.AsDouble();
+                fields["base_offset"] = sill is { } s ? Names.Num(M(s), 3) : null;
+            }
+            if (center is not null && curve.Project(center) is { } result)
+            {
+                var normalizedParam = curve.ComputeNormalizedParameter(result.Parameter);
+                fields["position"] = Names.Num(M(normalizedParam * curve.Length));
+            }
+            fields["shape"] = Names.ContainsAny((e as FamilyInstance)?.Symbol?.FamilyName, "round", "circular", "圆") ? "round"
+                : Names.ContainsAny((e as FamilyInstance)?.Symbol?.FamilyName, "arch", "拱") ? "arch" : "rect";
+            if (fields.GetValueOrDefault("base_offset") is "0") fields["base_offset"] = null;
+            if (IsReversed(wall)) WallMapper.ReverseHosted(fields, M(curve.Length));
         }
-        // Slab/shaft opening — extract boundary as polygon loops
+        // Slab / roof opening — extract boundary as polygon loops
         else if (e is Opening slabOpening)
         {
             var boundary = slabOpening.BoundaryCurves;

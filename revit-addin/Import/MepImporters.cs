@@ -8,6 +8,25 @@ namespace BimDown.RevitAddin.Import;
 
 static class MepHelper
 {
+    /// <summary>insulation_thickness → a Revit duct / pipe insulation of the first insulation type.</summary>
+    internal static void SetInsulation(Document doc, Element curve, Dictionary<string, string?> row)
+    {
+        if (UnitConverter.ParseNullableDouble(row.GetValueOrDefault("insulation_thickness")) is not { } t || t <= 0) return;
+        var feet = UnitConverter.LengthToFeet(t);
+        var existing = InsulationLiningBase.GetInsulationIds(doc, curve.Id).Select(doc.GetElement).OfType<InsulationLiningBase>().FirstOrDefault();
+        if (existing is not null) { existing.Thickness = feet; return; }
+        if (curve is Duct)
+        {
+            var type = new FilteredElementCollector(doc).OfClass(typeof(DuctInsulationType)).FirstElementId();
+            if (type != ElementId.InvalidElementId) DuctInsulation.Create(doc, curve.Id, type, feet);
+        }
+        else if (curve is Pipe)
+        {
+            var type = new FilteredElementCollector(doc).OfClass(typeof(PipeInsulationType)).FirstElementId();
+            if (type != ElementId.InvalidElementId) PipeInsulation.Create(doc, curve.Id, type, feet);
+        }
+    }
+
     internal static void SetSectionSize(Element element, Dictionary<string, string?> row)
     {
         var shape = row.GetValueOrDefault("shape");
@@ -53,6 +72,7 @@ class DuctImporter() : TableImporterBase("duct", 25, [BuiltInCategory.OST_DuctCu
             line.GetEndPoint(0), line.GetEndPoint(1));
 
         MepHelper.SetSectionSize(duct, row);
+        MepHelper.SetInsulation(doc, duct, row);
         SetMark(duct, row);
         return duct;
     }
@@ -63,6 +83,7 @@ class DuctImporter() : TableImporterBase("duct", 25, [BuiltInCategory.OST_DuctCu
             lc.Curve = Parse3DLine(row);
 
         MepHelper.SetSectionSize(element, row);
+        MepHelper.SetInsulation(doc, element, row);
         SetMark(element, row);
     }
 }
@@ -95,6 +116,7 @@ class PipeImporter() : TableImporterBase("pipe", 25, [BuiltInCategory.OST_PipeCu
             pipe.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.Set(
                 UnitConverter.LengthToFeet(UnitConverter.ParseDouble(sizeXStr)));
 
+        MepHelper.SetInsulation(doc, pipe, row);
         SetMark(pipe, row);
         return pipe;
     }
@@ -109,6 +131,7 @@ class PipeImporter() : TableImporterBase("pipe", 25, [BuiltInCategory.OST_PipeCu
             element.get_Parameter(BuiltInParameter.RBS_PIPE_DIAMETER_PARAM)?.Set(
                 UnitConverter.LengthToFeet(UnitConverter.ParseDouble(sizeXStr)));
 
+        MepHelper.SetInsulation(doc, element, row);
         SetMark(element, row);
     }
 }
@@ -141,6 +164,7 @@ class CableTrayImporter() : TableImporterBase("cable_tray", 25, [BuiltInCategory
             lc.Curve = Parse3DLine(row);
 
         MepHelper.SetSectionSize(element, row);
+        MepHelper.SetInsulation(doc, element, row);
         SetMark(element, row);
     }
 }
@@ -173,6 +197,7 @@ class ConduitImporter() : TableImporterBase("conduit", 25, [BuiltInCategory.OST_
             lc.Curve = Parse3DLine(row);
 
         MepHelper.SetSectionSize(element, row);
+        MepHelper.SetInsulation(doc, element, row);
         SetMark(element, row);
     }
 }

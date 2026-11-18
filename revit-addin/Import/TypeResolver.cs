@@ -249,4 +249,119 @@ static class TypeResolver
         if (!newType.IsActive) newType.Activate();
         return newType;
     }
+
+    // ─── Typed resolution (type_id → named Revit type) ──────────────────
+
+    static ElementId MaterialByName(Document doc, string? name, string? fallbackEnum)
+    {
+        var target = string.IsNullOrWhiteSpace(name) ? fallbackEnum : name;
+        if (string.IsNullOrWhiteSpace(target)) return ElementId.InvalidElementId;
+        var existing = new FilteredElementCollector(doc).OfClass(typeof(Material)).Cast<Material>()
+            .FirstOrDefault(m => string.Equals(m.Name, target, StringComparison.OrdinalIgnoreCase));
+        return existing?.Id ?? Material.Create(doc, target);
+    }
+
+    /// <summary>
+    /// Compound structure from type_layer rows (seq 1 = exterior / top, Revit's
+    /// layer 0). The core layers are the shell boundaries; without a core layer
+    /// the thickest layer is the core.
+    /// </summary>
+    static CompoundStructure? BuildStructure(Document doc, IReadOnlyList<Dictionary<string, string?>> layers)
+    {
+        if (layers.Count == 0) return null;
+        var coreIdx = layers.Select((l, i) => (l, i)).Where(x => x.l.GetValueOrDefault("function") == "core").Select(x => x.i).ToList();
+        if (coreIdx.Count == 0)
+        {
+            var thickest = layers.Select((l, i) => (T: UnitConverter.ParseNullableDouble(l.GetValueOrDefault("thickness")) ?? 0, I: i)).MaxBy(x => x.T).I;
+            coreIdx.Add(thickest);
+        }
+        var first = coreIdx.Min();
+        var last = coreIdx.Max();
+        var list = new List<CompoundStructureLayer>();
+        for (var i = 0; i < layers.Count; i++)
+        {
+            var l = layers[i];
+            var function = coreIdx.Contains(i) ? "core" : l.GetValueOrDefault("function");
+            var fn = Enum.Parse<MaterialFunctionAssignment>(Mapping.LayerMapper.RevitFunction(function, i < first));
+            var width = UnitConverter.LengthToFeet(UnitConverter.ParseNullableDouble(l.GetValueOrDefault("thickness")) ?? 0.01);
+            list.Add(new CompoundStructureLayer(width, fn, MaterialByName(doc, l.GetValueOrDefault("name"), l.GetValueOrDefault("material"))));
+        }
+        var cs = CompoundStructure.CreateSimpleCompoundStructure(list);
+        cs.SetNumberOfShellLayers(ShellLayerType.Exterior, first);
+        cs.SetNumberOfShellLayers(ShellLayerType.Interior, layers.Count - 1 - last);
+        return cs;
+    }
+
+    /// <summary>
+    /// The Revit type named like a BimDown layered type (wall_type, slab_type,
+    /// roof_type, ceiling_type), else a duplicate of the first matching type with
+    /// that name and the type's layers.
+    /// </summary>
+    public static T? ResolveLayeredType<T>(Document doc, string? typeId, Func<T, bool>? filter = null) where T : HostObjAttributes
+    {
+        if (ImportContext.Type(typeId) is not { } typeRow || typeRow.GetValueOrDefault("name") is not { } name) return null;
+        var all = new FilteredElementCollector(doc).OfClass(typeof(T)).Cast<T>().Where(t => filter is null || filter(t)).ToList();
+        var existing = all.FirstOrDefault(t => t.Name == name);
+        if (existing is not null) return existing;
+        var template = all.FirstOrDefault();
+        if (template is null) return null;
+        var created = (T)template.Duplicate(name);
+        var cs = BuildStructure(doc, ImportContext.LayersOf(typeId));
+        if (cs is null && UnitConverter.ParseNullableDouble(typeRow.GetValueOrDefault("thickness")) is { } th)
+        {
+            cs = created.GetCompoundStructure();
+            if (cs is not null && cs.GetLayers().Count > 0)
+                cs.SetLayerWidth(Math.Max(0, cs.GetFirstCoreLayerIndex()), UnitConverter.LengthToFeet(th));
+        }
+        if (cs is not null) created.SetCompoundStructure(cs);
+        return created;
+    }
+
+    /// <summary>The family type named like a BimDown type (door / window / column / beam / foundation / furniture type).</summary>
+    public static FamilySymbol? ResolveNamedSymbol(Document doc, string? typeId, params BuiltInCategory[] categories)
+    {
+        if (ImportContext.Type(typeId) is not { } typeRow) return null;
+        var names = new[] { typeRow.GetValueOrDefault("name"), typeRow.GetValueOrDefault("designation") }
+            .Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+        foreach (var cat in categories)
+        {
+            var symbol = new FilteredElementCollector(doc).OfCategory(cat).OfClass(typeof(FamilySymbol)).Cast<FamilySymbol>()
+                .FirstOrDefault(fs => names.Any(n => string.Equals(fs.Name, n, StringComparison.OrdinalIgnoreCase)
+                                                  || string.Equals(fs.FamilyName + ": " + fs.Name, n, StringComparison.OrdinalIgnoreCase)));
+            if (symbol is null) continue;
+            if (!symbol.IsActive) symbol.Activate();
+            return symbol;
+        }
+        return null;
+    }
+
+    /// <summary>Door / window type from door_type / window_type: the named symbol, else a sized duplicate with that name.</summary>
+    public static FamilySymbol? ResolveOpeningType(Document doc, string? typeId, BuiltInCategory category)
+    {
+        if (ResolveNamedSymbol(doc, typeId, category) is { } named) return named;
+        if (ImportContext.Type(typeId) is not { } t || t.GetValueOrDefault("name") is not { } name) return null;
+        var w = UnitConverter.ParseNullableDouble(t.GetValueOrDefault("width"));
+        var h = UnitConverter.ParseNullableDouble(t.GetValueOrDefault("height"));
+        if (w is null || h is null) return null;
+        return ResolveOrCreateOpeningType(doc, category, name, w.Value, h.Value);
+    }
+
+    /// <summary>
+    /// Wall type for a wall row: its wall_type (by name, created with its layers)
+    /// unless the row overrides the thickness, else a BimDown_{mm} type.
+    /// </summary>
+    public static WallType WallTypeFor(Document doc, Dictionary<string, string?> row, double thicknessMeters)
+    {
+        var typed = ResolveLayeredType<WallType>(doc, row.GetValueOrDefault("type_id"), wt => wt.Kind == WallKind.Basic);
+        if (typed is not null && Math.Abs(UnitConverter.Length(typed.Width) - thicknessMeters) < 5e-4) return typed;
+        return ResolveOrCreateWallType(doc, thicknessMeters);
+    }
+
+    /// <summary>Floor type for a slab / foundation row (slab_type by name unless the thickness is overridden).</summary>
+    public static FloorType FloorTypeFor(Document doc, Dictionary<string, string?> row, double thicknessMeters)
+    {
+        var typed = ResolveLayeredType<FloorType>(doc, row.GetValueOrDefault("type_id"));
+        if (typed?.GetCompoundStructure() is { } cs && Math.Abs(UnitConverter.Length(cs.GetWidth()) - thicknessMeters) < 5e-4) return typed;
+        return ResolveOrCreateFloorType(doc, thicknessMeters);
+    }
 }

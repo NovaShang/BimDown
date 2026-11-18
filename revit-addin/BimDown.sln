@@ -1,4 +1,4 @@
-
+﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
@@ -6,6 +6,8 @@ MinimumVisualStudioVersion = 10.0.40219.1
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BimDown.RevitAddin", "BimDown.RevitAddin.csproj", "{8D7BD0DF-E085-4602-B06F-FF8C6655D864}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BimDown.RevitTests", "Tests\BimDown.RevitTests.csproj", "{B2C3D4E5-F6A7-8901-BCDE-F12345678901}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BimDown.Mapping.Tests", "Mapping.Tests\BimDown.Mapping.Tests.csproj", "{8EFF3837-F090-40BD-9D65-78505278D519}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -20,9 +22,13 @@ Global
 		{8D7BD0DF-E085-4602-B06F-FF8C6655D864}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{8D7BD0DF-E085-4602-B06F-FF8C6655D864}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{8D7BD0DF-E085-4602-B06F-FF8C6655D864}.Release|Any CPU.Build.0 = Release|Any CPU
-{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{B2C3D4E5-F6A7-8901-BCDE-F12345678901}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8EFF3837-F090-40BD-9D65-78505278D519}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8EFF3837-F090-40BD-9D65-78505278D519}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8EFF3837-F090-40BD-9D65-78505278D519}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8EFF3837-F090-40BD-9D65-78505278D519}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal

@@ -7,7 +7,7 @@ public class ElementExtractor : IFieldExtractor
     public IReadOnlyList<string> FieldNames { get; } =
     [
         "id", "number", "level_id", "created_at", "updated_at",
-        "base_offset", "mesh_file", "volume",
+        "base_offset", "mesh_file", "volume", "group_id", "pinned",
         "bbox_min_x", "bbox_min_y", "bbox_min_z",
         "bbox_max_x", "bbox_max_y", "bbox_max_z"
     ];
@@ -30,18 +30,28 @@ public class ElementExtractor : IFieldExtractor
         var fields = new Dictionary<string, string?>
         {
             ["id"] = element.UniqueId,
-            ["number"] = element.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString()
-                      ?? element.get_Parameter(BuiltInParameter.ROOM_NUMBER)?.AsString()
-                      ?? ParameterUtils.FindStringParameterByNames(element, "number", "编号"),
+            // Mark → number (first non-empty of Mark, room Number, a "number" parameter)
+            ["number"] = new[]
+            {
+                element.get_Parameter(BuiltInParameter.ALL_MODEL_MARK)?.AsString(),
+                element.get_Parameter(BuiltInParameter.ROOM_NUMBER)?.AsString(),
+                ParameterUtils.FindStringParameterByNames(element, "number", "编号"),
+            }.FirstOrDefault(v => !string.IsNullOrWhiteSpace(v))?.Trim(),
             ["level_id"] = GetLevelUniqueId(element),
             ["created_at"] = null,
             ["updated_at"] = null,
+            // Model group membership (Revit Group) and the pin (editors must not move it).
+            ["group_id"] = element.GroupId is { } gid && gid != ElementId.InvalidElementId
+                ? element.Document.GetElement(gid)?.UniqueId
+                : null,
+            ["pinned"] = element.Pinned ? "true" : null,
         };
 
         var baseOffset = element.get_Parameter(BuiltInParameter.INSTANCE_FREE_HOST_OFFSET_PARAM)?.AsDouble()
                       ?? element.get_Parameter(BuiltInParameter.FLOOR_HEIGHTABOVELEVEL_PARAM)?.AsDouble()
                       ?? element.get_Parameter(BuiltInParameter.WALL_BASE_OFFSET)?.AsDouble()
                       ?? element.get_Parameter(BuiltInParameter.STAIRS_BASE_OFFSET)?.AsDouble()
+                      ?? element.get_Parameter(BuiltInParameter.ROOF_LEVEL_OFFSET_PARAM)?.AsDouble()
                       ?? element.get_Parameter(BuiltInParameter.INSTANCE_ELEVATION_PARAM)?.AsDouble();
         fields["base_offset"] = baseOffset is { } bo ? UnitConverter.FormatDouble(UnitConverter.Length(bo)) : null;
 

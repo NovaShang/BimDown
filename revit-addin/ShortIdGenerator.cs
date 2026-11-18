@@ -1,10 +1,16 @@
-using Autodesk.Revit.DB;
+using BimDown.RevitAddin.Mapping;
 
 namespace BimDown.RevitAddin;
 
+/// <summary>
+/// Maps Revit UniqueIds to BimDown short ids (<c>{prefix}-{n}</c>, level-scoped
+/// counters; type tables get readable <c>{prefix}-{slug of the type name}</c>
+/// ids) and rewrites the reference fields of exported rows. Pure (no Revit API):
+/// seeding from the BimDown_Id parameter happens in ExportPipeline.
+/// </summary>
 class ShortIdGenerator
 {
-    static readonly Dictionary<string, string> PrefixMap = new()
+    internal static readonly Dictionary<string, string> PrefixMap = new()
     {
         ["level"] = "lv",
         ["grid"] = "gr",
@@ -15,12 +21,15 @@ class ShortIdGenerator
         ["door"] = "d",
         ["window"] = "wn",
         ["stair"] = "st",
+        ["stair_run"] = "sr",
+        ["stair_landing"] = "sl_land",
         ["structure_wall"] = "sw",
         ["structure_column"] = "sc",
         ["structure_slab"] = "ss",
         ["beam"] = "bm",
         ["brace"] = "br",
         ["foundation"] = "f",
+        ["beam_system"] = "bs",
         ["duct"] = "du",
         ["pipe"] = "pi",
         ["cable_tray"] = "ct",
@@ -28,6 +37,9 @@ class ShortIdGenerator
         ["equipment"] = "eq",
         ["terminal"] = "tm",
         ["mep_node"] = "mn",
+        ["connector"] = "cn",
+        ["circuit"] = "ci",
+        ["mep_system"] = "sys",
         ["roof"] = "ro",
         ["ceiling"] = "cl",
         ["opening"] = "op",
@@ -36,47 +48,61 @@ class ShortIdGenerator
         ["ramp"] = "rp",
         ["railing"] = "rl",
         ["room_separator"] = "rs",
+        ["furniture"] = "fu",
+        ["model_group"] = "mg",
+        ["dimension"] = "dm",
+        ["text_note"] = "tx",
+        ["tag"] = "tg",
+        // Element types (global/) and layers
+        ["wall_type"] = "wt",
+        ["slab_type"] = "slt",
+        ["roof_type"] = "rot",
+        ["ceiling_type"] = "clt",
+        ["door_type"] = "dt",
+        ["window_type"] = "wnt",
+        ["curtain_wall_type"] = "cwt",
+        ["column_type"] = "colt",
+        ["beam_type"] = "bmt",
+        ["foundation_type"] = "fdt",
+        ["furniture_type"] = "fut",
+        ["railing_type"] = "rlt",
+        ["type_layer"] = "tl",
     };
+
+    /// <summary>Tables whose ids are slugs of the row's name (wt-basic-wall-generic-200mm).</summary>
+    static readonly HashSet<string> SlugTables =
+    [
+        "wall_type", "slab_type", "roof_type", "ceiling_type", "door_type", "window_type", "curtain_wall_type",
+        "column_type", "beam_type", "foundation_type", "furniture_type", "railing_type",
+    ];
 
     // References that point at level rows (global, assigned first). Resolved early so
     // partition directories can be derived from the short level id.
-    static readonly string[] LevelReferenceFields = ["level_id", "base_level_id", "top_level_id"];
-    // References that may point at any partitioned table. Resolved last, after every
-    // id has been assigned, so forward references (e.g. opening → structure_wall,
-    // duct → mep_node) resolve instead of nulling out.
-    static readonly string[] OtherReferenceFields = ["host_id"];
+    static readonly string[] LevelReferenceFields = ["level_id", "base_level_id", "top_level_id", "multistory_top_level_id"];
+    // References that may point at any table. Resolved last, after every id has been
+    // assigned, so forward references (opening → structure_wall, duct → mep_node,
+    // wall → roof it attaches to) resolve instead of nulling out.
+    static readonly string[] OtherReferenceFields = ["host_id", "type_id", "top_attach_id", "beam_system_id", "circuit_id", "group_id"];
     // Port references: "host_uid:port_name" or bare "host_uid". Only the host_uid
     // is resolved to a short id; the port_name suffix is preserved.
     static readonly string[] PortReferenceFields = ["from", "to"];
-    static readonly string[] ReferenceFields = [.. LevelReferenceFields, .. OtherReferenceFields];
 
     // Counters scoped by (directory, prefix)
     readonly Dictionary<string, Dictionary<string, int>> _dirCounters = new();
     readonly Dictionary<string, string> _uidToShort = new();
     // Track directory for each short ID (for _IdMap)
     readonly Dictionary<string, string> _shortToDir = new();
+    // Directory per assigned uid (short ids repeat across level directories)
+    readonly Dictionary<string, string> _uidToDir = new();
     // Per directory: short id -> owning uid. Lets the counter skip ids already
     // claimed (e.g. seeded from stale BimDown_Id tags) while staying idempotent for
     // repeat calls with the same uid.
     readonly Dictionary<string, Dictionary<string, string>> _usedByDir = new();
 
-    internal void SeedFromModel(IList<Element> elements)
-    {
-        foreach (var element in elements)
-        {
-            var shortId = BimDownParameter.Get(element);
-            if (shortId is null) continue;
+    /// <summary>Seeds a previously written short id (the element's BimDown_Id parameter).</summary>
+    internal void Seed(string uniqueId, string shortId) => _uidToShort[uniqueId] = shortId;
 
-            _uidToShort[element.UniqueId] = shortId;
-
-            // We don't know the directory at seed time — counters will be
-            // re-established when GetOrAssign is called with directory info.
-            // For now, track the max counter globally to avoid collisions
-            // during the transition from old (global) to new (scoped) IDs.
-        }
-    }
-
-    internal string GetOrAssign(string tableName, string uniqueId, string directory = "global")
+    internal string GetOrAssign(string tableName, string uniqueId, string directory = "global", string? nameHint = null)
     {
         if (!_usedByDir.TryGetValue(directory, out var used))
         {
@@ -84,62 +110,71 @@ class ShortIdGenerator
             _usedByDir[directory] = used;
         }
 
+        var prefix = PrefixMap.TryGetValue(tableName, out var p) ? p : tableName;
+
         // Reuse a previously assigned/seeded id: claim it if free here, return it if we
         // already own it (idempotent), or fall through to reassign if another element in
-        // this directory already took it (e.g. a stale duplicate BimDown_Id tag).
-        if (_uidToShort.TryGetValue(uniqueId, out var existing))
+        // this directory already took it (e.g. a stale duplicate BimDown_Id tag) or the
+        // element moved to a table with another prefix (wall ↔ structure_wall).
+        if (_uidToShort.TryGetValue(uniqueId, out var existing) && existing.StartsWith(prefix + "-", StringComparison.Ordinal))
         {
             if (!used.TryGetValue(existing, out var owner))
             {
                 used[existing] = uniqueId;
                 _shortToDir[existing] = directory;
+                _uidToDir[uniqueId] = directory;
                 return existing;
             }
             if (owner == uniqueId)
                 return existing;
         }
 
-        var prefix = PrefixMap[tableName];
-
-        if (!_dirCounters.TryGetValue(directory, out var counters))
-        {
-            counters = new Dictionary<string, int>();
-            _dirCounters[directory] = counters;
-        }
-
         string shortId;
-        do
+        if (SlugTables.Contains(tableName) && !string.IsNullOrWhiteSpace(nameHint))
         {
-            counters.TryGetValue(prefix, out var counter);
-            counter++;
-            counters[prefix] = counter;
-            shortId = $"{prefix}-{counter}";
-        } while (used.ContainsKey(shortId));
+            var stem = $"{prefix}-{Names.Slug(nameHint)}";
+            shortId = stem;
+            for (var n = 2; used.ContainsKey(shortId); n++) shortId = $"{stem}-{n}";
+        }
+        else
+        {
+            if (!_dirCounters.TryGetValue(directory, out var counters))
+            {
+                counters = new Dictionary<string, int>();
+                _dirCounters[directory] = counters;
+            }
+            do
+            {
+                counters.TryGetValue(prefix, out var counter);
+                counter++;
+                counters[prefix] = counter;
+                shortId = $"{prefix}-{counter}";
+            } while (used.ContainsKey(shortId));
+        }
 
         used[shortId] = uniqueId;
         _uidToShort[uniqueId] = shortId;
         _shortToDir[shortId] = directory;
+        _uidToDir[uniqueId] = directory;
         return shortId;
     }
 
     internal string? Resolve(string? uniqueId)
     {
         if (uniqueId is null) return null;
-        return _uidToShort.GetValueOrDefault(uniqueId);
+        // Only ids assigned in this export: a seeded id of an element that was not
+        // exported (filtered out, table disabled) would be a dangling reference.
+        return _uidToDir.ContainsKey(uniqueId) ? _uidToShort[uniqueId] : null;
     }
 
-    /// <summary>
-    /// Remaps rows for global tables (level, grid). IDs are scoped to "global".
-    /// </summary>
+    /// <summary>Remaps rows for global tables (level, grid, types). IDs are scoped to "global".</summary>
     internal void RemapGlobalRows(string tableName, List<Dictionary<string, string?>> rows)
     {
         foreach (var row in rows)
         {
-            var uid = row.GetValueOrDefault("id");
-            if (uid is not null)
-                row["id"] = GetOrAssign(tableName, uid, "global");
-
-            ResolveReferences(row);
+            AssignRowId(tableName, row, "global");
+            ResolveLevelReferences(row);
+            ResolveOtherReferences(row);
         }
     }
 
@@ -152,19 +187,10 @@ class ShortIdGenerator
     {
         foreach (var row in rows)
         {
-            var dir = getDirectory(row);
-            var uid = row.GetValueOrDefault("id");
-            if (uid is not null)
-                row["id"] = GetOrAssign(tableName, uid, dir);
-
-            ResolveReferences(row);
+            AssignRowId(tableName, row, getDirectory(row));
+            ResolveLevelReferences(row);
+            ResolveOtherReferences(row);
         }
-    }
-
-    void ResolveReferences(Dictionary<string, string?> row)
-    {
-        ResolveReferences(row, ReferenceFields);
-        ResolvePortReferences(row);
     }
 
     void ResolveReferences(Dictionary<string, string?> row, string[] fields)
@@ -200,30 +226,55 @@ class ShortIdGenerator
         }
     }
 
+    /// <summary>
+    /// boundary_walls is a ';'-separated id list: every id must resolve, otherwise the
+    /// association is dropped (with its face and offset) and the polygon stays sketched.
+    /// </summary>
+    void ResolveListReferences(Dictionary<string, string?> row)
+    {
+        var val = row.GetValueOrDefault("boundary_walls");
+        if (string.IsNullOrEmpty(val)) return;
+        var ids = val.Split(';').Select(Resolve).ToList();
+        if (ids.Any(id => id is null))
+        {
+            row["boundary_walls"] = null;
+            row["boundary_face"] = null;
+            row["boundary_offset"] = null;
+        }
+        else row["boundary_walls"] = string.Join(";", ids);
+    }
+
     /// <summary>Assigns a short id to a single row (no reference resolution).</summary>
     internal void AssignRowId(string tableName, Dictionary<string, string?> row, string directory)
     {
         var uid = row.GetValueOrDefault("id");
-        if (uid is not null)
-            row["id"] = GetOrAssign(tableName, uid, directory);
+        if (uid is null) return;
+        row["_uid"] = uid;
+        row["id"] = GetOrAssign(tableName, uid, directory, row.GetValueOrDefault("name"));
     }
 
-    /// <summary>Resolves level references (level_id, base_level_id, top_level_id) only.</summary>
+    /// <summary>Resolves level references (level_id, base_level_id, top_level_id, multistory_top_level_id) only.</summary>
     internal void ResolveLevelReferences(Dictionary<string, string?> row) =>
         ResolveReferences(row, LevelReferenceFields);
 
-    /// <summary>Resolves non-level references (host_id and port refs from/to) only.</summary>
+    /// <summary>Resolves non-level references (host_id, type_id, …, port refs from/to, boundary_walls).</summary>
     internal void ResolveOtherReferences(Dictionary<string, string?> row)
     {
         ResolveReferences(row, OtherReferenceFields);
         ResolvePortReferences(row);
+        ResolveListReferences(row);
     }
 
     /// <summary>
     /// Returns all mappings with directory info for _IdMap.csv.
     /// </summary>
-    internal IReadOnlyDictionary<string, string> Mappings => _uidToShort;
+    internal IReadOnlyDictionary<string, string> Mappings =>
+        _uidToShort.Where(kv => _uidToDir.ContainsKey(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
     internal string GetDirectory(string shortId) =>
         _shortToDir.GetValueOrDefault(shortId, "global");
+
+    /// <summary>Directory the element with this uid was exported to.</summary>
+    internal string GetDirectoryOfUid(string uniqueId) =>
+        _uidToDir.GetValueOrDefault(uniqueId, "global");
 }

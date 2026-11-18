@@ -48,7 +48,8 @@ static class GeoJsonReader
                         _ => null,
                     };
                     if (fields is null) continue;
-                    result[id] = fields;
+                    // Ids are level-scoped: key by "directory/id".
+                    result[$"{Path.GetFileName(levelDir)}/{id}"] = fields;
                 }
             }
         }
@@ -80,6 +81,14 @@ static class GeoJsonReader
             var z2 = last.GetArrayLength() >= 3 ? last[2].GetDouble() : 0;
             fields["start_z"] = Fmt(z1);
             fields["end_z"] = Fmt(z2);
+        }
+        if (coords.GetArrayLength() > 2)
+        {
+            // Every vertex (railing paths) as "_path" = [[x,y,z],...].
+            var pts = new List<double[]>();
+            foreach (var c in coords.EnumerateArray())
+                pts.Add([c[0].GetDouble(), c[1].GetDouble(), c.GetArrayLength() >= 3 ? c[2].GetDouble() : 0]);
+            fields["_path"] = JsonSerializer.Serialize(pts);
         }
         AttachLevelOffsets(fields, props);
         AttachArc(fields, props);

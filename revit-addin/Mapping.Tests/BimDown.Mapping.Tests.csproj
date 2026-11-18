@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Unit tests for the pure Revit → BimDown mapping layer (Mapping/, ShortIdGenerator,
+    ProjectWriter, CSV / GeoJSON writers). Cross-platform (net8.0, no Revit API):
+    the sources are compiled in directly, so it runs on macOS / Linux CI.
+      dotnet test revit-addin/Mapping.Tests
+    Set BIMDOWN_CLI=<path to bimdown-spec/cli/dist/cli.js> to also run
+    `bimdown validate` on the fixture project the tests write.
+  -->
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>BimDown.RevitAddin.Tests</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\Mapping\**\*.cs" Link="Linked\Mapping\%(RecursiveDir)%(Filename)%(Extension)" />
+    <Compile Include="..\UnitConverter.cs;..\CsvWriter.cs;..\ShortIdGenerator.cs;..\ProjectWriter.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\Geojson\GeoJsonWriter.cs;..\Geojson\GeoJsonTableConfig.cs" Link="Linked\Geojson\%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.11.1" />
+    <PackageReference Include="xunit" Version="2.9.2" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="2.8.2" />
+  </ItemGroup>
+
+</Project>

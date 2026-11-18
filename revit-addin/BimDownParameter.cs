@@ -50,12 +50,53 @@ static class BimDownParameter
         BuiltInCategory.OST_ConduitFitting,
         BuiltInCategory.OST_DuctAccessory,
         BuiltInCategory.OST_PipeAccessory,
+        // Furniture, devices, stair parts, beam systems, flex curves
+        BuiltInCategory.OST_Furniture,
+        BuiltInCategory.OST_FurnitureSystems,
+        BuiltInCategory.OST_Casework,
+        BuiltInCategory.OST_Entourage,
+        BuiltInCategory.OST_Parking,
+        BuiltInCategory.OST_SpecialityEquipment,
+        BuiltInCategory.OST_PlumbingFixtures,
+        BuiltInCategory.OST_LightingDevices,
+        BuiltInCategory.OST_FireAlarmDevices,
+        BuiltInCategory.OST_DataDevices,
+        BuiltInCategory.OST_CommunicationDevices,
+        BuiltInCategory.OST_TelephoneDevices,
+        BuiltInCategory.OST_StairsRuns,
+        BuiltInCategory.OST_StairsLandings,
+        BuiltInCategory.OST_StructuralFramingSystem,
+        BuiltInCategory.OST_FlexDuctCurves,
+        BuiltInCategory.OST_FlexPipeCurves,
+        BuiltInCategory.OST_RoofOpening,
     ];
+
+    static CategorySet BoundCategories(Document doc)
+    {
+        var catSet = new CategorySet();
+        foreach (var bic in AllCategories)
+        {
+            var cat = doc.Settings.Categories.get_Item(bic);
+            if (cat is not null && cat.AllowsBoundParameters) catSet.Insert(cat);
+        }
+        return catSet;
+    }
 
     internal static void EnsureParameter(Document doc)
     {
-        if (SharedParameterElement.Lookup(doc, ParamGuid) is not null)
+        if (SharedParameterElement.Lookup(doc, ParamGuid) is { } existing)
+        {
+            // A model tagged by an older add-in: bind the categories added since.
+            var definition = existing.GetDefinition();
+            if (doc.ParameterBindings.get_Item(definition) is InstanceBinding binding)
+            {
+                var added = false;
+                foreach (Category cat in BoundCategories(doc))
+                    if (!binding.Categories.Contains(cat)) { binding.Categories.Insert(cat); added = true; }
+                if (added) doc.ParameterBindings.ReInsert(definition, binding);
+            }
             return;
+        }
 
         var app = doc.Application;
         var originalFile = app.SharedParametersFilename;
@@ -69,14 +110,7 @@ static class BimDownParameter
             var def = group.Definitions.Create(
                 new ExternalDefinitionCreationOptions(ParamName, SpecTypeId.String.Text) { GUID = ParamGuid });
 
-            var catSet = new CategorySet();
-            foreach (var bic in AllCategories)
-            {
-                var cat = doc.Settings.Categories.get_Item(bic);
-                if (cat is not null) catSet.Insert(cat);
-            }
-
-            doc.ParameterBindings.Insert(def, new InstanceBinding(catSet));
+            doc.ParameterBindings.Insert(def, new InstanceBinding(BoundCategories(doc)));
         }
         finally
         {

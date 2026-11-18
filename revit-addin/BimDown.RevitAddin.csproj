@@ -23,6 +23,9 @@
     <Compile Remove="Installer\**" />
     <EmbeddedResource Remove="Installer\**" />
     <None Remove="Installer\**" />
+    <Compile Remove="Mapping.Tests\**" />
+    <EmbeddedResource Remove="Mapping.Tests\**" />
+    <None Remove="Mapping.Tests\**" />
   </ItemGroup>
 
   <ItemGroup>

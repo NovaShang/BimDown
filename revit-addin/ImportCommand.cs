@@ -83,8 +83,10 @@ public class ImportCommand : IExternalCommand
             new BeamImporter(),
             new BraceImporter(),
             new FoundationImporter(),
-            new StairImporter(),
             new RampImporter(),
+            // Order 16-17 (stairs open their own edit scope; railings follow them)
+            new BeamSystemImporter(),
+            new StairImporter(),
             new RailingImporter(),
             // Order 20
             new DoorImporter(),
@@ -99,12 +101,16 @@ public class ImportCommand : IExternalCommand
             new EquipmentImporter(),
             new TerminalImporter(),
             new MepNodeImporter(),
+            new FurnitureImporter(),
+            // Order 35-40
+            new CircuitImporter(),
+            new AnnotationImporter("text_note"),
+            new AnnotationImporter("tag"),
         ];
 
         foreach (var importer in importers)
             importer.SetIdMap(idMap);
 
-        // Sort by order (already ordered in the array, but be explicit)
         var sorted = importers.OrderBy(i => i.Order).ToArray();
 
         var totalCreated = 0;
@@ -112,13 +118,29 @@ public class ImportCommand : IExternalCommand
         var totalDeleted = 0;
         var tablesProcessed = 0;
 
-        // Read SVG geometry layer
-        var svgGeometry = GeoJsonReader.ReadAll(inputDir);
+        // GeoJSON geometry layer, keyed by "directory/id"
+        var geometry = GeoJsonReader.ReadAll(inputDir);
 
         // Collect all CSV rows per table from level-partitioned directories
         var tableRows = ReadPartitionedCsvs(inputDir);
 
-        // Parse _IdMap.csv if available to build uuid -> id map
+        // Merge geometry into the CSV rows (CSV values win: opening / landing offsets live in CSV)
+        foreach (var (_, rows) in tableRows)
+        {
+            foreach (var row in rows)
+            {
+                if (row.GetValueOrDefault("id") is not { } id) continue;
+                if (!geometry.TryGetValue($"{row.GetValueOrDefault("_dir") ?? "global"}/{id}", out var fields)) continue;
+                foreach (var (key, value) in fields)
+                    if (row.GetValueOrDefault(key) is null) row[key] = value;
+            }
+        }
+
+        // Types (wall_type, …, type_layer): typed rows inherit their type's values.
+        ImportContext.Load(tableRows);
+        AnnotationImporter.Reset();
+
+        // _IdMap.csv: uuid → "directory/id" (ids are level-scoped)
         var uuidToIdMap = new Dictionary<string, string>();
         if (tableRows.TryGetValue("_IdMap", out var idMapRows))
         {
@@ -127,7 +149,8 @@ public class ImportCommand : IExternalCommand
                 if (row.TryGetValue("uuid", out var uuid) && !string.IsNullOrEmpty(uuid) &&
                     row.TryGetValue("id", out var id) && !string.IsNullOrEmpty(id))
                 {
-                    uuidToIdMap[uuid] = id;
+                    var dir = row.GetValueOrDefault("directory") ?? "global";
+                    uuidToIdMap[uuid] = $"{dir}/{id}";
                 }
             }
         }
@@ -139,15 +162,16 @@ public class ImportCommand : IExternalCommand
 
             try
             {
-                // Merge SVG geometry fields into CSV rows
-                foreach (var row in rows)
+                if (importer.OwnsTransactions)
                 {
-                    if (row.TryGetValue("id", out var id) && id is not null
-                        && svgGeometry.TryGetValue(id, out var svgFields))
-                    {
-                        foreach (var (key, value) in svgFields)
-                            row[key] = value;
-                    }
+                    var owned = importer.Import(doc, rows, uuidToIdMap);
+                    totalCreated += owned.Created;
+                    totalUpdated += owned.Updated;
+                    totalDeleted += owned.Deleted;
+                    tablesProcessed++;
+                    foreach (var error in owned.Errors)
+                        allErrors.Add($"[{importer.TableName}] {error}");
+                    continue;
                 }
 
                 using var tx = new Transaction(doc, $"BimDown Import: {importer.TableName}");
@@ -178,6 +202,8 @@ public class ImportCommand : IExternalCommand
             }
         }
 
+        AttachWallTops(doc, idMap, allErrors);
+
         var msg = $"Import complete ({tablesProcessed} tables):\n" +
                   $"  Created: {totalCreated}\n" +
                   $"  Updated: {totalUpdated}\n" +
@@ -188,6 +214,29 @@ public class ImportCommand : IExternalCommand
 
         Autodesk.Revit.UI.TaskDialog.Show("BimDown Import", msg);
         return Result.Succeeded;
+    }
+
+    /// <summary>Walls with top_attach_id: Attach Top to the roof / floor once every table is in.</summary>
+    static void AttachWallTops(Document doc, IdMap idMap, List<string> errors)
+    {
+        if (ImportContext.PendingAttachments.Count == 0) return;
+        using var tx = new Transaction(doc, "BimDown Import: attach wall tops");
+        tx.Start();
+        foreach (var (wallId, dir, target) in ImportContext.PendingAttachments)
+        {
+            try
+            {
+                idMap.CurrentDir = dir;
+                if (doc.GetElement(wallId) is not Wall wall || idMap.Resolve(doc, target) is not { } targetId) continue;
+                if (wall.GetAttachmentIds(AttachmentLocation.Top).Contains(targetId)) continue;
+                wall.AddAttachment(targetId, AttachmentLocation.Top);
+            }
+            catch (Exception ex)
+            {
+                errors.Add($"[wall] attach top to {target}: {ex.Message}");
+            }
+        }
+        tx.Commit();
     }
 
     /// <summary>
@@ -204,11 +253,13 @@ public class ImportCommand : IExternalCommand
         {
             var dirName = Path.GetFileName(subDir);
             var isGlobal = dirName == "global";
+            if (dirName is "mesh" or "underlays") continue;
 
             foreach (var csvFile in Directory.EnumerateFiles(subDir, "*.csv"))
             {
                 var tableName = Path.GetFileNameWithoutExtension(csvFile);
                 var (_, rows) = CsvReader.Read(csvFile);
+                foreach (var row in rows) row["_dir"] = dirName;
 
                 // For non-global level directories, inject level_id from directory name.
                 // For global/, fall back to base_level_id (populated by VerticalSpanExtractor)
