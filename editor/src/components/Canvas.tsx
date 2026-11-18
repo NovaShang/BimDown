@@ -672,19 +672,37 @@ function HoverHighlight({ svgRef, getCanvasScale, subscribeTransform }: {
     const svg = svgRef.current;
     if (!svg) return;
     svg.querySelectorAll<SVGElement>('.hover-highlight').forEach(el => {
-      el.classList.remove('hover-highlight');
+      el.classList.remove('hover-highlight', 'hover-highlight-wide');
       el.style.removeProperty('--canvas-scale');
     });
     if (!hoveredId) return;
     // hoveredId is a selection id ("lv-1:w-3"); plan nodes carry the raw id.
     const els = Array.from(svg.querySelectorAll<SVGElement>(`[data-id="${CSS.escape(toElementId(hoveredId))}"]`));
+    // The glow is a blur filter over the element's whole extent: on a room or slab covering much
+    // of the view it cost a large blur per frame, and every zoom step re-blurred it (DigitalHub /
+    // office: 0.8 to 6.5 s per step with software raster). Elements over an eighth of the view
+    // are outlined instead, and the glow pauses while the view zooms / pans.
     const applyScale = () => {
       const scale = String(getCanvasScale());
-      for (const el of els) el.style.setProperty('--canvas-scale', scale);
+      const view = svg.parentElement?.getBoundingClientRect();
+      const wide = !!view && els.some(el => {
+        const r = el.getBoundingClientRect();
+        return r.width * r.height > (view.width * view.height) / 8;
+      });
+      for (const el of els) {
+        el.style.setProperty('--canvas-scale', scale);
+        el.classList.toggle('hover-highlight-wide', wide);
+      }
     };
     for (const el of els) el.classList.add('hover-highlight');
     applyScale();
-    return subscribeTransform(applyScale);
+    let rest: ReturnType<typeof setTimeout> | undefined;
+    const unsubscribe = subscribeTransform(() => {
+      svg.classList.add('view-moving');
+      clearTimeout(rest);
+      rest = setTimeout(() => { svg.classList.remove('view-moving'); applyScale(); }, 200);
+    });
+    return () => { unsubscribe(); clearTimeout(rest); svg.classList.remove('view-moving'); };
   }, [hoveredId, svgRef, getCanvasScale, subscribeTransform]);
   return null;
 }

@@ -153,11 +153,16 @@ export function Fitting2D({ info, id, color, selected }: { info: FittingInfo; id
   if (plan.fills.length === 0 && !markers) return null;
   const stroke = selected ? '#3a7bff' : color;
   const sw = info.table === 'duct' || info.table === 'cable_tray' ? 0.025 : 0.02;
+  const opacity = isolateOpacity(view, info.system);
+  // One fill and one outline path per fitting, both carrying the id (no group unless needed)
+  const body = <>
+    {plan.fills.length > 0 && <path d={polygonsPath(plan.fills)} fill={stroke + '22'} stroke="none" data-id={id} />}
+    {plan.edges.length > 0 && <path d={segmentsPath(plan.edges)} fill="none" stroke={stroke} strokeWidth={sw} data-id={id} />}
+  </>;
+  if (!markers && opacity === 1) return body;
   return (
-    <g data-id={id} opacity={isolateOpacity(view, info.system)}>
-      {/* One fill and one outline path per fitting */}
-      {plan.fills.length > 0 && <path d={polygonsPath(plan.fills)} fill={stroke + '22'} stroke="none" data-id={id} />}
-      {plan.edges.length > 0 && <path d={segmentsPath(plan.edges)} fill="none" stroke={stroke} strokeWidth={sw} data-id={id} />}
+    <g data-id={id} opacity={opacity}>
+      {body}
       {markers && <ProblemMarkers points={markers} />}
     </g>
   );
@@ -262,15 +267,21 @@ export function Accessory2D({ look, id, color, selected, system }: { look: Acces
   const ang = (Math.atan2(look.dir.y, look.dir.x) * 180) / Math.PI;
   const H = Math.max(look.width * (look.kind.includes('damper') ? 1 : 1.6), 0.09);
   const markers = view.showProblems ? view.problemMarkers.get(id) : undefined;
+  const opacity = isolateOpacity(view, system);
+  const highlighted = !!view.highlight && inSystem(system, view.highlight);
+  const body = (
+    <g transform={`translate(${look.at.x},${look.at.y}) rotate(${ang})`} data-id={id}>
+      {accessorySymbol(look.kind, look.length, H, stroke, '#ffffff')}
+      {/* Always-clickable hit zone */}
+      <rect x={-look.length / 2} y={-H / 2} width={look.length} height={H} fill="transparent" data-id={id} />
+    </g>
+  );
+  if (!markers && !highlighted && opacity === 1) return body;
   return (
-    <g data-id={id} opacity={isolateOpacity(view, system)}>
-      <g transform={`translate(${look.at.x},${look.at.y}) rotate(${ang})`} data-id={id}>
-        {accessorySymbol(look.kind, look.length, H, stroke, '#ffffff')}
-        {/* Always-clickable hit zone */}
-        <rect x={-look.length / 2} y={-H / 2} width={look.length} height={H} fill="transparent" data-id={id} />
-      </g>
+    <g data-id={id} opacity={opacity}>
+      {body}
       {markers && <ProblemMarkers points={markers} />}
-      {view.highlight && inSystem(system, view.highlight) && (
+      {highlighted && (
         <circle cx={look.at.x} cy={look.at.y} r={look.length} fill="none" stroke={stroke} strokeWidth={0.1} strokeOpacity={0.3} />
       )}
     </g>

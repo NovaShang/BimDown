@@ -7,7 +7,7 @@ import { useMemo } from 'react';
 import { BoxGeometry, CylinderGeometry, type BufferGeometry } from 'three';
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { useMepView, isolateOpacity, inSystem } from './mepView.ts';
-import { equipmentAbbr, equipmentSymbol, terminalSymbol, PlanText, ProblemMarkers } from './planSymbols.tsx';
+import { equipmentAbbr, equipmentSymbol, terminalSymbol, terminalCoversFootprint, PlanText, ProblemMarkers } from './planSymbols.tsx';
 import { ghostMaterial, solidMaterial } from './materials.ts';
 
 export interface DeviceFacts {
@@ -55,20 +55,29 @@ export function Device2D({ facts, selected }: { facts: DeviceFacts; selected: bo
     : facts.flow > 0 && /diffuser|grille/.test(facts.type) ? `${Math.round(facts.flow)} L/s` : '';
   const tagSize = facts.table === 'equipment' ? Math.max(0.14, Math.min(0.3, Math.min(facts.width, facts.depth) * 0.3)) : 0.12;
   const tagY = facts.table === 'equipment' ? facts.position.y : facts.position.y - facts.depth / 2 - 0.12;
+  const opacity = isolateOpacity(view, facts.systemType);
+  // The symbol's own filled footprint is the hit area where it has one
+  const covered = facts.table === 'equipment' || !sym || terminalCoversFootprint(facts.type, facts.width, facts.depth);
+  const body = (
+    <g transform={`translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`} data-id={facts.id}>
+      {sym ?? (
+        <rect x={-facts.width / 2} y={-facts.depth / 2} width={facts.width} height={facts.depth}
+          fill={fill} stroke={stroke} strokeWidth={0.02} rx={0.03} ry={0.03} />
+      )}
+      {!covered && <rect x={-facts.width / 2} y={-facts.depth / 2} width={facts.width} height={facts.depth} fill="transparent" data-id={facts.id} />}
+    </g>
+  );
+  const showTag = view.showTags && !!tag;
+  // A bare symbol needs no outer group (a large model has hundreds of terminals)
+  if (!highlighted && !showTag && !markers && opacity === 1) return body;
   return (
-    <g data-id={facts.id} opacity={isolateOpacity(view, facts.systemType)}>
+    <g data-id={facts.id} opacity={opacity}>
       {highlighted && (
         <circle cx={facts.position.x} cy={facts.position.y} r={Math.max(facts.width, facts.depth) * 0.75 + 0.1}
           fill="none" stroke={stroke} strokeWidth={0.08} strokeOpacity={0.35} />
       )}
-      <g transform={`translate(${facts.position.x},${facts.position.y}) rotate(${facts.rotationDeg})`} data-id={facts.id}>
-        {sym ?? (
-          <rect x={-facts.width / 2} y={-facts.depth / 2} width={facts.width} height={facts.depth}
-            fill={fill} stroke={stroke} strokeWidth={0.02} rx={0.03} ry={0.03} />
-        )}
-        <rect x={-facts.width / 2} y={-facts.depth / 2} width={facts.width} height={facts.depth} fill="transparent" data-id={facts.id} />
-      </g>
-      {view.showTags && tag && (
+      {body}
+      {showTag && (
         <PlanText x={facts.position.x} y={tagY} size={tagSize} color={stroke} text={tag} weight={600} />
       )}
       {markers && <ProblemMarkers points={markers} />}
