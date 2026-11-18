@@ -447,6 +447,8 @@
   "hint.trimSingle": "选择参照：墙或轴网线 · Esc 结束",
   "hint.trimSingle2": "在要保留的一侧点要修剪或延伸的墙 · Esc 取消",
   "hint.split": "在墙上点击拆分位置 · Esc 结束",
+  "hint.matchType": "匹配类型：点击源图元 · Esc 结束",
+  "hint.matchType2": "匹配类型：逐个点击目标图元，赋予源类型 · Esc / 右键结束",
 
   "prop.meshFallback": "网格体回退",
 
@@ -1377,13 +1379,15 @@
   "field.Type Id": "梁类型",
   "vv.title": "可见性 / 图形",
   "shortcut.createSimilar": "创建类似实例",
-  "shortcut.matchType": "匹配类型属性（先选的为源）",
+  "shortcut.matchType": "匹配类型属性（先选源，再逐个点目标）",
   "shortcut.hideElement": "临时隐藏图元",
   "shortcut.isolateElement": "临时隔离图元",
   "shortcut.hideCategory": "临时隐藏类别",
   "shortcut.isolateCategory": "临时隔离类别",
   "shortcut.resetTempHide": "重设临时隐藏 / 隔离",
   "notice.matched": "{{count}} 个图元已改为源类型",
+  "notice.matchIncompatible": "请选择与源同类别的图元",
+  "notice.matchUntyped": "该图元没有可匹配的类型",
   "tempHide.active": "临时隐藏 / 隔离",
   "tempHide.reset": "重设 (HR)"
 }

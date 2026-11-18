@@ -18,6 +18,7 @@ import { drawPickTool } from './drawPickTool.ts';
 import { drawDimensionTool, drawTextTool, drawTagTool } from './annotationTools.ts';
 import { drawSectionTool } from './drawSectionTool.ts';
 import { underlayTool } from './underlayTool.ts';
+import { matchTypeTool } from './matchTypeTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -67,6 +68,9 @@ const toolRegistry: Record<string, ToolHandler> = {
 
   // Point picking for underlay calibrate / move / rotate (underlay/store.ts)
   underlay: underlayTool,
+
+  // Match type properties: source, then targets until Esc (MA)
+  match_type: matchTypeTool,
 };
 
 export function getToolHandler(tool: Tool): ToolHandler {

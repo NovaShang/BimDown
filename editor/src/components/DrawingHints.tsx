@@ -25,6 +25,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   trim_corner:  'hint.trimCorner',
   trim_single:  'hint.trimSingle',
   split:        'hint.split',
+  match_type:   'hint.matchType',
   draw_dimension: 'hint.dimension',
   draw_text:    'hint.text',
   draw_tag:     'hint.tag',
@@ -84,7 +85,7 @@ export default function DrawingHints() {
       ? t(regionHint)
       : wallMode
         ? t(`hint.wall_${wallMode}`)
-        : (activeTool === 'trim_corner' || activeTool === 'trim_single') && drawingState?.pick
+        : (activeTool === 'trim_corner' || activeTool === 'trim_single' || activeTool === 'match_type') && drawingState?.pick
           ? t(`${hintKey}2`)
           : isVerticalLine
             ? t('hint.vertical')

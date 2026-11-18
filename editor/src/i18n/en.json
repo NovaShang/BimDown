@@ -447,6 +447,8 @@
   "hint.trimSingle": "Pick the reference: a wall or grid line · Esc to finish",
   "hint.trimSingle2": "Pick the wall to trim or extend, on the side to keep · Esc cancel",
   "hint.split": "Click a wall where to split it · Esc to finish",
+  "hint.matchType": "Match type: click the source element · Esc to finish",
+  "hint.matchType2": "Match type: click elements to give them the source's type · Esc / right-click to finish",
 
   "prop.meshFallback": "Mesh Fallback",
 
@@ -1377,13 +1379,15 @@
   "field.Type Id": "Beam type",
   "vv.title": "Visibility / graphics",
   "shortcut.createSimilar": "Create similar",
-  "shortcut.matchType": "Match type properties (first selected is the source)",
+  "shortcut.matchType": "Match type properties (source, then click targets)",
   "shortcut.hideElement": "Temporarily hide elements",
   "shortcut.isolateElement": "Temporarily isolate elements",
   "shortcut.hideCategory": "Temporarily hide category",
   "shortcut.isolateCategory": "Temporarily isolate category",
   "shortcut.resetTempHide": "Reset temporary hide / isolate",
   "notice.matched": "{{count}} elements changed to the source's type",
+  "notice.matchIncompatible": "Pick an element of the source's category",
+  "notice.matchUntyped": "This element has no types to match",
   "tempHide.active": "Temporary hide / isolate",
   "tempHide.reset": "Reset (HR)"
 }

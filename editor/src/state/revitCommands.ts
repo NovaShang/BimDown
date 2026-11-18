@@ -1,11 +1,13 @@
 /**
  * Revit commands on the selection: CS (create similar), MA (match type
- * properties) and temporary hide / isolate (HH, HI, HC, IC, HR).
+ * properties; the pick flow is tools/matchTypeTool.ts) and temporary hide /
+ * isolate (HH, HI, HC, IC, HR).
  */
 import type { EditorAction, EditorState } from './editorTypes.ts';
 import type { CanonicalElement } from '../model/elements.ts';
 import { toElementId } from '../model/ids.ts';
 import { retypeElements } from './typeEdits.ts';
+import { isTypedTable, type TypeCatalog } from '../model/types/catalog.ts';
 import { applyTempHide, setTempHide } from './tempHide.ts';
 
 type Dispatch = (a: EditorAction) => void;
@@ -41,6 +43,27 @@ export function matchType(state: EditorState, dispatch: Dispatch): number {
   for (const [id, c] of changed) patches.set(id, c.after);
   dispatch({ type: 'APPLY_PATCH', description: 'Match type', patches });
   return changed.size;
+}
+
+export type MatchResult =
+  | { ok: true; patches: Map<string, CanonicalElement> }
+  | { ok: false; reason: 'incompatible' | 'unchanged' | 'untyped' };
+
+/**
+ * Match type properties onto one picked target (the MA pick tool): a target
+ * of the source's category takes the source's type (type_id plus the values
+ * the type carries). One target per call — one undo step per click.
+ */
+export function matchTypeOnto(
+  elements: Map<string, CanonicalElement>, sourceId: string, targetId: string, catalog: TypeCatalog | undefined,
+): MatchResult {
+  const src = elements.get(sourceId), dst = elements.get(targetId);
+  if (!src || !dst || src.id === dst.id) return { ok: false, reason: 'unchanged' };
+  if (!isTypedTable(src.tableName)) return { ok: false, reason: 'untyped' };
+  if (dst.tableName !== src.tableName) return { ok: false, reason: 'incompatible' };
+  const { changed } = retypeElements(elements, [dst.id], src.attrs.type_id ?? '', catalog);
+  if (changed.size === 0) return { ok: false, reason: 'unchanged' };
+  return { ok: true, patches: new Map([...changed].map(([id, c]) => [id, c.after])) };
 }
 
 /** Temporarily hide / isolate the selected elements or their categories. */

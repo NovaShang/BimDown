@@ -66,7 +66,7 @@ function isPickArea(node: Element): boolean {
 }
 
 /** Elements under the pointer (2D plan), most specific first (pickPriority.ts). */
-function picksAt(ctx: ToolContext, clientX: number, clientY: number): RankedPick[] {
+export function picksAt(ctx: ToolContext, clientX: number, clientY: number): RankedPick[] {
   if (typeof document === 'undefined' || typeof document.elementsFromPoint !== 'function') return [];
   const p = ctx.screenToSvg(clientX, clientY);
   if (!p) return [];

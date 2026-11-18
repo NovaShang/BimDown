@@ -525,6 +525,12 @@ export default forwardRef<CanvasHandle, CanvasProps>(function Canvas({ layers, v
           setContextMenu({ x: e.clientX, y: e.clientY, targetId });
           return;
         }
+        if (stateRef.current.activeTool === 'match_type') {
+          // Match type pick flow: right-click ends it (as Esc)
+          globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+          globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
+          return;
+        }
         if (stateRef.current.activeTool.startsWith('draw_')) {
           // Polygon tools: right-click closes the outline (3+ vertices).
           if (isDrawingPolygon(stateRef.current) && finishPolygon(stateRef.current, globalDispatch)) return;
