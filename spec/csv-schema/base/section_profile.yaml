@@ -8,6 +8,11 @@ fields:
     values:
       - rect
       - round
+      - oval
+    description: >
+      oval = flat oval duct: two parallel flat sides and semicircular ends,
+      size_x the major axis, size_y the minor one (ducts only; other tables
+      treat it as rect).
 
   - name: size_x
     type: float

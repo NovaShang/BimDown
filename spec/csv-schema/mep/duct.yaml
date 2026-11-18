@@ -11,4 +11,5 @@ fields:
     type: boolean
     description: >
       true = flexible duct (round, short runs to terminals); drawn as a
-      flex hose. Empty / false = rigid sheet-metal duct.
+      flex hose, exported as IfcDuctSegment FLEXIBLESEGMENT. Empty / false =
+      rigid sheet-metal duct.

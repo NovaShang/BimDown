@@ -24,3 +24,9 @@ fields:
       Pipe material. Empty = unspecified (sized as metal). `size_x` is the
       nominal size: DN for metal pipes (0.065 = DN65), the outside diameter
       de for plastic ones (pvc / ppr / hdpe / pex, 0.11 = de110).
+
+  - name: flexible
+    type: boolean
+    description: >
+      true = flexible hose (braided / corrugated connector to a fixture or
+      equipment); exported as IfcPipeSegment FLEXIBLESEGMENT. Empty / false = rigid.

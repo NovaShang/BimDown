@@ -116,7 +116,7 @@ function sizeLabel(c: Curve): string {
     const d = mm(c.w);
     const dn = c.table === 'pipe' ? [15, 20, 25, 32, 40, 50, 65, 80, 100, 125, 150, 200, 250, 300].find(n => Math.abs(n - d) <= Math.max(2, n * 0.12)) : undefined;
     size = dn ? `DN${dn}` : `Ø${d}`;
-  } else size = `${mm(c.w)}×${mm(c.h)}`;
+  } else size = `${mm(c.w)}×${mm(c.h)}${c.table === 'duct' && c.row.shape === 'oval' ? ' oval' : ''}`;
   return sys ? `${sys} ${size}` : size;
 }
 
@@ -293,9 +293,11 @@ export function renderMep(dirs: string[], globalDir: string): MepRendered[] {
       const up = lowerJoins && !upperJoins ? true : upperJoins && !lowerJoins ? false : c.b[2] >= c.a[2];
       const x = c.a[0], y = c.a[1], hw = c.w / 2, hh = c.h / 2;
       const kind = up ? 'riser-up' : 'riser-down';
+      // Flat oval risers: a rect with fully rounded short ends
+      const rx = c.table === 'duct' && c.row.shape === 'oval' ? Math.min(hw, hh) : 0;
       const shape = c.round
         ? `<circle cx="${f3(x)}" cy="${f3(y)}" r="${f3(hw)}" fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-width="${sw}" />`
-        : `<rect x="${f3(x - hw)}" y="${f3(y - hh)}" width="${f3(c.w)}" height="${f3(c.h)}" fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-width="${sw}" />`;
+        : `<rect x="${f3(x - hw)}" y="${f3(y - hh)}" width="${f3(c.w)}" height="${f3(c.h)}"${rx ? ` rx="${f3(rx)}"` : ''} fill="${color}" fill-opacity="0.13" stroke="${color}" stroke-width="${sw}" />`;
       const k = c.round ? 0.7071 : 1;
       const d1 = `<line x1="${f3(x - hw * k)}" y1="${f3(y - hh * k)}" x2="${f3(x + hw * k)}" y2="${f3(y + hh * k)}" stroke="${color}" stroke-width="${sw * 0.8}" />`;
       const d2 = `<line x1="${f3(x - hw * k)}" y1="${f3(y + hh * k)}" x2="${f3(x + hw * k)}" y2="${f3(y - hh * k)}" stroke="${color}" stroke-width="${sw * 0.8}" />`;
