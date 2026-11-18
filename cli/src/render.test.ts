@@ -113,5 +113,21 @@ describe('renderLevel', () => {
     expect(svg.indexOf(masks[0])).toBeLessThan(svg.indexOf('id="cw-1"'));
     expect(svg.indexOf(masks[0])).toBeGreaterThan(svg.indexOf('id="w-1"'));
   });
-});
 
+  it('blanks an arc wall along an embedded arc curtain wall', () => {
+    const lv = setup();
+    const arc = { radius: 5, large_arc: false, sweep: true };
+    const d = (deg: number) => [10 + 5 * Math.cos(deg * Math.PI / 180), 10 + 5 * Math.sin(deg * Math.PI / 180)];
+    writeFileSync(join(lv, 'wall.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { id: 'w-9', arc }, geometry: { type: 'LineString', coordinates: [d(0), d(180)] } }] }));
+    writeFileSync(join(lv, 'wall.csv'), 'id,number,thickness,material\nw-9,,0.2,concrete\n');
+    writeFileSync(join(lv, 'curtain_wall.geojson'), JSON.stringify({ type: 'FeatureCollection', features: [{ type: 'Feature', properties: { id: 'cw-9', arc }, geometry: { type: 'LineString', coordinates: [d(45), d(135)] } }] }));
+    writeFileSync(join(lv, 'curtain_wall.csv'), 'id,number\ncw-9,\n');
+    const svg = renderLevel(testDir, 'lv-1');
+    const masks = svg.split('\n').filter((l) => l.includes('stroke="white"') && l.includes('<polyline'));
+    expect(masks).toHaveLength(1);
+    // From 45° to 135° over the top of the arc
+    expect(masks[0]).toContain('points="13.536,13.536 ');
+    expect(masks[0]).toContain(' 6.464,13.536"');
+    expect(masks[0]).toContain(' 10.074,14.999 ');
+  });
+});

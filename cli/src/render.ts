@@ -17,7 +17,7 @@ import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
 import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
 import { cellKinds, gridLines, parsePanels } from './curtain-grid.js';
 import { renderStairs } from './stair/render.js';
-import { curtainEmbedSpan } from './curtain-embed.js';
+import { curtainEmbedSpan, embedPointAt } from './curtain-embed.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -104,7 +104,7 @@ interface WallRef {
   start: { x: number; y: number };
   end: { x: number; y: number };
   thickness: number;
-  arc?: boolean;
+  arc?: ArcParams;
 }
 
 export interface RenderOptions {
@@ -310,21 +310,24 @@ function embedMasks(feat: BimDownFeature, wallById: Map<string, WallRef>, projec
   const upm = 1 / UNIT_TO_M[projectUnits(projectDir)];
   if ((Number(feat.properties.base_offset) || 0) > 1.2 * upm) return [];
   const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
-  const cw = { start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] } };
+  const cw = { start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] }, arc: feat.properties.arc as ArcParams | undefined };
   const out: RenderedElement[] = [];
   for (const w of wallById.values()) {
-    if ((w.table !== 'wall' && w.table !== 'structure_wall') || w.arc) continue;
+    if (w.table !== 'wall' && w.table !== 'structure_wall') continue;
     const span = curtainEmbedSpan(w, w.thickness, cw, 0.005 * upm);
     if (!span) continue;
-    const len = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
-    const ux = (w.end.x - w.start.x) / len, uy = (w.end.y - w.start.y) / len;
-    const p = (t: number) => [w.start.x + ux * t, w.start.y + uy * t];
-    const [x1, y1] = p(span.lo), [x2, y2] = p(span.hi);
+    // Polyline along the wall (straight: two points; arc: every ~0.15 m)
+    const n = w.arc ? Math.max(2, Math.ceil((span.hi - span.lo) / (0.15 * upm))) : 1;
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i <= n; i++) pts.push(embedPointAt(w, span.lo + (span.hi - span.lo) * i / n));
     const sw = w.thickness + 0.01 * upm;
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
     out.push({
       tableName: 'curtain_wall',
-      svg: `    <line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`,
-      bounds: { minX: Math.min(x1, x2), minY: Math.min(y1, y2), maxX: Math.max(x1, x2), maxY: Math.max(y1, y2) },
+      svg: pts.length === 2
+        ? `    <line x1="${fmt(pts[0].x)}" y1="${fmt(pts[0].y)}" x2="${fmt(pts[1].x)}" y2="${fmt(pts[1].y)}" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`
+        : `    <polyline points="${pts.map(p => `${fmt(p.x)},${fmt(p.y)}`).join(' ')}" fill="none" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`,
+      bounds: { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) },
     });
   }
   return out;
@@ -728,7 +731,7 @@ function indexWalls(dirPath: string, out: Map<string, WallRef>): void {
       out.set(id, {
         id,
         table: t,
-        arc: !!f.properties.arc,
+        arc: f.properties.arc as ArcParams | undefined,
         start: { x: a[0], y: a[1] },
         end: { x: b[0], y: b[1] },
         thickness: thicknessMap.get(id) ?? 0.2,
