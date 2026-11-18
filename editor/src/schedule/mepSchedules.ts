@@ -8,7 +8,8 @@
 import type { CanonicalElement, LineElement, PointElement, SpatialLineElement } from '../model/elements.ts';
 import type { ProjectUnit } from '../types.ts';
 import type { ScheduleCategory, ScheduleColumn, ColumnKind } from './schedules.ts';
-import { circuitsIn, type CircuitSummary } from '../mep/circuits.ts';
+import { circuitsIn, phaseImbalance, type CircuitSummary } from '../mep/circuits.ts';
+import type { ScheduleRow } from './schedules.ts';
 import { formatMepSize, fromMetres, sizeDisplayUnit, sizeToDisplay, toMetres } from '../mep/sizes.ts';
 import { ACCESSORY_KIND_OPTIONS, EQUIPMENT_TYPE_OPTIONS, TERMINAL_TYPE_OPTIONS } from '../elements/_options.ts';
 import { drawingLabel, type DrawingLang } from '../export/drawing/labels.ts';
@@ -27,6 +28,12 @@ const FAMILY = C('family', 'schedule.col.family', 'text');
 const FAMILY_TYPE = C('family_type', 'schedule.col.type', 'text');
 const FLOW = (total: boolean) => C('flow', 'schedule.col.flowLs', 'count', true, total, 1);
 const DIMS = C('dims', 'schedule.col.sizeWDH', 'text');
+
+/** Phase imbalance of the rows' summed phase loads (panel schedule totals). */
+const imbalanceOf = (rows: ScheduleRow[]) => {
+  const sum = (k: string) => rows.reduce((s, r) => s + (typeof r.values[k] === 'number' ? (r.values[k] as number) : 0), 0);
+  return rows.length ? Math.round(phaseImbalance({ L1: sum('load_l1'), L2: sum('load_l2'), L3: sum('load_l3') }) * 10) / 10 : undefined;
+};
 
 export const MEP_RUN_TABLES = ['duct', 'pipe', 'conduit', 'cable_tray'];
 
@@ -65,6 +72,18 @@ export const MEP_SCHEDULES: ScheduleCategory[] = [
     columns: [C('panel', 'schedule.col.panel', 'text'), NUMBER, C('name', 'schedule.col.name', 'text'), LEVEL,
       C('voltage', 'schedule.col.voltage', 'text'), C('rating', 'schedule.col.rating', 'text'),
       C('devices', 'schedule.col.devices', 'count', true, true), C('load_w', 'schedule.col.loadW', 'count', true, true)],
+  },
+  {
+    // Revit-style panel schedule: one section per panel, circuits by number,
+    // load per phase with the panel's totals and imbalance, current per circuit
+    key: 'panel', label: 'schedule.panel', tables: ['circuit'], groupBy: 'panel', sort: { key: 'number', dir: 1 }, printGroups: true,
+    columns: [C('panel', 'schedule.col.panel', 'text'), C('number', 'schedule.col.circuitNo', 'text'), C('name', 'schedule.col.description', 'text'),
+      C('poles', 'schedule.col.poles', 'text'), C('rating', 'schedule.col.rating', 'text'), C('phase', 'schedule.col.phase', 'text'),
+      C('load_l1', 'schedule.col.loadL1', 'count', true, true, 0), C('load_l2', 'schedule.col.loadL2', 'count', true, true, 0),
+      C('load_l3', 'schedule.col.loadL3', 'count', true, true, 0), C('load_w', 'schedule.col.loadW', 'count', true, true, 0),
+      C('current', 'schedule.col.currentA', 'count', true, false, 1), C('voltage', 'schedule.col.voltage', 'text', false),
+      C('power_factor', 'schedule.col.powerFactor', 'count', false, false, 2), C('devices', 'schedule.col.devices', 'count', false, true),
+      { ...C('imbalance', 'schedule.col.imbalance', 'count', true, true, 1), aggregate: imbalanceOf }],
   },
 ];
 
@@ -177,12 +196,21 @@ export function mepValueFn(unit: ProjectUnit, lang: DrawingLang) {
     if (el.tableName === 'circuit') {
       const c = circuits(levelId, context).get(el.id);
       const panelId = c?.panelId ?? a.host_id ?? '';
+      const r1 = (v: number) => Math.round(v * 10) / 10;
       return {
         panel: panelLabel(context.find(e => e.id === panelId), panelId, lang),
         voltage: a.voltage ? `${a.voltage} V` : '',
         rating: a.rating ? `${a.rating} A` : '',
         devices: c?.devices.length ?? 0,
         load_w: Math.round(c?.load ?? 0),
+        poles: c?.poles ? String(c.poles) : '',
+        phase: c?.phases.length ? c.phases.join('-') : '',
+        load_l1: c?.perPhase.L1 ? r1(c.perPhase.L1) : undefined,
+        load_l2: c?.perPhase.L2 ? r1(c.perPhase.L2) : undefined,
+        load_l3: c?.perPhase.L3 ? r1(c.perPhase.L3) : undefined,
+        current: c && c.current > 0 ? r1(c.current) : undefined,
+        power_factor: c?.powerFactor,
+        imbalance: undefined,
       };
     }
     return null;

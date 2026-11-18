@@ -5,7 +5,7 @@
 import type { CanonicalElement, LineElement, SpatialLineElement, PointElement } from '../model/elements.ts';
 import { isMepLineTable } from '../model/mepTopology.ts';
 import { endZ } from '../model/mepSplit.ts';
-import { checkMep, type MepModelIn, type MepProblem, type Vec3 } from './mepCheck.ts';
+import { checkMep, trayFills, type TrayFill, type MepCircuitIn, type MepModelIn, type MepProblem, type Vec3 } from './mepCheck.ts';
 import { inSystem, UNASSIGNED } from './mepView.ts';
 import type { LayerData, ProjectData } from '../types.ts';
 import { crossLevelRefs } from './externalRefs.ts';
@@ -35,6 +35,15 @@ export function externalMep(project: ProjectData | null, currentLevel: string): 
   return { refs, hosts };
 }
 
+/** A circuit row as check input (phases, power factor, cable routing). */
+export function circuitIn(id: string, hostId: string, a: Record<string, string | undefined>): MepCircuitIn {
+  return {
+    id, hostId, number: a.number || '', voltage: num(a.voltage), rating: num(a.rating),
+    phase: (a.phase ?? '').trim(), poles: num(a.poles), powerFactor: num(a.power_factor),
+    cableSize: num(a.cable_size), trays: (a.cable_trays ?? '').split(/[;,\s]+/).map(x => x.trim()).filter(Boolean),
+  };
+}
+
 export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep): MepModelIn {
   const m: MepModelIn = { curves: [], hosts: [], ports: [], circuits: [], complete: false, externalRefs: ext?.refs, externalHosts: ext?.hosts };
   const hosts = new Map<string, PointElement>();
@@ -47,6 +56,7 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, e
         from: c.attrs.from ?? '', to: c.attrs.to ?? '', system: (c.attrs.system_type ?? '').trim(),
         shape: c.attrs.shape || (c.tableName === 'duct' || c.tableName === 'cable_tray' ? 'rect' : 'round'),
         w: num(c.attrs.size_x), h: num(c.attrs.size_y),
+        ...(c.tableName === 'cable_tray' && num(c.attrs.max_fill) > 0 ? { maxFill: num(c.attrs.max_fill) } : {}),
       });
     } else if ((el.tableName === 'equipment' || el.tableName === 'terminal' || el.tableName === 'mep_node') && el.geometry === 'point') {
       const p = el as PointElement;
@@ -58,7 +68,7 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, e
         flow: num(p.attrs.flow),
       });
     } else if (el.tableName === 'circuit') {
-      m.circuits!.push({ id: el.id, hostId: el.hostId || el.attrs.host_id || '', number: el.attrs.number || '', voltage: num(el.attrs.voltage), rating: num(el.attrs.rating) });
+      m.circuits!.push(circuitIn(el.id, el.hostId || el.attrs.host_id || '', el.attrs));
     }
   }
   for (const el of elements.values()) {
@@ -81,8 +91,13 @@ export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, e
   return m;
 }
 
-export function checkDocument(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep): MepProblem[] {
-  return checkMep(buildMepModel(elements, ext));
+export function checkDocument(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep, opts: { trayFillLimit?: number } = {}): MepProblem[] {
+  return checkMep({ ...buildMepModel(elements, ext), trayFillLimit: opts.trayFillLimit });
+}
+
+/** Fill of every cable tray on the level (cables routed by circuits, conduits laid in it). */
+export function documentTrayFills(elements: ReadonlyMap<string, CanonicalElement>, trayFillLimit?: number): TrayFill[] {
+  return trayFills({ ...buildMepModel(elements), trayFillLimit });
 }
 
 export interface SystemRow {
