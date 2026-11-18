@@ -20,6 +20,14 @@ fields:
     reference: slab_type
     description: Optional slab_type id. Empty type parameters (thickness, material) inherit the type's value; a set value overrides it for this element.
 
+  - name: slope_arrow
+    type: string
+    description: >
+      Sloped floor (Revit slope arrow): "tx,ty,tz;hx,hy,hz" = plan tail and head
+      points (m) and the top's height (m) above level + base_offset at each.
+      The top is the plane through them, level across the arrow (the head need
+      not lie inside the outline); thickness stays vertical. Empty = flat.
+
   - name: net_area
     type: float
     computed: true

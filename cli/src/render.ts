@@ -3,6 +3,7 @@
  * Reads all GeoJSON files for the level, composes a single colored SVG.
  * Output is an image (SVG/PNG), not storage.
  */
+import { parseSlopeArrow, type SlopeArrow } from './geo/slab-slope.js';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { discoverLayout } from './utils/fs.js';
@@ -233,7 +234,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 // ─── Per-feature rendering ────────────────────────────────
 
 /** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
-const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall', 'structure_slab']);
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall', 'structure_slab', 'slab']);
 
 function renderFeature(
   tableName: string,
@@ -291,6 +292,9 @@ function renderFeature(
       // One-way slab / deck: span direction arrow through the centroid (as the editor draws it)
       const span = tableName === 'structure_slab' ? parseFloat(row?.span_direction ?? '') : NaN;
       if (Number.isFinite(span)) svg += '\n' + spanArrow(id, ring, span, color.stroke);
+      // Sloped floor: its slope arrow (tail dot, shaft, head)
+      const slope = tableName === 'slab' || tableName === 'structure_slab' ? parseSlopeArrow(row?.slope_arrow) : null;
+      if (slope && typeof slope !== 'string') svg += '\n' + slopeArrowSvg(id, slope, color.stroke);
       return { tableName, svg, bounds: ringBounds(ring) };
     }
   }
@@ -306,7 +310,7 @@ function renderFeature(
  */
 function embedMasks(feat: BimDownFeature, wallById: Map<string, WallRef>, projectDir: string): RenderedElement[] {
   const g = feat.geometry;
-  if (g.type !== 'LineString' || g.coordinates.length < 2 || feat.properties.arc) return [];
+  if (g.type !== 'LineString' || g.coordinates.length < 2) return [];
   const upm = 1 / UNIT_TO_M[projectUnits(projectDir)];
   if ((Number(feat.properties.base_offset) || 0) > 1.2 * upm) return [];
   const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
@@ -455,6 +459,19 @@ export function spanArrow(id: string, ring: number[][], deg: number, stroke: str
   const d = `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])} ${head(p2, 1)} ${head(p1, -1)} `
     + `M ${fmt(c[0] - nx * 0.3)},${fmt(c[1] - ny * 0.3)} L ${fmt(c[0] + nx * 0.3)},${fmt(c[1] + ny * 0.3)}`;
   return `    <path id="${id}-span" class="span-direction" d="${d}" stroke="${stroke}" stroke-width="0.03" fill="none" />`;
+}
+
+/** Slope arrow of a sloped floor (as the editor draws it). */
+export function slopeArrowSvg(id: string, a: SlopeArrow, stroke: string): string {
+  const dx = a.head.x - a.tail.x, dy = a.head.y - a.tail.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+  const h = Math.min(0.3, l * 0.3);
+  const t = a.head;
+  const d = `M ${fmt(a.tail.x)},${fmt(a.tail.y)} L ${fmt(t.x)},${fmt(t.y)} `
+    + `M ${fmt(t.x - ux * h + nx * h * 0.45)},${fmt(t.y - uy * h + ny * h * 0.45)} L ${fmt(t.x)},${fmt(t.y)} L ${fmt(t.x - ux * h - nx * h * 0.45)},${fmt(t.y - uy * h - ny * h * 0.45)}`;
+  return `    <path id="${id}-slope" class="slope-arrow" d="${d}" stroke="${stroke}" stroke-width="0.03" fill="none" />\n`
+    + `    <circle cx="${fmt(a.tail.x)}" cy="${fmt(a.tail.y)}" r="0.06" fill="${stroke}" />`;
 }
 
 /** Plan outline rings of a structural section (outer + hollow-section inner ring), local, centred. */

@@ -353,6 +353,8 @@ Marks (`number`) can be generated per category; `project_metadata.json` `numberi
 
 A roof is a footprint polygon (the eave outline, overhang included); `base_offset` is the underside at the eaves. `edge_slopes` gives one slope per footprint edge (`;`-separated degrees, edge i from vertex i to i+1, 0 = gable / rake edge): each sloped edge is a plane rising inward, and the roof underside is the lowest plane reaching each point, so L / T / U footprints get exact ridges, hips and valleys. Without `edge_slopes`, `roof_type` + `slope` imply them (hip: all edges; gable: all but the wing ends; shed: one eave; mansard: all edges, steeper, with a flat deck). A flat roof drains with small edge slopes (`1.2;0;0;0`). `roof_type: extrusion` sweeps `profile` (`u,z;...`: rise z at distance u across the first edge) along the first edge.
 
+**Sloped floors** (Revit slope arrow): a slab or structure_slab with `slope_arrow` = `tx,ty,tz;hx,hy,hz` has its top on the plane through the tail and head (plan x, y; z = height above level + `base_offset`), level across the arrow; thickness stays vertical, and attached walls follow the sloped soffit. Empty = flat. E.g. a ramped floor rising 0.5 m over 10 m: `0,2,0;10,2,0.5`.
+
 A wall (or structure_wall) with `top_attach_id` = a roof or slab id (any level) has its top follow that element's underside wherever the wall is under it (gable end walls, walls under a sloped ceiling); elsewhere it keeps its `top_level_id` / `top_offset` top.
 
 ```csv

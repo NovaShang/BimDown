@@ -1,13 +1,14 @@
 /**
  * Building envelope checks: roof edge slopes / extrusion profiles against
  * the roof outline, wall top attachment targets, and shafts (openings with a
- * top_level_id) versus hosted openings.
+ * top_level_id) versus hosted openings, and slab slope arrows.
  */
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import type { CsvData } from '../utils/csv.js';
 import { parseGeoJsonFile, type BimDownFeature } from '../utils/geojson.js';
 import type { IdRegistry } from './ids.js';
+import { parseSlopeArrow } from '../geo/slab-slope.js';
 
 interface Entry { path: string; tableName: string; data: CsvData }
 
@@ -76,6 +77,13 @@ export function validateEnvelope(
         if (t && !ATTACH_TARGETS.has(t.table)) {
           issues.push(`${at(i)}  top_attach_id "${target}" is a ${t.table}; a wall top attaches to a roof, slab or structure_slab`);
         }
+      });
+    }
+    if (e.tableName === 'slab' || e.tableName === 'structure_slab') {
+      // Sloped floor: the slope arrow parses (tail ≠ head)
+      e.data.rows.forEach((row, i) => {
+        const a = parseSlopeArrow(row.slope_arrow);
+        if (typeof a === 'string') issues.push(`${at(i)}  slope_arrow "${row.slope_arrow}" ${a}`);
       });
     }
     if (BOUNDED.has(e.tableName)) {
