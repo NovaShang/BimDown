@@ -7,6 +7,7 @@ import { readCsv } from '../utils/csv.js';
 import { effectiveRows } from '../catalog/index.js';
 import { parseGeoJsonFile, extractLineGeometry } from '../utils/geojson.js';
 import { insertOverlaps, wallOverlaps, type CheckInsert, type CheckWall } from './model-checks.js';
+import { embedCircle, type EmbedCircle } from '../curtain-embed.js';
 
 const TOLERANCE = 0.01; // 1cm
 
@@ -74,14 +75,16 @@ const COLUMN_TABLES = ['column', 'structure_column'];
 
 /**
  * A boundary-line end is connected when it meets another line's end, lands anywhere on another wall's
- * body (T-junction at the centre line or at the face, within that wall's half thickness), or ends on a
- * column. Only ends that touch nothing are reported — those are the gaps that keep rooms from closing.
+ * body (T-junction at the centre line or at the face, within that wall's half thickness; along the arc
+ * for arc walls), or ends on a
+ * column, or ends on the edge of a roof opening (a dormer cheek wall dying into the roof). Only ends
+ * that touch nothing are reported — those are the gaps that keep rooms from closing.
  */
 function validateLineConnectivity(levelDir: { name: string; path: string }, unit: string): string[] {
   const warnings: string[] = [];
 
   interface Endpoint { x: number; y: number; side: 'start' | 'end'; elementId: string; table: string }
-  interface Segment { ax: number; ay: number; bx: number; by: number; half: number; elementId: string; table: string }
+  interface Segment { ax: number; ay: number; bx: number; by: number; half: number; elementId: string; table: string; arc: EmbedCircle | null }
   interface Box { x0: number; y0: number; x1: number; y1: number }
 
   const endpoints: Endpoint[] = [];
@@ -112,7 +115,8 @@ function validateLineConnectivity(levelDir: { name: string; path: string }, unit
         const t = parseFloat(attrs.get(id)?.thickness ?? '') || 0;
         endpoints.push({ x: lg.start_x, y: lg.start_y, side: 'start', elementId: id, table });
         endpoints.push({ x: lg.end_x, y: lg.end_y, side: 'end', elementId: id, table });
-        segments.push({ ax: lg.start_x, ay: lg.start_y, bx: lg.end_x, by: lg.end_y, half: t / 2, elementId: id, table });
+        const arc = f.properties?.arc ? embedCircle({ start: { x: lg.start_x, y: lg.start_y }, end: { x: lg.end_x, y: lg.end_y }, arc: f.properties.arc as { radius: number; large_arc: boolean; sweep: boolean } }) : null;
+        segments.push({ ax: lg.start_x, ay: lg.start_y, bx: lg.end_x, by: lg.end_y, half: t / 2, elementId: id, table, arc });
       }
     } catch { /* skip */ }
   }
@@ -137,6 +141,23 @@ function validateLineConnectivity(levelDir: { name: string; path: string }, unit
     } catch { /* skip */ }
   }
 
+  // Roof openings (dormers): a cheek wall ends where it dies into the roof, on the opening's edge.
+  const roofOpenings: number[][][] = [];
+  {
+    const path = join(levelDir.path, 'opening.geojson');
+    const roofs = csvRows('roof');
+    const rows = csvRows('opening');
+    if (existsSync(path) && roofs.size > 0) {
+      try {
+        for (const f of parseGeoJsonFile(path).features) {
+          if (f.geometry.type !== 'Polygon') continue;
+          const host = rows.get(String(f.properties?.id ?? ''))?.host_id ?? '';
+          if (roofs.has(host)) roofOpenings.push((f.geometry.coordinates as number[][][])[0] ?? []);
+        }
+      } catch { /* skip */ }
+    }
+  }
+
   const same = (a: { elementId: string; table: string }, b: { elementId: string; table: string }) =>
     a.elementId === b.elementId && a.table === b.table;
 
@@ -146,13 +167,20 @@ function validateLineConnectivity(levelDir: { name: string; path: string }, unit
     );
     if (atEndpoint) continue;
 
-    const onWall = segments.some((seg) => !same(seg, ep) &&
-      pointNearSegment(ep.x, ep.y, seg.ax, seg.ay, seg.bx, seg.by, Math.max(seg.half, TOLERANCE) + TOUCH_SLACK));
+    const onWall = segments.some((seg) => !same(seg, ep) && (seg.arc
+      ? pointNearArc(ep.x, ep.y, seg.arc, Math.max(seg.half, TOLERANCE) + TOUCH_SLACK)
+      : pointNearSegment(ep.x, ep.y, seg.ax, seg.ay, seg.bx, seg.by, Math.max(seg.half, TOLERANCE) + TOUCH_SLACK)));
     if (onWall) continue;
 
     const onColumn = columns.some((c) =>
       ep.x >= c.x0 - TOUCH_SLACK && ep.x <= c.x1 + TOUCH_SLACK && ep.y >= c.y0 - TOUCH_SLACK && ep.y <= c.y1 + TOUCH_SLACK);
     if (onColumn) continue;
+
+    const onRoofOpening = roofOpenings.some(ring => ring.some((a, i) => {
+      const b = ring[(i + 1) % ring.length];
+      return pointNearSegment(ep.x, ep.y, a[0], a[1], b[0], b[1], TOLERANCE + TOUCH_SLACK);
+    }));
+    if (onRoofOpening) continue;
 
     let nearestDist = Infinity;
     let nearestId = '';
@@ -172,6 +200,15 @@ function validateLineConnectivity(levelDir: { name: string; path: string }, unit
 }
 
 /** Point within `tol` of segment AB, measured to the segment body (ends extended by `tol`). */
+/** Within `tol` of an arc's body (radially, inside its sweep). */
+function pointNearArc(px: number, py: number, c: EmbedCircle, tol: number): boolean {
+  if (Math.abs(Math.hypot(px - c.cx, py - c.cy) - c.r) > tol) return false;
+  const TAU = 2 * Math.PI;
+  const t = ((((Math.atan2(py - c.cy, px - c.cx) - c.a0) * Math.sign(c.sweep)) % TAU) + TAU) % TAU;
+  const slack = tol / Math.max(c.r, 1e-9);
+  return t <= Math.abs(c.sweep) + slack || t >= TAU - slack;
+}
+
 function pointNearSegment(px: number, py: number, ax: number, ay: number, bx: number, by: number, tol: number): boolean {
   const dx = bx - ax, dy = by - ay;
   const len = Math.hypot(dx, dy);

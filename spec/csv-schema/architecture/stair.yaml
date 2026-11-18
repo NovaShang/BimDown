@@ -12,8 +12,13 @@ description: >
   so is a stair whose line has the same bottom and top Z as its stair_run rows
   together (an overall axis, as some exporters write it).
 
+  Curved / spiral stairs: runs (the stair's own line included) with a GeoJSON
+  `arc` property are curved along that walking-line arc. Winder stairs: a
+  stair_landing with `step_count` turns as winder treads instead of a flat
+  landing. "Stair by sketch" tools write the same runs and landings.
+
   Riser rule: every riser of the stair has the same height (total rise / total
-  risers). A run of `step_count` risers has as many treads, going = run length
+  risers, winder risers included). A run of `step_count` risers has as many treads, going = run length
   / step_count; the last tread is flush with the landing or floor above. Tools
   keep run Z values and landing heights consistent with that rule (a landing's
   top = the top of the run that arrives on it).

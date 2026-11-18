@@ -85,8 +85,8 @@ The **GeoJSON type** column below maps directly to an SVG element in the SVG enc
 | `window`         | Hosted on wall   | No geometry file | Window with dimensions |
 | `opening`        | Hosted           | Conditional | Wall opening (no geometry file) or slab opening (`Polygon`) |
 | `stair`          | Spatial line     | `LineString` 3D | Stair (its own first run) with vertical span; optional multi-storey repetition |
-| `stair_run`      | Spatial line     | `LineString` 3D | Further flight of a stair (`host_id` → stair) |
-| `stair_landing`  | Polygon          | `Polygon` 2D | Landing between runs (`host_id` → stair), top at `base_offset` |
+| `stair_run`      | Spatial line     | `LineString` 3D | Further flight of a stair (`host_id` → stair); curved with a GeoJSON `arc` |
+| `stair_landing`  | Polygon          | `Polygon` 2D | Landing between runs (`host_id` → stair), top at `base_offset`; `step_count` > 0 = winders |
 | `ramp`           | Spatial line     | `LineString` 3D | Accessibility ramp |
 | `railing`        | Spatial line     | Conditional | Sketched railing (`LineString` 3D, optionally on a slab via `host_id`) or stair railing (`host_id` → stair + `side`, no geometry) |
 | `curtain_wall`   | Line             | `LineString` 2D | Curtain wall with grid parameters |
@@ -353,6 +353,8 @@ Marks (`number`) can be generated per category; `project_metadata.json` `numberi
 
 A roof is a footprint polygon (the eave outline, overhang included); `base_offset` is the underside at the eaves. `edge_slopes` gives one slope per footprint edge (`;`-separated degrees, edge i from vertex i to i+1, 0 = gable / rake edge): each sloped edge is a plane rising inward, and the roof underside is the lowest plane reaching each point, so L / T / U footprints get exact ridges, hips and valleys. Without `edge_slopes`, `roof_type` + `slope` imply them (hip: all edges; gable: all but the wing ends; shed: one eave; mansard: all edges, steeper, with a flat deck). A flat roof drains with small edge slopes (`1.2;0;0;0`). `roof_type: extrusion` sweeps `profile` (`u,z;...`: rise z at distance u across the first edge) along the first edge.
 
+**Sloped floors** (Revit slope arrow): a slab or structure_slab with `slope_arrow` = `tx,ty,tz;hx,hy,hz` has its top on the plane through the tail and head (plan x, y; z = height above level + `base_offset`), level across the arrow; thickness stays vertical, and attached walls follow the sloped soffit. Empty = flat. E.g. a ramped floor rising 0.5 m over 10 m: `0,2,0;10,2,0.5`.
+
 A wall (or structure_wall) with `top_attach_id` = a roof or slab id (any level) has its top follow that element's underside wherever the wall is under it (gable end walls, walls under a sloped ceiling); elsewhere it keeps its `top_level_id` / `top_offset` top.
 
 ```csv
@@ -431,7 +433,7 @@ A curtain wall is a grid of cells: columns along the wall (col 0 at the start), 
 - **Explicit**: `v_grids` = vertical lines as distances from the start, `u_grids` = horizontal lines as heights above the base, semicolon-separated (`1.2;2.4;3.9`); they override the counts. Lines must lie inside the wall.
 - **Panels**: `panels` = `col:row=kind` overrides, `;`-separated, `*` = every col / row (`*:0=solid;1:0=door`). Kinds: `glass` (default, `panel_material`), `solid` (opaque spandrel, `solid_material`), `door`, `double_door` (hinged on the cell's start side, swinging to the wall's left; no bottom transom), `empty` (mullions only). Door panel marks: `door_numbers` = `D105;D106`, one per door panel in cell order (column from the start, then row); they share the door numbering (unique project-wide).
 - **Mullions**: `mullion_width` (along the wall; Ø when round), `mullion_depth`, `mullion_profile` (`rect`/`round`, interior members only), all type parameters. Two curtain walls meeting at an endpoint share one corner mullion.
-- **Embedded** (Revit "Automatically Embed"): a straight curtain wall drawn along a straight wall or structure_wall (parallel within ~1°, both ends inside the wall's thickness) cuts that wall over the overlap, from the curtain wall's base to its top; exporters write it as an opening in the host filled by the curtain wall. Derived, nothing stored: move or delete the curtain wall and the host follows. To keep both, offset the curtain wall out of the wall.
+- **Embedded** (Revit "Automatically Embed"): a straight curtain wall drawn along a straight wall or structure_wall (parallel within ~1°, both ends inside the wall's thickness), or an arc curtain wall on an arc wall (same centre, radius within the wall's thickness), cuts that wall over the overlap (along the arc for arcs), from the curtain wall's base to its top; exporters write it as an opening in the host filled by the curtain wall. Derived, nothing stored: move or delete the curtain wall and the host follows. To keep both, offset the curtain wall out of the wall.
 
 ```csv
 id,v_grids,u_grids,panels

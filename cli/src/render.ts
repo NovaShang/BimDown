@@ -3,6 +3,7 @@
  * Reads all GeoJSON files for the level, composes a single colored SVG.
  * Output is an image (SVG/PNG), not storage.
  */
+import { parseSlopeArrow, type SlopeArrow } from './geo/slab-slope.js';
 import { existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { discoverLayout } from './utils/fs.js';
@@ -17,7 +18,7 @@ import { renderMep, MEP_RENDER_TABLES } from './render-mep.js';
 import { solveRoof, roofInputFor, centroid, signedArea, type RoofSolution } from './geo/roof-solver.js';
 import { cellKinds, gridLines, parsePanels } from './curtain-grid.js';
 import { renderStairs } from './stair/render.js';
-import { curtainEmbedSpan } from './curtain-embed.js';
+import { curtainEmbedSpan, embedPointAt } from './curtain-embed.js';
 
 const COLORS: Record<string, { stroke: string; fill?: string }> = {
   wall:               { stroke: '#1a1a2e' },
@@ -104,7 +105,7 @@ interface WallRef {
   start: { x: number; y: number };
   end: { x: number; y: number };
   thickness: number;
-  arc?: boolean;
+  arc?: ArcParams;
 }
 
 export interface RenderOptions {
@@ -233,7 +234,7 @@ export function renderLevel(projectDir: string, levelId: string, opts: RenderOpt
 // ─── Per-feature rendering ────────────────────────────────
 
 /** Tables whose CSV row (section / footprint size) shapes the plan drawing. */
-const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall', 'structure_slab']);
+const SIZED_TABLES = new Set(['column', 'structure_column', 'foundation', 'roof', 'curtain_wall', 'structure_slab', 'slab']);
 
 function renderFeature(
   tableName: string,
@@ -291,6 +292,9 @@ function renderFeature(
       // One-way slab / deck: span direction arrow through the centroid (as the editor draws it)
       const span = tableName === 'structure_slab' ? parseFloat(row?.span_direction ?? '') : NaN;
       if (Number.isFinite(span)) svg += '\n' + spanArrow(id, ring, span, color.stroke);
+      // Sloped floor: its slope arrow (tail dot, shaft, head)
+      const slope = tableName === 'slab' || tableName === 'structure_slab' ? parseSlopeArrow(row?.slope_arrow) : null;
+      if (slope && typeof slope !== 'string') svg += '\n' + slopeArrowSvg(id, slope, color.stroke);
       return { tableName, svg, bounds: ringBounds(ring) };
     }
   }
@@ -306,25 +310,28 @@ function renderFeature(
  */
 function embedMasks(feat: BimDownFeature, wallById: Map<string, WallRef>, projectDir: string): RenderedElement[] {
   const g = feat.geometry;
-  if (g.type !== 'LineString' || g.coordinates.length < 2 || feat.properties.arc) return [];
+  if (g.type !== 'LineString' || g.coordinates.length < 2) return [];
   const upm = 1 / UNIT_TO_M[projectUnits(projectDir)];
   if ((Number(feat.properties.base_offset) || 0) > 1.2 * upm) return [];
   const a = g.coordinates[0], b = g.coordinates[g.coordinates.length - 1];
-  const cw = { start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] } };
+  const cw = { start: { x: a[0], y: a[1] }, end: { x: b[0], y: b[1] }, arc: feat.properties.arc as ArcParams | undefined };
   const out: RenderedElement[] = [];
   for (const w of wallById.values()) {
-    if ((w.table !== 'wall' && w.table !== 'structure_wall') || w.arc) continue;
+    if (w.table !== 'wall' && w.table !== 'structure_wall') continue;
     const span = curtainEmbedSpan(w, w.thickness, cw, 0.005 * upm);
     if (!span) continue;
-    const len = Math.hypot(w.end.x - w.start.x, w.end.y - w.start.y);
-    const ux = (w.end.x - w.start.x) / len, uy = (w.end.y - w.start.y) / len;
-    const p = (t: number) => [w.start.x + ux * t, w.start.y + uy * t];
-    const [x1, y1] = p(span.lo), [x2, y2] = p(span.hi);
+    // Polyline along the wall (straight: two points; arc: every ~0.15 m)
+    const n = w.arc ? Math.max(2, Math.ceil((span.hi - span.lo) / (0.15 * upm))) : 1;
+    const pts: { x: number; y: number }[] = [];
+    for (let i = 0; i <= n; i++) pts.push(embedPointAt(w, span.lo + (span.hi - span.lo) * i / n));
     const sw = w.thickness + 0.01 * upm;
+    const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
     out.push({
       tableName: 'curtain_wall',
-      svg: `    <line x1="${fmt(x1)}" y1="${fmt(y1)}" x2="${fmt(x2)}" y2="${fmt(y2)}" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`,
-      bounds: { minX: Math.min(x1, x2), minY: Math.min(y1, y2), maxX: Math.max(x1, x2), maxY: Math.max(y1, y2) },
+      svg: pts.length === 2
+        ? `    <line x1="${fmt(pts[0].x)}" y1="${fmt(pts[0].y)}" x2="${fmt(pts[1].x)}" y2="${fmt(pts[1].y)}" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`
+        : `    <polyline points="${pts.map(p => `${fmt(p.x)},${fmt(p.y)}`).join(' ')}" fill="none" stroke="white" stroke-width="${fmt(sw)}" stroke-linecap="butt" />`,
+      bounds: { minX: Math.min(...xs), minY: Math.min(...ys), maxX: Math.max(...xs), maxY: Math.max(...ys) },
     });
   }
   return out;
@@ -452,6 +459,19 @@ export function spanArrow(id: string, ring: number[][], deg: number, stroke: str
   const d = `M ${fmt(p1[0])},${fmt(p1[1])} L ${fmt(p2[0])},${fmt(p2[1])} ${head(p2, 1)} ${head(p1, -1)} `
     + `M ${fmt(c[0] - nx * 0.3)},${fmt(c[1] - ny * 0.3)} L ${fmt(c[0] + nx * 0.3)},${fmt(c[1] + ny * 0.3)}`;
   return `    <path id="${id}-span" class="span-direction" d="${d}" stroke="${stroke}" stroke-width="0.03" fill="none" />`;
+}
+
+/** Slope arrow of a sloped floor (as the editor draws it). */
+export function slopeArrowSvg(id: string, a: SlopeArrow, stroke: string): string {
+  const dx = a.head.x - a.tail.x, dy = a.head.y - a.tail.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+  const h = Math.min(0.3, l * 0.3);
+  const t = a.head;
+  const d = `M ${fmt(a.tail.x)},${fmt(a.tail.y)} L ${fmt(t.x)},${fmt(t.y)} `
+    + `M ${fmt(t.x - ux * h + nx * h * 0.45)},${fmt(t.y - uy * h + ny * h * 0.45)} L ${fmt(t.x)},${fmt(t.y)} L ${fmt(t.x - ux * h - nx * h * 0.45)},${fmt(t.y - uy * h - ny * h * 0.45)}`;
+  return `    <path id="${id}-slope" class="slope-arrow" d="${d}" stroke="${stroke}" stroke-width="0.03" fill="none" />\n`
+    + `    <circle cx="${fmt(a.tail.x)}" cy="${fmt(a.tail.y)}" r="0.06" fill="${stroke}" />`;
 }
 
 /** Plan outline rings of a structural section (outer + hollow-section inner ring), local, centred. */
@@ -728,7 +748,7 @@ function indexWalls(dirPath: string, out: Map<string, WallRef>): void {
       out.set(id, {
         id,
         table: t,
-        arc: !!f.properties.arc,
+        arc: f.properties.arc as ArcParams | undefined,
         start: { x: a[0], y: a[1] },
         end: { x: b[0], y: b[1] },
         thickness: thicknessMap.get(id) ?? 0.2,

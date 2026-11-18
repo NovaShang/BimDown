@@ -8,7 +8,10 @@ description: >
   stair's own first run plus one or more stair_run rows, joined by
   stair_landing rows. The 3D LineString runs along the walking line from the
   bottom riser to the top; Z rises by step_count risers of the stair's common
-  riser height.
+  riser height. A GeoJSON `arc` property makes the run curved: the walking
+  line is that arc (treads radiate from its centre, going measured on it),
+  the run's width centred on it; curved and spiral stairs are such runs
+  (consecutive runs continue round the same centre, each under 360°).
 
   For straight single-run stairs the parent `stair` row's own spatial_line is
   the run — stair_run is only needed when the stair has more than one flight.
