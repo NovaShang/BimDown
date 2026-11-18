@@ -16,7 +16,8 @@
  * axes with exact support functions (face normals, edge cross products, and
  * the direction between the closest points of a cylinder's axis and the
  * other core); the smallest overlap over the axes is the penetration depth.
- * Slabs are a z band plus a plan polygon, clipped along the curve. Broad
+ * Slabs are a z band plus a plan polygon, clipped along the curve; a sloped
+ * roof is one such band per roof plane (`grad`), measured across the plane. Broad
  * phase: sort-and-sweep over x, then AABB overlap.
  *
  * Kinds and severity:
@@ -128,6 +129,8 @@ export interface ClashSlabIn {
   holes?: Vec2[][];
   z0: number;
   z1: number;
+  /** Sloped plane (a roof face): bottom / top are z0 / z1 + grad[0]·x + grad[1]·y. Omitted = flat. */
+  grad?: Vec2;
   /** Foundation raft / pile cap: hard clash. Else a penetration. */
   structural?: boolean;
 }
@@ -426,7 +429,7 @@ interface Item {
   key: string;
   system: string;
   solid?: Solid;
-  slab?: { outer: Vec2[]; holes: Vec2[][]; z0: number; z1: number };
+  slab?: { outer: Vec2[]; holes: Vec2[][]; z0: number; z1: number; grad: Vec2 };
   wall?: { a: Vec2; dir: Vec2; openings: WallOpeningIn[] };
   /** Curves: centre-line ends, and which of them have no `from` / `to` ref. */
   ends?: [Vec3, Vec3];
@@ -508,17 +511,25 @@ function overlapPoint(A: Item, B: Item, grow: number): Vec3 {
   return lerp(q, r, 0.5);
 }
 
-/** A curve / equipment item against a slab: depth in z and a point over solid slab, or null. */
+/** A curve / equipment item against a slab: depth across it and a point over solid slab, or null. */
 function slabHit(it: Item, slab: Item, floor: number): { depth: number; at: Vec3 } | null {
   const sl = slab.slab!;
   const s = it.solid!;
-  const zc = (sl.z0 + sl.z1) / 2, hz = (sl.z1 - sl.z0) / 2;
+  // Distances along the slab's normal (z for a flat slab): the band is [z0, z1] / k
+  const [gx, gy] = sl.grad;
+  const k = Math.hypot(gx, gy, 1);
+  const n: Vec3 = [-gx / k, -gy / k, 1 / k];
+  const lo = sl.z0 / k, hi = sl.z1 / k;
+  const zc = (lo + hi) / 2, hz = (hi - lo) / 2;
+  /** The slab's bottom / top height above a plan point. */
+  const zClamp = (p: Vec3) => clamp(p[2], sl.z0 + gx * p[0] + gy * p[1], sl.z1 + gx * p[0] + gy * p[1]);
   if (it.ends) {
     const [a, b] = it.ends;
-    const sz = sectionSupport(s, Z);
+    const sz = sectionSupport(s, n);
     const lim = hz + sz;
     let t0 = 0, t1 = 1;
-    const dz = b[2] - a[2], p0 = a[2] - zc;
+    const va = dot(a, n), vb = dot(b, n);
+    const dz = vb - va, p0 = va - zc;
     if (Math.abs(dz) < EPS) {
       if (Math.abs(p0) > lim) return null;
     } else {
@@ -528,8 +539,8 @@ function slabHit(it: Item, slab: Item, floor: number): { depth: number; at: Vec3
       t1 = Math.min(1, tb);
       if (t0 > t1) return null;
     }
-    const za = a[2] + dz * t0, zb = a[2] + dz * t1;
-    const depth = Math.min(Math.max(za, zb) + sz, sl.z1) - Math.max(Math.min(za, zb) - sz, sl.z0);
+    const za = va + dz * t0, zb = va + dz * t1;
+    const depth = Math.min(Math.max(za, zb) + sz, hi) - Math.max(Math.min(za, zb) - sz, lo);
     if (depth <= floor) return null;
     const pa = lerp(a, b, t0), pb = lerp(a, b, t1);
     const p: Vec2 = [pa[0], pa[1]], q: Vec2 = [pb[0], pb[1]];
@@ -546,17 +557,18 @@ function slabHit(it: Item, slab: Item, floor: number): { depth: number; at: Vec3
     }
     if (!best) return null;
     const at = lerp(pa, pb, (best.s0 + best.s1) / 2);
-    at[2] = clamp(at[2], sl.z0, sl.z1);
+    at[2] = zClamp(at);
     return { depth: bestDepth, at };
   }
-  const depth = Math.min(it.box[5], sl.z1) - Math.max(it.box[2], sl.z0);
+  const c = dot(s.c, n), e = support(s, n);
+  const depth = Math.min(c + e, hi) - Math.max(c - e, lo);
   if (depth <= floor) return null;
   const pts: Vec3[] = [s.c];
   for (const i of [-1, 1]) for (const j of [-1, 1]) pts.push(add(add(s.c, mul(s.u[0], s.e[0] * i)), mul(s.u[1], s.e[1] * j)));
   for (const pt of pts) {
     const xy: Vec2 = [pt[0], pt[1]];
     if (inRing(xy, sl.outer) && !sl.holes.some(h => h.length >= 3 && inRing(xy, h))) {
-      return { depth, at: [pt[0], pt[1], clamp(s.c[2], sl.z0, sl.z1)] };
+      return { depth, at: [pt[0], pt[1], zClamp([pt[0], pt[1], s.c[2]])] };
     }
   }
   return null;
@@ -644,12 +656,17 @@ function buildItems(m: ClashModelIn): Item[] {
   }
   for (const s of m.slabs ?? []) {
     if (s.outer.length < 3 || !(s.z1 > s.z0)) continue;
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const [x, y] of s.outer) { minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y); }
+    const grad: Vec2 = s.grad ?? [0, 0];
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, minZ = Infinity, maxZ = -Infinity;
+    for (const [x, y] of s.outer) {
+      minX = Math.min(minX, x); minY = Math.min(minY, y); maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
+      const rise = grad[0] * x + grad[1] * y;
+      minZ = Math.min(minZ, s.z0 + rise); maxZ = Math.max(maxZ, s.z1 + rise);
+    }
     items.push({
       cat: s.structural ? 'hard' : 'soft', id: s.id, table: s.table, scope: s.scope, key: keyOf(s.scope, s.id), system: '',
-      slab: { outer: s.outer, holes: s.holes ?? [], z0: s.z0, z1: s.z1 },
-      size: 0, joints: [], penetrates: false, box: [minX, minY, s.z0, maxX, maxY, s.z1],
+      slab: { outer: s.outer, holes: s.holes ?? [], z0: s.z0, z1: s.z1, grad },
+      size: 0, joints: [], penetrates: false, box: [minX, minY, minZ, maxX, maxY, maxZ],
     });
   }
   return items;

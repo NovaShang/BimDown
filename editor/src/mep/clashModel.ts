@@ -13,6 +13,7 @@ import { tessellateArc } from '../geometry/arc.ts';
 import { resolveHeight } from '../three/utils/elementTo3D.ts';
 import type { ProjectData } from '../types.ts';
 import type { ClashModelIn, ClashSlabIn, Vec2, Vec3, WallOpeningIn } from './clash.ts';
+import { roofInputFor, solveRoof, verticalThickness } from '../geometry/roofSolver.ts';
 
 const num = (v: string | undefined, d = 0) => { const n = parseFloat(v ?? ''); return Number.isFinite(n) ? n : d; };
 const DEFAULT_SHAPE: Record<string, 'rect' | 'round'> = { duct: 'rect', pipe: 'round', conduit: 'round', cable_tray: 'rect' };
@@ -27,6 +28,21 @@ type Line = LineElement | SpatialLineElement;
 const isLine = (el: CanonicalElement): el is Line => el.geometry === 'line' || el.geometry === 'spatial_line';
 const sectionShape = (s: string | undefined): 'rect' | 'round' => ((s ?? '').trim() === 'round' ? 'round' : 'rect');
 const xy = (p: Point): Vec2 => [p.x, p.y];
+
+/**
+ * A roof as clash slabs: flat roofs as they are, sloped ones one sloped band
+ * per roof plane piece (underside base + rise, vertical thickness as drawn).
+ */
+export function roofFaces(base: ClashSlabIn, el: PolygonElement, thickness: number): ClashSlabIn[] {
+  const sol = solveRoof(roofInputFor(el.vertices, el.attrs));
+  if (!(sol.maxSlopeDeg > 0) || sol.pieces.length === 0) return [base];
+  const vThick = verticalThickness(thickness, sol.maxSlopeDeg);
+  return sol.pieces.map(pc => {
+    const pl = sol.planes[pc.plane];
+    const z0 = base.z0 + pl.c;
+    return { ...base, outer: pc.poly.map(xy), z0, z1: z0 + vThick, grad: [pl.a, pl.b] as Vec2 };
+  });
+}
 
 function lineZ(el: Line, side: 'start' | 'end'): number {
   if (el.geometry === 'spatial_line') return side === 'start' ? el.startZ : el.endZ;
@@ -103,7 +119,6 @@ export function buildClashModel(
 
   const addSlab = (el: PolygonElement, scope: string | undefined, dz: number, hosted: readonly CanonicalElement[]) => {
     if (el.vertices.length < 3) return;
-    if (el.tableName === 'roof' && ((el.attrs.roof_type && el.attrs.roof_type !== 'flat') || num(el.attrs.slope) > 0)) return; // sloped roofs: not modelled
     const off = num(el.attrs.base_offset) + dz;
     const th = num(el.attrs.thickness, 0.2 * upm);
     const [z0, z1] = el.tableName === 'roof' ? [off, off + th] : [off - th, off];
@@ -115,7 +130,8 @@ export function buildClashModel(
       if (r[0] - levelElevation < z1 - 1e-6 && r[1] - levelElevation > z0 + 1e-6) holes.push((s.el as PolygonElement).vertices.map(xy));
     }
     const slab: ClashSlabIn = { id: el.id, scope, table: el.tableName, outer: el.vertices.map(xy), holes, z0, z1, structural: el.tableName === 'foundation' };
-    m.slabs!.push(slab);
+    if (el.tableName === 'roof') m.slabs!.push(...roofFaces(slab, el, th));
+    else m.slabs!.push(slab);
   };
 
   for (const el of elements.values()) {
