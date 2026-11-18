@@ -10,6 +10,7 @@
  * nothing set → 3 cells.
  */
 import type { Point } from '../model/elements.ts';
+import type { EmbedCircle } from '../geometry/curtainEmbed.ts';
 
 export const PANEL_KINDS = ['glass', 'solid', 'door', 'double_door', 'empty'] as const;
 export type PanelKind = (typeof PANEL_KINDS)[number];
@@ -226,8 +227,11 @@ export interface CornerPost {
 
 export interface CurtainLayoutInput {
   start: Point;
+  /** Along the wall (arc length for an arc curtain wall). */
   length: number;
   angle: number;
+  /** Arc curtain wall (geometry/curtainEmbed.ts embedCircle): each column is a flat facet between its grid lines on the arc. */
+  arc?: EmbedCircle | null;
   height: number;
   baseY: number;
   grid: CurtainGrid;
@@ -259,12 +263,50 @@ export interface CwPiece {
   kind?: PanelKind;
 }
 
+type CwLine = Pick<CurtainLayoutInput, 'start' | 'angle' | 'arc'>;
+
+/** Plan point at distance `t` along the wall (on the arc for an arc curtain wall). */
+export function cwPoint(f: CwLine, t: number): Point {
+  if (f.arc) {
+    const a = f.arc.a0 + Math.sign(f.arc.sweep) * t / f.arc.r;
+    return { x: f.arc.cx + f.arc.r * Math.cos(a), y: f.arc.cy + f.arc.r * Math.sin(a) };
+  }
+  return { x: f.start.x + Math.cos(f.angle) * t, y: f.start.y + Math.sin(f.angle) * t };
+}
+
+/** Direction (radians) of the wall at `t`: the arc tangent, else the wall angle. */
+export function cwTangent(f: CwLine, t: number): number {
+  if (!f.arc) return f.angle;
+  const a = f.arc.a0 + Math.sign(f.arc.sweep) * t / f.arc.r;
+  return a + Math.sign(f.arc.sweep) * Math.PI / 2;
+}
+
+/** Flat facet between `t0` and `t1`: centre, chord length and direction (straight walls: the wall itself). */
+export function cwChord(f: CwLine, t0: number, t1: number): { c: Point; len: number; angle: number } {
+  if (!f.arc) return { c: cwPoint(f, (t0 + t1) / 2), len: t1 - t0, angle: f.angle };
+  const a = cwPoint(f, t0), b = cwPoint(f, t1);
+  return { c: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }, len: Math.hypot(b.x - a.x, b.y - a.y), angle: Math.atan2(b.y - a.y, b.x - a.x) };
+}
+
+/** Plan band of half-width `hw` along the wall from `t0` to `t1` (arcs sampled every ~0.15 of length). */
+export function cwBand(f: CwLine, t0: number, t1: number, hw: number): Point[] {
+  const n = f.arc ? Math.max(1, Math.ceil((t1 - t0) / 0.15)) : 1;
+  const left: Point[] = [], right: Point[] = [];
+  for (let i = 0; i <= n; i++) {
+    const t = t0 + (t1 - t0) * i / n;
+    const p = cwPoint(f, t), a = cwTangent(f, t);
+    const nx = -Math.sin(a), ny = Math.cos(a);
+    left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+    right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+  }
+  return [...left, ...right.reverse()];
+}
+
 /** Every member and panel, at the positions the 3D view draws (single source for 3D, IFC and glTF). */
 export function curtainWallPieces(f: CurtainLayoutInput): CwPiece[] {
   const { xs, ys, kinds } = f.grid;
   const { width: mw, depth: md, profile } = f.mullion;
-  const ux = Math.cos(f.angle), uy = Math.sin(f.angle);
-  const at = (t: number): Point => ({ x: f.start.x + ux * t, y: f.start.y + uy * t });
+  const at = (t: number): Point => cwPoint(f, t);
   const cols = xs.length - 1, rows = ys.length - 1;
   const out: CwPiece[] = [];
 
@@ -274,7 +316,7 @@ export function curtainWallPieces(f: CurtainLayoutInput): CwPiece[] {
     if (end === 'none' || end === 'corner') continue;
     out.push({
       role: 'mullion', index: `${i}`, c: at(xs[i]), z0: f.baseY, along: mw, across: md, h: f.height,
-      angle: f.angle, round: end === null && profile === 'round', material: f.frameMaterial,
+      angle: cwTangent(f, xs[i]), round: end === null && profile === 'round', material: f.frameMaterial,
     });
   }
   for (const [k, p] of f.corners.entries()) {
@@ -292,12 +334,16 @@ export function curtainWallPieces(f: CurtainLayoutInput): CwPiece[] {
       const keep = i < cols && !(j < rows && isDoorKind(kinds[i][j]));
       if (keep && runStart < 0) runStart = i;
       if (!keep && runStart >= 0) {
-        const t0 = xs[runStart], t1 = xs[i];
-        out.push({
-          role: 'transom', index: runStart === 0 && i === cols ? `${j}` : `${j}_${runStart}`,
-          c: at((t0 + t1) / 2), z0: f.baseY + ys[j] - mw / 2, along: t1 - t0, across: md, h: mw,
-          angle: f.angle, round: !border && profile === 'round', material: f.frameMaterial,
-        });
+        // On an arc: one straight transom per facet.
+        const spans = f.arc ? xs.slice(runStart, i).map((_, k) => [runStart + k, runStart + k + 1]) : [[runStart, i]];
+        for (const [a, b] of spans) {
+          const ch = cwChord(f, xs[a], xs[b]);
+          out.push({
+            role: 'transom', index: a === 0 && b === cols ? `${j}` : `${j}_${a}`,
+            c: ch.c, z0: f.baseY + ys[j] - mw / 2, along: ch.len, across: md, h: mw,
+            angle: ch.angle, round: !border && profile === 'round', material: f.frameMaterial,
+          });
+        }
         runStart = -1;
       }
     }
@@ -305,8 +351,9 @@ export function curtainWallPieces(f: CurtainLayoutInput): CwPiece[] {
 
   // Panels and doors per cell.
   for (let i = 0; i < cols; i++) {
-    const cw = xs[i + 1] - xs[i];
-    const c = at((xs[i] + xs[i + 1]) / 2);
+    const facet = cwChord(f, xs[i], xs[i + 1]);
+    const cw = facet.len;
+    const c = facet.c;
     for (let j = 0; j < rows; j++) {
       const kind = kinds[i][j];
       const ch = ys[j + 1] - ys[j];
@@ -318,7 +365,7 @@ export function curtainWallPieces(f: CurtainLayoutInput): CwPiece[] {
         if (w > 0.1 && h > 0.1) {
           out.push({
             role: 'door', index: `${i}_${j}`, c, z0: f.baseY + ys[j], along: w, across: md, h,
-            angle: f.angle, material: f.panelMaterial, kind,
+            angle: facet.angle, material: f.panelMaterial, kind,
           });
         }
         continue;
@@ -329,7 +376,7 @@ export function curtainWallPieces(f: CurtainLayoutInput): CwPiece[] {
       out.push({
         role: 'panel', index: `${i}_${j}`, c, z0: f.baseY + ys[j] + (ch - ph) / 2,
         along: pw, across: solid ? Math.min(Math.max(md * 0.5, 0.012), 0.03) : GLASS_THICKNESS, h: ph,
-        angle: f.angle, material: solid ? f.solidMaterial : f.panelMaterial, kind,
+        angle: facet.angle, material: solid ? f.solidMaterial : f.panelMaterial, kind,
       });
     }
   }
@@ -361,17 +408,20 @@ export interface DoorSwing {
 }
 
 /** Plan swings of the bottom-row door cells: hinged on the cell's start side (both sides for a double door). */
-export function doorSwings(f: Pick<CurtainLayoutInput, 'start' | 'angle' | 'grid' | 'mullion'>): DoorSwing[] {
+export function doorSwings(f: Pick<CurtainLayoutInput, 'start' | 'angle' | 'arc' | 'grid' | 'mullion'>): DoorSwing[] {
   const { xs, kinds } = f.grid;
   const mw = f.mullion.width;
-  const u = { x: Math.cos(f.angle), y: Math.sin(f.angle) };
-  const n = { x: -u.y, y: u.x };
-  const at = (t: number, s = 0): Point => ({ x: f.start.x + u.x * t + n.x * s, y: f.start.y + u.y * t + n.y * s });
   const out: DoorSwing[] = [];
   for (let i = 0; i < xs.length - 1; i++) {
     const kind = kinds[i][0];
     if (!isDoorKind(kind)) continue;
-    const a = xs[i] + mw / 2, b = xs[i + 1] - mw / 2;
+    // The cell's facet: distances from its start point along its chord.
+    const p0 = cwPoint(f, xs[i]);
+    const ch = cwChord(f, xs[i], xs[i + 1]);
+    const u = { x: Math.cos(ch.angle), y: Math.sin(ch.angle) };
+    const n = { x: -u.y, y: u.x };
+    const at = (t: number, s = 0): Point => ({ x: p0.x + u.x * t + n.x * s, y: p0.y + u.y * t + n.y * s });
+    const a = mw / 2, b = ch.len - mw / 2;
     if (b - a < 0.1) continue;
     const leaves = kind === 'double_door'
       ? [{ hinge: a, dir: 1, l: (b - a) / 2 }, { hinge: b, dir: -1, l: (b - a) / 2 }]

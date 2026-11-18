@@ -167,3 +167,34 @@ describe('curtain wall IFC', () => {
     expect(cwm.filter(i => i.closed)).toHaveLength(2);      // glazing strip in 2 runs       // 4 mullions + bottom transom in 2 runs (door gap), middle, top
   });
 });
+
+describe('arc curtain wall', () => {
+  // Quarter circle of radius 6 from (6, 0) counter-clockwise to (0, 6); 3 columns, 1 row, a door in the middle.
+  const arcWall = () => ({ ...cw('cw-a', [6, 0], [0, 6], { v_grid_count: '3', u_grid_count: '1', panels: '1:0=door' }), arc: { rx: 6, ry: 6, rotation: 0, largeArc: false, sweep: true } });
+
+  it('grids along the arc length; each column is a flat facet between its grid lines on the arc', () => {
+    const f = factsOf([arcWall()]);
+    const L = 6 * Math.PI / 2;
+    expect(f.length).toBeCloseTo(L, 6);
+    expect(f.grid.xs[1]).toBeCloseTo(L / 3, 6);
+    const pieces = curtainWallPieces(f);
+    const mullions = pieces.filter(p => p.role === 'mullion');
+    // Grid line 1 at 30° on the circle, the mullion turned to the tangent
+    expect(mullions[1].c.x).toBeCloseTo(6 * Math.cos(Math.PI / 6), 6);
+    expect(mullions[1].c.y).toBeCloseTo(6 * Math.sin(Math.PI / 6), 6);
+    expect(mullions[1].angle).toBeCloseTo(Math.PI / 6 + Math.PI / 2, 6);
+    const panel = pieces.find(p => p.role === 'panel' && p.index === '0_0')!;
+    const chord = 2 * 6 * Math.sin(Math.PI / 12);
+    expect(panel.along).toBeCloseTo(chord - f.mullion.width, 6);
+    expect(Math.hypot(panel.c.x, panel.c.y)).toBeCloseTo(6 * Math.cos(Math.PI / 12), 6);
+    // Transoms per facet, the door in the middle facet
+    expect(pieces.filter(p => p.role === 'transom').length).toBeGreaterThanOrEqual(5);
+    const door = pieces.find(p => p.role === 'door')!;
+    expect(door.angle).toBeCloseTo(Math.PI / 4 + Math.PI / 2, 6);
+    const sw = doorSwings(f)[0];
+    expect(Math.hypot(sw.hinge.x, sw.hinge.y)).toBeLessThan(6);
+    // Plan footprint follows the arc
+    expect(f.footprint2D.length).toBeGreaterThan(10);
+  });
+});
+
