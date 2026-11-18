@@ -30,7 +30,7 @@ import type { StairFacts } from '../../elements/stair.tsx';
 import type { StairRunFacts } from '../../elements/stair_run.tsx';
 import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
 import type { RailingFacts } from '../../elements/railing.tsx';
-import { runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
+import { runDir, runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
 import { stairsRepeatingOn } from '../../geometry/stairRepeats.ts';
 import type { RampFacts } from '../../elements/ramp.tsx';
 import type { SpaceFacts } from '../../elements/space.tsx';
@@ -39,13 +39,13 @@ import { accessorySymbol, equipmentAbbr, equipmentSymbol, terminalSymbol } from 
 import { fittingPlan } from '../../mep/FittingView.tsx';
 import { mul as affMul, rotateDeg, svgToItems, translate as affTranslate } from './svgItems.ts';
 import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
-import { doorSwings, planStripRuns } from '../../elements/curtainWallLayout.ts';
+import { cwBand, cwPoint, cwTangent, doorSwings, planStripRuns } from '../../elements/curtainWallLayout.ts';
 import type { BeamFacts } from '../../elements/beam.tsx';
 import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { EquipmentFacts } from '../../elements/equipment.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import { roofArrows, type RoofFacts } from '../../elements/roof.tsx';
-import { spanSymbolLines, type SlabFacts } from '../../elements/_slabShared.tsx';
+import { slopeArrowLines, spanSymbolLines, type SlabFacts } from '../../elements/_slabShared.tsx';
 import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { LAYERS, mepLayer, type DrawingLayer } from './layers.ts';
 import { tint } from './color.ts';
@@ -417,17 +417,23 @@ function drawWindow(env: DrawEnv, el: LineElement, f: WindowFacts) {
 function drawCurtainWall(env: DrawEnv, f: CurtainWallFacts) {
   const { e } = env;
   e.phase = Phase.Cut;
-  const u = unit(sub(f.end, f.start));
-  const n = perp(u);
-  const hw = len(sub(f.footprint2D[0], f.footprint2D[3])) / 2;
+  const n0 = f.footprint2D.length / 2;
+  const hw = len(sub(f.footprint2D[0], f.footprint2D[2 * n0 - 1])) / 2;
   const half = Math.max(hw, 0.6 * env.pm);
-  const at = (t: number, s = 0) => add(add(f.start, u, t), n, s);
+  // Point `s` to the left of the wall at `t` (on the arc for an arc curtain wall).
+  const at = (t: number, s = 0) => {
+    const a = cwTangent(f, t);
+    return add(cwPoint(f, t), { x: -Math.sin(a), y: Math.cos(a) }, s);
+  };
   // Glazing strip and centreline, open at bottom-row door cells.
   const runs = planStripRuns(f.grid);
   const whole = runs.length === 1 && runs[0][0] === 0 && runs[0][1] === f.length;
   if (whole) e.poly(LAYERS.curtainWall, f.footprint2D, true);
-  else for (const [t0, t1] of runs) e.poly(LAYERS.curtainWall, [at(t0, hw), at(t1, hw), at(t1, -hw), at(t0, -hw)], true);
-  for (const [t0, t1] of runs) e.line(LAYERS.curtainWall, at(t0), at(t1), { weight: 0.13 });
+  else for (const [t0, t1] of runs) e.poly(LAYERS.curtainWall, cwBand(f, t0, t1, hw), true);
+  for (const [t0, t1] of runs) {
+    if (f.arc) e.poly(LAYERS.curtainWall, cwBand(f, t0, t1, 0).slice(0, Math.max(2, Math.ceil((t1 - t0) / 0.15) + 1)), false, { weight: 0.13 });
+    else e.line(LAYERS.curtainWall, at(t0), at(t1), { weight: 0.13 });
+  }
   for (const x of f.grid.xs) e.line(LAYERS.curtainWall, at(x, -half * 1.6), at(x, half * 1.6));
   for (const p of f.corners) {
     const c = Math.cos(p.angle), s = Math.sin(p.angle), h = p.size / 2;
@@ -506,7 +512,7 @@ function drawStair(env: DrawEnv, f: StairFacts) {
   const tipFrom = pts[pts.length - 2], tip = pts[pts.length - 1];
   const ut = unit(sub(tip, tipFrom));
   const back = add(tip, ut, -head);
-  const u0 = first.u;
+  const u0 = runDir(first, 0);
   const start = add(pts[0], u0, Math.min(1.2 * pm, first.length * 0.08));
   e.line(below, start, pts.length > 2 ? pts[1] : back);
   for (let i = 1; i + 2 < pts.length; i++) e.line(below, pts[i], pts[i + 1]);
@@ -937,6 +943,11 @@ function drawEntry(env: DrawEnv, entry: Entry) {
         e.phase = Phase.Annotation;
         for (const pl of spanSymbolLines(sf.vertices, sf.labelAt, sf.spanDirection, 2.5 * env.pm, 3 * env.pm)) e.poly(LAYERS.sSlabIden, pl, false);
       }
+      // Sloped floor: its slope arrow (paper-sized head)
+      if (sf.slopeArrow) {
+        e.phase = Phase.Annotation;
+        for (const pl of slopeArrowLines(sf.slopeArrow, 2.5 * env.pm)) e.poly(structural ? LAYERS.sSlabIden : LAYERS.slab, pl, false);
+      }
       return;
     }
     case 'roof':
@@ -950,6 +961,8 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       const f = facts as StairLandingFacts;
       e.phase = Phase.Floor;
       e.poly(f.landing.top > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, f.vertices, true);
+      // Winder risers
+      for (const l of f.winder?.lines ?? []) e.line(l.z > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, l.a, l.b);
       return;
     }
     case 'ramp':

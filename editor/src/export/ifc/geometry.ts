@@ -9,7 +9,7 @@ import { createProfile } from '../../three/primitives/profiles.ts';
 import { pointOnArc, arcLength, type ArcParams } from '../../geometry/arc.ts';
 import type { OpeningPart } from '../../elements/_opening3D.tsx';
 import { curtainWallPieces, type CurtainLayoutInput, type CwPiece } from '../../elements/curtainWallLayout.ts';
-import { flightProfile, railBalusters, type RailSegment } from '../../geometry/stair.ts';
+import { flightProfile, railBalusters, repZ, runTreads, treadBlocks, type RailSegment, type StairRepetition, type StairRun, type WinderGeometry } from '../../geometry/stair.ts';
 import {
   type Frame, type Profile, type Solid, type V2, type V3,
   UP, add, cross, frameAt, frameY, memberFrame, normalize, planFrame, scale, sub, toWorld, v3,
@@ -224,10 +224,30 @@ export function openingPartSolids(f: Frame, parts: OpeningPart[], height: number
 
 const STAIR_WAIST = 0.15;
 
-export interface RunLike { start: Point; end: Point; startZ: number; endZ: number; width: number; baseY: number }
+export interface RunLike { start: Point; end: Point; startZ: number; endZ: number; width: number; baseY: number; /** Curved run: its arc (Z from the fields above). */ run?: StairRun }
+
+/** Stepped tread blocks (curved runs, winders) as plan extrusions, `baseY` = level elevation. */
+export function treadSolids(treads: readonly { poly: Point[]; top: number }[], baseY: number, rep?: StairRepetition, waist = STAIR_WAIST, floor = -Infinity): Solid[] {
+  return treadBlocks(treads, waist, floor).filter(b => b.poly.length >= 3).map(b => {
+    const top = rep ? repZ(rep, b.top) : b.top;
+    const h = (b.top - b.bottom) * (rep ? Math.max(rep.scale, 1e-6) : 1);
+    return extrudePlan(b.poly, baseY + top - h, Math.max(0.01, h));
+  });
+}
+
+/** A winder landing's treads. */
+export function winderGeom(w: WinderGeometry, levelY: number, rep?: StairRepetition): ProductGeom | null {
+  const solids = treadSolids(w.treads, levelY, rep, STAIR_WAIST, w.floor);
+  return solids.length > 0 ? { solids } : null;
+}
 
 /** A flight as a solid stepped profile (risers, treads and a sloped soffit), not floating treads — the 3D view's profile. */
 export function stairFlightGeom(r: RunLike & { stepCount: number }): ProductGeom | null {
+  if (r.run?.arc) {
+    // Curved: wedge treads on the arc (Z as given, e.g. moved into a storey repetition)
+    const solids = treadSolids(runTreads({ ...r.run, startZ: r.startZ, endZ: r.endZ }), r.baseY, undefined, STAIR_WAIST, Math.min(r.startZ, r.endZ));
+    return solids.length > 0 ? { solids } : null;
+  }
   // Build the profile ascending: swap ends for a descending run.
   const up = r.endZ >= r.startZ;
   const lo = up ? r.start : r.end, hi = up ? r.end : r.start;

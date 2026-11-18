@@ -11,6 +11,8 @@ import type { SurfacePrimitive, PolygonOpening } from '../three/primitives/types
 import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
 import { isShaft } from '../model/crossLevel.ts';
 import { shaftHolesFor } from './_shafts.ts';
+import { parseSlopeArrow, planeRange, slopePlane, type SlopeArrow, type SlopePlane } from '../geometry/slabSlope.ts';
+import { slabBodyGeometry } from '../three/utils/slabGeometry.ts';
 
 const DEFAULT_THICKNESS = 0.2;
 
@@ -32,6 +34,9 @@ export interface SlabFacts {
   labelAt: Point;
   /** Element mark for plan tags (structure_slab). */
   number?: string;
+  /** Slope arrow (slab / structure_slab `slope_arrow`) and its plane: the body rises by plane(x, y). */
+  slopeArrow?: SlopeArrow | null;
+  slope?: SlopePlane | null;
 }
 
 /** Area centroid of a simple polygon (vertex average when degenerate). */
@@ -133,7 +138,11 @@ export function slabGeometryFor(
   const baseOffset = parseFloat(el.attrs.base_offset || '0') || 0;
   const thickness = parseFloat(el.attrs.thickness || `${DEFAULT_THICKNESS}`) || DEFAULT_THICKNESS;
   const baseY = ctx.levelElevation + baseOffset + extraOffset - (topAnchored ? thickness : 0);
-  const shaftHoles = shaftHolesFor(ctx, baseY, baseY + thickness, el.vertices);
+  // Sloped floor: only slabs (not ceilings) carry a slope arrow.
+  const slopeArrow = topAnchored ? parseSlopeArrow(el.attrs.slope_arrow) : null;
+  const slope = slopeArrow ? slopePlane(slopeArrow) : null;
+  const [rLo, rHi] = slope ? planeRange(slope, el.vertices) : [0, 0];
+  const shaftHoles = shaftHolesFor(ctx, baseY + rLo, baseY + rHi + thickness, el.vertices);
   return {
     id: el.id,
     table,
@@ -146,6 +155,8 @@ export function slabGeometryFor(
     shaftHoles,
     spanDirection: parseSpan(el.attrs.span_direction),
     labelAt: polygonCentroid(el.vertices),
+    slopeArrow,
+    slope,
   };
 }
 
@@ -172,6 +183,32 @@ export function slabDraw2D(facts: SlabFacts, fill: string, stroke: string): Reac
         />
       ))}
       {facts.shaftHoles.map((hole, i) => <ShaftCross key={`x${i}`} poly={hole} stroke={stroke} />)}
+      {facts.slopeArrow && <SlopeArrow2D arrow={facts.slopeArrow} stroke={stroke} />}
+    </g>
+  );
+}
+
+/** Plan lines of a slope arrow (shaft + head), editor and PDF / DXF. */
+export function slopeArrowLines(a: SlopeArrow, head = 0.3): { x: number; y: number }[][] {
+  const dx = a.head.x - a.tail.x, dy = a.head.y - a.tail.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+  const h = Math.min(head, l * 0.3);
+  const tip = { x: a.head.x, y: a.head.y };
+  return [
+    [{ x: a.tail.x, y: a.tail.y }, tip],
+    [{ x: tip.x - ux * h + nx * h * 0.45, y: tip.y - uy * h + ny * h * 0.45 }, tip, { x: tip.x - ux * h - nx * h * 0.45, y: tip.y - uy * h - ny * h * 0.45 }],
+  ];
+}
+
+/** Slope arrow in plan: tail dot, shaft, head (Revit sketch symbol shown on the slab). */
+function SlopeArrow2D({ arrow, stroke }: { arrow: SlopeArrow; stroke: string }) {
+  const [shaft, head] = slopeArrowLines(arrow);
+  return (
+    <g pointerEvents="none" data-slope-arrow="1">
+      <circle cx={arrow.tail.x} cy={arrow.tail.y} r={0.06} fill={stroke} />
+      <line x1={shaft[0].x} y1={shaft[0].y} x2={shaft[1].x} y2={shaft[1].y} stroke={stroke} strokeWidth={0.03} />
+      <polyline points={head.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke={stroke} strokeWidth={0.03} />
     </g>
   );
 }
@@ -190,6 +227,7 @@ export function ShaftCross({ poly, stroke }: { poly: Point[]; stroke: string }) 
 }
 
 export function slabDraw3D(facts: SlabFacts, isHL: boolean): ReactNode {
+  if (facts.slope) return slabMesh(facts, slabBodyGeometry(facts.vertices, facts.baseY, facts.thickness, facts.holes, facts.slope), isHL);
   const shape = new Shape();
   shape.moveTo(facts.vertices[0].x, facts.vertices[0].y);
   for (let i = 1; i < facts.vertices.length; i++) {
@@ -223,7 +261,10 @@ export function slabDraw3D(facts: SlabFacts, isHL: boolean): ReactNode {
     if (cut !== geo) geo.dispose();
     geo = cut;
   }
+  return slabMesh(facts, geo, isHL);
+}
 
+function slabMesh(facts: SlabFacts, geo: BufferGeometry, isHL: boolean): ReactNode {
   const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
   return (
     <mesh

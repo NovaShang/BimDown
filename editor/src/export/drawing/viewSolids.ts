@@ -22,6 +22,7 @@ import { getElementModule } from '../../elements/registry.ts';
 import { parseFloorLayers } from '../../model/parse.ts';
 import { buildGeometryContext } from '../../adapters/svg/buildContext.ts';
 import { roofGeometryFromSolution } from '../../three/utils/roofGeometry.ts';
+import { slopedSlabSolid } from '../ifc/slabSolid.ts';
 import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { repZ, type StairRepetition } from '../../geometry/stair.ts';
 import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
@@ -47,7 +48,7 @@ import type { FurnitureFacts } from '../../elements/furniture.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import {
   box, brepFromBuffer, curtainWallParts, extrudePlan, hangFromTop, openingPartSolids, railingGeom, rampGeom,
-  sectionProfile, stairFlightGeom, sweep, wallOpeningFrame,
+  sectionProfile, stairFlightGeom, sweep, wallOpeningFrame, winderGeom,
 } from '../ifc/geometry.ts';
 
 /** Drawing class of a part: decides poché, pen and layer. */
@@ -444,7 +445,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     case 'slab': case 'structure_slab': case 'ceiling': {
       const f = facts as SlabFacts;
       if (f.vertices.length < 3) break;
-      push(solidsPart(id, t, t === 'slab' ? 'slab' : t === 'ceiling' ? 'ceiling' : 'sslab', [extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]));
+      // Sloped floor (slope arrow): the 3D view's body as a brep
+      const sloped = f.slope ? slopedSlabSolid(f, f.holes) : null;
+      push(solidsPart(id, t, t === 'slab' ? 'slab' : t === 'ceiling' ? 'ceiling' : 'sslab', [sloped ?? extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]));
       break;
     }
     case 'roof': {
@@ -492,9 +495,10 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     case 'stair_landing': {
       const f = facts as StairLandingFacts;
       if (!f.vertices || f.vertices.length < 3) break;
-      push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).map(rep => {
+      push(solidsPart(id, t, 'stair', (f.reps ?? [BASE_REP]).flatMap(rep => {
+        if (f.winder) return winderGeom(f.winder, f.levelY, rep)?.solids ?? [];
         const top = rep.index === 0 ? f.baseY : f.levelY + repZ(rep, f.landing.top);
-        return extrudePlan(f.vertices, top - f.thickness, f.thickness);
+        return [extrudePlan(f.vertices, top - f.thickness, f.thickness)];
       })));
       break;
     }

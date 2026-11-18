@@ -50,12 +50,10 @@ export function occupiedSpans(wall: LineElement, elements: ReadonlyMap<string, C
     out.push({ id: el.id, lo, hi, sill, top: sill + height });
   }
   // A curtain wall embedded in the wall takes its stretch too (geometry/curtainEmbed.ts)
-  if (!wall.arc) {
-    for (const el of elements.values()) {
-      if (el.tableName !== 'curtain_wall' || el.geometry !== 'line' || (el as LineElement).arc) continue;
-      const span = curtainEmbedSpan(wall, wall.strokeWidth, el as LineElement, 0.005 * metre());
-      if (span) out.push({ id: el.id, lo: span.lo, hi: span.hi, sill: parseFloat(el.attrs.base_offset ?? '') || 0, top: Infinity });
-    }
+  for (const el of elements.values()) {
+    if (el.tableName !== 'curtain_wall' || el.geometry !== 'line') continue;
+    const span = curtainEmbedSpan(wall, wall.strokeWidth, el as LineElement, 0.005 * metre());
+    if (span) out.push({ id: el.id, lo: span.lo, hi: span.hi, sill: parseFloat(el.attrs.base_offset ?? '') || 0, top: Infinity });
   }
   return out.sort((a, b) => a.lo - b.lo);
 }

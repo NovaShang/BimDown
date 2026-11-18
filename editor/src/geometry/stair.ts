@@ -15,8 +15,8 @@
  */
 
 import type { CanonicalElement, LineElement, PolygonElement, SpatialLineElement, Point } from '../model/elements.ts';
-import { LANDING_DEFAULT_THICKNESS, STAIR_DEFAULT_STEPS, STAIR_LIMITS, STAIR_RUN_DEFAULT_WIDTH, layoutStair, stairRepetitions } from './stairCore.ts';
-import type { StairAssembly, StairLanding, StairRepetition, StairRun } from './stairCore.ts';
+import { LANDING_DEFAULT_THICKNESS, STAIR_DEFAULT_STEPS, arcFromEnds, STAIR_LIMITS, STAIR_RUN_DEFAULT_WIDTH, layoutStair, runPlan, stairRepetitions, winderGeometry } from './stairCore.ts';
+import type { StairAssembly, StairLanding, StairLayout, StairRepetition, StairRun } from './stairCore.ts';
 
 export * from './stairCore.ts';
 
@@ -38,8 +38,10 @@ export function runOf(el: CanonicalElement): StairRun | null {
   if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
   const ln = el as LineElement;
   const d = sub(ln.end, ln.start);
-  const length = len(d);
-  if (length < 1e-3) return null;
+  const chord = len(d);
+  if (chord < 1e-3) return null;
+  const arc = ln.arc ? arcFromEnds(ln.start, ln.end, (ln.arc.rx + ln.arc.ry) / 2, ln.arc.largeArc, ln.arc.sweep) ?? undefined : undefined;
+  const length = arc ? Math.abs(arc.sweep) * arc.r : chord;
   let startZ: number, endZ: number;
   if (el.geometry === 'spatial_line') {
     startZ = (el as SpatialLineElement).startZ;
@@ -53,7 +55,8 @@ export function runOf(el: CanonicalElement): StairRun | null {
     start: ln.start, end: ln.end, startZ, endZ,
     width: num(ln.attrs.width, STAIR_RUN_DEFAULT_WIDTH) || STAIR_RUN_DEFAULT_WIDTH,
     stepCount: Math.max(1, Math.round(num(ln.attrs.step_count, STAIR_DEFAULT_STEPS)) || STAIR_DEFAULT_STEPS),
-    length, u: { x: d.x / length, y: d.y / length },
+    length, u: { x: d.x / chord, y: d.y / chord },
+    ...(arc ? { arc } : {}),
   };
 }
 
@@ -67,6 +70,7 @@ export function landingOf(el: CanonicalElement): StairLanding | null {
     id: el.id, vertices,
     top: num(p.attrs.base_offset, 0),
     thickness: num(p.attrs.thickness, LANDING_DEFAULT_THICKNESS) || LANDING_DEFAULT_THICKNESS,
+    ...(num(p.attrs.step_count, 0) > 0 ? { steps: Math.round(num(p.attrs.step_count, 0)) } : {}),
   };
 }
 
@@ -175,9 +179,9 @@ export function pointsForGoing(points: readonly Point[], width: number, steps: n
  * `points` are the clicks so far plus the cursor; `required` the clicks of
  * the stair type (2 straight, 3 L, 4 U). The first run's end click snaps to a
  * whole number of treads (1 … steps − 1); the last click ends the remaining
- * treads. U-stair landing exit (3rd click) keeps the landing square to run 1.
+ * treads (less `winders` risers turning in the landing). U-stair landing exit (3rd click) keeps the landing square to run 1.
  */
-export function fitStairPoints(points: readonly Point[], required: number, width: number, steps: number, going: number): Point[] {
+export function fitStairPoints(points: readonly Point[], required: number, width: number, steps: number, going: number, winders = 0): Point[] {
   if (points.length < 2 || !(going > 0)) return [...points];
   const n = Math.max(2, Math.round(steps));
   const hw = width / 2;
@@ -196,9 +200,12 @@ export function fitStairPoints(points: readonly Point[], required: number, width
   // First run: s → corner / landing entry, a whole number of treads before the landing
   const u0 = dir(s, out[1]);
   if (!u0) return out;
-  const n1 = Math.min(n - 1, Math.max(1, Math.round((Math.hypot(out[1].x - s.x, out[1].y - s.y) - hw) / going)));
+  // Winder risers in the turn are not on either run
+  const w = Math.max(0, Math.min(n - 2, Math.round(winders)));
+  const nr = n - w;
+  const n1 = Math.min(nr - 1, Math.max(1, Math.round((Math.hypot(out[1].x - s.x, out[1].y - s.y) - hw) / going)));
   out[1] = at(s, u0, n1 * going + hw);
-  const n2 = n - n1;
+  const n2 = nr - n1;
   if (required === 3) {
     if (out.length >= 3) {
       const u1 = dir(out[1], out[2]);
@@ -231,6 +238,34 @@ export function stairRepetitionsIn(
   ctx: { level: { id: string }; levelElevation: number; levelElevations: ReadonlyMap<string, number> },
 ): StairRepetition[] {
   return stairRepetitions(stair.attrs, ctx.level.id, ctx.levelElevation, ctx.levelElevations);
+}
+
+/** A run of a placement layout as a StairRun (previews). */
+export function runFromLayout(r: StairLayout['runs'][number], width: number, id = ''): StairRun {
+  const d = sub(r.end, r.start);
+  const chord = len(d) || 1;
+  return {
+    id, table: 'stair_run', start: r.start, end: r.end, startZ: r.startZ, endZ: r.endZ,
+    width: r.width ?? width, stepCount: r.steps,
+    length: r.arc ? Math.abs(r.arc.sweep) * r.arc.r : chord, u: { x: d.x / chord, y: d.y / chord },
+    ...(r.arc ? { arc: r.arc } : {}),
+  };
+}
+
+/** Plan preview of a placement layout: run outlines + treads, landings (with winder risers). */
+export function layoutPlan(layout: StairLayout, width: number): { runs: { outline: Point[]; treads: [Point, Point][] }[]; landings: { vertices: Point[]; risers: [Point, Point][] }[] } {
+  const runs = layout.runs.map((r, i) => runFromLayout(r, width, `r${i}`));
+  const asm: StairAssembly = {
+    stairId: '', runs, ownIsRun: true,
+    landings: layout.landings.map((l, i) => ({ id: `l${i}`, vertices: l.vertices, top: l.top, thickness: LANDING_DEFAULT_THICKNESS, steps: l.steps })),
+  };
+  return {
+    runs: runs.map(r => {
+      const p = runPlan(r, Infinity);
+      return { outline: p.outline, treads: p.lines.filter(l => !l.edge).map(l => [l.a, l.b] as [Point, Point]) };
+    }),
+    landings: asm.landings.map(l => ({ vertices: l.vertices, risers: (winderGeometry(asm, l)?.lines ?? []).map(x => [x.a, x.b] as [Point, Point]) })),
+  };
 }
 
 // ─── Solid flight ────────────────────────────────────────────────────────────

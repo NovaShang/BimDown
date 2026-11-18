@@ -14,7 +14,7 @@ export function getDrawingFields(tableName: string, levels?: Level[], variantId?
   const keep = variant.fields;
   const labels = variant.fieldLabels ?? {};
   return [...(variant.extraFields ?? []), ...fields]
-    .filter(f => !keep || keep.includes(f.key) || f.key.startsWith('__'))
+    .filter(f => !keep || keep.includes(f.key) || (f.key.startsWith('__') && !variant.hideFields?.includes(f.key)))
     .map(f => labels[f.key] ? { ...f, label: labels[f.key] } : f);
 }
 

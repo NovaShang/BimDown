@@ -19,9 +19,14 @@ export interface StairRun {
   width: number;
   stepCount: number;
   length: number;
-  /** Unit plan direction start → end. */
+  /** Unit plan direction start → end (the chord of a curved run). */
   u: Point;
+  /** Curved run (stair / stair_run with a GeoJSON `arc`): the walking line is this arc; `length` is its arc length. */
+  arc?: RunArc;
 }
+
+/** Circular walking line: centre, radius, start angle and signed sweep (radians, + = counter-clockwise). */
+export interface RunArc { cx: number; cy: number; r: number; a0: number; sweep: number }
 
 export interface StairLanding {
   id: string;
@@ -29,6 +34,8 @@ export interface StairLanding {
   /** Level-relative top elevation. */
   top: number;
   thickness: number;
+  /** Winder risers in the landing (stair_landing.step_count): it turns as that many treads rising from `top`; 0 = flat. */
+  steps?: number;
 }
 
 export interface StairAssembly {
@@ -59,7 +66,255 @@ const dist = (a: Point, b: Point) => Math.hypot(a.x - b.x, a.y - b.y);
 const leftOf = (u: Point): Point => ({ x: -u.y, y: u.x });
 
 export function totalRisers(asm: StairAssembly): number {
-  return asm.runs.reduce((s, r) => s + r.stepCount, 0);
+  return asm.runs.reduce((s, r) => s + r.stepCount, 0) + asm.landings.reduce((s, l) => s + winderSteps(l), 0);
+}
+
+export function winderSteps(l: StairLanding): number {
+  return Math.max(0, Math.round(l.steps ?? 0));
+}
+
+// ─── Curved runs ─────────────────────────────────────────────────────────────
+
+/**
+ * Arc through `start` → `end` from the GeoJSON `arc` hint (SVG A semantics:
+ * `sweep` true = counter-clockwise in model coordinates, Y up). The radius is
+ * scaled up when too short for the chord, as SVG does.
+ */
+export function arcFromEnds(start: Point, end: Point, radius: number, largeArc: boolean, sweep: boolean): RunArc | null {
+  const d = dist(start, end);
+  if (d < 1e-9 || !(radius > 0)) return null;
+  const r = Math.max(radius, d / 2);
+  const m = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  const h = Math.sqrt(Math.max(0, r * r - (d / 2) * (d / 2)));
+  const u = { x: (end.x - start.x) / d, y: (end.y - start.y) / d };
+  // Centre left of the chord for a counter-clockwise minor arc
+  const side = largeArc === sweep ? -1 : 1;
+  const c = add(m, leftOf(u), side * h);
+  const a0 = Math.atan2(start.y - c.y, start.x - c.x);
+  const a1 = Math.atan2(end.y - c.y, end.x - c.x);
+  let sw = a1 - a0;
+  if (sweep) { while (sw <= 1e-12) sw += 2 * Math.PI; } else { while (sw >= -1e-12) sw -= 2 * Math.PI; }
+  return { cx: c.x, cy: c.y, r, a0, sweep: sw };
+}
+
+/** GeoJSON `arc` hint of a run arc (radius, large_arc, sweep). */
+export function arcHint(a: RunArc): { radius: number; large_arc: boolean; sweep: boolean } {
+  return { radius: a.r, large_arc: Math.abs(a.sweep) > Math.PI, sweep: a.sweep > 0 };
+}
+
+/** Point `s` along the walking line of a run, offset `o` to its left. */
+export function runAt(r: StairRun, s: number, o = 0): Point {
+  if (!r.arc) return add(add(r.start, r.u, s), leftOf(r.u), o);
+  const { cx, cy, a0, sweep } = r.arc;
+  const sg = sweep >= 0 ? 1 : -1;
+  const a = a0 + sg * s / r.arc.r;
+  // Left of a counter-clockwise walking line is towards the centre
+  const rad = r.arc.r - sg * o;
+  return { x: cx + Math.cos(a) * rad, y: cy + Math.sin(a) * rad };
+}
+
+/** Unit walking direction of a run at `s`. */
+export function runDir(r: StairRun, s: number): Point {
+  if (!r.arc) return r.u;
+  const sg = r.arc.sweep >= 0 ? 1 : -1;
+  const a = r.arc.a0 + sg * s / r.arc.r;
+  return { x: -Math.sin(a) * sg, y: Math.cos(a) * sg };
+}
+
+/** Samples along a run (fractions 0…1): just the ends when straight, every ≤ 5° on an arc, plus `extra`. */
+function runSamples(r: StairRun, extra: number[] = []): number[] {
+  const n = r.arc ? Math.max(2, Math.ceil(Math.abs(r.arc.sweep) / (Math.PI / 36))) : 1;
+  const ts = new Set<number>();
+  for (let i = 0; i <= n; i++) ts.add(i / n);
+  for (const t of extra) if (t > 1e-9 && t < 1 - 1e-9) ts.add(t);
+  return [...ts].sort((a, b) => a - b);
+}
+
+/** Tread polygons of a run (plan) with their top heights, bottom tread first. */
+export function runTreads(r: StairRun): { poly: Point[]; top: number }[] {
+  const n = Math.max(1, r.stepCount);
+  const riser = Math.abs(r.endZ - r.startZ) / n;
+  const up = r.endZ >= r.startZ;
+  const hw = r.width / 2;
+  const samples = runSamples(r).map(t => t * r.length);
+  const out: { poly: Point[]; top: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const s0 = (r.length * i) / n, s1 = (r.length * (i + 1)) / n;
+    const ss = [s0, ...samples.filter(s => s > s0 + 1e-9 && s < s1 - 1e-9), s1];
+    // Tread i from the bottom end is i + 1 risers up (a run drawn downwards counts from its end)
+    const top = up ? r.startZ + riser * (i + 1) : r.endZ + riser * (n - i);
+    out.push({ poly: [...ss.map(s => runAt(r, s, hw)), ...[...ss].reverse().map(s => runAt(r, s, -hw))], top });
+  }
+  return up ? out : out.reverse();
+}
+
+/**
+ * Solid blocks of stepped treads (curved runs, winders): each tread from
+ * its top down to one riser plus `waist` below, so neighbours overlap into a
+ * stepped soffit; none reaches below `floor`.
+ */
+export function treadBlocks(treads: readonly { poly: Point[]; top: number }[], waist = STAIR_WAIST, floor = -Infinity): { poly: Point[]; bottom: number; top: number }[] {
+  return treads.map((t, i) => {
+    const riser = i > 0 ? t.top - treads[i - 1].top : treads.length > 1 ? treads[1].top - t.top : waist;
+    return { poly: t.poly, top: t.top, bottom: Math.min(t.top - 0.01, Math.max(floor, t.top - Math.max(0, riser) - waist)) };
+  });
+}
+
+/**
+ * Runs of a curved / spiral stair: walking line on the circle `centre` /
+ * `radius` from `startAngle`, `steps` risers of `going` along it (sweep =
+ * steps × going / radius), counter-clockwise when `ccw`. Sweeps past 270°
+ * split into several runs (one arc each), risers shared by angle.
+ */
+export function layoutCurvedStair(
+  centre: Point, radius: number, startAngle: number, ccw: boolean,
+  steps: number, going: number, baseZ: number, topZ: number,
+): StairLayout | null {
+  const n = Math.max(1, Math.round(steps));
+  if (!(radius > 1e-6) || !(going > 0)) return null;
+  const total = (n * going) / radius;
+  const pieces = Math.max(1, Math.ceil(total / (1.5 * Math.PI) - 1e-9));
+  const riser = (topZ - baseZ) / n;
+  const sg = ccw ? 1 : -1;
+  const at = (a: number): Point => ({ x: centre.x + Math.cos(a) * radius, y: centre.y + Math.sin(a) * radius });
+  const runs: StairLayout['runs'] = [];
+  let done = 0, z = baseZ;
+  for (let i = 0; i < pieces; i++) {
+    const c = i === pieces - 1 ? n - done : Math.round((n * (i + 1)) / pieces) - done;
+    if (c < 1) return null;
+    const a0 = startAngle + sg * (done * going) / radius;
+    const sw = sg * (c * going) / radius;
+    const z1 = z + riser * c;
+    runs.push({ start: at(a0), end: at(a0 + sw), startZ: round4(z), endZ: round4(z1), steps: c, arc: { cx: centre.x, cy: centre.y, r: radius, a0, sweep: sw } });
+    done += c;
+    z = z1;
+  }
+  return { runs, landings: [] };
+}
+
+// ─── Winders ─────────────────────────────────────────────────────────────────
+
+export interface WinderGeometry {
+  /** Point the winder risers radiate from (the inner corner of an L, the well side of a U). */
+  pivot: Point;
+  /** Risers between the winder treads (plan), each with the height of the tread it rises to. */
+  lines: { a: Point; b: Point; z: number }[];
+  /** Winder treads, bottom first. */
+  treads: { poly: Point[]; top: number }[];
+  /** Walking-line length across the winders. */
+  path: number;
+  /** Underside of the landing (its top − thickness): the treads stand on it. */
+  floor: number;
+}
+
+/** Clip a polygon to the side of the directed line p + t·d where sgn · cross(d, q − p) ≥ 0. */
+function clipHalf(poly: Point[], p: Point, d: Point, sgn: number): Point[] {
+  const side = (q: Point) => sgn * cross(d, sub(q, p));
+  const out: Point[] = [];
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const sa = side(a), sb = side(b);
+    if (sa >= -1e-12) out.push(a);
+    if ((sa >= -1e-12) !== (sb >= -1e-12)) {
+      const t = sa / (sa - sb);
+      out.push({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+    }
+  }
+  return out;
+}
+
+/** Nearest and farthest crossing (t ≥ 0) of the ray p + t·d with a polygon outline. */
+function rayHits(poly: readonly Point[], p: Point, d: Point): { t0: number; t1: number } | null {
+  let t0 = Infinity, t1 = -Infinity;
+  for (let i = 0; i < poly.length; i++) {
+    const a = poly[i], b = poly[(i + 1) % poly.length];
+    const e = sub(b, a);
+    const den = cross(d, e);
+    if (Math.abs(den) < 1e-12) continue;
+    const w = sub(a, p);
+    const t = cross(w, e) / den;
+    const v = cross(w, d) / den;
+    if (t < -1e-9 || v < -1e-9 || v > 1 + 1e-9) continue;
+    t0 = Math.min(t0, Math.max(0, t));
+    t1 = Math.max(t1, t);
+  }
+  return t1 > 1e-9 ? { t0: Math.min(t0, t1), t1 } : null;
+}
+
+/** Walking line from the end of run `r` to the start of `q` across a landing (L corner or U crossing). */
+function turnPath(r: StairRun, q: StairRun, landing: StairLanding | undefined): Point[] {
+  const a = r.end, b = q.start;
+  const ur = runDir(r, r.length), uq = runDir(q, 0);
+  const x = lineIntersection(a, ur, b, uq);
+  if (x && dot(sub(x, a), ur) > -1e-6 && dot(sub(b, x), uq) > -1e-6 && dist(x, a) < 3 * r.width) return [a, x, b];
+  if (dot(ur, uq) < -0.5) {
+    const depth = landing ? Math.max(0, ...landing.vertices.map(v => dot(sub(v, a), ur))) : r.width;
+    return [a, add(a, ur, depth / 2), add(b, uq, -depth / 2), b];
+  }
+  return [a, b];
+}
+
+/** The run leaving a landing: the one after the run arriving on it. */
+export function departingRun(asm: StairAssembly, landing: StairLanding): StairRun | undefined {
+  const r = arrivingRun(asm, landing);
+  if (!r) return undefined;
+  const i = asm.runs.indexOf(r);
+  return i >= 0 ? asm.runs[i + 1] : undefined;
+}
+
+/**
+ * Winder treads of a landing with `steps` > 0: the turn between the run
+ * arriving on it and the next run, split into `steps` treads of equal going
+ * on the walking line, their risers radiating from the inner corner (L) or
+ * the middle of the well side (U). Tread i (1…steps) is `top` + i risers;
+ * the next run starts on the last one.
+ */
+export function winderGeometry(asm: StairAssembly, landing: StairLanding): WinderGeometry | null {
+  const k = winderSteps(landing);
+  if (k < 1) return null;
+  const r = arrivingRun(asm, landing);
+  const q = departingRun(asm, landing);
+  if (!r || !q) return null;
+  const riser = r.stepCount > 0 && Math.abs(r.endZ - r.startZ) > 1e-9
+    ? (r.endZ - r.startZ) / r.stepCount
+    : (Math.min(q.startZ, q.endZ) - landing.top) / k;
+  const er = runDir(r, r.length), eq = runDir(q, 0);
+  const pivot = lineIntersection(r.end, leftOf(er), q.start, leftOf(eq))
+    ?? { x: (r.end.x + q.start.x) / 2, y: (r.end.y + q.start.y) / 2 };
+  const path = turnPath(r, q, landing);
+  const lens: number[] = [0];
+  for (let i = 1; i < path.length; i++) lens.push(lens[i - 1] + dist(path[i - 1], path[i]));
+  const L = lens[lens.length - 1];
+  if (L < 1e-6) return null;
+  const pathAt = (s: number): Point => {
+    for (let i = 1; i < path.length; i++) {
+      if (s <= lens[i] + 1e-12 || i === path.length - 1) {
+        const seg = lens[i] - lens[i - 1];
+        return add(path[i - 1], sub(path[i], path[i - 1]), seg > 1e-12 ? (s - lens[i - 1]) / seg : 0);
+      }
+    }
+    return path[path.length - 1];
+  };
+  // Ray directions from the pivot: 0 = the arriving run's top edge, k = the next run's first riser
+  const dirs: Point[] = [];
+  for (let i = 0; i <= k; i++) {
+    let v = sub(pathAt((L * i) / k), pivot);
+    if (len(v) < 1e-9) v = i === 0 ? er : eq;
+    const l = len(v);
+    dirs.push({ x: v.x / l, y: v.y / l });
+  }
+  const sgn = cross(dirs[0], sub(pathAt(L / 2), pivot)) >= 0 ? 1 : -1;
+  const lines: WinderGeometry['lines'] = [];
+  for (let i = 1; i < k; i++) {
+    const h = rayHits(landing.vertices, pivot, dirs[i]);
+    if (h) lines.push({ a: add(pivot, dirs[i], h.t0), b: add(pivot, dirs[i], h.t1), z: landing.top + riser * (i + 1) });
+  }
+  const treads: WinderGeometry['treads'] = [];
+  for (let i = 0; i < k; i++) {
+    const poly = clipHalf(clipHalf([...landing.vertices], pivot, dirs[i], sgn), pivot, dirs[i + 1], -sgn);
+    if (poly.length >= 3) treads.push({ poly, top: landing.top + riser * (i + 1) });
+  }
+  return { pivot, lines, treads, path: L, floor: landing.top - landing.thickness };
 }
 
 /** Distance from a point to a polygon (0 inside). */
@@ -107,11 +362,18 @@ export function planStairZ(asm: StairAssembly, baseZ: number, topZ: number): Sta
   const n = totalRisers(asm);
   const riser = n > 0 ? (topZ - baseZ) / n : 0;
   const runs = new Map<string, { startZ: number; endZ: number }>();
+  // Winder risers climbed after each run (on the landing it arrives on)
+  const winders = new Map<StairRun, number>();
+  for (const l of asm.landings) {
+    const k = winderSteps(l);
+    const r = k > 0 ? arrivingRun(asm, l) : undefined;
+    if (r) winders.set(r, (winders.get(r) ?? 0) + k);
+  }
   let z = baseZ;
   for (const r of asm.runs) {
     const z1 = z + riser * r.stepCount;
     runs.set(r.id, { startZ: round4(z), endZ: round4(z1) });
-    z = z1;
+    z = z1 + riser * (winders.get(r) ?? 0);
   }
   const landings = new Map<string, number>();
   const planned: StairAssembly = {
@@ -220,17 +482,17 @@ function nosingZ(r: StairRun, s: number): number {
 }
 
 function runEdgePoint(r: StairRun, side: RailSide, s: number): ChainPt {
-  const n = leftOf(r.u);
   const o = (side === 'left' ? 1 : -1) * r.width / 2;
-  const p = add(add(r.start, r.u, s), n, o);
+  const p = runAt(r, s, o);
   return { x: p.x, y: p.y, z: nosingZ(r, s), run: { run: r, s } };
 }
 
-/** Points of one run edge between s0 and s1 (with the knee where the last tread starts). */
+/** Points of one run edge between s0 and s1 (with the knee where the last tread starts; along the arc of a curved run). */
 function runEdge(r: StairRun, side: RailSide, s0: number, s1: number): ChainPt[] {
   const knee = r.length - r.length / r.stepCount;
   const pts = [runEdgePoint(r, side, s0)];
-  if (knee > s0 + 1e-6 && knee < s1 - 1e-6) pts.push(runEdgePoint(r, side, knee));
+  const inner = runSamples(r, [knee / r.length]).map(t => t * r.length).filter(s => s > s0 + 1e-6 && s < s1 - 1e-6);
+  for (const s of inner) pts.push(runEdgePoint(r, side, s));
   pts.push(runEdgePoint(r, side, s1));
   return pts;
 }
@@ -308,15 +570,20 @@ function railChain(asm: StairAssembly, side: RailSide): ChainPt[] {
   const s0 = runs.map(() => 0);
   const s1 = runs.map(r => r.length);
   const joins: Point[][] = runs.map(() => []);
+  const winderJoin = runs.map(() => false);
   for (let k = 0; k + 1 < runs.length; k++) {
     const r = runs[k], q = runs[k + 1];
     const bk = runEdgePoint(r, side, r.length), aq = runEdgePoint(q, side, 0);
     const landing = landingBetween(asm, bk, aq, 0.02 + 1e-6);
     if (landing) {
       joins[k] = walkLanding(landing.vertices, bk, aq, side).slice(1, -1);
+      winderJoin[k] = winderSteps(landing) > 0;
       continue;
     }
-    const x = lineIntersection(bk, r.u, aq, q.u);
+    const ur = runDir(r, r.length), uq = runDir(q, 0);
+    // Curved runs continue into each other (tangent) or meet a landing
+    if (r.arc || q.arc) continue;
+    const x = lineIntersection(bk, ur, aq, uq);
     if (x && dist(x, bk) < 3 * r.width + r.length && dist(x, aq) < 3 * q.width + q.length) {
       // Corner: clip / extend both edges to the intersection of their lines.
       const tr = dot(sub(x, runEdgePoint(r, side, 0)), r.u);
@@ -341,7 +608,21 @@ function railChain(asm: StairAssembly, side: RailSide): ChainPt[] {
     chain.push(...edge);
     if (k + 1 < runs.length) {
       const z = Math.max(r.startZ, r.endZ);
-      for (const p of joins[k]) chain.push({ x: p.x, y: p.y, z });
+      if (winderJoin[k] && joins[k].length > 0) {
+        // Across winders the rail climbs with the walking surface to the next run's first nosing
+        const from = edge[edge.length - 1];
+        const to = runEdgePoint(runs[k + 1], side, s0[k + 1]);
+        const path = [from, ...joins[k], to];
+        let total = 0;
+        for (let i = 1; i < path.length; i++) total += dist(path[i - 1], path[i]);
+        let acc = 0;
+        for (let i = 1; i + 1 < path.length; i++) {
+          acc += dist(path[i - 1], path[i]);
+          chain.push({ x: path[i].x, y: path[i].y, z: from.z + (to.z - from.z) * (total > 1e-9 ? acc / total : 0) });
+        }
+      } else {
+        for (const p of joins[k]) chain.push({ x: p.x, y: p.y, z });
+      }
     }
   }
   return chain;
@@ -463,7 +744,7 @@ export function railPlan(segs: readonly RailSegment[]): Point[] {
 
 // ─── Plan graphics ───────────────────────────────────────────────────────────
 
-export interface PlanSeg { a: Point; b: Point; above: boolean }
+export interface PlanSeg { a: Point; b: Point; above: boolean; /** Outline (stringer / end) rather than a tread line. */ edge?: boolean }
 
 export interface RunPlan {
   /** Outline, stringers and treads; `above` = beyond the plan cut (dashed / hidden). */
@@ -478,20 +759,21 @@ export interface RunPlan {
 
 /** Run outline / treads split at the plan cut height (level-relative `cutZ`). */
 export function runPlan(r: StairRun, cutZ: number): RunPlan {
-  const n = leftOf(r.u);
   const hw = r.width / 2;
-  const at = (t: number, o: number) => add(add(r.start, r.u, r.length * t), n, o);
+  const at = (t: number, o: number) => runAt(r, r.length * t, o);
   const goingUp = r.endZ > r.startZ;
   const cut = goingUp && r.endZ - r.startZ > 1e-9
     ? Math.max(0, Math.min(1, (cutZ - r.startZ) / (r.endZ - r.startZ)))
     : r.startZ >= cutZ ? 0 : 1;
   const lines: PlanSeg[] = [];
+  const ts = runSamples(r, [cut]);
   for (const o of [hw, -hw]) {
-    if (cut > 0) lines.push({ a: at(0, o), b: at(cut, o), above: false });
-    if (cut < 1) lines.push({ a: at(cut, o), b: at(1, o), above: true });
+    for (let i = 0; i + 1 < ts.length; i++) {
+      lines.push({ a: at(ts[i], o), b: at(ts[i + 1], o), above: ts[i] >= cut - 1e-9, edge: true });
+    }
   }
-  lines.push({ a: at(0, hw), b: at(0, -hw), above: cut <= 0 });
-  lines.push({ a: at(1, hw), b: at(1, -hw), above: cut < 1 });
+  lines.push({ a: at(0, hw), b: at(0, -hw), above: cut <= 0, edge: true });
+  lines.push({ a: at(1, hw), b: at(1, -hw), above: cut < 1, edge: true });
   for (let i = 1; i < r.stepCount; i++) {
     const t = i / r.stepCount;
     lines.push({ a: at(t, hw), b: at(t, -hw), above: t > cut + 1e-9 });
@@ -501,7 +783,9 @@ export function runPlan(r: StairRun, cutZ: number): RunPlan {
     const z = Math.min(0.06, 0.25 / r.length);
     breakLine = [at(cut - z, hw), at(cut - z / 4, hw * 0.1), at(cut + z / 4, -hw * 0.1), at(cut + z, -hw)];
   }
-  return { lines, outline: [at(0, hw), at(1, hw), at(1, -hw), at(0, -hw)], breakLine, cut };
+  const os = runSamples(r);
+  const outline = [...os.map(t => at(t, hw)), ...[...os].reverse().map(t => at(t, -hw))];
+  return { lines, outline, breakLine, cut };
 }
 
 /**
@@ -517,19 +801,10 @@ export function walkingLine(asm: StairAssembly): Point[] {
   const runs = asm.runs;
   for (let k = 0; k < runs.length; k++) {
     const r = runs[k];
-    push(r.start);
-    push(r.end);
+    for (const t of runSamples(r)) push(runAt(r, r.length * t));
     const q = runs[k + 1];
     if (!q) break;
-    const x = lineIntersection(r.end, r.u, q.start, q.u);
-    if (x && dot(sub(x, r.end), r.u) > -1e-6 && dot(sub(q.start, x), q.u) > -1e-6 && dist(x, r.end) < 3 * r.width) {
-      push(x);
-    } else if (dot(r.u, q.u) < -0.5) {
-      const l = landingBetween(asm, r.end, q.start, r.width);
-      const depth = l ? Math.max(0, ...l.vertices.map(v => dot(sub(v, r.end), r.u))) : r.width;
-      push(add(r.end, r.u, depth / 2));
-      push(add(q.start, q.u, -depth / 2));
-    }
+    for (const p of turnPath(r, q, landingBetween(asm, r.end, q.start, r.width)).slice(1, -1)) push(p);
   }
   return out;
 }
@@ -583,6 +858,13 @@ export function stairCalc(asm: StairAssembly, upm = 1, scales: readonly number[]
     if (g < going) { going = g; goingAt = r.id; }
     if (r.width / upm < width) { width = r.width / upm; widthAt = r.id; }
   }
+  // Winders: going on the walking line across the turn
+  for (const l of asm.landings) {
+    const w = winderGeometry(asm, l);
+    if (!w) continue;
+    const g = w.path / winderSteps(l) / upm;
+    if (g < going) { going = g; goingAt = l.id; }
+  }
   // Riser per repetition (multi-storey stairs adapt it to each storey)
   let rMin = riser, rMax = riser;
   for (const s of scales) { rMin = Math.min(rMin, riser * s); rMax = Math.max(rMax, riser * s); }
@@ -609,17 +891,20 @@ export function stairCalc(asm: StairAssembly, upm = 1, scales: readonly number[]
 // ─── Placement layout ────────────────────────────────────────────────────────
 
 export interface StairLayout {
-  runs: { start: Point; end: Point; startZ: number; endZ: number; steps: number }[];
-  landings: { vertices: Point[]; top: number }[];
+  runs: { start: Point; end: Point; startZ: number; endZ: number; steps: number; arc?: RunArc; width?: number }[];
+  /** `steps` > 0: winder landing (that many risers in the turn). */
+  landings: { vertices: Point[]; top: number; steps?: number }[];
 }
 
 /**
  * Runs and landings for clicked walking-line points: straight (2 points),
  * L / quarter turn (start, corner, end) or U / half turn (start, landing
  * entry, landing exit, end). Runs stop at the landing edge; risers are shared
- * out in proportion to the run lengths, all of one height.
+ * out in proportion to the run lengths, all of one height. With `winders`
+ * > 0 each landing turns as that many winder risers instead (counted in
+ * `steps`).
  */
-export function layoutStair(points: readonly Point[], width: number, steps: number, baseZ: number, topZ: number): StairLayout | null {
+export function layoutStair(points: readonly Point[], width: number, steps: number, baseZ: number, topZ: number, winders = 0): StairLayout | null {
   const n = Math.max(1, Math.round(steps));
   const hw = width / 2;
   const unitDir = (a: Point, b: Point): Point | null => {
@@ -652,11 +937,13 @@ export function layoutStair(points: readonly Point[], width: number, steps: numb
   const lengths = segs.map(([a, b]) => dist(a, b));
   if (lengths.some(l => l < 1e-3)) return null;
   const total = lengths.reduce((s, l) => s + l, 0);
+  const wk = Math.max(0, Math.round(winders));
   const counts: number[] = [];
-  let left = n;
+  const nr = n - wk * landings.length;
+  let left = nr;
   for (let i = 0; i < segs.length; i++) {
     const rest = segs.length - i - 1;
-    const c = i === segs.length - 1 ? left : Math.max(1, Math.min(left - rest, Math.round(n * lengths[i] / total)));
+    const c = i === segs.length - 1 ? left : Math.max(1, Math.min(left - rest, Math.round(nr * lengths[i] / total)));
     counts.push(c);
     left -= c;
   }
@@ -666,12 +953,14 @@ export function layoutStair(points: readonly Point[], width: number, steps: numb
   const runs = segs.map(([a, b], i) => {
     const z1 = z + riser * counts[i];
     const run = { start: a, end: b, startZ: round4(z), endZ: round4(z1), steps: counts[i] };
-    z = z1;
+    z = z1 + (i < landings.length ? riser * wk : 0);
     return run;
   });
   // Landing polygons counter-clockwise; each at the top of the run before it.
   return {
     runs,
-    landings: landings.map((v, i) => ({ vertices: signedArea(v) < 0 ? [...v].reverse() : v, top: runs[i].endZ })),
+    landings: landings.map((v, i) => ({
+      vertices: signedArea(v) < 0 ? [...v].reverse() : v, top: runs[i].endZ, ...(wk > 0 ? { steps: wk } : {}),
+    })),
   };
 }

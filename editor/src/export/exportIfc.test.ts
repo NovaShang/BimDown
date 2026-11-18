@@ -564,6 +564,41 @@ describe('IFC export of the building', () => {
     expect(stair.args[8]).toBe('.HALF_TURN_STAIR.');
   });
 
+  it('curved flights and winder landings: wedge tread solids, CURVED / WINDER flights', async () => {
+    const sweep = 5.04 / 3;
+    const files = {
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3.06\n',
+      'lv-1/stair.csv': 'id,number,width,step_count,stair_type\nst-1,S1,1.2,18,curved\nst-2,S2,1.2,7,winder\n',
+      'lv-1/stair.geojson': fc([
+        { type: 'Feature', properties: { id: 'st-1', arc: { radius: 3, large_arc: false, sweep: true } }, geometry: { type: 'LineString', coordinates: [[3, 0, 0], [3 * Math.cos(sweep), 3 * Math.sin(sweep), 3.06]] } },
+        { type: 'Feature', properties: { id: 'st-2' }, geometry: { type: 'LineString', coordinates: [[10, 0, 0], [11.96, 0, 1.19]] } },
+      ]),
+      'lv-1/stair_run.csv': 'id,number,host_id,width,step_count\nsr-1,,st-2,1.2,8\n',
+      'lv-1/stair_run.geojson': fc([{ type: 'Feature', properties: { id: 'sr-1' }, geometry: { type: 'LineString', coordinates: [[12.56, 0.6, 1.7], [12.56, 2.84, 3.06]] } }]),
+      'lv-1/stair_landing.csv': 'id,number,base_offset,host_id,thickness,step_count\nsl-1,,1.19,st-2,0.15,3\n',
+      'lv-1/stair_landing.geojson': fc([{ type: 'Feature', properties: { id: 'sl-1' }, geometry: { type: 'Polygon', coordinates: [[[11.96, -0.6], [13.16, -0.6], [13.16, 0.6], [11.96, 0.6], [11.96, -0.6]]] } }]),
+    };
+    const { data, ents, keys, step } = await exportFiles(files);
+    const got = await readBack(data, keys);
+    // Curved flight: treads between radius 2.4 and 3.6, from the floor to the top
+    // The stair's own flight (no bimdown key): the one round the origin
+    const f = [...got.values()].find(p => p.type === 'IfcStairFlight' && p.max[0] < 5)!;
+    expect(f.max[2]).toBeCloseTo(3.06, 2);
+    expect(f.min[2]).toBeGreaterThan(-0.01); // treads stand on the floor
+    expect(f.min[1]).toBeGreaterThan(-0.01);
+    expect(f.max[0]).toBeCloseTo(3.6, 2);
+    const ifc4 = (await exportFiles(files, 'IFC4')).step;
+    expect(ifc4).toContain('.CURVED.');
+    expect(ifc4).toContain('.WINDER.');
+    expect(step).toContain('IFCSTAIRFLIGHT');
+    const winder = byKey(ents, keys, 'stair_landing:sl-1');
+    expect(winder.type).toBe('IFCSTAIRFLIGHT');
+    const w = got.get('stair_landing:sl-1')!;
+    expect(w.max[2]).toBeCloseTo(1.19 + 3 * 0.17, 3);
+    expect(w.min[2]).toBeCloseTo(1.19 - 0.15, 3);
+  });
+
   it('repeats a multi-storey L stair per storey, with its derived railings', async () => {
     const files = {
       'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),

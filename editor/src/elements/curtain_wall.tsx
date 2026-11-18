@@ -14,12 +14,12 @@ import { BASE_OFFSET_FIELD, MATERIAL_OPTIONS } from './_options.ts';
 import { resolvePropertyFields } from './_propertyFields.ts';
 import { doorParts } from './_opening3D.tsx';
 import {
-  DEFAULT_SOLID_MATERIAL, curtainCorners, curtainGrid, curtainWallPieces, doorSwings, moveGridLine,
+  DEFAULT_SOLID_MATERIAL, curtainCorners, curtainGrid, curtainWallPieces, cwBand, cwPoint, cwTangent, doorSwings, moveGridLine,
   mullionSpec, planStripRuns,
   type CornerPost, type CornerWall, type CurtainGrid, type CwPiece, type EndMullion, type MullionSpec,
 } from './curtainWallLayout.ts';
 import CurtainWallPanel from './CurtainWallPanel.tsx';
-import { curtainWallSpan } from '../geometry/curtainEmbed.ts';
+import { curtainWallSpan, embedCircle, type EmbedCircle } from '../geometry/curtainEmbed.ts';
 
 const DEFAULT_HEIGHT = 3.0;
 
@@ -27,8 +27,11 @@ export interface CurtainWallFacts {
   id: string;
   start: Point;
   end: Point;
+  /** Along the wall (arc length for an arc curtain wall). */
   length: number;
-  angle: number;          // around Y
+  angle: number;          // around Y (chord direction for an arc)
+  /** Arc curtain wall: flat panels between grid lines on the arc. */
+  arc: EmbedCircle | null;
   uGridCount: number;     // columns: cells along the wall length
   vGridCount: number;     // rows: cells up the wall height
   height: number;
@@ -162,8 +165,10 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     const ln = el as LineElement;
     const dx = ln.end.x - ln.start.x;
     const dy = ln.end.y - ln.start.y;
-    const len = Math.sqrt(dx * dx + dy * dy);
-    if (len < 0.001) return null;
+    const chord = Math.sqrt(dx * dx + dy * dy);
+    if (chord < 0.001) return null;
+    const arc = ln.arc ? embedCircle(ln) : null;
+    const len = arc ? arc.r * Math.abs(arc.sweep) : chord;
     const { height, baseOffset } = resolveLevelHeight(ln.attrs, ctx.levelElevation, ctx.levelElevations, ctx.unitsPerMetre);
     const baseY = ctx.levelElevation + baseOffset;
     const grid = curtainGrid(ln.attrs, len, height);
@@ -176,19 +181,14 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     const join = cornersOf(ctx).get(ln.id);
 
     const hw = ln.strokeWidth / 2 || mullion.width;
-    const nx = -dy / len, ny = dx / len;
-    const footprint2D: Point[] = [
-      { x: ln.start.x + nx * hw, y: ln.start.y + ny * hw },
-      { x: ln.end.x   + nx * hw, y: ln.end.y   + ny * hw },
-      { x: ln.end.x   - nx * hw, y: ln.end.y   - ny * hw },
-      { x: ln.start.x - nx * hw, y: ln.start.y - ny * hw },
-    ];
+    const angle = Math.atan2(dy, dx);
+    const footprint2D: Point[] = cwBand({ start: ln.start, angle, arc }, 0, len, hw);
 
     return {
       id: ln.id,
       start: ln.start, end: ln.end,
       length: len,
-      angle: Math.atan2(dy, dx),
+      angle, arc,
       uGridCount: grid.xs.length - 1, vGridCount: grid.ys.length - 1,
       height, baseY,
       frameMaterial, panelMaterial, solidMaterial,
@@ -201,17 +201,14 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
 
   draw2D(facts, drawCtx): ReactNode {
     const stroke = drawCtx.selected ? '#3a7bff' : '#7ec8e3';
-    const ux = (facts.end.x - facts.start.x) / facts.length;
-    const uy = (facts.end.y - facts.start.y) / facts.length;
-    const nx = -uy, ny = ux;
-    const hw = Math.hypot(facts.footprint2D[0].x - facts.footprint2D[3].x, facts.footprint2D[0].y - facts.footprint2D[3].y) / 2;
-    const at = (t: number, s: number) => `${facts.start.x + ux * t + nx * s},${facts.start.y + uy * t + ny * s}`;
+    const n0 = facts.footprint2D.length / 2;
+    const hw = Math.hypot(facts.footprint2D[0].x - facts.footprint2D[2 * n0 - 1].x, facts.footprint2D[0].y - facts.footprint2D[2 * n0 - 1].y) / 2;
     const runs = planStripRuns(facts.grid);
     const whole = runs.length === 1 && runs[0][0] === 0 && runs[0][1] === facts.length;
     const strips = whole
       ? [<polygon key="s" points={facts.footprint2D.map(p => `${p.x},${p.y}`).join(' ')} fill="#d6eaf8" stroke={stroke} strokeWidth={0.025} />]
       : runs.map(([t0, t1], k) => (
-        <polygon key={`s${k}`} points={[at(t0, hw), at(t1, hw), at(t1, -hw), at(t0, -hw)].join(' ')}
+        <polygon key={`s${k}`} points={cwBand(facts, t0, t1, hw).map(p => `${p.x},${p.y}`).join(' ')}
           fill="#d6eaf8" stroke={stroke} strokeWidth={0.025} />
       ));
     // Grid ticks at each interior vertical grid line.
@@ -219,8 +216,9 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     const ticks: ReactNode[] = [];
     for (let i = 1; i < facts.grid.xs.length - 1; i++) {
       const t = facts.grid.xs[i];
-      const cx = facts.start.x + ux * t;
-      const cy = facts.start.y + uy * t;
+      const { x: cx, y: cy } = cwPoint(facts, t);
+      const a = cwTangent(facts, t);
+      const nx = -Math.sin(a), ny = Math.cos(a);
       ticks.push(
         <line key={i}
           x1={cx + nx * tickHw} y1={cy + ny * tickHw}
@@ -268,16 +266,20 @@ export const curtainWallModule: ElementModule<CurtainWallFacts> = {
     ];
     // One handle per interior vertical grid line, sliding along the wall.
     const ux = Math.cos(facts.angle), uy = Math.sin(facts.angle);
+    const arc = facts.arc;
     for (let i = 0; i < facts.grid.xs.length - 2; i++) {
       const t = facts.grid.xs[i + 1];
       handles.push({
         id: `vgrid-${i}`,
-        position: { x: facts.start.x + ux * t, y: facts.start.y + uy * t },
+        position: cwPoint(facts, t),
         color: '#f59e0b',
         cursor: 'ew-resize',
         onDrag(snapped, _ds, snapshot) {
           if (snapshot.geometry !== 'line') return {};
-          const pos = (snapped.x - snapshot.start.x) * ux + (snapped.y - snapshot.start.y) * uy;
+          // Along the wall: on an arc, the angle from its start times the radius.
+          const pos = arc
+            ? ((((Math.atan2(snapped.y - arc.cy, snapped.x - arc.cx) - arc.a0) * Math.sign(arc.sweep)) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI) * arc.r
+            : (snapped.x - snapshot.start.x) * ux + (snapped.y - snapshot.start.y) * uy;
           const patch = moveGridLine(curtainGrid(snapshot.attrs, facts.length, facts.height), 'v', i, pos);
           return patch ? { attrs: patch } as Partial<CanonicalElement> : {};
         },

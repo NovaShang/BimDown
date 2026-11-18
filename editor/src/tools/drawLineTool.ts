@@ -250,6 +250,7 @@ export const drawLineTool: ToolHandler = {
     if (isWallDrawTable(ctx.getState().drawingTarget?.tableName)) {
       return wallDrawTool.onKeyDown?.(ctx, e) ?? false;
     }
+    if (shouldDelegateToStairTool(ctx.getState())) return drawStairTool.onKeyDown?.(ctx, e) ?? false;
     // End a railing chain
     if (e.key === 'Enter' && ctx.getState().drawingTarget?.tableName === 'railing' && ctx.getState().drawingState?.points.length) {
       ctx.dispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });

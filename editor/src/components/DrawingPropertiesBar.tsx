@@ -205,7 +205,7 @@ export default function DrawingPropertiesBar() {
         </>
       )}
       {target.tableName === 'tag' && <TagAllButton />}
-      {target.tableName === 'stair' && <StairDrawHint />}
+      {target.tableName === 'stair' && target.variantId !== 'sketch' && <StairDrawHint />}
       <Separator orientation="vertical" className="h-4" />
       <Button
         variant="ghost"

@@ -407,4 +407,6 @@ export interface ToolbarVariant {
   /** Extra drawing-bar fields only this variant has (UI-only `__` keys such
    *  as a beam system's spacing; never persisted). */
   extraFields?: DrawingField[];
+  /** The module's UI-only `__` fields this variant does not show. */
+  hideFields?: string[];
 }

@@ -26,7 +26,7 @@ import { resolvedLayers } from '../model/types/catalog.ts';
 import { layerBands, wallFrame, clipToBand, chordAt, type LayerBand } from '../geometry/layerBands.ts';
 import { fineJoins, cutBand, cutChord, type FinishCut, type JoinWall } from '../geometry/layerJoins.ts';
 import { layerColor, layerFill } from './_layerHatch.tsx';
-import { curtainEmbedSpan, curtainWallSpan } from '../geometry/curtainEmbed.ts';
+import { curtainEmbedSpan, curtainWallSpan, embedLength, embedPointAt } from '../geometry/curtainEmbed.ts';
 
 const HOSTED_TABLES = new Set(['door', 'window', 'opening']);
 const DEFAULT_HEIGHT = 3.0;
@@ -334,19 +334,18 @@ export function collectWallOpenings(el: LineElement, ctx: GeometryContext): Wall
 const PLAN_CUT = 1.2;
 
 /**
- * Voids of the curtain walls embedded in a straight wall (Revit "Automatically
- * Embed", geometry/curtainEmbed.ts): the overlap along the wall, from the
- * curtain wall's base to its top, clipped to the wall.
+ * Voids of the curtain walls embedded in a wall (Revit "Automatically Embed",
+ * geometry/curtainEmbed.ts; straight, or arcs on one centre): the overlap
+ * along the wall, from the curtain wall's base to its top, clipped to the wall.
  */
 export function embeddedCurtainWalls(el: LineElement, ctx: GeometryContext): WallOpening[] {
-  if (el.arc) return [];
   const cws = ctx.elementsByTable('curtain_wall');
   if (cws.length === 0) return [];
   const upm = ctx.unitsPerMetre;
   const wall = resolveHeight(el.attrs, ctx.levelElevation, ctx.levelElevations, DEFAULT_HEIGHT * upm);
   const out: WallOpening[] = [];
   for (const c of cws) {
-    if (c.geometry !== 'line' || (c as LineElement).arc) continue;
+    if (c.geometry !== 'line') continue;
     const cw = c as LineElement;
     const span = curtainEmbedSpan(el, el.strokeWidth, cw, 0.005 * upm);
     if (!span) continue;
@@ -379,13 +378,18 @@ function buildWallPolygons(
   endKey: string,
 ): WallPolygon[] {
   if (el.arc) {
+    // Embedded curtain walls cut the arc in plan (doors on arcs keep the full band).
+    const cuts = openings.filter(op => op.hostedTable === 'curtain_wall' && op.planCut !== false);
     const fp = buildLineWallFootprint(el, adj);
     if (fp.length === 0) return [];
-    return [{
-      id: el.id, corners: fp, sideLen: fp.length / 2,
-      startKey, endKey,
-      capStartIsWallEnd: true, capEndIsWallEnd: true,
-    }];
+    if (cuts.length === 0) {
+      return [{
+        id: el.id, corners: fp, sideLen: fp.length / 2,
+        startKey, endKey,
+        capStartIsWallEnd: true, capEndIsWallEnd: true,
+      }];
+    }
+    return arcWallPieces(el, cuts, adj, startKey, endKey);
   }
   const dx = el.end.x - el.start.x;
   const dy = el.end.y - el.start.y;
@@ -429,6 +433,41 @@ function buildWallPolygons(
       id: el.id, corners: [p1, p2, p3, p4], sideLen: 2,
       startKey, endKey,
       capStartIsWallEnd, capEndIsWallEnd,
+    };
+  });
+}
+
+/** Plan bands of an arc wall between the voids of its embedded curtain walls. */
+function arcWallPieces(el: LineElement, cuts: WallOpening[], adj: Map<string, CornerAdjustment>, startKey: string, endKey: string): WallPolygon[] {
+  const wallLen = embedLength(el);
+  const hw = el.strokeWidth / 2;
+  const intervals: [number, number][] = [];
+  let cursor = 0;
+  for (const op of [...cuts].sort((a, b) => a.position - b.position)) {
+    const oLo = Math.max(0, op.position - op.width / 2), oHi = Math.min(wallLen, op.position + op.width / 2);
+    if (oLo > cursor + 1e-6) intervals.push([cursor, oLo]);
+    cursor = Math.max(cursor, oHi);
+  }
+  if (cursor < wallLen - 1e-6) intervals.push([cursor, wallLen]);
+  const startAdj = adj.get(`${el.id}:start`), endAdj = adj.get(`${el.id}:end`);
+  return intervals.map(([s, e]) => {
+    const n = Math.max(1, Math.ceil((e - s) / 0.15));
+    const left: Point[] = [], right: Point[] = [];
+    for (let i = 0; i <= n; i++) {
+      const d = s + (e - s) * i / n;
+      const p = embedPointAt(el, d);
+      const q = embedPointAt(el, Math.min(wallLen, d + 1e-4)), o = embedPointAt(el, Math.max(0, d - 1e-4));
+      const tl = Math.hypot(q.x - o.x, q.y - o.y) || 1;
+      const nx = -(q.y - o.y) / tl, ny = (q.x - o.x) / tl;
+      left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+      right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+    }
+    const capStartIsWallEnd = Math.abs(s) < 1e-6, capEndIsWallEnd = Math.abs(e - wallLen) < 1e-6;
+    if (capStartIsWallEnd && startAdj) { left[0] = startAdj.left; right[0] = startAdj.right; }
+    if (capEndIsWallEnd && endAdj) { left[n] = endAdj.right; right[n] = endAdj.left; }
+    return {
+      id: el.id, corners: [...left, ...right.reverse()], sideLen: n + 1,
+      startKey, endKey, capStartIsWallEnd, capEndIsWallEnd,
     };
   });
 }

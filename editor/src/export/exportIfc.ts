@@ -11,7 +11,7 @@
  */
 /* eslint-disable @typescript-eslint/no-explicit-any -- web-ifc schema classes and enum values are untyped here */
 import type { GridData, Level, ProjectData, SystemDef } from '../types.ts';
-import type { CanonicalElement, LineElement, PointElement, PolygonElement, SpatialLineElement } from '../model/elements.ts';
+import type { CanonicalElement, LineElement, Point, PointElement, PolygonElement, SpatialLineElement } from '../model/elements.ts';
 import type { GeometryContext } from '../elements/archetypes.ts';
 import '../elements/registerAll.ts';
 import { getElementModule } from '../elements/registry.ts';
@@ -26,7 +26,8 @@ import { bimMaterialAppearance, resolveBimMaterial } from '../three/utils/bimMat
 import { MEP_LINE_TABLES } from '../model/mepTopology.ts';
 import { parsePortRef } from '../utils/portRef.ts';
 import { BOUNDARY_TABLES, deriveBoundedFaces, pickSpaceFace, type BoundedFace } from '../geometry/spaceBoundary.ts';
-import { arcLength } from '../geometry/arc.ts';
+import { arcLength, type ArcParams } from '../geometry/arc.ts';
+import { embedPointAt } from '../geometry/curtainEmbed.ts';
 import { doorParts, windowParts, type OpeningPart } from '../elements/_opening3D.tsx';
 import type { LineWallFacts, WallOpening } from '../elements/_lineWallShared.tsx';
 import type { SlabFacts } from '../elements/_slabShared.tsx';
@@ -66,9 +67,11 @@ import {
 } from './ifc/frame.ts';
 import {
   type ProductGeom, box, brepFromBuffer, curtainWallParts, extrudePlan, fittingStubs, hangFromTop,
-  openingPartSolids, railingGeom, rampGeom, sectionProfile, stairFlightGeom, sweep, wallGeom,
+  openingPartSolids, railingGeom, rampGeom, sectionProfile, stairFlightGeom, sweep, wallGeom, winderGeom,
   wallOpeningFrame, wallOpeningSolid, type FittingLeg,
 } from './ifc/geometry.ts';
+import { slopedSlabSolid } from './ifc/slabSolid.ts';
+import { slopeDegrees } from '../geometry/slabSlope.ts';
 import { isExternalWall } from './ifc/spaces.ts';
 import { matchRoomEdges, netRoomOutline } from '../geometry/roomArea.ts';
 // Ship the wasm as a build asset: web-ifc's default looks for it next to the
@@ -664,7 +667,10 @@ class Exporter {
     // Voids for hosted doors / windows / openings, filled later by the hosted element.
     for (const op of f.openings) {
       const frame = wallOpeningFrame(f, op.position, op.sillHeight);
-      const solid = wallOpeningSolid(frame, op.width, op.height, f.thickness, op.shape);
+      // A curtain wall embedded in an arc wall voids the curved band, not a chord box.
+      const solid = f.centerline.arc && op.hostedTable === 'curtain_wall'
+        ? extrudePlan(arcBand(f.centerline, op.position - op.width / 2, op.position + op.width / 2, f.thickness / 2 + Math.max(0.05, f.thickness / 2)), f.baseY + op.sillHeight, op.height)
+        : wallOpeningSolid(frame, op.width, op.height, f.thickness, op.shape);
       const placement = w.placement(rec.placement, rec.frame, frame);
       const shape = w.productShapeStyled([solid], frame);
       const handle = w.add('IfcOpeningElement', w.guid(`${rec.key}#void:${op.hostedId}`), w.ownerHistory,
@@ -752,7 +758,9 @@ class Exporter {
     const verts = f.vertices.map(p => ({ x: p.x, y: p.y }));
     // Inner rings belong to the profile; hosted openings and shafts are voids.
     const rings = ((el as PolygonElement).holes ?? []).filter(h => h.length >= 3);
-    const geom: ProductGeom = { solids: [extrudePlan(verts, f.baseY, f.thickness, rings.length > 0 ? rings : undefined)] };
+    // Sloped floor (slope arrow): the 3D view's body as a faceted brep.
+    const sloped = el.tableName !== 'ceiling' ? slopedSlabSolid(f, rings) : null;
+    const geom: ProductGeom = { solids: [sloped ?? extrudePlan(verts, f.baseY, f.thickness, rings.length > 0 ? rings : undefined)] };
     const area = Math.abs(polygonArea(verts)) - rings.reduce((s, h) => s + Math.abs(polygonArea(h)), 0);
     if (el.tableName === 'ceiling') {
       const rec = this.product({
@@ -774,10 +782,13 @@ class Exporter {
       objectType: fn ? `${el.tableName}:${fn}` : el.tableName, tail: [w.enumv('IfcSlabTypeEnum', predefined)],
     });
     rec.external = fn === 'roof';
-    this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS3', el, f.baseY + f.thickness - rec.frame.o.z, el.attrs.material_grade);
+    // A layer set usage needs a flat extrusion; a sloped body carries its material only.
+    if (sloped) this.singleMaterial(rec.handle, f.material);
+    else this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS3', el, f.baseY + f.thickness - rec.frame.o.z, el.attrs.material_grade);
     this.pset(rec, 'Pset_SlabCommon', {
       Reference: w.ident(el.attrs.number), IsExternal: w.bool(fn === 'roof'),
       LoadBearing: w.bool(el.tableName === 'structure_slab'), ThermalTransmittance: this.typeUValue(el),
+      ...(f.slope ? { PitchAngle: new w.S.IfcPlaneAngleMeasure(slopeDegrees(f.slope) * Math.PI / 180) } : {}),
     });
     // Net: the polygon openings hosted on the slab deducted (shafts are not).
     const cut = scope.elements
@@ -1106,6 +1117,14 @@ class Exporter {
     this.stairWholes.set(`${scope.id}/${el.id}`, wholes);
   }
 
+  /** stair_type of a stair, or of the stair a run is hosted on. */
+  private stairTypeOf(scope: Scope, el: CanonicalElement): string {
+    if (el.tableName === 'stair') return el.attrs.stair_type || '';
+    const host = el.attrs.host_id || el.hostId || '';
+    const stair = scope.elements.find(e => e.tableName === 'stair' && (e.id === host || e.id.endsWith(`:${host}`)));
+    return stair?.attrs.stair_type || '';
+  }
+
   /** The IfcStair records (per repetition) of a host stair reference. */
   private stairWholesOf(scope: Scope, hostRef: string): StairWhole[] | undefined {
     if (!hostRef) return undefined;
@@ -1120,7 +1139,7 @@ class Exporter {
     const rise = Math.abs(f.endZ - f.startZ) / f.stepCount;
     const tread = f.horLen / f.stepCount;
     const tail: any[] = w.ifc4
-      ? [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread), w.enumv('IfcStairFlightTypeEnum', 'STRAIGHT')]
+      ? [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread), w.enumv('IfcStairFlightTypeEnum', f.run.arc ? (this.stairTypeOf(scope, el) === 'spiral' ? 'SPIRAL' : 'CURVED') : 'STRAIGHT')]
       : [w.int(f.stepCount), w.int(f.stepCount), w.plen(rise), w.plen(tread)];
     const part = this.product({
       scope, el, key, type: 'IfcStairFlight', geom, styles: this.styleFor(f.material, 'stair'), name,
@@ -1150,6 +1169,28 @@ class Exporter {
   private exportLanding(scope: Scope, el: CanonicalElement, f: StairLandingFacts): void {
     const wholes = this.stairWholesOf(scope, el.attrs.host_id || el.hostId || '');
     const key = this.recKey(scope, el);
+    // Winder landing: its treads are a winder flight (IfcStairFlight WINDER), not a slab.
+    if (f.winder) {
+      for (const whole of wholes ?? [null]) {
+        const rep = whole?.rep;
+        const geom = winderGeom(f.winder, f.levelY, rep);
+        if (!geom) continue;
+        const k = !rep || rep.index === 0 ? key : `${key}#rep${rep.index}`;
+        const steps = f.winder.treads.length;
+        const riser = steps > 1 ? (f.winder.treads[1].top - f.winder.treads[0].top) * (rep?.scale ?? 1) : 0;
+        const tail: any[] = this.w.ifc4
+          ? [this.w.int(steps), this.w.int(steps), this.w.plen(Math.max(riser, 1e-3)), this.w.plen(f.winder.path / Math.max(1, steps)), this.w.enumv('IfcStairFlightTypeEnum', 'WINDER')]
+          : [this.w.int(steps), this.w.int(steps), this.w.plen(Math.max(riser, 1e-3)), this.w.plen(f.winder.path / Math.max(1, steps))];
+        const rec = this.product({
+          scope, el, key: k, type: 'IfcStairFlight', geom, styles: this.styleFor(f.material, 'stair'),
+          objectType: 'winder', tail, contained: !whole, storey: whole?.storey, register: !rep || rep.index === 0,
+        });
+        this.singleMaterial(rec.handle, f.material);
+        if (whole) this.aggregates.find(a => a.whole === whole.handle)?.parts.push(rec.handle);
+        this.bimdownPset(rec);
+      }
+      return;
+    }
     // base_offset is the landing top: the slab hangs below it (like the 3D view).
     for (const whole of wholes ?? [null]) {
       const rep = whole?.rep;
@@ -2133,4 +2174,19 @@ function distributionSystem(d: SystemDef): string {
   if (/^(POWER|PWR)/.test(t)) return 'ELECTRICAL';
   if (d.discipline === 'electrical') return 'ELECTRICAL';
   return 'NOTDEFINED';
+}
+
+/** Plan band of half-width `hw` along an arc line between distances s0 and s1 from its start. */
+function arcBand(line: { start: Point; end: Point; arc?: ArcParams }, s0: number, s1: number, hw: number): Point[] {
+  const n = Math.max(2, Math.ceil((s1 - s0) / 0.15));
+  const left: Point[] = [], right: Point[] = [];
+  for (let i = 0; i <= n; i++) {
+    const d = s0 + (s1 - s0) * i / n;
+    const p = embedPointAt(line, d), q = embedPointAt(line, d + 1e-4);
+    const l = Math.hypot(q.x - p.x, q.y - p.y) || 1;
+    const nx = -(q.y - p.y) / l, ny = (q.x - p.x) / l;
+    left.push({ x: p.x + nx * hw, y: p.y + ny * hw });
+    right.push({ x: p.x - nx * hw, y: p.y - ny * hw });
+  }
+  return [...left, ...right.reverse()];
 }

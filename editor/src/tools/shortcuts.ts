@@ -9,6 +9,7 @@ import type { EditorAction, EditorState, Tool } from '../state/editorTypes.ts';
 import { getElementModule } from '../elements/registry.ts';
 import { placementTypeForTable } from '../model/elements.ts';
 import { enterModifyTool } from './wallModifyTools.ts';
+import { enterMatchType } from './matchTypeTool.ts';
 import { enterModifyToolFor } from './modifyTools.ts';
 import { toElementId } from '../model/ids.ts';
 import { isHostedTable } from '../model/tableRegistry.ts';
@@ -142,8 +143,9 @@ export const TWO_LETTER: Shortcut[] = [
     if (s.typeId) a.dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...a.state.drawingAttrs, type_id: s.typeId } });
   } },
   { keys: 'MA', labelKey: 'shortcut.matchType', group: 'modify', run: a => {
-    if (!needSelection(a)) return;
-    showNotice('notice.matched', { count: matchType(a.state, a.dispatch) });
+    // Several selected: the first is the source of the rest; else pick source, then targets until Esc.
+    if (a.state.selectedIds.size > 1) { showNotice('notice.matched', { count: matchType(a.state, a.dispatch) }); return; }
+    enterMatchType(a.dispatch, a.state.selectedIds.size === 1 ? [...a.state.selectedIds][0] : null);
   } },
   { keys: 'HH', labelKey: 'shortcut.hideElement', group: 'view', run: a => { if (needSelection(a)) { tempHideSelection(a.state, 'hide', 'element'); a.dispatch({ type: 'CLEAR_SELECTION' }); } } },
   { keys: 'HI', labelKey: 'shortcut.isolateElement', group: 'view', run: a => { if (needSelection(a)) tempHideSelection(a.state, 'isolate', 'element'); } },
