@@ -252,6 +252,24 @@ export default function DrawingOverlay({ drawingState, activeTool, scale, drawin
     return wrap(null);
   }
 
+  if (activeTool === 'draw_slope_arrow') {
+    // Slope arrow: tail dot, rubber shaft to the cursor with its head
+    if (points.length !== 1 || !cursor) return null;
+    const t = points[0];
+    const l = Math.hypot(cursor.x - t.x, cursor.y - t.y);
+    if (l < 1e-6) return null;
+    const ux = (cursor.x - t.x) / l, uy = (cursor.y - t.y) / l;
+    const h = Math.min(0.35, l * 0.3);
+    const head = `${cursor.x - ux * h - uy * h * 0.45},${cursor.y - uy * h + ux * h * 0.45} ${cursor.x},${cursor.y} ${cursor.x - ux * h + uy * h * 0.45},${cursor.y - uy * h - ux * h * 0.45}`;
+    return (
+      <g className="drawing-overlay" transform="scale(1,-1)" data-testid="slope-arrow-preview">
+        <circle cx={t.x} cy={t.y} r={0.12 / scale} fill="#4fc3f7" />
+        <line x1={t.x} y1={t.y} x2={cursor.x} y2={cursor.y} stroke="#4fc3f7" strokeWidth={0.08 / scale} />
+        <polyline points={head} fill="none" stroke="#4fc3f7" strokeWidth={0.08 / scale} />
+      </g>
+    );
+  }
+
   if (activeTool === 'rotate') {
     if (points.length === 1 && cursor) {
       const center = points[0];

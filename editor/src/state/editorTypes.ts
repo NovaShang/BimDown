@@ -14,6 +14,7 @@ export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_
   | 'trim_corner' | 'trim_single' | 'split'
   | 'draw_dimension' | 'draw_text' | 'draw_tag'
   | 'draw_section'
+  | 'draw_slope_arrow'
   | 'match_type'
   | 'underlay';
 

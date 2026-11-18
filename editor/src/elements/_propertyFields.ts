@@ -84,6 +84,7 @@ export const PROPERTY_FIELD_DEFS: Record<string, PropertyField> = {
   function:        { key: 'function',        label: 'Function',        type: 'select', options: SLAB_FUNCTION_OPTIONS, group: 'material' },
   material_grade:  { key: 'material_grade',  label: 'Grade',           type: 'text',   group: 'material' },
   span_direction:  { key: 'span_direction',  label: 'Span Direction',  type: 'number', unit: '°', step: 15, group: 'geometry' },
+  slope_arrow:     { key: 'slope_arrow',     label: 'Slope Arrow',     type: 'text',   group: 'geometry' },
 
   // Relationships
   top_level_id:    { key: 'top_level_id',    label: 'Top Level',       type: 'select', group: 'relationships' },

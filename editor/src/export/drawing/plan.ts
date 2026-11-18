@@ -45,7 +45,7 @@ import type { FoundationFacts } from '../../elements/foundation.tsx';
 import type { EquipmentFacts } from '../../elements/equipment.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
 import { roofArrows, type RoofFacts } from '../../elements/roof.tsx';
-import { spanSymbolLines, type SlabFacts } from '../../elements/_slabShared.tsx';
+import { slopeArrowLines, spanSymbolLines, type SlabFacts } from '../../elements/_slabShared.tsx';
 import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { LAYERS, mepLayer, type DrawingLayer } from './layers.ts';
 import { tint } from './color.ts';
@@ -942,6 +942,11 @@ function drawEntry(env: DrawEnv, entry: Entry) {
       if (structural && sf.spanDirection !== null && sf.spanDirection !== undefined) {
         e.phase = Phase.Annotation;
         for (const pl of spanSymbolLines(sf.vertices, sf.labelAt, sf.spanDirection, 2.5 * env.pm, 3 * env.pm)) e.poly(LAYERS.sSlabIden, pl, false);
+      }
+      // Sloped floor: its slope arrow (paper-sized head)
+      if (sf.slopeArrow) {
+        e.phase = Phase.Annotation;
+        for (const pl of slopeArrowLines(sf.slopeArrow, 2.5 * env.pm)) e.poly(structural ? LAYERS.sSlabIden : LAYERS.slab, pl, false);
       }
       return;
     }

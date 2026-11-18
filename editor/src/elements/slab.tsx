@@ -5,6 +5,7 @@ import type { CanonicalElement, PolygonElement } from '../model/elements.ts';
 import { BASE_OFFSET_FIELD, BOUNDARY_FACE_OPTIONS, MATERIAL_GRADE_FIELD, MATERIAL_OPTIONS, SLAB_FUNCTION_OPTIONS, STRUCTURE_SLAB_FUNCTION_OPTIONS } from './_options.ts';
 import { slabGeometryFor, slabDraw2D, slabDraw3D, spanSymbol2D, type SlabFacts } from './_slabShared.tsx';
 import { PlanTag, tagText } from './_planTag.tsx';
+import SlabSlopePanel from '../components/SlabSlopePanel.tsx';
 
 function makeSlabModule(opts: {
   table: string;
@@ -26,7 +27,7 @@ function makeSlabModule(opts: {
     archetype: 'surface',
     prefix: opts.prefix,
     csvHeaders: ['number', 'base_offset', 'material', 'function', 'thickness',
-      ...(structural ? ['material_grade', 'span_direction'] : [])],
+      ...(structural ? ['material_grade', 'span_direction'] : []), 'slope_arrow'],
     defaults: opts.defaults,
     drawingFields: [
       { key: 'thickness', label: 'Thickness', type: 'number', unit: 'm', min: 0.05, step: 0.005 },
@@ -40,6 +41,8 @@ function makeSlabModule(opts: {
       BASE_OFFSET_FIELD,
     ],
     propertyFields: [],
+    // Slope arrow (sloped floor): draw / edit tail and head heights.
+    propertyPanel: SlabSlopePanel,
     layerStyle: opts.layerStyle,
     renderZIndex: opts.renderZIndex,
     // Sketch the outline, or pick walls (whole outline) / a room, at a wall face.

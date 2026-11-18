@@ -70,6 +70,8 @@ import {
   openingPartSolids, railingGeom, rampGeom, sectionProfile, stairFlightGeom, sweep, wallGeom,
   wallOpeningFrame, wallOpeningSolid, type FittingLeg,
 } from './ifc/geometry.ts';
+import { slopedSlabSolid } from './ifc/slabSolid.ts';
+import { slopeDegrees } from '../geometry/slabSlope.ts';
 import { isExternalWall } from './ifc/spaces.ts';
 import { matchRoomEdges, netRoomOutline } from '../geometry/roomArea.ts';
 // Ship the wasm as a build asset: web-ifc's default looks for it next to the
@@ -747,7 +749,9 @@ class Exporter {
     const verts = f.vertices.map(p => ({ x: p.x, y: p.y }));
     // Inner rings belong to the profile; hosted openings and shafts are voids.
     const rings = ((el as PolygonElement).holes ?? []).filter(h => h.length >= 3);
-    const geom: ProductGeom = { solids: [extrudePlan(verts, f.baseY, f.thickness, rings.length > 0 ? rings : undefined)] };
+    // Sloped floor (slope arrow): the 3D view's body as a faceted brep.
+    const sloped = el.tableName !== 'ceiling' ? slopedSlabSolid(f, rings) : null;
+    const geom: ProductGeom = { solids: [sloped ?? extrudePlan(verts, f.baseY, f.thickness, rings.length > 0 ? rings : undefined)] };
     const area = Math.abs(polygonArea(verts)) - rings.reduce((s, h) => s + Math.abs(polygonArea(h)), 0);
     if (el.tableName === 'ceiling') {
       const rec = this.product({
@@ -769,10 +773,13 @@ class Exporter {
       objectType: fn ? `${el.tableName}:${fn}` : el.tableName, tail: [w.enumv('IfcSlabTypeEnum', predefined)],
     });
     rec.external = fn === 'roof';
-    this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS3', el, f.baseY + f.thickness - rec.frame.o.z, el.attrs.material_grade);
+    // A layer set usage needs a flat extrusion; a sloped body carries its material only.
+    if (sloped) this.singleMaterial(rec.handle, f.material);
+    else this.layerMaterial(rec.handle, f.material, f.thickness, 'AXIS3', el, f.baseY + f.thickness - rec.frame.o.z, el.attrs.material_grade);
     this.pset(rec, 'Pset_SlabCommon', {
       Reference: w.ident(el.attrs.number), IsExternal: w.bool(fn === 'roof'),
       LoadBearing: w.bool(el.tableName === 'structure_slab'), ThermalTransmittance: this.typeUValue(el),
+      ...(f.slope ? { PitchAngle: new w.S.IfcPlaneAngleMeasure(slopeDegrees(f.slope) * Math.PI / 180) } : {}),
     });
     // Net: the polygon openings hosted on the slab deducted (shafts are not).
     const cut = scope.elements

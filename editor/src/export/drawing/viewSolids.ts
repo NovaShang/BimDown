@@ -22,6 +22,7 @@ import { getElementModule } from '../../elements/registry.ts';
 import { parseFloorLayers } from '../../model/parse.ts';
 import { buildGeometryContext } from '../../adapters/svg/buildContext.ts';
 import { roofGeometryFromSolution } from '../../three/utils/roofGeometry.ts';
+import { slopedSlabSolid } from '../ifc/slabSolid.ts';
 import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
 import { repZ, type StairRepetition } from '../../geometry/stair.ts';
 import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
@@ -432,7 +433,9 @@ function elementParts(id: string, el: CanonicalElement, facts: any, ctx: Geometr
     case 'slab': case 'structure_slab': case 'ceiling': {
       const f = facts as SlabFacts;
       if (f.vertices.length < 3) break;
-      push(solidsPart(id, t, t === 'slab' ? 'slab' : t === 'ceiling' ? 'ceiling' : 'sslab', [extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]));
+      // Sloped floor (slope arrow): the 3D view's body as a brep
+      const sloped = f.slope ? slopedSlabSolid(f, f.holes) : null;
+      push(solidsPart(id, t, t === 'slab' ? 'slab' : t === 'ceiling' ? 'ceiling' : 'sslab', [sloped ?? extrudePlan(f.vertices, f.baseY, f.thickness, f.holes)]));
       break;
     }
     case 'roof': {

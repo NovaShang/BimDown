@@ -19,6 +19,7 @@ import { drawDimensionTool, drawTextTool, drawTagTool } from './annotationTools.
 import { drawSectionTool } from './drawSectionTool.ts';
 import { underlayTool } from './underlayTool.ts';
 import { matchTypeTool } from './matchTypeTool.ts';
+import { slopeArrowTool } from './slopeArrowTool.ts';
 
 const toolRegistry: Record<string, ToolHandler> = {
   // Universal selection / view / camera
@@ -68,6 +69,9 @@ const toolRegistry: Record<string, ToolHandler> = {
 
   // Point picking for underlay calibrate / move / rotate (underlay/store.ts)
   underlay: underlayTool,
+
+  // Slope arrow of a sloped floor (tail, head), started from the slab panel
+  draw_slope_arrow: slopeArrowTool,
 
   // Match type properties: source, then targets until Esc (MA)
   match_type: matchTypeTool,

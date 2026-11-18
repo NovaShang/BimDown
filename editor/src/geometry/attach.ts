@@ -9,6 +9,7 @@ import {
   solveRoof, roofInputFor, triangulate, intersectConvex, subtractHoles, signedArea,
   type Plane, type P2, type RoofSolution,
 } from './roofSolver.ts';
+import { slabSlopeOf } from './slabSlope.ts';
 
 /** Tables a wall top can attach to. */
 export const ATTACH_TARGET_TABLES = new Set(['roof', 'slab', 'structure_slab']);
@@ -45,7 +46,9 @@ export function attachSurface(target: CanonicalElement, levelElevation: number):
   if (target.tableName === 'slab' || target.tableName === 'structure_slab') {
     const t = parseFloat(target.attrs.thickness || '') || DEFAULT_SLAB_THICKNESS;
     const z = levelElevation + base - t;
-    return triangulate(target.vertices).map(poly => ({ poly, plane: { a: 0, b: 0, c: z } }));
+    // A sloped floor's soffit follows its slope arrow plane.
+    const sp = slabSlopeOf(target.attrs) ?? { a: 0, b: 0, c: 0 };
+    return triangulate(target.vertices).map(poly => ({ poly, plane: { a: sp.a, b: sp.b, c: z + sp.c } }));
   }
   return null;
 }

@@ -14,6 +14,7 @@ const HINT_KEYS: Partial<Record<Tool, string>> = {
   draw_region:  'hint.region.at_grids',
   draw_pick:    'hint.pick.slab',
   draw_section: 'hint.section',
+  draw_slope_arrow: 'hint.slopeArrow',
   relocate:     'hint.relocate',
   relocate_hosted: 'hint.relocateHosted',
   rotate:       'hint.rotate',
