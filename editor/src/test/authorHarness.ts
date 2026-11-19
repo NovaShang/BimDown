@@ -2,7 +2,7 @@
  * Headless authoring harness: drives the real drawing tools through the real
  * reducer (no DOM), then saves with the real persist path. Used by tests that
  * check what the editor writes (spec columns here; `bimdown validate/build`
- * in the BimClaw monorepo).
+ * in the BimDown Studio repo).
  */
 import '../elements/registerAll.ts';
 import '../families/sections/index.ts';

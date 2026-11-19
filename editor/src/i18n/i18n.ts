@@ -4,7 +4,7 @@ import en from './en.json'
 import zh from './zh.json'
 
 // Only bootstrap when nobody else has initialized i18next yet. When the
-// editor is consumed as a library (e.g. by the BimClaw web app), the host
+// editor is consumed as a library (e.g. by BimDown Studio), the host
 // already calls .init() with its own merged resources; re-initializing
 // here would wipe them out, leaving every UI string in the host as a
 // bare i18n key. The host's i18n.ts is responsible for importing the

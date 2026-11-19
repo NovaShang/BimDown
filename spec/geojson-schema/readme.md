@@ -1,6 +1,6 @@
 # BimDown GeoJSON Spec
 
-GeoJSON is one of **two interchangeable geometry storage layers** for BimDown — the other is [SVG](../svg-schema/readme.md). Both are first-class and fully supported; a project picks one, declared by `format_version` (see §9). GeoJSON (`format_version: 2`) is the **default for new projects** and the encoding the BimClaw editor consumes. It was chosen as the default after empirical testing on Gemini 3 Flash: it produces equivalent or better AI generation/edit quality at lower token cost, has native 3D support, and integrates with the GIS toolchain (turf.js, DuckDB spatial). The SVG encoding (`format_version: 1`) remains fully supported for 2D projects and for tools with existing SVG pipelines.
+GeoJSON is one of **two interchangeable geometry storage layers** for BimDown — the other is [SVG](../svg-schema/readme.md). Both are first-class and fully supported; a project picks one, declared by `format_version` (see §9). GeoJSON (`format_version: 2`) is the **default for new projects** and the encoding the BimDown editor consumes. It was chosen as the default after empirical testing on Gemini 3 Flash: it produces equivalent or better AI generation/edit quality at lower token cost, has native 3D support, and integrates with the GIS toolchain (turf.js, DuckDB spatial). The SVG encoding (`format_version: 1`) remains fully supported for 2D projects and for tools with existing SVG pipelines.
 
 GeoJSON files are **not** used for visualization — they are a structured geometry storage format. The editor and renderers consume the parsed canonical element model, not raw GeoJSON.
 
@@ -325,7 +325,7 @@ Notes:
 }
 ```
 
-- `spatial_z: "absolute"` — optional marker that spatial coordinates follow §4.2 (absolute Z). Tools that guarantee it write it; a project without it may come from an older BimClaw editor that stored level-relative Z.
+- `spatial_z: "absolute"` — optional marker that spatial coordinates follow §4.2 (absolute Z). Tools that guarantee it write it; a project without it may come from an older BimDown editor that stored level-relative Z.
 
 - `format_version: 1` — CSV + **SVG** (see [svg-schema/readme.md](../svg-schema/readme.md)). Fully supported; 2D geometry.
 - `format_version: 2` — CSV + **GeoJSON** (this spec). Fully supported; 2D and 3D geometry. Default for new projects.

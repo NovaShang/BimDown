@@ -3,7 +3,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { zipSync } from 'fflate';
 import { discoverLayout, listFiles } from '../utils/fs.js';
 
-// bim-claw.com (CLI <= 0.4) still serves /api/shares/publish
+// The legacy bim-claw.com domain (CLI <= 0.4) still serves /api/shares/publish
 const DEFAULT_API = 'https://bim.jouledown.com';
 const DEFAULT_EXPIRES = '7d';
 
@@ -15,7 +15,7 @@ export async function publish(dir: string, opts: { expires?: string; api?: strin
     return;
   }
 
-  const apiBase = (opts.api || process.env.BIMDOWN_API || process.env.BIMCLAW_API || DEFAULT_API).replace(/\/$/, '');
+  const apiBase = (opts.api || process.env.BIMDOWN_API || process.env.BIMCLAW_API /* legacy name */ || DEFAULT_API).replace(/\/$/, '');
   const expires = opts.expires || DEFAULT_EXPIRES;
 
   // Collect all project files

@@ -6,7 +6,7 @@ import { BASE_OFFSET_FIELD } from './_options.ts';
 import { getSpaceFaceGraph, findSpaceBoundary, BOUNDARY_TABLES } from '../geometry/spaceBoundary.ts';
 // Pull the i18next singleton directly. Importing `../i18n/i18n.ts` instead
 // would drag the editor's bootstrap `.init()` call into any host that
-// imports this module — and the host (e.g. the BimClaw web app) has its
+// imports this module — and the host (e.g. BimDown Studio) has its
 // own merged resources, so a second init wipes them out.
 import i18n from 'i18next';
 import { boundaryWallsFromCtx, redundantRoomsFromCtx, roomAreasOf } from '../annotation/rooms.ts';

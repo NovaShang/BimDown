@@ -1,7 +1,7 @@
 /**
  * Storage-agnostic core of the legacy spatial-Z migration (see
  * migrate-spatial-z.mjs for the rules). Works on an in-memory file map so the
- * CLI (local dir) and the BimClaw API (R2) share one implementation.
+ * CLI (local dir) and the BimDown Studio API (R2) share one implementation.
  */
 
 export const SPATIAL_LINE_TABLES = ['stair', 'ramp', 'railing', 'beam', 'brace', 'duct', 'pipe', 'cable_tray', 'conduit'];

@@ -16,7 +16,7 @@ metadata:
           "endpoint": "https://bim.jouledown.com/api/shares/publish",
           "method": "POST",
           "description": "可选的分享上传步骤。会将项目的 CSV/GeoJSON/GLB 打包上传到 bim.jouledown.com 并返回一个公共分享链接。匿名发布(无需账号或 token)。智能体在每个项目首次发布前必须显式获得用户授权。",
-          "override": "设置 BIMDOWN_API(或旧的 BIMCLAW_API)指向自建后端。"
+          "override": "设置 BIMDOWN_API 指向自建后端。"
         }
       }
     }
