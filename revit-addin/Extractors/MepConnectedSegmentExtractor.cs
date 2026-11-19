@@ -126,22 +126,30 @@ public class MepConnectedSegmentExtractor : IFieldExtractor
         if (connector.Owner is FamilyInstance fi && IsPassiveFitting(fi))
             return null;
 
-        var desc = connector.Description;
-        if (!string.IsNullOrWhiteSpace(desc)) return Slugify(desc!);
-
-        // Fall back to ConnectorManager index.
+        // Name the host's own connector the way connector.csv does (its Description,
+        // else "c{index}" in ConnectorManager order). The connector AllRefs returns can
+        // carry another Id / Description than the manager's one at the same place (the
+        // live samples referenced c1 for the port at c0): match by position, Id breaks ties.
         var owner = connector.Owner;
         ConnectorSet? siblings = owner is FamilyInstance fi2
             ? fi2.MEPModel?.ConnectorManager?.Connectors
             : owner is MEPCurve mc ? mc.ConnectorManager?.Connectors : null;
-        if (siblings is null) return null;
-        int idx = 0;
+        if (siblings is null)
+            return string.IsNullOrWhiteSpace(connector.Description) ? null : Slugify(connector.Description!);
+        Connector? match = null;
+        int matchIdx = -1, idx = 0;
+        var best = double.MaxValue;
         foreach (Connector c in siblings)
         {
-            if (c.Id == connector.Id) return $"c{idx}";
+            double d;
+            try { d = c.Origin.DistanceTo(connector.Origin); } catch { d = double.MaxValue / 2; }
+            if (c.Id == connector.Id) d -= 1e-6;
+            if (d < best) { best = d; match = c; matchIdx = idx; }
             idx++;
         }
-        return $"c{idx}";
+        if (match is null) return null;
+        var desc = match.Description;
+        return string.IsNullOrWhiteSpace(desc) ? $"c{matchIdx}" : Slugify(desc!);
     }
 
     static bool IsPassiveFitting(FamilyInstance fi)

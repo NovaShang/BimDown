@@ -102,7 +102,14 @@ class ShortIdGenerator
     /// <summary>Seeds a previously written short id (the element's BimDown_Id parameter).</summary>
     internal void Seed(string uniqueId, string shortId) => _uidToShort[uniqueId] = shortId;
 
-    internal string GetOrAssign(string tableName, string uniqueId, string directory = "global", string? nameHint = null)
+    // Ids taken project-wide: cross-level targets (no other directory may use them) and,
+    // per id, every uid holding it in some directory.
+    readonly Dictionary<string, string> _uniqueOwner = new();
+    readonly Dictionary<string, HashSet<string>> _owners = new();
+
+    /// <param name="unique">The id must be used by no other element in any directory
+    /// (a host that runs on other levels reference: the riser rule finds exactly it).</param>
+    internal string GetOrAssign(string tableName, string uniqueId, string directory = "global", string? nameHint = null, bool unique = false)
     {
         if (!_usedByDir.TryGetValue(directory, out var used))
         {
@@ -112,21 +119,21 @@ class ShortIdGenerator
 
         var prefix = PrefixMap.TryGetValue(tableName, out var p) ? p : tableName;
 
-        // Reuse a previously assigned/seeded id: claim it if free here, return it if we
-        // already own it (idempotent), or fall through to reassign if another element in
-        // this directory already took it (e.g. a stale duplicate BimDown_Id tag) or the
-        // element moved to a table with another prefix (wall ↔ structure_wall).
+        bool Taken(string id) =>
+            (used.TryGetValue(id, out var owner) && owner != uniqueId)
+            || (_uniqueOwner.TryGetValue(id, out var u) && u != uniqueId)
+            || (unique && _owners.TryGetValue(id, out var all) && all.Any(o => o != uniqueId));
+
+        // Reuse a previously assigned/seeded id: return it if we already own it here
+        // (idempotent), claim it if free, or fall through to reassign if another element
+        // took it (e.g. a stale duplicate BimDown_Id tag) or the element moved to a table
+        // with another prefix (wall ↔ structure_wall).
         if (_uidToShort.TryGetValue(uniqueId, out var existing) && existing.StartsWith(prefix + "-", StringComparison.Ordinal))
         {
-            if (!used.TryGetValue(existing, out var owner))
-            {
-                used[existing] = uniqueId;
-                _shortToDir[existing] = directory;
-                _uidToDir[uniqueId] = directory;
+            if (used.TryGetValue(existing, out var owner) && owner == uniqueId)
                 return existing;
-            }
-            if (owner == uniqueId)
-                return existing;
+            if (!Taken(existing))
+                return Claim(existing);
         }
 
         string shortId;
@@ -134,7 +141,7 @@ class ShortIdGenerator
         {
             var stem = $"{prefix}-{Names.Slug(nameHint)}";
             shortId = stem;
-            for (var n = 2; used.ContainsKey(shortId); n++) shortId = $"{stem}-{n}";
+            for (var n = 2; Taken(shortId); n++) shortId = $"{stem}-{n}";
         }
         else
         {
@@ -149,14 +156,21 @@ class ShortIdGenerator
                 counter++;
                 counters[prefix] = counter;
                 shortId = $"{prefix}-{counter}";
-            } while (used.ContainsKey(shortId));
+            } while (Taken(shortId));
         }
+        return Claim(shortId);
 
-        used[shortId] = uniqueId;
-        _uidToShort[uniqueId] = shortId;
-        _shortToDir[shortId] = directory;
-        _uidToDir[uniqueId] = directory;
-        return shortId;
+        string Claim(string id)
+        {
+            used[id] = uniqueId;
+            if (!_owners.TryGetValue(id, out var all)) _owners[id] = all = [];
+            all.Add(uniqueId);
+            if (unique) _uniqueOwner[id] = uniqueId;
+            _uidToShort[uniqueId] = id;
+            _shortToDir[id] = directory;
+            _uidToDir[uniqueId] = directory;
+            return id;
+        }
     }
 
     internal string? Resolve(string? uniqueId)
@@ -245,12 +259,12 @@ class ShortIdGenerator
     }
 
     /// <summary>Assigns a short id to a single row (no reference resolution).</summary>
-    internal void AssignRowId(string tableName, Dictionary<string, string?> row, string directory)
+    internal void AssignRowId(string tableName, Dictionary<string, string?> row, string directory, bool unique = false)
     {
         var uid = row.GetValueOrDefault("id");
         if (uid is null) return;
         row["_uid"] = uid;
-        row["id"] = GetOrAssign(tableName, uid, directory, row.GetValueOrDefault("name"));
+        row["id"] = GetOrAssign(tableName, uid, directory, row.GetValueOrDefault("name"), unique);
     }
 
     /// <summary>Resolves level references (level_id, base_level_id, top_level_id, multistory_top_level_id) only.</summary>
@@ -266,10 +280,11 @@ class ShortIdGenerator
     }
 
     /// <summary>
-    /// Returns all mappings with directory info for _IdMap.csv.
+    /// Returns all mappings with directory info for _IdMap.csv. Rows the exporter
+    /// synthesized (MEP nodes, split runs) have no Revit element: left out.
     /// </summary>
     internal IReadOnlyDictionary<string, string> Mappings =>
-        _uidToShort.Where(kv => _uidToDir.ContainsKey(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
+        _uidToShort.Where(kv => _uidToDir.ContainsKey(kv.Key) && !MepTopology.IsSynthetic(kv.Key)).ToDictionary(kv => kv.Key, kv => kv.Value);
 
     internal string GetDirectory(string shortId) =>
         _shortToDir.GetValueOrDefault(shortId, "global");
