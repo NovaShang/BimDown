@@ -1,0 +1,225 @@
+import { useTranslation } from 'react-i18next';
+import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
+import { getDrawingFields } from '../model/drawingSchema.ts';
+import { LAYER_STYLES, DISCIPLINE_COLORS } from '../types.ts';
+import { Input } from './ui/input';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
+import { Button } from './ui/button';
+import { Separator } from './ui/separator';
+import { Icon } from './Icons.tsx';
+import { LevelSelect } from './LevelSelect.tsx';
+import { MepSizeInput, isMepSizeField } from '../mep/MepSizeInput.tsx';
+import { NumberInput } from './NumberInput.tsx';
+import { getElementModule } from '../elements/registry.ts';
+import { VERTICAL_MODE_KEY } from '../tools/drawLineTool.ts';
+import { systemFitsTable } from '../model/mepTopology.ts';
+import { getProjectUnits, getUnitSuffix } from '../utils/units.ts';
+import { cn } from '../lib/utils.ts';
+import { isWallDrawTable } from '../tools/wallDrawTool.ts';
+import WallDrawOptionsBar from './WallDrawOptionsBar.tsx';
+import GridDrawOptionsBar from './GridDrawOptionsBar.tsx';
+import { useState } from 'react';
+import { Pencil } from 'lucide-react';
+import { TypeSelect } from './TypeSelect.tsx';
+import EditTypeDialog from './EditTypeDialog.tsx';
+import { isTypedTable, typeParamKeys } from '../model/types/catalog.ts';
+import { drawingAttrsForType, rememberDrawingType } from '../model/types/drawingType.ts';
+import { TagAllButton } from './AnnotationTools.tsx';
+import { StairDrawHint } from '../elements/StairPropertyPanel.tsx';
+
+const fieldInputClass = 'h-7 rounded-lg border-input bg-transparent px-2 text-[11px] tabular-nums focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/50';
+
+export default function DrawingPropertiesBar() {
+  const { t, i18n } = useTranslation();
+  const state = useEditorState();
+  const dispatch = useEditorDispatch();
+  const [typeDialogOpen, setTypeDialogOpen] = useState(false);
+
+  const target = state.drawingTarget;
+  if (!target) return state.activeTool === 'draw_grid' ? <GridDrawOptionsBar /> : null;
+
+  const levels = state.project?.levels ?? [];
+  // Inject project-level mep_system options at render time, filtered to the
+  // systems this table can carry (a duct sees air systems, a pipe water).
+  // When no matching systems exist we leave options undefined so the field
+  // degrades to a text input rather than showing an empty dropdown.
+  const systemOptions = (state.project?.mepSystems ?? [])
+    .filter(s => systemFitsTable(s, target.tableName))
+    .map(s => ({ value: s.system_type, label: s.name || s.system_type }));
+  const typed = isTypedTable(target.tableName);
+  const drawingTypeId = state.drawingAttrs.type_id ?? '';
+  // With a type picked, its parameters come from the type (Edit Type changes them).
+  const typeKeys = new Set(drawingTypeId ? typeParamKeys(target.tableName) : []);
+  const fields = getDrawingFields(target.tableName, levels, target.variantId)
+    .filter(f => !typeKeys.has(f.key))
+    .map(f =>
+      f.key === 'system_type' && systemOptions.length > 0
+        ? { ...f, options: systemOptions }
+        : f.optionsFor ? { ...f, options: f.optionsFor(state.drawingAttrs, i18n.language) } : f,
+    );
+  if (fields.length === 0 && !typed) return null;
+
+  const projectUnit = getProjectUnits(state);
+  const projectUnitLabel = getUnitSuffix(projectUnit).trim();
+
+  const style = LAYER_STYLES[target.tableName];
+  const disciplineColor = DISCIPLINE_COLORS[target.discipline] || '#888';
+  const attrs = state.drawingAttrs;
+
+  const handleChange = (key: string, value: string) => {
+    const ruled = getElementModule(target.tableName)?.attrChangeRules?.(attrs, { [key]: value });
+    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: { ...attrs, ...ruled, [key]: value } });
+  };
+
+  const types = state.project?.types;
+  const pickType = (typeId: string, catalog = types) => {
+    rememberDrawingType(target.tableName, typeId);
+    // First use of a starter type: write the catalog so the new elements' type_id resolves.
+    if (typeId && catalog && !catalog.saved) dispatch({ type: 'SET_TYPES', types: { ...catalog, saved: true, fromDisk: false } });
+    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: drawingAttrsForType(target.tableName, attrs, typeId, catalog) });
+  };
+
+  // Vertical-pipe toggle: only for MEP topo-line tables (duct / pipe / conduit / cable_tray).
+  const elMod = getElementModule(target.tableName);
+  const variant = target.variantId ? elMod?.toolbarVariants?.find(v => v.id === target.variantId) : undefined;
+  const supportsVertical = elMod?.archetype === 'topo-line';
+  const verticalOn = attrs[VERTICAL_MODE_KEY] === 'true';
+  const toggleVertical = () => {
+    const next = { ...attrs };
+    if (verticalOn) delete next[VERTICAL_MODE_KEY];
+    else next[VERTICAL_MODE_KEY] = 'true';
+    dispatch({ type: 'SET_DRAWING_ATTRS', attrs: next });
+    // Reset any in-progress 2-click placement so we don't leave a dangling start point.
+    dispatch({ type: 'SET_DRAWING_STATE', state: null });
+  };
+
+  return (
+    <div
+      className="absolute bottom-[80px] left-1/2 z-30 flex -translate-x-1/2 items-center gap-2 whitespace-nowrap glass-panel rounded-[10px] border border-border px-3 py-[5px] shadow-[var(--shadow-panel)] animate-in fade-in slide-in-from-bottom-1.5 duration-200"
+      style={{ '--dp-color': disciplineColor } as React.CSSProperties}
+    >
+      <span className="flex shrink-0 items-center gap-1.5 text-[11px] font-semibold select-none" style={{ color: disciplineColor }}>
+        <Icon name={variant?.iconName ?? target.tableName} width={20} height={20} /> {variant ? t(variant.label) : style ? t(`display.${style.displayName}`) : target.tableName}
+      </span>
+      <Separator orientation="vertical" className="h-4" />
+      {typed && (
+        <div className="flex items-center gap-1" data-testid="drawing-type">
+          <label className="text-[10px] text-muted-foreground">{t('type.label')}</label>
+          <TypeSelect
+            instanceTable={target.tableName}
+            value={drawingTypeId}
+            onChange={id => pickType(id)}
+            size="sm"
+            triggerClassName={`${fieldInputClass} min-w-28 max-w-56 gap-1`}
+          />
+          <Button variant="ghost" size="icon-xs" className="size-[22px] text-muted-foreground"
+            title={t('type.edit')} aria-label={t('type.edit')} onClick={() => setTypeDialogOpen(true)}>
+            <Pencil className="size-3" />
+          </Button>
+          <EditTypeDialog
+            open={typeDialogOpen}
+            instanceTable={target.tableName}
+            typeId={drawingTypeId}
+            onClose={() => setTypeDialogOpen(false)}
+            onApplied={(id, catalog) => pickType(id, catalog)}
+          />
+        </div>
+      )}
+      {fields.map(f => (
+        <div key={f.key} className="flex items-center gap-1.5">
+          <label className="text-[10px] text-muted-foreground">{t(`field.${f.label}`, f.label)}</label>
+          {f.key === 'top_level_id' ? (
+            <LevelSelect
+              value={attrs[f.key] ?? ''}
+              onValueChange={(v) => handleChange(f.key, v)}
+              size="sm"
+              triggerClassName={`${fieldInputClass} min-w-16 gap-1`}
+            />
+          ) : f.type === 'select' && f.options ? (
+            <Select
+              value={attrs[f.key] ?? ''}
+              onValueChange={(v) => { if (v) handleChange(f.key, v); }}
+            >
+              <SelectTrigger size="sm" className={`${fieldInputClass} min-w-16 gap-1`}>
+                <span className="truncate">{(() => {
+                  const o = f.options!.find(o => o.value === (attrs[f.key] ?? ''));
+                  // system_type labels are user-defined project names, not i18n keys.
+                  const labelOf = (lbl: string) => f.key === 'system_type' ? lbl : t(`option.${lbl}`, lbl);
+                  return o ? labelOf(o.label) : attrs[f.key] ?? '';
+                })()}</span>
+              </SelectTrigger>
+              <SelectContent>
+                {f.options.map(o => (
+                  <SelectItem key={o.value} value={o.value}>{f.key === 'system_type' ? o.label : t(`option.${o.label}`, o.label)}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : isMepSizeField(target.tableName, f.key) ? (
+            <MepSizeInput table={target.tableName} sizeKey={f.key} attrs={attrs} value={attrs[f.key] ?? ''} unit={projectUnit}
+              onChange={v => handleChange(f.key, v)} className={`${fieldInputClass} w-[60px]`} />
+          ) : f.type === 'number' ? (
+            <div className="flex items-center gap-1">
+              <NumberInput
+                className={`${fieldInputClass} w-[60px] text-right`}
+                value={attrs[f.key] ?? ''}
+                onChange={v => handleChange(f.key, v)}
+                step={f.step}
+                min={f.min}
+                max={f.max}
+                parseImperial={f.unit === 'm' && (projectUnit === 'ft' || projectUnit === 'in') ? projectUnit : undefined}
+              />
+              {f.unit && <span className="text-[9px] text-muted-foreground select-none">{f.unit === 'm' ? projectUnitLabel : f.unit}</span>}
+            </div>
+          ) : (
+            <Input
+              className={`${fieldInputClass} w-20`}
+              type="text"
+              value={attrs[f.key] ?? ''}
+              placeholder={f.label}
+              onChange={e => handleChange(f.key, e.target.value)}
+            />
+          )}
+        </div>
+      ))}
+      {isWallDrawTable(target.tableName) && state.activeTool === 'draw_line' && (
+        <WallDrawOptionsBar fieldClass={fieldInputClass} unitLabel={projectUnitLabel} />
+      )}
+      {supportsVertical && (
+        <>
+          <Separator orientation="vertical" className="h-4" />
+          <Button
+            variant="ghost"
+            size="sm"
+            className={cn(
+              'h-7 rounded-md px-2 text-[10px] font-medium uppercase tracking-wide',
+              verticalOn
+                ? 'bg-[var(--dp-color)]/20 text-[var(--dp-color)] hover:bg-[var(--dp-color)]/30 hover:text-[var(--dp-color)]'
+                : 'text-muted-foreground',
+            )}
+            onClick={toggleVertical}
+            title={verticalOn ? t('drawing.verticalOn', 'Vertical mode — single click places a vertical pipe') : t('drawing.verticalOff', 'Switch to single-click vertical placement')}
+            aria-pressed={verticalOn}
+          >
+            {t('drawing.vertical', 'Vertical')}
+          </Button>
+        </>
+      )}
+      {target.tableName === 'tag' && <TagAllButton />}
+      {target.tableName === 'stair' && target.variantId !== 'sketch' && <StairDrawHint />}
+      <Separator orientation="vertical" className="h-4" />
+      <Button
+        variant="ghost"
+        size="icon-xs"
+        className="size-[22px] text-muted-foreground"
+        onClick={() => {
+          dispatch({ type: 'SET_TOOL', tool: 'select' });
+          dispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          dispatch({ type: 'SET_DRAWING_STATE', state: null });
+        }}
+        title="Cancel (Esc)"
+      >
+        &#x2715;
+      </Button>
+    </div>
+  );
+}

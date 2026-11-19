@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1 1">
+  <!-- Round column: filled circle + cross. -->
+  <circle cx="0.5" cy="0.5" r="0.48" fill="#e0e0e0" stroke="#333" stroke-width="0.04"/>
+  <line x1="0.1" y1="0.1" x2="0.9" y2="0.9" stroke="#333" stroke-width="0.03"/>
+  <line x1="0.9" y1="0.1" x2="0.1" y2="0.9" stroke="#333" stroke-width="0.03"/>
+</svg>

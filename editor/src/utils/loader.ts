@@ -1,0 +1,544 @@
+import type { CsvRow, Level, FloorData, ProjectData, GridData, LayerData, ProjectMetadata, ProjectUnit, SystemDef } from '../types.ts';
+import { DISCIPLINE_TABLES, TABLE_TO_DISCIPLINE } from '../types.ts';
+import type { DataSource } from './dataSource.ts';
+import { TYPE_FILE_PATHS, isTypedTable, parseTypeFiles, resolveTypeAttrs, type TypeCatalog } from '../model/types/catalog.ts';
+import { starterCatalog } from '../model/types/starter.ts';
+import { getProjectUnits, unitsPerMetreOf } from './units.ts';
+import { sectionsFromRows, VIEW_CSV_PATH } from '../views/sectionsIO.ts';
+import { sheetSetFromRows, SHEET_CSV_PATH, VIEWPORT_CSV_PATH } from '../sheets/sheetsIO.ts';
+import type { SheetSet } from '../sheets/sheetTypes.ts';
+import type { SectionDef, ViewsAction } from '../views/viewTypes.ts';
+import { defaultSystemColor, systemPreset } from '../mep/systemPresets.ts';
+
+const VALID_UNITS: ReadonlySet<ProjectUnit> = new Set(['m', 'ft', 'in', 'mm']);
+
+const DEFAULT_METADATA: ProjectMetadata = { format_version: '3.0', units: 'm' };
+
+function normalizeUnits(raw: unknown): ProjectUnit {
+  if (typeof raw === 'string' && VALID_UNITS.has(raw as ProjectUnit)) {
+    return raw as ProjectUnit;
+  }
+  // Tolerate legacy "meters" spelling that used to be the default.
+  if (raw === 'meters') return 'm';
+  return 'm';
+}
+
+export async function loadProjectMetadata(ds: DataSource): Promise<ProjectMetadata> {
+  const text = await ds.fetchText('project_metadata.json');
+  if (!text) return { ...DEFAULT_METADATA };
+  try {
+    const json = JSON.parse(text);
+    return {
+      format_version: json.format_version ?? '3.0',
+      project_name: json.project_name,
+      ...(typeof json.project_number === 'string' ? { project_number: json.project_number } : {}),
+      ...(typeof json.client === 'string' ? { client: json.client } : {}),
+      ...(typeof json.address === 'string' ? { address: json.address } : {}),
+      units: normalizeUnits(json.units),
+      source: json.source,
+      spatial_z: json.spatial_z,
+      ...(typeof json.discipline === 'string' ? { discipline: json.discipline } : {}),
+      ...(json.numbering && typeof json.numbering === 'object' && !Array.isArray(json.numbering)
+        ? { numbering: Object.fromEntries(Object.entries(json.numbering).filter(([, v]) => typeof v === 'string')) as Record<string, string> }
+        : {}),
+    };
+  } catch {
+    return { ...DEFAULT_METADATA };
+  }
+}
+
+export function parseCsv(text: string): CsvRow[] {
+  const lines = text.trim().split(/\r?\n/);
+  if (lines.length < 2) return [];
+  const headers = parseCsvLine(lines[0]);
+  const rows: CsvRow[] = [];
+  for (let i = 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (!line) continue;
+    const values = parseCsvLine(line);
+    const row: CsvRow = {};
+    for (let j = 0; j < headers.length; j++) {
+      // A repeated header (older editors wrote `id` twice) merges into one
+      // column, first non-empty value winning; the next save writes it once.
+      if (!row[headers[j]]) row[headers[j]] = values[j] || '';
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+function parseCsvLine(line: string): string[] {
+  const result: string[] = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (inQuotes) {
+      if (ch === '"') {
+        if (i + 1 < line.length && line[i + 1] === '"') {
+          current += '"';
+          i++;
+        } else {
+          inQuotes = false;
+        }
+      } else {
+        current += ch;
+      }
+    } else {
+      if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ',') {
+        result.push(current);
+        current = '';
+      } else {
+        current += ch;
+      }
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+/** Spatial tables: geometry carries absolute Z in its coordinates (spec §4.2). */
+const SPATIAL_TABLES = new Set([
+  'stair', 'stair_run', 'ramp', 'railing', 'beam', 'brace',
+  'duct', 'pipe', 'cable_tray', 'conduit',
+  'equipment', 'terminal', 'mep_node',
+]);
+
+/** Z offsets the spec stores in GeoJSON `properties` (the editor reads them as attrs;
+ *  point rotation is read separately below). */
+const GEOJSON_Z_PROPS = ['base_offset', 'top_offset', 'height_offset'] as const;
+
+/**
+ * Bring one layer from the on-disk spec form into the editor model.
+ *
+ * - Spatial coordinates carry **absolute** Z (spec §4.2) for every project; the
+ *   editor model is **level-relative** (`levelElevation + z`, draw defaults like
+ *   `start_z: '3'` mean "3 m above the floor"), so subtract the level elevation:
+ *     - LineString coords (beam/duct/…): `z -= elevation` (read as startZ/endZ).
+ *     - 3D Point coords (equipment/terminal/mep_node): the relative Z becomes the
+ *       row's `base_offset` (what `buildPoint` reads).
+ *   `persistDocument` adds the elevation back on save (see serializeToGeoJson).
+ * - `base_offset` / `top_offset` / `height_offset` written in GeoJSON properties
+ *   (spec storage) are copied into the row; they win over a stale CSV column.
+ *
+ * Global layers use elevation 0, so only the property hoisting applies there.
+ */
+export function importLayerGeometry(
+  geojsonContent: string,
+  elevation: number,
+  csvMap: Map<string, CsvRow>,
+  tableName: string,
+): string {
+  if (!geojsonContent) return geojsonContent;
+  let fc: { features?: { geometry?: { type?: string; coordinates?: unknown }; properties?: Record<string, unknown> }[] };
+  try { fc = JSON.parse(geojsonContent); } catch { return geojsonContent; }
+  if (!Array.isArray(fc.features)) return geojsonContent;
+  const spatial = SPATIAL_TABLES.has(tableName);
+  for (const ft of fc.features) {
+    const id = typeof ft.properties?.id === 'string' ? ft.properties.id : undefined;
+    const row: CsvRow | undefined = id ? (csvMap.get(id) ?? { id }) : undefined;
+    for (const key of GEOJSON_Z_PROPS) {
+      const v = ft.properties?.[key];
+      if (row && typeof v === 'number' && isFinite(v)) row[key] = String(v);
+    }
+    const g = ft.geometry;
+    // Point orientation is a GeoJSON property too (spec); the editor reads attrs.rotation.
+    const rot = ft.properties?.rotation;
+    if (row && g?.type === 'Point' && typeof rot === 'number' && isFinite(rot)) row.rotation = String(rot);
+    if (spatial && g?.type === 'Point') {
+      const c = g.coordinates as number[];
+      if (Array.isArray(c) && c.length >= 3 && typeof c[2] === 'number') {
+        c[2] = c[2] - elevation;
+        if (row) row.base_offset = String(c[2]);
+      }
+    } else if (spatial && g?.type === 'LineString') {
+      const coords = g.coordinates as number[][];
+      if (Array.isArray(coords)) {
+        for (const c of coords) {
+          if (Array.isArray(c) && c.length >= 3 && typeof c[2] === 'number') c[2] = c[2] - elevation;
+        }
+      }
+    }
+    if (row && id && !csvMap.has(id)) csvMap.set(id, row);
+  }
+  return JSON.stringify(fc);
+}
+
+/** True when a level layer (elevation ≠ 0) holds spatial geometry with a Z. In
+ *  a project without the `spatial_z` marker such Z may be legacy level-relative
+ *  (pre-marker editor saves), so the editor must not stamp the marker on it. */
+function hasElevatedSpatialZ(geojsonContent: string, elevation: number, tableName: string): boolean {
+  if (elevation === 0 || !SPATIAL_TABLES.has(tableName) || !geojsonContent) return false;
+  return /\[\s*-?[\d.eE+-]+\s*,\s*-?[\d.eE+-]+\s*,\s*-?[\d.eE+-]+\s*\]/.test(geojsonContent);
+}
+
+/** In-flight `listFiles()` per data source: a project load and the grid load
+ *  that runs beside it share one listing. Cleared once settled, so a later
+ *  load (e.g. after a file change) lists afresh. */
+const pendingManifests = new WeakMap<DataSource, Promise<Set<string> | null>>();
+
+function listManifest(ds: DataSource): Promise<Set<string> | null> {
+  if (!ds.listFiles) return Promise.resolve(null);
+  let pending = pendingManifests.get(ds);
+  if (!pending) {
+    pending = ds.listFiles().then(files => new Set(files));
+    pendingManifests.set(ds, pending);
+    const clear = () => { if (pendingManifests.get(ds) === pending) pendingManifests.delete(ds); };
+    pending.then(clear, clear);
+  }
+  return pending;
+}
+
+/** Fetch `path` unless the manifest says it isn't there (no 404 for optional files). */
+function fetchListed(ds: DataSource, manifest: Set<string> | null, path: string): Promise<string | null> {
+  return manifest && !manifest.has(path) ? Promise.resolve(null) : ds.fetchText(path);
+}
+
+/** Fill typed rows' empty type parameters (in place) — the editor keeps effective values in memory. */
+function resolveRowTypes(csvMap: Map<string, CsvRow>, tableName: string, types: TypeCatalog | undefined): void {
+  if (!types || types.types.length === 0 || !isTypedTable(tableName)) return;
+  for (const [id, row] of csvMap) {
+    const resolved = resolveTypeAttrs(tableName, row, types);
+    if (resolved !== row) csvMap.set(id, resolved);
+  }
+}
+
+/**
+ * Load the project's element types. A project without any type file gets the
+ * built-in starter catalog, marked unsaved: it is written to global/ only once
+ * the user assigns or edits a type, so untyped projects stay untouched.
+ */
+export async function loadTypeCatalog(
+  ds: DataSource,
+  fetchIfPresent: (p: string) => Promise<string | null> = p => ds.fetchText(p),
+  upm = 1,
+): Promise<TypeCatalog> {
+  const texts = await Promise.all(TYPE_FILE_PATHS.map(p => fetchIfPresent(p)));
+  if (texts.every(t => t === null)) return starterCatalog(upm);
+  const files: Record<string, string | null> = {};
+  TYPE_FILE_PATHS.forEach((p, i) => { files[p] = texts[i]; });
+  return { types: parseTypeFiles(files), saved: true, fromDisk: true };
+}
+
+export async function loadProject(ds: DataSource): Promise<ProjectData> {
+  const metadataPromise = loadProjectMetadata(ds);
+  const manifest = await listManifest(ds);
+  const fetchIfPresent = (p: string) => fetchListed(ds, manifest, p);
+
+  const metadata = await metadataPromise;
+  const types = await loadTypeCatalog(ds, fetchIfPresent, unitsPerMetreOf(getProjectUnits({ project: { metadata } })));
+  let elevatedSpatialZ = false;
+
+  let levels: Level[] = [];
+  const text = await fetchIfPresent('global/level.csv');
+  if (text) {
+    const rows = parseCsv(text);
+    levels = rows.map(r => ({
+      id: r.id,
+      number: r.number || '',
+      name: r.name || '',
+      elevation: parseFloat(r.elevation) || 0,
+    }));
+  }
+
+  levels.sort((a, b) => a.elevation - b.elevation);
+
+  const floors = new Map<string, FloorData>();
+
+  const fetchTasks: { disc: string; level: Level; tableName: string }[] = [];
+  for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
+    for (const level of levels) {
+      for (const tableName of tables) {
+        const geoPath = `${level.id}/${tableName}.geojson`;
+        const csvPath = `${level.id}/${tableName}.csv`;
+        if (manifest && !manifest.has(geoPath) && !manifest.has(csvPath)) continue;
+        fetchTasks.push({ disc, level, tableName });
+      }
+    }
+  }
+
+  const results = await Promise.all(
+    fetchTasks.map(async ({ disc, level, tableName }) => {
+      const [geojsonContent, csvContent] = await Promise.all([
+        fetchIfPresent(`${level.id}/${tableName}.geojson`),
+        fetchIfPresent(`${level.id}/${tableName}.csv`),
+      ]);
+      return { disc, level, tableName, geojsonContent, csvContent };
+    })
+  );
+
+  for (const { disc, level, tableName, geojsonContent, csvContent } of results) {
+    if (!geojsonContent && !csvContent) continue;
+
+    const csvMap = new Map<string, CsvRow>();
+    if (csvContent) {
+      for (const row of parseCsv(csvContent)) {
+        if (row.id) csvMap.set(row.id, row);
+      }
+    }
+    resolveRowTypes(csvMap, tableName, types);
+
+    if (!floors.has(level.id)) {
+      floors.set(level.id, {
+        levelId: level.id,
+        levelName: level.name || level.id,
+        layers: [],
+      });
+    }
+
+    if (hasElevatedSpatialZ(geojsonContent ?? '', level.elevation, tableName)) elevatedSpatialZ = true;
+    floors.get(level.id)!.layers.push({
+      tableName,
+      discipline: disc,
+      geojsonContent: importLayerGeometry(geojsonContent ?? '', level.elevation, csvMap, tableName),
+      csvRows: csvMap,
+    });
+  }
+
+  // Load element layers from global/ directory (multi-story elements spanning >1 level)
+  const globalFetchTasks: { disc: string; tableName: string }[] = [];
+  for (const [disc, tables] of Object.entries(DISCIPLINE_TABLES)) {
+    for (const tableName of tables) {
+      const geoPath = `global/${tableName}.geojson`;
+      const csvPath = `global/${tableName}.csv`;
+      if (manifest && !manifest.has(geoPath) && !manifest.has(csvPath)) continue;
+      globalFetchTasks.push({ disc, tableName });
+    }
+  }
+
+  const globalResults = await Promise.all(
+    globalFetchTasks.map(async ({ disc, tableName }) => {
+      const [geojsonContent, csvContent] = await Promise.all([
+        fetchIfPresent(`global/${tableName}.geojson`),
+        fetchIfPresent(`global/${tableName}.csv`),
+      ]);
+      return { disc, tableName, geojsonContent, csvContent };
+    })
+  );
+
+  const globalLayers: LayerData[] = [];
+  const viewAnnotations: LayerData[] = [];
+  for (const { disc, tableName, geojsonContent, csvContent } of globalResults) {
+    if (!geojsonContent && !csvContent) continue;
+    if (VIEW_ANNOTATION_TABLES.has(tableName)) {
+      viewAnnotations.push(viewAnnotationLayer(tableName, csvContent));
+      continue;
+    }
+
+    const csvMap = new Map<string, CsvRow>();
+    if (csvContent) {
+      for (const row of parseCsv(csvContent)) {
+        if (row.id) csvMap.set(row.id, row);
+      }
+    }
+    resolveRowTypes(csvMap, tableName, types);
+
+    globalLayers.push({
+      tableName,
+      discipline: disc,
+      geojsonContent: importLayerGeometry(geojsonContent ?? '', 0, csvMap, tableName),
+      csvRows: csvMap,
+    });
+  }
+
+  // Project-level MEP system definitions: explicit file rows, plus any
+  // system_type found on MEP elements but not declared (e.g. Revit exports with
+  // no mep_system.csv) — auto-registered with a palette color so they show in
+  // the systems panel and color 2D/3D consistently.
+  const declared = parseMepSystems(await fetchIfPresent('global/mep_system.csv'));
+  const viewText = await fetchIfPresent(VIEW_CSV_PATH);
+  const sections = viewText ? sectionsFromRows(parseCsv(viewText)) : [];
+  const sheets = await loadSheetsWith(fetchIfPresent);
+  const derived = deriveMepSystems(declared, floors, globalLayers);
+  const mepSystems = [...declared, ...derived];
+
+  // Safe to stamp `spatial_z: absolute` on save unless the project is unmarked
+  // and holds elevated spatial Z that might be legacy level-relative.
+  const spatialZMarkable = metadata.spatial_z !== 'absolute' && !elevatedSpatialZ;
+  return { levels, floors, globalLayers, mepSystems, types, metadata, spatialZMarkable, sections, viewAnnotations, sheets };
+}
+
+/** Annotation tables whose global/ rows live on sections / elevations. */
+export const VIEW_ANNOTATION_TABLES = new Set(['dimension', 'text_note']);
+
+function viewAnnotationLayer(tableName: string, csvContent: string | null): LayerData {
+  const csvRows = new Map<string, CsvRow>();
+  for (const row of csvContent ? parseCsv(csvContent) : []) if (row.id) csvRows.set(row.id, row);
+  return { tableName, discipline: 'annotation', geojsonContent: '', csvRows };
+}
+
+async function loadSheetsWith(fetchIfPresent: (p: string) => Promise<string | null>): Promise<SheetSet> {
+  const [sheetText, vpText] = await Promise.all([fetchIfPresent(SHEET_CSV_PATH), fetchIfPresent(VIEWPORT_CSV_PATH)]);
+  return sheetSetFromRows(sheetText ? parseCsv(sheetText) : [], vpText ? parseCsv(vpText) : []);
+}
+
+/** Reload the sheets (`global/sheet.csv` + `global/sheet_viewport.csv`). */
+export async function loadSheets(ds: DataSource): Promise<SheetSet> {
+  return loadSheetsWith(p => ds.fetchText(p));
+}
+
+/**
+ * Reload for a changed sheet or section / elevation annotation file (an agent
+ * or another tab wrote it): the action to dispatch, or null for other paths.
+ */
+export async function drawingFileReload(ds: DataSource, path: string): Promise<ViewsAction | null> {
+  if (path === SHEET_CSV_PATH || path === VIEWPORT_CSV_PATH) return { type: 'UPDATE_SHEETS', sheets: await loadSheets(ds) };
+  const m = /^global\/(\w+)\.csv$/.exec(path);
+  if (m && VIEW_ANNOTATION_TABLES.has(m[1])) return { type: 'UPDATE_VIEW_ANNOTATIONS', layers: await loadViewAnnotations(ds) };
+  return null;
+}
+
+/** Reload the section / elevation annotations of global/. */
+export async function loadViewAnnotations(ds: DataSource): Promise<LayerData[]> {
+  const out: LayerData[] = [];
+  for (const table of VIEW_ANNOTATION_TABLES) {
+    const text = await ds.fetchText(`global/${table}.csv`);
+    if (text) out.push(viewAnnotationLayer(table, text));
+  }
+  return out;
+}
+
+/** MEP tables that carry a `system_type` tag. */
+const MEP_SYSTEM_TABLES = new Set(['duct', 'pipe', 'conduit', 'cable_tray', 'terminal', 'equipment', 'mep_node']);
+
+function disciplineForSystem(name: string): string {
+  const s = name.toLowerCase();
+  if (/\bair\b|hvac|chilled|condenser|refriger|exhaust|supply|return/.test(s)) return 'hvac';
+  if (/water|sanit|vent|drain|waste|plumb|\bgas\b|domestic/.test(s)) return 'plumbing';
+  if (/power|data|cable|electr|low.?volt|fire.?alarm|telecom/.test(s)) return 'electrical';
+  return 'other';
+}
+
+/** Derive SystemDefs for system_type values present on MEP elements but not
+ *  already declared. Equipment carries a comma-joined list of port systems, so
+ *  values are split on commas. Library codes (mep/systemPresets.ts) take the
+ *  preset discipline / colour; others the next unused colour.
+ *  Deterministic (sorted) so colors are stable. */
+function deriveMepSystems(
+  existing: SystemDef[],
+  floors: Map<string, FloorData>,
+  globalLayers: LayerData[],
+): SystemDef[] {
+  const have = new Set(existing.map(s => s.system_type.trim()).filter(Boolean));
+  // Another spelling of a declared library system (DHWS on a DHW project) is that system, not a new one
+  const declaredPresets = new Set(existing.map(s => systemPreset(s.system_type)).filter(Boolean));
+  const seen = new Set<string>();
+  const found: string[] = [];
+  const scan = (layers: LayerData[]) => {
+    for (const layer of layers) {
+      if (!MEP_SYSTEM_TABLES.has(layer.tableName)) continue;
+      for (const row of layer.csvRows.values()) {
+        const raw = (row.system_type || '').trim();
+        if (!raw) continue;
+        for (const part of raw.split(',')) {
+          const v = part.trim();
+          if (!v || have.has(v) || seen.has(v) || declaredPresets.has(systemPreset(v))) continue;
+          seen.add(v);
+          found.push(v);
+        }
+      }
+    }
+  };
+  for (const f of floors.values()) scan(f.layers);
+  scan(globalLayers);
+  found.sort();
+  const out: SystemDef[] = [];
+  found.forEach((v, i) => {
+    const preset = systemPreset(v);
+    out.push({
+      id: `sys-auto-${i + 1}`,
+      system_type: v,
+      name: v,
+      color: defaultSystemColor(v, [...existing, ...out]),
+      discipline: preset?.discipline ?? disciplineForSystem(v),
+    });
+  });
+  return out;
+}
+
+/** Load `global/mep_system.csv` if present. Returns [] when the file is
+ *  missing or empty so existing projects keep their auto-coloring behavior. */
+export async function loadMepSystems(ds: DataSource): Promise<SystemDef[]> {
+  return parseMepSystems(await ds.fetchText('global/mep_system.csv'));
+}
+
+function parseMepSystems(text: string | null): SystemDef[] {
+  if (!text) return [];
+  const rows = parseCsv(text);
+  return rows
+    .filter(r => r.id || r.system_type)
+    .map(r => ({
+      id: r.id || '',
+      system_type: r.system_type || '',
+      name: r.name || '',
+      color: r.color || '',
+      discipline: r.discipline || '',
+    }));
+}
+
+/** Load the saved section views from `global/view.csv` ([] when absent). */
+export async function loadSections(ds: DataSource): Promise<SectionDef[]> {
+  const text = await ds.fetchText(VIEW_CSV_PATH);
+  return text ? sectionsFromRows(parseCsv(text)) : [];
+}
+
+export async function loadGrids(ds: DataSource): Promise<GridData[]> {
+  const text = await fetchListed(ds, await listManifest(ds), 'global/grid.csv');
+  if (text) {
+    const rows = parseCsv(text);
+    return rows.map(r => ({
+      id: r.id,
+      number: r.number || '',
+      x1: parseFloat(r.start_x) || 0,
+      y1: parseFloat(r.start_y) || 0,
+      x2: parseFloat(r.end_x) || 0,
+      y2: parseFloat(r.end_y) || 0,
+      ...(r.pinned === 'true' ? { pinned: true } : {}),
+    }));
+  }
+  return [];
+}
+
+/**
+ * Reload one layer (e.g. after an external file change). `elevation` is the
+ * level's elevation; when omitted it is looked up in global/level.csv.
+ */
+export async function loadLayer(
+  ds: DataSource, levelId: string, tableName: string, elevation?: number,
+  /** Project types: typed rows come back with effective values (see resolveTypeAttrs). */
+  types?: TypeCatalog,
+): Promise<LayerData | null> {
+  const [geojsonContent, csvContent] = await Promise.all([
+    ds.fetchText(`${levelId}/${tableName}.geojson`),
+    ds.fetchText(`${levelId}/${tableName}.csv`),
+  ]);
+  if (!geojsonContent && !csvContent) return null;
+
+  const csvMap = new Map<string, CsvRow>();
+  if (csvContent) {
+    const rows = parseCsv(csvContent);
+    for (const row of rows) {
+      if (row.id) csvMap.set(row.id, row);
+    }
+  }
+  resolveRowTypes(csvMap, tableName, types);
+
+  let elev = elevation;
+  if (elev === undefined) {
+    elev = 0;
+    if (levelId !== 'global') {
+      const levelText = await ds.fetchText('global/level.csv');
+      const row = levelText ? parseCsv(levelText).find(r => r.id === levelId) : undefined;
+      elev = row ? parseFloat(row.elevation) || 0 : 0;
+    }
+  }
+
+  return {
+    tableName,
+    discipline: TABLE_TO_DISCIPLINE[tableName] ?? 'architectural',
+    geojsonContent: importLayerGeometry(geojsonContent ?? '', elev, csvMap, tableName),
+    csvRows: csvMap,
+  };
+}

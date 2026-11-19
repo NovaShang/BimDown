@@ -1,0 +1,177 @@
+import { useEffect } from 'react';
+import type { EditorState, EditorAction, Tool } from '../state/editorTypes.ts';
+import { requestDelete, selectAllInView } from '../state/selectionOps.ts';
+import { DRAW_TOOL_SHORTCUTS } from '../components/FloatingToolbar.tsx';
+import { getElementModule } from '../elements/registry.ts';
+import { placementTypeForTable } from '../model/elements.ts';
+import { finishPolygon, isDrawingPolygon } from '../tools/drawPolygonTool.ts';
+import { MODIFY_TOOL_SHORTCUTS, enterModifyTool } from '../tools/wallModifyTools.ts';
+import { consumeRouteEnded, isRouteTool } from '../mep/routeTool.ts';
+import { rotatePlacement } from '../tools/placementRotate.ts';
+
+const PLACEMENT_TO_TOOL: Record<string, Tool> = {
+  hosted: 'draw_hosted', free_line: 'draw_line', spatial_line: 'draw_line',
+  free_point: 'draw_point', free_polygon: 'draw_polygon', grid: 'draw_grid', region: 'draw_region', pick: 'draw_pick',
+};
+
+interface UseCanvasKeyboardOptions {
+  globalDispatch: React.Dispatch<EditorAction>;
+  stateRef: React.MutableRefObject<EditorState>;
+  applyZoomBy: (delta: number) => void;
+  applyZoomToFit: () => void;
+  applyZoomToPercent: (pct: number) => void;
+  activeDiscipline: string | null;
+  /** Active tool's key handler; runs first and may consume the key. */
+  onToolKeyDown?: (e: KeyboardEvent) => boolean;
+}
+
+export function useCanvasKeyboard({
+  globalDispatch, stateRef, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, onToolKeyDown,
+}: UseCanvasKeyboardOptions) {
+  useEffect(() => {
+    // Space: held = pan; a quick tap while placing turns the element (tools/placementRotate.ts)
+    let spaceTap: { at: number; tool: Tool; panned: boolean } | null = null;
+    const onPointerDown = () => { if (spaceTap) spaceTap.panned = true; };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.target as HTMLElement).tagName === 'INPUT' || (e.target as HTMLElement).tagName === 'TEXTAREA') return;
+      if (!stateRef.current.readonly && onToolKeyDown?.(e)) return;
+
+      switch (e.key) {
+        case 'v': case 'V':
+          if (!e.ctrlKey && !e.metaKey) globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+          break;
+        case 'h': case 'H':
+          if (!e.ctrlKey && !e.metaKey) globalDispatch({ type: 'SET_TOOL', tool: 'pan' });
+          break;
+        case 'z': case 'Z':
+          if (e.ctrlKey || e.metaKey) {
+            if (stateRef.current.readonly) break;
+            e.preventDefault();
+            if (e.shiftKey) {
+              globalDispatch({ type: 'REDO' });
+            } else {
+              globalDispatch({ type: 'UNDO' });
+            }
+          } else {
+            globalDispatch({ type: 'SET_TOOL', tool: 'zoom' });
+          }
+          break;
+        case 'y': case 'Y':
+          if (e.ctrlKey || e.metaKey) {
+            if (stateRef.current.readonly) break;
+            e.preventDefault();
+            globalDispatch({ type: 'REDO' });
+          }
+          break;
+        case 'g': case 'G':
+          if (stateRef.current.readonly) break;
+          if (!e.ctrlKey && !e.metaKey && activeDiscipline === 'reference') {
+            globalDispatch({ type: 'SET_TOOL', tool: 'draw_grid' });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+          }
+          break;
+        case 'Delete': case 'Backspace':
+          if (stateRef.current.readonly) break;
+          if (stateRef.current.selectedIds.size > 0) requestDelete(stateRef.current, globalDispatch);
+          break;
+        case ' ':
+          e.preventDefault();
+          if (!e.repeat && !stateRef.current.spaceHeld) spaceTap = { at: performance.now(), tool: stateRef.current.activeTool, panned: false };
+          globalDispatch({ type: 'SET_SPACE_HELD', held: true });
+          break;
+        case 'Escape':
+          if (stateRef.current.activeTool === 'relocate' || stateRef.current.activeTool === 'relocate_hosted' || stateRef.current.activeTool === 'rotate' || stateRef.current.activeTool === 'underlay') {
+            globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          } else if (stateRef.current.drawingState?.points.length) {
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+          } else if (consumeRouteEnded() && isRouteTool(stateRef.current)) {
+            // MEP run that ended by itself: this Esc ends the run, the tool stays (Esc again leaves).
+          } else if (stateRef.current.activeTool.startsWith('draw_')) {
+            globalDispatch({ type: 'SET_TOOL', tool: 'select' });
+            globalDispatch({ type: 'SET_DRAWING_STATE', state: null });
+            globalDispatch({ type: 'SET_DRAWING_TARGET', target: null });
+          } else {
+            globalDispatch({ type: 'CLEAR_SELECTION' });
+          }
+          break;
+        case 'Enter':
+          // Polygon tools: Enter closes the outline (3+ vertices).
+          if (!stateRef.current.readonly && isDrawingPolygon(stateRef.current)) {
+            if (finishPolygon(stateRef.current, globalDispatch)) e.preventDefault();
+          }
+          break;
+        case '=': case '+':
+          applyZoomBy(1.2);
+          break;
+        case '-': case '_':
+          applyZoomBy(1 / 1.2);
+          break;
+        case '0':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            applyZoomToFit();
+          }
+          break;
+        case '1':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            applyZoomToPercent(100);
+          }
+          break;
+        case 'a': case 'A':
+          if (e.ctrlKey || e.metaKey) {
+            e.preventDefault();
+            // Only what this view lets you pick (not MEP's walls, nor hidden layers)
+            globalDispatch({ type: 'SELECT', ids: selectAllInView(stateRef.current), exact: true });
+          }
+          break;
+      }
+
+      // Wall modify tools (J trim/extend to corner, E to reference, K split) — 2D only; X is Text
+      if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey && stateRef.current.viewMode === '2d'
+          && (activeDiscipline === 'architecture' || activeDiscipline === 'structure')) {
+        const modifyTool = MODIFY_TOOL_SHORTCUTS[e.key.toUpperCase()];
+        if (modifyTool) enterModifyTool(globalDispatch, modifyTool);
+      }
+
+      // Drawing tool shortcuts (W, D, N, C, R, F, T, E, P, U)
+      if (!stateRef.current.readonly && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const tableName = DRAW_TOOL_SHORTCUTS[e.key.toUpperCase()];
+        if (tableName) {
+          const mod = getElementModule(tableName);
+          if (mod && mod.discipline === activeDiscipline) {
+            const tool = PLACEMENT_TO_TOOL[placementTypeForTable(tableName)];
+            if (tool) {
+              globalDispatch({ type: 'SET_TOOL', tool });
+              globalDispatch({ type: 'SET_DRAWING_TARGET', target: { tableName, discipline: mod.discipline } });
+              globalDispatch({ type: 'SET_DRAWING_STATE', state: { points: [], cursor: null } });
+            }
+          }
+        }
+      }
+    };
+
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') {
+        globalDispatch({ type: 'SET_SPACE_HELD', held: false });
+        const tap = spaceTap;
+        spaceTap = null;
+        if (tap && !tap.panned && performance.now() - tap.at < 300 && !stateRef.current.readonly) {
+          rotatePlacement({ ...stateRef.current, activeTool: tap.tool }, globalDispatch, e.shiftKey ? -1 : 1);
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    window.addEventListener('pointerdown', onPointerDown, true);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+      window.removeEventListener('pointerdown', onPointerDown, true);
+    };
+  }, [globalDispatch, applyZoomBy, applyZoomToFit, applyZoomToPercent, activeDiscipline, stateRef, onToolKeyDown]);
+}

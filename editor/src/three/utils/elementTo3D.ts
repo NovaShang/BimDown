@@ -1,0 +1,236 @@
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement, PolygonElement } from '../../model/elements.ts';
+
+export interface BoxParams {
+  kind: 'box';
+  cx: number; cy: number; cz: number;   // center position
+  sx: number; sy: number; sz: number;   // size (width, height, depth)
+  rotY: number;                          // rotation around Y axis (radians)
+}
+
+export interface ExtrudeParams {
+  kind: 'extrude';
+  vertices: { x: number; y: number }[]; // 2D footprint (XZ plane in 3D)
+  baseY: number;                         // bottom Y
+  height: number;                        // extrusion height
+  roofType?: string;                     // 'flat' | 'gable' | 'hip' | 'shed' | 'mansard'
+  slopeDeg?: number;                     // slope angle in degrees
+}
+
+export type Mesh3DParams = BoxParams | ExtrudeParams;
+
+const DEFAULT_WALL_HEIGHT = 3.0;
+const DEFAULT_COLUMN_HEIGHT = 3.0;
+const DEFAULT_POINT_HEIGHT = 0.5;
+const DEFAULT_ROOM_HEIGHT = 3.0;
+const DEFAULT_SLAB_THICKNESS = 0.2;
+const DEFAULT_FOUNDATION_THICKNESS = 0.4;
+const DEFAULT_MEP_SIZE = 0.3;
+
+/** Framing whose line is the member TOP (Revit export convention); MEP lines are centre lines. */
+const TOP_LINE_TABLES = ['beam', 'brace'];
+/** Polygons whose level + base_offset is the TOP face; the body hangs down by `thickness`. */
+const TOP_ANCHORED_POLYGONS = ['slab', 'structure_slab', 'foundation'];
+
+/** Resolve element height from top_level_id / top_offset / base_offset */
+export function resolveHeight(
+  attrs: Record<string, string>,
+  levelElevation: number,
+  levelElevations: Map<string, number>,
+  fallback: number,
+): { height: number; baseOffset: number } {
+  const baseOffset = parseFloat(attrs.base_offset) || 0;
+
+  if (attrs.top_level_id && levelElevations.has(attrs.top_level_id)) {
+    const topElev = levelElevations.get(attrs.top_level_id)!;
+    const topOffset = parseFloat(attrs.top_offset) || 0;
+    const height = (topElev + topOffset) - (levelElevation + baseOffset);
+    return { height: Math.max(height, 0.01), baseOffset };
+  }
+
+  // No top_level_id: find next level above (at least 3m higher) to avoid partial mezzanine issues
+  const baseElev = levelElevation + baseOffset;
+  const MIN_SPAN = 3.0;
+  let bestTopElev = Infinity;
+  for (const elev of levelElevations.values()) {
+    if (elev >= baseElev + MIN_SPAN && elev < bestTopElev) {
+      bestTopElev = elev;
+    }
+  }
+  if (bestTopElev < Infinity) {
+    const height = bestTopElev - baseElev;
+    return { height: Math.max(height, 0.01), baseOffset };
+  }
+
+  if (attrs.height) {
+    const h = parseFloat(attrs.height);
+    if (h > 0) return { height: h, baseOffset };
+  }
+
+  return { height: fallback, baseOffset };
+}
+
+/** Convert a LINE element to a 3D box */
+function lineToBox(
+  el: LineElement,
+  levelElevation: number,
+  levelElevations: Map<string, number>,
+): BoxParams | null {
+  const dx = el.end.x - el.start.x;
+  const dy = el.end.y - el.start.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length < 0.001) return null;
+
+  const table = el.tableName;
+  let fallbackH = DEFAULT_WALL_HEIGHT;
+  if (table === 'door') fallbackH = parseFloat(el.attrs.height) || 2.1;
+  else if (table === 'window') fallbackH = parseFloat(el.attrs.height) || 1.2;
+  else if (['duct', 'pipe', 'conduit', 'cable_tray'].includes(table)) fallbackH = DEFAULT_MEP_SIZE;
+  else if (['beam', 'brace'].includes(table)) fallbackH = DEFAULT_MEP_SIZE;
+
+  // MEP elements with start_z/end_z use absolute Z positioning
+  const hasMepZ = el.attrs.start_z !== undefined && el.attrs.start_z !== '';
+  let baseY: number;
+  let height: number;
+  let thickness: number;
+
+  if (hasMepZ) {
+    const startZ = parseFloat(el.attrs.start_z) || 0;
+    const endZ = parseFloat(el.attrs.end_z) || startZ;
+    // For MEP, size_y is the cross-section height
+    const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
+    // start_z/end_z are level-relative in the editor model
+    baseY = levelElevation + Math.min(startZ, endZ) - (TOP_LINE_TABLES.includes(table) ? sizeY : sizeY / 2);
+    height = sizeY;
+    thickness = parseFloat(el.attrs.size_x) || el.strokeWidth; // section width
+  } else {
+    const resolved = resolveHeight(el.attrs, levelElevation, levelElevations, fallbackH);
+    baseY = levelElevation + resolved.baseOffset;
+    height = resolved.height;
+    thickness = el.strokeWidth;
+  }
+
+  const cx = (el.start.x + el.end.x) / 2;
+  // SVG Y is flipped relative to 3D Z
+  const cz = -(el.start.y + el.end.y) / 2;
+  const cy = baseY + height / 2;
+  const rotY = Math.atan2(dy, dx);
+
+  return {
+    kind: 'box',
+    cx, cy, cz,
+    sx: length,
+    sy: height,
+    sz: thickness,
+    rotY,
+  };
+}
+
+/** Convert a POINT element to a 3D box */
+function pointToBox(
+  el: PointElement,
+  levelElevation: number,
+  levelElevations: Map<string, number>,
+): BoxParams {
+  const fallback = ['column', 'structure_column'].includes(el.tableName)
+    ? DEFAULT_COLUMN_HEIGHT
+    : DEFAULT_POINT_HEIGHT;
+
+  const { height, baseOffset } = resolveHeight(el.attrs, levelElevation, levelElevations, fallback);
+  const baseY = levelElevation + baseOffset;
+
+  return {
+    kind: 'box',
+    cx: el.position.x,
+    cy: baseY + height / 2,
+    cz: -el.position.y,
+    sx: el.width,
+    sy: height,
+    sz: el.height,
+    rotY: parseFloat(el.attrs.rotation || '0') * Math.PI / 180, // CCW, as in the spec
+  };
+}
+
+/** Convert a POLYGON element to extrusion params */
+function polygonToExtrude(
+  el: PolygonElement,
+  levelElevation: number,
+  levelElevations: Map<string, number>,
+): ExtrudeParams | null {
+  if (el.vertices.length < 3) return null;
+
+  const baseOffset = parseFloat(el.attrs.base_offset) || 0;
+  let baseY = levelElevation + baseOffset;
+  let height: number;
+
+  if (TOP_ANCHORED_POLYGONS.includes(el.tableName)) {
+    const fallback = el.tableName === 'foundation' ? DEFAULT_FOUNDATION_THICKNESS : DEFAULT_SLAB_THICKNESS;
+    height = parseFloat(el.attrs.thickness) || fallback;
+    baseY -= height;
+  } else if (el.tableName === 'roof') {
+    height = parseFloat(el.attrs.thickness) || DEFAULT_SLAB_THICKNESS;
+  } else {
+    // Space: use next level height or default
+    const resolved = resolveHeight(el.attrs, levelElevation, levelElevations, DEFAULT_ROOM_HEIGHT);
+    height = resolved.height;
+  }
+
+  const result: ExtrudeParams = {
+    kind: 'extrude',
+    // SVG Y → 3D Z (negated)
+    // shape(sx, sy) → rotateX(-PI/2) → (sx, 0, -sy). Need z = -svgY, so sy = svgY.
+    vertices: el.vertices.map(v => ({ x: v.x, y: v.y })),
+    baseY,
+    height,
+  };
+
+  if (el.tableName === 'roof') {
+    result.roofType = el.attrs.roof_type || 'flat';
+    result.slopeDeg = parseFloat(el.attrs.slope) || 0;
+  }
+
+  return result;
+}
+
+/** Convert a SPATIAL_LINE element (MEP/structural with z) to a 3D box */
+/** Spatial line → box. startZ/endZ are level-relative in the editor model; the
+ *  result is in world (absolute) Y like every other param. */
+function spatialLineToBox(el: SpatialLineElement, levelElevation: number): BoxParams | null {
+  const dx = el.end.x - el.start.x;
+  const dy = el.end.y - el.start.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  if (length < 0.001) return null;
+
+  const sizeY = parseFloat(el.attrs.size_y) || el.strokeWidth;
+  const baseY = levelElevation + Math.min(el.startZ, el.endZ) - (TOP_LINE_TABLES.includes(el.tableName) ? sizeY : sizeY / 2);
+
+  const cx = (el.start.x + el.end.x) / 2;
+  const cz = -(el.start.y + el.end.y) / 2;
+  const cy = baseY + sizeY / 2;
+  const rotY = Math.atan2(dy, dx);
+
+  return {
+    kind: 'box',
+    cx, cy, cz,
+    sx: length,
+    sy: sizeY,
+    sz: parseFloat(el.attrs.size_x) || el.strokeWidth, // section width
+    rotY,
+  };
+}
+
+export function elementTo3DParams(
+  element: CanonicalElement,
+  levelElevation: number,
+  levelElevations: Map<string, number>,
+): Mesh3DParams | null {
+  switch (element.geometry) {
+    case 'line':
+      return lineToBox(element, levelElevation, levelElevations);
+    case 'spatial_line':
+      return spatialLineToBox(element, levelElevation);
+    case 'point':
+      return pointToBox(element, levelElevation, levelElevations);
+    case 'polygon':
+      return polygonToExtrude(element, levelElevation, levelElevations);
+  }
+}

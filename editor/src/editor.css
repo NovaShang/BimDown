@@ -1,0 +1,117 @@
+/* ─── Glass Panel ────────────────────────────── */
+.glass-panel {
+  background: var(--glass-bg);
+}
+
+/* ─── Canvas ─────────────────────────────────── */
+.canvas {
+  width: 100%;
+  height: 100%;
+  background: var(--bg-canvas);
+  position: relative;
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+}
+
+.canvas.cursor-default { cursor: default; }
+.canvas.cursor-grab { cursor: grab; }
+.canvas.cursor-grab:active { cursor: grabbing; }
+.canvas.cursor-zoom { cursor: zoom-in; }
+.canvas.cursor-crosshair { cursor: crosshair; }
+
+.canvas-svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* ─── Room labels over furniture (SVGLayers) ─── */
+.data-layer .room-label { display: none; }
+.room-labels-top [data-id]:not(.room-label) > :not(.room-label) { display: none; }
+.room-labels-top.dimmed { opacity: 0.12; }
+
+/* ─── Layer Dimming ──────────────────────────── */
+.data-layer.dimmed {
+  opacity: 0.12;
+}
+
+/* ─── Plan drafting by zoom (components/planDetail.ts) ─── */
+.canvas-svg .pen-cut { stroke-width: calc(var(--pen-cut, 0.03) * 1px); }
+.canvas-svg .pen-med { stroke-width: calc(var(--pen-med, 0.02) * 1px); }
+.canvas-svg .pen-thin { stroke-width: calc(var(--pen-thin, 0.012) * 1px); }
+.canvas-svg .pen-hair { stroke-width: calc(var(--pen-hair, 0.008) * 1px); }
+.canvas-svg .plan-fine { display: none; }
+.canvas-svg[data-detail="fine"] .plan-fine { display: inline; }
+.canvas-svg[data-detail="fine"] .plan-not-fine { display: none; }
+.canvas-svg[data-detail="coarse"] .plan-not-coarse { display: none; }
+
+/* ─── Plan view range: elements above the cut plane (overhead) ─── */
+.vr-overhead {
+  opacity: 0.7;
+}
+.vr-overhead * {
+  stroke-dasharray: 0.18 0.1 !important;
+  fill-opacity: 0.12;
+}
+
+/* ─── Hover Highlight ────────────────────────── */
+.hover-highlight {
+  filter: drop-shadow(0 0 calc(0.24px / var(--canvas-scale, 1)) var(--color-accent)) drop-shadow(0 0 calc(0.45px / var(--canvas-scale, 1)) var(--color-accent));
+  cursor: pointer;
+}
+/* No glow while the view zooms / pans, nor on an element over an eighth of the view (Canvas
+   HoverHighlight): re-blurring it each frame stalled zooming. A wide element is outlined. */
+.canvas-svg.view-moving .hover-highlight,
+.canvas-svg .hover-highlight-wide { filter: none; }
+.canvas-svg .hover-highlight-wide:not(g):not(text),
+.canvas-svg .hover-highlight-wide :not(g):not(text) { stroke: var(--color-accent); }
+/* A room is tinted like a selected one (its glow used to fill it) */
+polygon.hover-highlight-wide[data-id^="sp-"],
+.hover-highlight-wide[data-id^="sp-"] polygon { fill: rgba(58, 134, 255, 0.18); }
+
+/* ─── Selection Overlay ──────────────────────── */
+.selection-overlay rect {
+  pointer-events: none;
+}
+
+/* ─── Icon wrappers ──────────────────────────── */
+.icon-wrapper svg {
+  width: 100%;
+  height: 100%;
+  stroke-width: var(--icon-stroke-width, 1.4);
+}
+
+/* ─── Scrollbar ──────────────────────────────── */
+::-webkit-scrollbar { width: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
+
+/* ─── Animations ─────────────────────────────── */
+@keyframes toolbar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(8px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes props-in {
+  from { opacity: 0; transform: translateX(12px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes tooltip-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(4px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+/* ─── Touch Device Adaptations ──────────────── */
+@media (pointer: coarse) {
+  button { min-height: 40px; min-width: 40px; }
+  .glass-panel button { min-height: 32px; min-width: 32px; }
+}
+
+/* ─── Mobile Layout ─────────────────────────── */
+@media (max-width: 768px) {
+  /* Safe area for notched devices */
+  body { padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left); }
+}

@@ -1,0 +1,283 @@
+/**
+ * Shared logic for surface-archetype elements with polygon footprint:
+ * slab, structure_slab (top-anchored: base_offset = top face) and ceiling.
+ */
+import type { ReactNode } from 'react';
+import { Shape, ExtrudeGeometry, type BufferGeometry } from 'three';
+import type { GeometryContext } from './archetypes.ts';
+import type { PolygonElement, Point } from '../model/elements.ts';
+import { applyOpenings } from '../three/resolve/csg.ts';
+import type { SurfacePrimitive, PolygonOpening } from '../three/primitives/types.ts';
+import { getBimMaterial, resolveBimMaterial } from '../three/utils/bimMaterials.ts';
+import { isShaft } from '../model/crossLevel.ts';
+import { shaftHolesFor } from './_shafts.ts';
+import { parseSlopeArrow, planeRange, slopePlane, type SlopeArrow, type SlopePlane } from '../geometry/slabSlope.ts';
+import { slabBodyGeometry } from '../three/utils/slabGeometry.ts';
+
+const DEFAULT_THICKNESS = 0.2;
+
+export interface SlabFacts {
+  id: string;
+  table: string;
+  vertices: Point[];
+  thickness: number;
+  /** Bottom face elevation of the mesh (world Y). */
+  baseY: number;
+  material: string;
+  /** Polygon-opening holes (from opening elements hosting this slab, and shafts). */
+  holes: Point[][];
+  /** The shafts among `holes` (drawn with a cross in plan). */
+  shaftHoles: Point[][];
+  /** One-way span direction (degrees CCW from +X), null when not set. */
+  spanDirection: number | null;
+  /** Where plan symbols go: the outline's area centroid. */
+  labelAt: Point;
+  /** Element mark for plan tags (structure_slab). */
+  number?: string;
+  /** Slope arrow (slab / structure_slab `slope_arrow`) and its plane: the body rises by plane(x, y). */
+  slopeArrow?: SlopeArrow | null;
+  slope?: SlopePlane | null;
+}
+
+/** Area centroid of a simple polygon (vertex average when degenerate). */
+export function polygonCentroid(vs: Point[]): Point {
+  let a = 0, cx = 0, cy = 0;
+  for (let i = 0; i < vs.length; i++) {
+    const p = vs[i], q = vs[(i + 1) % vs.length];
+    const c = p.x * q.y - q.x * p.y;
+    a += c; cx += (p.x + q.x) * c; cy += (p.y + q.y) * c;
+  }
+  if (Math.abs(a) < 1e-9) {
+    const n = vs.length || 1;
+    return { x: vs.reduce((s, v) => s + v.x, 0) / n, y: vs.reduce((s, v) => s + v.y, 0) / n };
+  }
+  return { x: cx / (3 * a), y: cy / (3 * a) };
+}
+
+/** Polylines of the one-way span symbol (shaft, two arrow heads, tick) — editor, PDF / DXF. */
+export function spanSymbolLines(vertices: readonly Point[], at: Point, deg: number, head = 0.25, tick = 0.3): Point[][] {
+  const a = (deg * Math.PI) / 180;
+  const ux = Math.cos(a), uy = Math.sin(a), nx = -uy, ny = ux;
+  let lo = Infinity, hi = -Infinity;
+  for (const v of vertices) {
+    const t = (v.x - at.x) * ux + (v.y - at.y) * uy;
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+  }
+  const half = Math.max(0.5, Math.min(2, (hi - lo) * 0.2));
+  const p1 = { x: at.x - ux * half, y: at.y - uy * half };
+  const p2 = { x: at.x + ux * half, y: at.y + uy * half };
+  const arrow = (tip: Point, d: number) => [
+    { x: tip.x - d * ux * head + nx * head * 0.5, y: tip.y - d * uy * head + ny * head * 0.5 }, tip,
+    { x: tip.x - d * ux * head - nx * head * 0.5, y: tip.y - d * uy * head - ny * head * 0.5 },
+  ];
+  return [[p1, p2], arrow(p2, 1), arrow(p1, -1), [{ x: at.x - nx * tick, y: at.y - ny * tick }, { x: at.x + nx * tick, y: at.y + ny * tick }]];
+}
+
+/**
+ * One-way span symbol: a double-headed arrow along the span direction through
+ * the slab centroid (a short perpendicular tick marks the supported edges).
+ */
+export function spanSymbol2D(facts: SlabFacts, stroke: string): ReactNode {
+  if (facts.spanDirection === null) return null;
+  const a = (facts.spanDirection * Math.PI) / 180;
+  const ux = Math.cos(a), uy = Math.sin(a);
+  // Arrow length: ~40% of the slab extent along the direction, 1–4 m.
+  let lo = Infinity, hi = -Infinity;
+  for (const v of facts.vertices) {
+    const t = (v.x - facts.labelAt.x) * ux + (v.y - facts.labelAt.y) * uy;
+    lo = Math.min(lo, t); hi = Math.max(hi, t);
+  }
+  const half = Math.max(0.5, Math.min(2, (hi - lo) * 0.2));
+  const c = facts.labelAt;
+  const p1 = { x: c.x - ux * half, y: c.y - uy * half };
+  const p2 = { x: c.x + ux * half, y: c.y + uy * half };
+  const head = 0.25;
+  const nx = -uy, ny = ux;
+  const arrow = (tip: { x: number; y: number }, dir: number) =>
+    `M ${tip.x - dir * ux * head + nx * head * 0.5},${tip.y - dir * uy * head + ny * head * 0.5} L ${tip.x},${tip.y} L ${tip.x - dir * ux * head - nx * head * 0.5},${tip.y - dir * uy * head - ny * head * 0.5}`;
+  return (
+    <g pointerEvents="none">
+      <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke={stroke} strokeWidth={0.03} />
+      <path d={`${arrow(p2, 1)} ${arrow(p1, -1)}`} fill="none" stroke={stroke} strokeWidth={0.03} />
+      <line x1={c.x - nx * 0.3} y1={c.y - ny * 0.3} x2={c.x + nx * 0.3} y2={c.y + ny * 0.3}
+        stroke={stroke} strokeWidth={0.02} />
+    </g>
+  );
+}
+
+export function collectSlabHoles(
+  slabId: string,
+  ctx: GeometryContext,
+): Point[][] {
+  const children = ctx.hostedOf(slabId);
+  if (children.length === 0) return [];
+  const result: Point[][] = [];
+  for (const child of children) {
+    if (child.tableName !== 'opening' || isShaft(child)) continue; // shafts: shaftHolesFor
+    if (child.geometry !== 'polygon') continue;
+    const v = (child as PolygonElement).vertices;
+    if (v.length >= 3) result.push(v);
+  }
+  return result;
+}
+
+export function slabGeometryFor(
+  el: PolygonElement,
+  ctx: GeometryContext,
+  table: string,
+  defaultMaterial: string,
+  /** Extra elevation offset applied after base_offset (used by ceiling for its
+   *  `height_offset` drop). */
+  extraOffset = 0,
+  /** true: level + base_offset is the TOP face and the body hangs down by
+   *  `thickness` (slab / structure_slab, matching the Revit export). false:
+   *  it is the bottom face (ceiling). */
+  topAnchored = false,
+): SlabFacts | null {
+  if (el.vertices.length < 3) return null;
+  const baseOffset = parseFloat(el.attrs.base_offset || '0') || 0;
+  const thickness = parseFloat(el.attrs.thickness || `${DEFAULT_THICKNESS}`) || DEFAULT_THICKNESS;
+  const baseY = ctx.levelElevation + baseOffset + extraOffset - (topAnchored ? thickness : 0);
+  // Sloped floor: only slabs (not ceilings) carry a slope arrow.
+  const slopeArrow = topAnchored ? parseSlopeArrow(el.attrs.slope_arrow) : null;
+  const slope = slopeArrow ? slopePlane(slopeArrow) : null;
+  const [rLo, rHi] = slope ? planeRange(slope, el.vertices) : [0, 0];
+  const shaftHoles = shaftHolesFor(ctx, baseY + rLo, baseY + rHi + thickness, el.vertices);
+  return {
+    id: el.id,
+    table,
+    vertices: el.vertices,
+    thickness,
+    baseY,
+    material: el.attrs.material || defaultMaterial,
+    // Inner rings of the outline + polygon openings hosted on the slab + shafts through it.
+    holes: [...(el.holes ?? []), ...collectSlabHoles(el.id, ctx), ...shaftHoles],
+    shaftHoles,
+    spanDirection: parseSpan(el.attrs.span_direction),
+    labelAt: polygonCentroid(el.vertices),
+    slopeArrow,
+    slope,
+  };
+}
+
+function parseSpan(v: string | undefined): number | null {
+  if (v === undefined || v.trim() === '') return null;
+  const n = parseFloat(v);
+  return Number.isFinite(n) ? n : null;
+}
+
+export function slabDraw2D(facts: SlabFacts, fill: string, stroke: string): ReactNode {
+  const points = facts.vertices.map(v => `${v.x},${v.y}`).join(' ');
+  return (
+    <g data-id={facts.id}>
+      <polygon points={points} fill={fill} stroke={stroke} strokeWidth={0.02} data-id={facts.id} />
+      {facts.holes.map((hole, i) => (
+        <polygon
+          key={i}
+          points={hole.map(v => `${v.x},${v.y}`).join(' ')}
+          fill="white"
+          stroke={stroke}
+          strokeWidth={0.02}
+          strokeDasharray="0.05 0.03"
+          data-id={facts.id}
+        />
+      ))}
+      {facts.shaftHoles.map((hole, i) => <ShaftCross key={`x${i}`} poly={hole} stroke={stroke} />)}
+      {facts.slopeArrow && <SlopeArrow2D arrow={facts.slopeArrow} stroke={stroke} />}
+    </g>
+  );
+}
+
+/** Plan lines of a slope arrow (shaft + head), editor and PDF / DXF. */
+export function slopeArrowLines(a: SlopeArrow, head = 0.3): { x: number; y: number }[][] {
+  const dx = a.head.x - a.tail.x, dy = a.head.y - a.tail.y;
+  const l = Math.hypot(dx, dy) || 1;
+  const ux = dx / l, uy = dy / l, nx = -uy, ny = ux;
+  const h = Math.min(head, l * 0.3);
+  const tip = { x: a.head.x, y: a.head.y };
+  return [
+    [{ x: a.tail.x, y: a.tail.y }, tip],
+    [{ x: tip.x - ux * h + nx * h * 0.45, y: tip.y - uy * h + ny * h * 0.45 }, tip, { x: tip.x - ux * h - nx * h * 0.45, y: tip.y - uy * h - ny * h * 0.45 }],
+  ];
+}
+
+/** Slope arrow in plan: tail dot, shaft, head (Revit sketch symbol shown on the slab). */
+function SlopeArrow2D({ arrow, stroke }: { arrow: SlopeArrow; stroke: string }) {
+  const [shaft, head] = slopeArrowLines(arrow);
+  return (
+    <g pointerEvents="none" data-slope-arrow="1">
+      <circle cx={arrow.tail.x} cy={arrow.tail.y} r={0.06} fill={stroke} />
+      <line x1={shaft[0].x} y1={shaft[0].y} x2={shaft[1].x} y2={shaft[1].y} stroke={stroke} strokeWidth={0.03} />
+      <polyline points={head.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke={stroke} strokeWidth={0.03} />
+    </g>
+  );
+}
+
+/** Plan symbol of a shaft: a cross over the opening. */
+export function ShaftCross({ poly, stroke }: { poly: Point[]; stroke: string }) {
+  if (poly.length < 3) return null;
+  const a = poly[0], c = poly[Math.floor(poly.length / 2)];
+  const b = poly.length === 4 ? poly[1] : null, d = poly.length === 4 ? poly[3] : null;
+  return (
+    <g pointerEvents="none">
+      <line x1={a.x} y1={a.y} x2={c.x} y2={c.y} stroke={stroke} strokeWidth={0.015} />
+      {b && d && <line x1={b.x} y1={b.y} x2={d.x} y2={d.y} stroke={stroke} strokeWidth={0.015} />}
+    </g>
+  );
+}
+
+export function slabDraw3D(facts: SlabFacts, isHL: boolean): ReactNode {
+  if (facts.slope) return slabMesh(facts, slabBodyGeometry(facts.vertices, facts.baseY, facts.thickness, facts.holes, facts.slope), isHL);
+  const shape = new Shape();
+  shape.moveTo(facts.vertices[0].x, facts.vertices[0].y);
+  for (let i = 1; i < facts.vertices.length; i++) {
+    shape.lineTo(facts.vertices[i].x, facts.vertices[i].y);
+  }
+  shape.closePath();
+
+  let geo: BufferGeometry = new ExtrudeGeometry(shape, { depth: facts.thickness, bevelEnabled: false });
+  geo.rotateX(-Math.PI / 2);
+  geo.translate(0, facts.baseY, 0);
+
+  if (facts.holes.length > 0) {
+    const polyOpenings: PolygonOpening[] = facts.holes.map((vs, i) => ({
+      kind: 'polygon',
+      id: `${facts.id}:hole:${i}`,
+      vertices: vs,
+    }));
+    const fakePrim: SurfacePrimitive = {
+      kind: 'surface',
+      id: `surface:${facts.id}`,
+      elementId: facts.id,
+      tableName: facts.table,
+      footprint: facts.vertices,
+      extrudeDirection: { x: 0, y: 1, z: 0 },
+      height: facts.thickness,
+      origin: { x: 0, y: facts.baseY, z: 0 },
+      material: resolveBimMaterial(facts.material, facts.table),
+      openings: polyOpenings,
+    };
+    const cut = applyOpenings(geo, fakePrim);
+    if (cut !== geo) geo.dispose();
+    geo = cut;
+  }
+  return slabMesh(facts, geo, isHL);
+}
+
+function slabMesh(facts: SlabFacts, geo: BufferGeometry, isHL: boolean): ReactNode {
+  const material = getBimMaterial(resolveBimMaterial(facts.material, facts.table));
+  return (
+    <mesh
+      geometry={geo}
+      material={isHL ? undefined : material}
+      castShadow
+      receiveShadow
+      userData={{ elementId: facts.id }}
+    >
+      {isHL && (
+        <meshStandardMaterial attach="material" color="#06b6d4"
+          transparent={material.transparent} opacity={Math.max(material.opacity, 0.4)} />
+      )}
+    </mesh>
+  );
+}

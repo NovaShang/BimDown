@@ -1,0 +1,1177 @@
+/**
+ * Floor plan drawing model: turns one level of a project into backend-neutral
+ * draw items (model coordinates, Y up) with architectural plan graphics — wall
+ * poché, door swings, window symbols, stairs cut at the plan height with a
+ * direction arrow, room tags with areas, grids with bubbles, structure and MEP.
+ * `exportPdf` lays the items out on a sheet, `exportDxf` writes them as CAD
+ * entities on AIA-style layers.
+ *
+ * Geometry comes from the element modules (`geometry()`), so walls miter and
+ * split at openings exactly as in the editor and rooms use the same derived
+ * boundaries. Sizes that belong to the paper (text, bubbles, arrows) are given
+ * in millimetres and converted with `pm` (model units per paper mm).
+ */
+import '../../elements/registerAll.ts';
+import type { ProjectData, GridData, Level, ProjectUnit } from '../../types.ts';
+import type { CanonicalElement, LineElement, Point, PolygonElement } from '../../model/elements.ts';
+import { parseFloorLayers, parseLayer } from '../../model/parse.ts';
+import { getElementModule } from '../../elements/registry.ts';
+import type { GeometryContext } from '../../elements/archetypes.ts';
+import { buildGeometryContext } from '../../adapters/svg/buildContext.ts';
+import { gridsToElements } from '../../utils/gridBridge.ts';
+import { getProjectUnits } from '../../utils/units.ts';
+import { resolveMepSystemColor } from '../../elements/_mepLineShared.tsx';
+import type { LineWallFacts } from '../../elements/_lineWallShared.tsx';
+import type { MepLineFacts } from '../../elements/_mepLineShared.tsx';
+import type { DoorFacts } from '../../elements/door.tsx';
+import type { WindowFacts } from '../../elements/window.tsx';
+import type { ColumnFacts } from '../../elements/column.tsx';
+import type { StairFacts } from '../../elements/stair.tsx';
+import type { StairRunFacts } from '../../elements/stair_run.tsx';
+import type { StairLandingFacts } from '../../elements/stair_landing.tsx';
+import type { RailingFacts } from '../../elements/railing.tsx';
+import { runDir, runPlan, walkingLine, type StairRun } from '../../geometry/stair.ts';
+import { stairsRepeatingOn } from '../../geometry/stairRepeats.ts';
+import type { RampFacts } from '../../elements/ramp.tsx';
+import type { SpaceFacts } from '../../elements/space.tsx';
+import type { FurnitureFacts } from '../../elements/furniture.tsx';
+import { accessorySymbol, equipmentAbbr, equipmentSymbol, terminalSymbol } from '../../mep/planSymbols.tsx';
+import { fittingPlan } from '../../mep/FittingView.tsx';
+import { mul as affMul, rotateDeg, svgToItems, translate as affTranslate } from './svgItems.ts';
+import type { CurtainWallFacts } from '../../elements/curtain_wall.tsx';
+import { cwBand, cwPoint, cwTangent, doorSwings, planStripRuns } from '../../elements/curtainWallLayout.ts';
+import type { BeamFacts } from '../../elements/beam.tsx';
+import type { FoundationFacts } from '../../elements/foundation.tsx';
+import type { EquipmentFacts } from '../../elements/equipment.tsx';
+import type { MepNodeFacts } from '../../elements/mep_node.tsx';
+import { roofArrows, type RoofFacts } from '../../elements/roof.tsx';
+import { slopeArrowLines, spanSymbolLines, type SlabFacts } from '../../elements/_slabShared.tsx';
+import { buildCrossLevelIndex } from '../../model/crossLevel.ts';
+import { LAYERS, mepLayer, type DrawingLayer } from './layers.ts';
+import { tint } from './color.ts';
+import { registeredPlanAnnotators, type PlanAnnotator } from './annotations.ts';
+// Registers the dimension / text note / tag annotator.
+import { taggedRoomIds } from '../annotationExport.ts';
+import { roomAreas } from '../../geometry/roomArea.ts';
+import i18n from 'i18next';
+import { drawingLabel, type DrawingLang } from './labels.ts';
+import type { Box, DrawItem, DrawingDiscipline, LegendEntry, PlanDrawing } from './types.ts';
+
+export interface PlanInput {
+  project: ProjectData;
+  levelId: string;
+  /** Project grids (`state.grids`; they live outside ProjectData). */
+  grids?: GridData[];
+  discipline?: DrawingDiscipline;
+  lang?: DrawingLang;
+  /** Defaults to the registered annotators. */
+  annotators?: readonly PlanAnnotator[];
+}
+
+/** Model units per metre. */
+export function unitsPerMetre(unit: ProjectUnit): number {
+  switch (unit) {
+    case 'mm': return 1000;
+    case 'ft': return 1 / 0.3048;
+    case 'in': return 1 / 0.0254;
+    default: return 1;
+  }
+}
+
+/** Model units per paper millimetre at 1:`scale`. */
+export function paperMm(unit: ProjectUnit, scale: number): number {
+  return (scale / 1000) * unitsPerMetre(unit);
+}
+
+/** Plan cut height above the floor (m), as in Revit's default view range. */
+const CUT_HEIGHT_M = 1.2;
+
+// ─── Collected level (geometry computed once, emitted per scale) ────────────
+
+interface Entry { el: CanonicalElement; facts: unknown }
+
+export interface PlanSource {
+  input: PlanInput;
+  level: Level;
+  unit: ProjectUnit;
+  upm: number;
+  discipline: DrawingDiscipline;
+  lang: DrawingLang;
+  ctx: GeometryContext;
+  entries: Entry[];
+  byId: Map<string, CanonicalElement>;
+  factsCache: Map<string, unknown>;
+  /** Rooms labelled by a tag annotation (the tag draws their label). */
+  taggedRooms: Set<string>;
+}
+
+/** Parse a level and run the element modules' geometry. Null when the level doesn't exist. */
+export function collectPlan(input: PlanInput): PlanSource | null {
+  const { project } = input;
+  const level = project.levels.find(l => l.id === input.levelId);
+  if (!level) return null;
+  const floor = project.floors.get(level.id);
+  const elements: CanonicalElement[] = floor ? parseFloorLayers(floor.layers) : [];
+  for (const gl of project.globalLayers) {
+    for (const el of parseLayer(gl)) elements.push({ ...el, id: `global:${el.id}` });
+  }
+  elements.push(...gridsToElements(input.grids ?? []));
+
+  const byId = new Map<string, CanonicalElement>();
+  for (const el of elements) byId.set(el.id, el);
+  const ctx = buildGeometryContext({
+    level, allLevels: project.levels, allElements: byId, mepSystems: project.mepSystems, types: project.types,
+    unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+    crossLevel: buildCrossLevelIndex(project),
+  });
+  const factsCache = new Map<string, unknown>();
+  const entries: Entry[] = [];
+  for (const el of elements) {
+    const mod = getElementModule(el.tableName);
+    let facts: unknown = null;
+    try { facts = mod ? mod.geometry(el, ctx) : null; } catch { facts = null; }
+    factsCache.set(el.id, facts);
+    if (facts) entries.push({ el, facts });
+  }
+  // Multi-storey stairs of lower levels repeating on this storey (their own level's geometry)
+  for (const rep of stairsRepeatingOn(project, level.id)) {
+    const rctx = buildGeometryContext({
+      level: rep.level, allLevels: project.levels, allElements: new Map(rep.elements.map(e => [e.id, e])),
+      mepSystems: project.mepSystems, types: project.types, unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+    });
+    for (const el of rep.elements) {
+      let facts: unknown = null;
+      try { facts = getElementModule(el.tableName)?.geometry(el, rctx) ?? null; } catch { facts = null; }
+      if (facts) entries.push({ el: { ...el, id: `rep:${rep.level.id}:${el.id}` }, facts });
+    }
+  }
+  // Roof plan: roofs of the storey below seen from above (a roof level has none of its own)
+  for (const rf of roofsBelow(project, level.id)) {
+    const rctx = buildGeometryContext({
+      level: rf.level, allLevels: project.levels, allElements: new Map(rf.elements.map(e => [e.id, e])),
+      mepSystems: project.mepSystems, types: project.types, unitsPerMetre: unitsPerMetre(getProjectUnits({ project })),
+      crossLevel: buildCrossLevelIndex(project),
+    });
+    for (const el of rf.elements) {
+      let facts: unknown = null;
+      try { facts = getElementModule(el.tableName)?.geometry(el, rctx) ?? null; } catch { facts = null; }
+      if (facts) entries.push({ el: { ...el, id: `roof:${rf.level.id}:${el.id}` }, facts });
+    }
+  }
+  const unit = getProjectUnits({ project });
+  return {
+    input, level, unit, upm: unitsPerMetre(unit),
+    discipline: input.discipline ?? 'all',
+    lang: input.lang ?? 'en',
+    ctx, entries, byId, factsCache, taggedRooms: taggedRoomIds(elements),
+  };
+}
+
+// ─── Visibility per discipline ──────────────────────────────────────────────
+
+type Role = 'full' | 'halftone' | 'hidden';
+
+const ALWAYS_HIDDEN = new Set(['connector', 'mesh', 'ceiling']);
+const STRUCTURE_CUT = new Set(['structure_wall', 'structure_column', 'structure_slab']);
+const STRUCTURE_BELOW_ABOVE = new Set(['beam', 'brace', 'foundation']);
+
+function roleOf(table: string, discipline: string, view: DrawingDiscipline): Role {
+  if (ALWAYS_HIDDEN.has(table)) return 'hidden';
+  if (table === 'grid') return 'full';
+  if (view === 'all') return 'full';
+  if (discipline === 'mep') return view === 'mep' ? 'full' : 'hidden';
+  if (view === 'architecture') {
+    if (discipline === 'architecture') return 'full';
+    if (STRUCTURE_CUT.has(table)) return 'full';
+    return 'hidden';
+  }
+  if (view === 'structure') {
+    if (discipline === 'structure') return 'full';
+    return discipline === 'architecture' ? 'halftone' : 'hidden';
+  }
+  // MEP view: building as faded context, no beams or footings
+  if (STRUCTURE_BELOW_ABOVE.has(table)) return 'hidden';
+  return 'halftone';
+}
+
+// ─── Small geometry helpers ─────────────────────────────────────────────────
+
+const add = (p: Point, v: Point, t = 1): Point => ({ x: p.x + v.x * t, y: p.y + v.y * t });
+const sub = (a: Point, b: Point): Point => ({ x: a.x - b.x, y: a.y - b.y });
+const len = (v: Point) => Math.hypot(v.x, v.y);
+const unit = (v: Point): Point => { const l = len(v) || 1; return { x: v.x / l, y: v.y / l }; };
+const perp = (v: Point): Point => ({ x: -v.y, y: v.x });
+const lerp = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
+const near = (a: Point, b: Point, eps: number) => Math.abs(a.x - b.x) < eps && Math.abs(a.y - b.y) < eps;
+
+function rotateAbout(pts: Point[], c: Point, deg: number): Point[] {
+  if (!deg) return pts.map(p => ({ x: c.x + p.x, y: c.y + p.y }));
+  const r = (deg * Math.PI) / 180, cos = Math.cos(r), sin = Math.sin(r);
+  return pts.map(p => ({ x: c.x + p.x * cos - p.y * sin, y: c.y + p.x * sin + p.y * cos }));
+}
+
+function rectAt(c: Point, w: number, d: number, deg: number): Point[] {
+  return rotateAbout([
+    { x: -w / 2, y: -d / 2 }, { x: w / 2, y: -d / 2 }, { x: w / 2, y: d / 2 }, { x: -w / 2, y: d / 2 },
+  ], c, deg);
+}
+
+/** Join edges that share endpoints into polylines (wall outlines read as continuous lines in CAD). */
+export function chainEdges(edges: [Point, Point][], eps: number): Point[][] {
+  const out: Point[][] = [];
+  for (const [a, b] of edges) {
+    const last = out[out.length - 1];
+    if (last && near(last[last.length - 1], a, eps)) last.push(b);
+    else out.push([a, b]);
+  }
+  return out;
+}
+
+/** Clip segment a→b to a box (Liang–Barsky); null when outside. */
+function clipSegment(a: Point, b: Point, box: Box): [Point, Point] | null {
+  let t0 = 0, t1 = 1;
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const checks: [number, number][] = [
+    [-dx, a.x - box.minX], [dx, box.maxX - a.x], [-dy, a.y - box.minY], [dy, box.maxY - a.y],
+  ];
+  for (const [p, q] of checks) {
+    if (p === 0) { if (q < 0) return null; continue; }
+    const r = q / p;
+    if (p < 0) { if (r > t1) return null; if (r > t0) t0 = r; }
+    else { if (r < t0) return null; if (r < t1) t1 = r; }
+  }
+  return [lerp(a, b, t0), lerp(a, b, t1)];
+}
+
+/** Rough text extent for bounds (the PDF writer measures real glyphs). */
+export function approxTextWidth(text: string, height: number): number {
+  let w = 0;
+  for (const ch of text) w += ch.charCodeAt(0) > 0x2e80 ? 1.38 : 0.75;
+  return w * height;
+}
+
+// ─── Emission ───────────────────────────────────────────────────────────────
+
+/** Paint order: earlier phases are drawn first (below). */
+const Phase = {
+  GridLine: 0, Below: 1, Floor: 2, Mep: 3, Cut: 4, Openings: 5, MepOnTop: 6, Above: 7, GridBubble: 8, Tags: 9, Annotation: 10,
+} as const;
+type Phase = (typeof Phase)[keyof typeof Phase];
+
+class Emitter {
+  readonly phases: DrawItem[][] = Array.from({ length: Phase.Annotation + 1 }, () => []);
+  readonly layers = new Map<string, DrawingLayer>();
+  phase: Phase = Phase.Floor;
+  halftone = false;
+
+  layer(def: DrawingLayer): string {
+    if (!this.layers.has(def.name)) this.layers.set(def.name, def);
+    return def.name;
+  }
+
+  push(item: DrawItem) {
+    if (this.halftone) item.halftone = true;
+    this.phases[this.phase].push(item);
+  }
+
+  line(def: DrawingLayer, a: Point, b: Point, extra: Partial<DrawItem> = {}) {
+    this.push({ kind: 'path', layer: this.layer(def), pts: [a, b], closed: false, ...extra } as DrawItem);
+  }
+
+  poly(def: DrawingLayer, pts: Point[], closed: boolean, extra: Partial<DrawItem> = {}) {
+    if (pts.length < 2) return;
+    this.push({ kind: 'path', layer: this.layer(def), pts, closed, ...extra } as DrawItem);
+  }
+
+  /** Solid fill (poché) without outline. */
+  fill(def: DrawingLayer, pts: Point[], color = def.color) {
+    if (pts.length < 3) return;
+    this.push({ kind: 'path', layer: this.layer(def), pts, closed: true, fill: color, noStroke: true });
+  }
+
+  text(def: DrawingLayer, at: Point, text: string, height: number, extra: Partial<Extract<DrawItem, { kind: 'text' }>> = {}) {
+    if (!text) return;
+    this.push({ kind: 'text', layer: this.layer(def), at, text, height, align: 'center', valign: 'middle', ...extra });
+  }
+
+  items(): DrawItem[] { return this.phases.flat(); }
+}
+
+// ─── Per-element plan graphics ──────────────────────────────────────────────
+
+interface DrawEnv {
+  src: PlanSource;
+  e: Emitter;
+  /** Model units per paper mm. */
+  pm: number;
+  legend: Map<string, LegendEntry>;
+}
+
+function hostThickness(env: DrawEnv, el: CanonicalElement, fallback: number): number {
+  const host = el.hostId ? env.src.byId.get(el.hostId) : undefined;
+  return host && host.geometry === 'line' ? (host as LineElement).strokeWidth || fallback : fallback;
+}
+
+function drawWall(env: DrawEnv, f: LineWallFacts) {
+  const structural = f.table === 'structure_wall';
+  const patt = structural ? LAYERS.sWallPatt : LAYERS.wallPatt;
+  const outline = structural ? LAYERS.sWall : LAYERS.wall;
+  env.e.phase = Phase.Cut;
+  for (const seg of f.segments) env.e.fill(patt, seg.corners);
+  const edges = f.segments.flatMap(s => s.outline);
+  for (const pts of chainEdges(edges, 1e-6 * env.src.upm)) env.e.poly(outline, pts, false);
+}
+
+/** Wall-hosted opening without a door/window: show the wall above as hidden lines. */
+function drawWallOpening(env: DrawEnv, el: LineElement) {
+  const t = hostThickness(env, el, 0.2 * env.src.upm);
+  const dir = sub(el.end, el.start);
+  if (len(dir) < 1e-9) return;
+  const n = perp(unit(dir));
+  env.e.phase = Phase.Openings;
+  env.e.line(LAYERS.wallAbove, add(el.start, n, t / 2), add(el.end, n, t / 2));
+  env.e.line(LAYERS.wallAbove, add(el.start, n, -t / 2), add(el.end, n, -t / 2));
+}
+
+function drawDoor(env: DrawEnv, el: LineElement, f: DoorFacts) {
+  const { e, pm } = env;
+  const t = hostThickness(env, el, 0.2 * env.src.upm);
+  const u = unit(sub(f.end, f.start));
+  const side = f.swingRight ? -1 : 1;
+  const n = perp(u);
+  const leafN = { x: n.x * side, y: n.y * side };
+  const W = f.length;
+  const leafT = Math.min(0.04 * env.src.upm, W * 0.06, Math.max(0.5 * pm, 0.02 * env.src.upm));
+  e.phase = Phase.Openings;
+
+  /** One swing leaf hinged at `hinge` (on the centreline), closing towards `toward`. */
+  const swingLeaf = (hinge: Point, toward: Point, width: number) => {
+    const h = add(hinge, leafN, t / 2);
+    const tip = add(h, leafN, width);
+    const a = unit(sub(toward, hinge));
+    e.poly(LAYERS.door, [h, tip, add(tip, a, leafT), add(h, a, leafT)], true);
+    const angA = Math.atan2(a.y, a.x), angN = Math.atan2(leafN.y, leafN.x);
+    const ccw = a.x * leafN.y - a.y * leafN.x > 0;
+    e.push({ kind: 'arc', layer: e.layer(LAYERS.doorSwing), center: h, radius: width,
+      start: ccw ? angA : angN, end: ccw ? angN : angA });
+  };
+
+  switch (f.operation) {
+    case 'double_swing':
+      swingLeaf(f.start, f.end, W / 2);
+      swingLeaf(f.end, f.start, W / 2);
+      break;
+    case 'sliding': {
+      const p = W * 0.55, off = t / 6;
+      const panel = (a: Point, b: Point, o: number) => {
+        const a1 = add(a, n, o - leafT / 2), b1 = add(b, n, o - leafT / 2);
+        e.poly(LAYERS.door, [a1, b1, add(b1, n, leafT), add(a1, n, leafT)], true);
+      };
+      panel(f.start, add(f.start, u, p), off);
+      panel(add(f.end, u, -p), f.end, -off);
+      break;
+    }
+    case 'folding': {
+      const k = 4, depth = W / (2 * k);
+      const pts: Point[] = [];
+      for (let i = 0; i <= k; i++) pts.push(add(add(f.start, u, (W * i) / k), leafN, t / 2 + (i % 2 ? depth : 0)));
+      e.poly(LAYERS.door, pts, false);
+      break;
+    }
+    case 'revolving': {
+      const c = lerp(f.start, f.end, 0.5);
+      e.push({ kind: 'circle', layer: e.layer(LAYERS.doorSwing), center: c, radius: W / 2 });
+      for (const deg of [45, 135]) {
+        const r = (deg * Math.PI) / 180 + Math.atan2(u.y, u.x);
+        const v = { x: Math.cos(r) * W / 2, y: Math.sin(r) * W / 2 };
+        e.line(LAYERS.door, add(c, v, -1), add(c, v));
+      }
+      break;
+    }
+    default: {
+      const hinge = f.hingeEnd ? f.end : f.start;
+      const other = f.hingeEnd ? f.start : f.end;
+      swingLeaf(hinge, other, W);
+    }
+  }
+}
+
+function drawWindow(env: DrawEnv, el: LineElement, f: WindowFacts) {
+  const { e } = env;
+  const t = hostThickness(env, el, f.strokeWidth || 0.2 * env.src.upm);
+  const u = unit(sub(f.end, f.start));
+  const n = perp(u);
+  const at = (p: Point, o: number) => add(p, n, o);
+  e.phase = Phase.Openings;
+  e.poly(LAYERS.window, [at(f.start, t / 2), at(f.end, t / 2), at(f.end, -t / 2), at(f.start, -t / 2)], true);
+  if (f.operation === 'sliding') {
+    const mid = lerp(f.start, f.end, 0.5), ov = f.length * 0.05;
+    e.line(LAYERS.window, at(f.start, t / 8), at(add(mid, u, ov), t / 8));
+    e.line(LAYERS.window, at(add(mid, u, -ov), -t / 8), at(f.end, -t / 8));
+  } else {
+    e.line(LAYERS.window, at(f.start, t / 6), at(f.end, t / 6));
+    e.line(LAYERS.window, at(f.start, -t / 6), at(f.end, -t / 6));
+  }
+}
+
+function drawCurtainWall(env: DrawEnv, f: CurtainWallFacts) {
+  const { e } = env;
+  e.phase = Phase.Cut;
+  const n0 = f.footprint2D.length / 2;
+  const hw = len(sub(f.footprint2D[0], f.footprint2D[2 * n0 - 1])) / 2;
+  const half = Math.max(hw, 0.6 * env.pm);
+  // Point `s` to the left of the wall at `t` (on the arc for an arc curtain wall).
+  const at = (t: number, s = 0) => {
+    const a = cwTangent(f, t);
+    return add(cwPoint(f, t), { x: -Math.sin(a), y: Math.cos(a) }, s);
+  };
+  // Glazing strip and centreline, open at bottom-row door cells.
+  const runs = planStripRuns(f.grid);
+  const whole = runs.length === 1 && runs[0][0] === 0 && runs[0][1] === f.length;
+  if (whole) e.poly(LAYERS.curtainWall, f.footprint2D, true);
+  else for (const [t0, t1] of runs) e.poly(LAYERS.curtainWall, cwBand(f, t0, t1, hw), true);
+  for (const [t0, t1] of runs) {
+    if (f.arc) e.poly(LAYERS.curtainWall, cwBand(f, t0, t1, 0).slice(0, Math.max(2, Math.ceil((t1 - t0) / 0.15) + 1)), false, { weight: 0.13 });
+    else e.line(LAYERS.curtainWall, at(t0), at(t1), { weight: 0.13 });
+  }
+  for (const x of f.grid.xs) e.line(LAYERS.curtainWall, at(x, -half * 1.6), at(x, half * 1.6));
+  for (const p of f.corners) {
+    const c = Math.cos(p.angle), s = Math.sin(p.angle), h = p.size / 2;
+    e.poly(LAYERS.curtainWall, [[-h, -h], [h, -h], [h, h], [-h, h]].map(([a, b]) => ({ x: p.at.x + a * c - b * s, y: p.at.y + a * s + b * c })), true);
+  }
+  // Door panels: leaf open to the wall's left + swing arc, as drawDoor.
+  e.phase = Phase.Openings;
+  for (const sw of doorSwings(f)) {
+    const closed = sw.arc[sw.arc.length - 1];
+    const r = len(sub(sw.tip, sw.hinge));
+    const a = unit(sub(closed, sw.hinge)), leafN = unit(sub(sw.tip, sw.hinge));
+    e.line(LAYERS.door, sw.hinge, sw.tip);
+    const angA = Math.atan2(a.y, a.x), angN = Math.atan2(leafN.y, leafN.x);
+    const ccw = a.x * leafN.y - a.y * leafN.x > 0;
+    e.push({ kind: 'arc', layer: e.layer(LAYERS.doorSwing), center: sw.hinge, radius: r, start: ccw ? angA : angN, end: ccw ? angN : angA });
+  }
+}
+
+function drawColumn(env: DrawEnv, f: ColumnFacts, table: string) {
+  const { e } = env;
+  const structural = table === 'structure_column';
+  const patt = structural ? LAYERS.sColumnPatt : LAYERS.columnPatt;
+  const outline = structural ? LAYERS.sColumn : LAYERS.column;
+  e.phase = Phase.Cut;
+  const { family, params } = f.section;
+  const bb = family.bbox(params);
+  if (family.id === 'round' && Math.abs(bb.w - bb.d) < 1e-9) {
+    e.push({ kind: 'circle', layer: e.layer(patt), center: f.position, radius: bb.w / 2, fill: patt.color, noStroke: true });
+    e.push({ kind: 'circle', layer: e.layer(outline), center: f.position, radius: bb.w / 2 });
+    return;
+  }
+  let local: Point[];
+  if (family.id === 'round') {
+    local = Array.from({ length: 48 }, (_, i) => {
+      const a = (i / 48) * Math.PI * 2;
+      return { x: (Math.cos(a) * bb.w) / 2, y: (Math.sin(a) * bb.d) / 2 };
+    });
+  } else if (family.id === 'rect') {
+    local = [{ x: -bb.w / 2, y: -bb.d / 2 }, { x: bb.w / 2, y: -bb.d / 2 }, { x: bb.w / 2, y: bb.d / 2 }, { x: -bb.w / 2, y: bb.d / 2 }];
+  } else {
+    local = family.outline2D(params);
+  }
+  const pts = rotateAbout(local, f.position, f.rotationDeg);
+  e.fill(patt, pts);
+  e.poly(outline, pts, true);
+  // Hollow sections (RHS / CHS): the void is paper-white, outlined.
+  for (const hole of family.holes2D?.(params) ?? []) {
+    const h = rotateAbout(hole, f.position, f.rotationDeg);
+    e.fill(patt, h, '#ffffff');
+    e.poly(outline, h, true);
+  }
+}
+
+/** One flight: outline and treads split at the plan cut (beyond = hidden), break line at the cut. */
+function drawRun(env: DrawEnv, run: StairRun) {
+  const { e, src } = env;
+  e.phase = Phase.Floor;
+  const plan = runPlan(run, CUT_HEIGHT_M * src.upm);
+  for (const l of plan.lines) e.line(l.above ? LAYERS.stairAbove : LAYERS.stair, l.a, l.b);
+  if (plan.breakLine) e.poly(LAYERS.stair, plan.breakLine, false, { weight: 0.25 });
+}
+
+/**
+ * Stair (its own run) + the walking line over all runs and landings: dot at
+ * the bottom, arrow head at the top, UP / DN beside the start.
+ */
+function drawStair(env: DrawEnv, f: StairFacts) {
+  const { e, pm, src } = env;
+  drawRun(env, f.run);
+  const pts = walkingLine(f.assembly);
+  if (pts.length < 2) return;
+  const first = f.assembly.runs[0] ?? f.run;
+  const goingUp = first.endZ >= first.startZ;
+  const below = LAYERS.stair;
+  const head = Math.min(2.2 * pm, first.width * 0.35);
+  const tipFrom = pts[pts.length - 2], tip = pts[pts.length - 1];
+  const ut = unit(sub(tip, tipFrom));
+  const back = add(tip, ut, -head);
+  const u0 = runDir(first, 0);
+  const start = add(pts[0], u0, Math.min(1.2 * pm, first.length * 0.08));
+  e.line(below, start, pts.length > 2 ? pts[1] : back);
+  for (let i = 1; i + 2 < pts.length; i++) e.line(below, pts[i], pts[i + 1]);
+  if (pts.length > 2) e.line(below, pts[pts.length - 2], back);
+  e.push({ kind: 'path', layer: e.layer(below), pts: [tip, add(back, perp(ut), head * 0.35), add(back, perp(ut), -head * 0.35)], closed: true, fill: below.color });
+  e.push({ kind: 'circle', layer: e.layer(below), center: start, radius: 0.7 * pm, fill: below.color, noStroke: true });
+  // UP / DN beside the start of the walking line, reading upright
+  e.phase = Phase.Tags;
+  const label = drawingLabel(src.lang, goingUp ? 'drawing.up' : 'drawing.down');
+  const labelAt = add(add(pts[0], u0, Math.min(first.length * 0.35, 3.5 * pm + Math.min(1.2 * pm, first.length * 0.08))), perp(u0), Math.min(first.width * 0.25, 2 * pm));
+  e.text(LAYERS.areaIden, labelAt, label, 1.8 * pm, { bold: true, rotation: uprightAngle(u0) });
+}
+
+/** Shafts from other levels crossing this floor: outline and a cross (this level's shafts draw as openings). */
+function drawShafts(env: DrawEnv, holes: Point[][]) {
+  const { e, src } = env;
+  const own = src.entries.filter(x => x.el.tableName === 'opening' && x.el.geometry === 'polygon')
+    .map(x => (x.el as PolygonElement).vertices);
+  const same = (a: Point[], b: Point[]) => a.length === b.length && a.every((p, i) => Math.hypot(p.x - b[i].x, p.y - b[i].y) < 1e-6);
+  e.phase = Phase.Openings;
+  for (const h of holes) {
+    if (h.length < 3 || own.some(o => same(o, h))) continue;
+    e.poly(LAYERS.floorOpen, h, true);
+    e.line(LAYERS.floorOpen, h[0], h[Math.floor(h.length / 2)], { weight: 0.13 });
+    if (h.length === 4) e.line(LAYERS.floorOpen, h[1], h[3], { weight: 0.13 });
+  }
+}
+
+/** Roof plan: outline, ridges / hips (solid), valleys (dashed), a slope arrow per roof plane. */
+function drawRoof(env: DrawEnv, el: CanonicalElement, f: RoofFacts) {
+  const { e, pm } = env;
+  e.phase = Phase.Below;
+  e.poly(LAYERS.roof, f.vertices, true);
+  for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(LAYERS.floorOpen, h, true);
+  for (const l of f.solution.lines) {
+    e.line(LAYERS.roofLine, l.a, l.b, l.kind === 'valley' ? { dash: 'dashed' } : l.kind === 'ridge' ? { weight: 0.18 } : {});
+  }
+  drawShafts(env, f.shaftHoles);
+  e.phase = Phase.Tags;
+  for (const ar of roofArrows(f.solution)) {
+    const u = unit(sub(ar.to, ar.from));
+    const n = perp(u);
+    const head = Math.min(1.6 * pm, Math.hypot(ar.to.x - ar.from.x, ar.to.y - ar.from.y) * 0.35);
+    const back = add(ar.to, u, -head);
+    e.line(LAYERS.roofIden, ar.from, back);
+    e.push({ kind: 'path', layer: e.layer(LAYERS.roofIden), pts: [ar.to, add(back, n, head * 0.35), add(back, n, -head * 0.35)], closed: true, fill: LAYERS.roofIden.color });
+    e.text(LAYERS.roofIden, add(ar.from, n, 1.8 * pm), ar.label, 1.8 * pm, { rotation: uprightAngle(u) });
+  }
+}
+
+/** Direction angle of `u`, flipped by 180° when text along it would read upside down. */
+function uprightAngle(u: Point): number {
+  let a = Math.atan2(u.y, u.x);
+  if (a > Math.PI / 2 + 1e-9) a -= Math.PI;
+  else if (a < -Math.PI / 2 - 1e-9) a += Math.PI;
+  return a;
+}
+
+function drawRamp(env: DrawEnv, f: RampFacts) {
+  const { e, pm } = env;
+  e.phase = Phase.Floor;
+  e.poly(LAYERS.stair, f.footprint2D, true);
+  const lowToHigh = f.endZ >= f.startZ;
+  const a = lowToHigh ? f.start : f.end, b = lowToHigh ? f.end : f.start;
+  const u = unit(sub(b, a));
+  const n = perp(u);
+  const head = Math.min(2.2 * pm, f.width * 0.35);
+  const tip = add(b, u, -Math.min(1.5 * pm, f.length * 0.05));
+  const back = add(tip, u, -head);
+  e.line(LAYERS.stair, add(a, u, Math.min(1.5 * pm, f.length * 0.05)), back);
+  e.push({ kind: 'path', layer: e.layer(LAYERS.stair), pts: [tip, add(back, n, head * 0.35), add(back, n, -head * 0.35)], closed: true, fill: LAYERS.stair.color });
+  if (f.length > 1e-9) {
+    const pct = (Math.abs(f.endZ - f.startZ) / f.length) * 100;
+    e.phase = Phase.Tags;
+    const mid = add(lerp(f.start, f.end, 0.5), n, 1.6 * pm);
+    e.text(LAYERS.areaIden, mid, `${pct.toFixed(1)}%`, 1.8 * pm, { rotation: uprightAngle(u) });
+  }
+}
+
+/** Area in the unit people quote: m² for metric projects, ft² for imperial. */
+export function formatArea(areaModel: number, unitName: ProjectUnit): string {
+  switch (unitName) {
+    case 'mm': return `${(areaModel / 1e6).toFixed(2)} m²`;
+    case 'ft': return `${areaModel.toFixed(1)} ft²`;
+    case 'in': return `${(areaModel / 144).toFixed(1)} ft²`;
+    default: return `${areaModel.toFixed(2)} m²`;
+  }
+}
+
+const BOUNDING = new Set(['wall', 'structure_wall', 'curtain_wall', 'room_separator']);
+
+/** Width of the polygon along the horizontal line through `p` (the inside span containing p). */
+function spanAt(v: Point[], p: Point): number | null {
+  const xs: number[] = [];
+  for (let i = 0; i < v.length; i++) {
+    const a = v[i], b = v[(i + 1) % v.length];
+    if ((a.y <= p.y && b.y > p.y) || (b.y <= p.y && a.y > p.y)) xs.push(a.x + ((p.y - a.y) / (b.y - a.y)) * (b.x - a.x));
+  }
+  xs.sort((x, y) => x - y);
+  for (let i = 0; i + 1 < xs.length; i += 2) if (p.x >= xs[i] && p.x <= xs[i + 1]) return xs[i + 1] - xs[i];
+  return null;
+}
+
+function drawSpace(env: DrawEnv, el: CanonicalElement, f: SpaceFacts) {
+  const { e, pm, src } = env;
+  if (f.kind === 'polygon' && f.vertices) {
+    e.phase = Phase.Below;
+    e.poly(LAYERS.area, f.vertices, true, { dxfOnly: true });
+  }
+  if (src.taggedRooms.has(el.id)) return;
+  const lines: { text: string; h: number; bold?: boolean }[] = [];
+  if (f.name) lines.push({ text: f.name, h: 2.5 * pm, bold: true });
+  if (f.number) lines.push({ text: f.number, h: 2.0 * pm });
+  if (f.kind === 'polygon' && f.vertices && (f.name || f.number)) {
+    const walls = src.entries.filter(x => BOUNDING.has(x.el.tableName) && x.el.geometry === 'line').map(x => x.el as LineElement);
+    // Net area at the wall faces (geometry/roomArea.ts, as tags and schedules); a redundant room has none
+    lines.push({
+      text: f.redundantOf ? i18n.t('space.redundant', { defaultValue: 'Redundant room' }) : formatArea(roomAreas(f.vertices, walls, src.upm).area, src.unit),
+      h: 1.8 * pm,
+    });
+  }
+  if (lines.length === 0) return;
+  e.phase = Phase.Tags;
+  // Shrink the tag (down to 60 %) to fit the room's width at the label
+  const room = f.kind === 'polygon' && f.vertices ? spanAt(f.vertices, f.anchor) : null;
+  if (room) {
+    const widest = Math.max(...lines.map(l => approxTextWidth(l.text, l.h) * (l.bold ? 1.1 : 1)));
+    const k = Math.max(0.6, Math.min(1, (room * 0.9) / widest));
+    for (const l of lines) l.h *= k;
+  }
+  const gap = 1.1 * pm * (lines[0].h / (lines[0].bold ? 2.5 * pm : 2.0 * pm));
+  const total = lines.reduce((s, l) => s + l.h, 0) + gap * (lines.length - 1);
+  let y = f.anchor.y + total / 2;
+  for (const l of lines) {
+    y -= l.h / 2;
+    e.text(LAYERS.areaIden, { x: f.anchor.x, y }, l.text, l.h, { bold: l.bold });
+    y -= l.h / 2 + gap;
+  }
+}
+
+/**
+ * Library component plan symbol (the editor's and `bimdown render`'s
+ * primitives) on A-FURN: local frame rotated by the element's rotation and
+ * placed at its position. Paper fills mask the floor below (PDF only), dark
+ * fills are solid in DXF too.
+ */
+function drawFurniture(env: DrawEnv, f: FurnitureFacts) {
+  const { e } = env;
+  e.phase = Phase.Floor;
+  const th = (f.rotationDeg * Math.PI) / 180;
+  const c = Math.cos(th), s = Math.sin(th);
+  const at = (x: number, y: number): Point => ({ x: f.position.x + x * c - y * s, y: f.position.y + x * s + y * c });
+  const L = LAYERS.furniture;
+  const fillOf = (fill?: string) => (fill === 'paper' ? '#ffffff' : fill === 'tone' ? '#e3e3e3' : fill === 'dark' ? L.color : undefined);
+  const style = (p: { dash?: boolean }) => (p.dash ? { dash: 'dashed' as const } : {});
+  const ring = (cx: number, cy: number, rx: number, ry: number) =>
+    Array.from({ length: 32 }, (_, i) => at(cx + rx * Math.cos((i / 32) * Math.PI * 2), cy + ry * Math.sin((i / 32) * Math.PI * 2)));
+  for (const p of f.prims) {
+    switch (p.k) {
+      case 'rect': {
+        const pts = [at(p.x, p.y), at(p.x + p.w, p.y), at(p.x + p.w, p.y + p.h), at(p.x, p.y + p.h)];
+        e.poly(L, pts, true, { ...style(p), ...(fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      }
+      case 'circle':
+        e.push({ kind: 'circle', layer: e.layer(L), center: at(p.cx, p.cy), radius: p.r, ...style(p), ...(fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      case 'ellipse':
+        e.poly(L, ring(p.cx, p.cy, p.rx, p.ry), true, { ...style(p), ...(fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      case 'line':
+        e.line(L, at(p.x1, p.y1), at(p.x2, p.y2), style(p));
+        break;
+      case 'poly':
+        e.poly(L, p.pts.map(([x, y]) => at(x, y)), !!p.closed, { ...style(p), ...(p.closed && fillOf(p.fill) ? { fill: fillOf(p.fill) } : {}) });
+        break;
+      case 'arc':
+        e.push({ kind: 'arc', layer: e.layer(L), center: at(p.cx, p.cy), radius: p.r,
+          start: (p.a0 * Math.PI) / 180 + th, end: (p.a1 * Math.PI) / 180 + th, ...style(p) });
+        break;
+      case 'text':
+        e.text(L, at(p.x, p.y), p.text, p.size * 0.72, { rotation: th });
+        break;
+    }
+  }
+}
+
+function drawFoundation(env: DrawEnv, f: FoundationFacts) {
+  const { e } = env;
+  e.phase = Phase.Below;
+  if (f.form === 'point') {
+    // Round piles as circles, pads (and piles with a section) as rectangles
+    if (f.round) e.push({ kind: 'circle', layer: e.layer(LAYERS.sFoundation), center: f.position, radius: f.width / 2 });
+    else e.poly(LAYERS.sFoundation, rectAt(f.position, f.width, f.depth, f.rotationDeg), true);
+  } else if (f.form === 'line') e.poly(LAYERS.sFoundation, f.footprint2D, true);
+  else {
+    e.poly(LAYERS.sFoundation, f.vertices, true);
+    for (const h of f.holes) if (h.length >= 3) e.poly(LAYERS.sFoundation, h, true);
+  }
+}
+
+/** Colour of the (first) system; every system of a combined tag ("SA,RA") gets its own legend row. */
+function systemColor(env: DrawEnv, systemType: string, fallback: string): string {
+  const systems = [...new Set(systemType.split(',').map(s => s.trim()).filter(Boolean))];
+  if (!systems.length) return fallback;
+  let first: string | undefined;
+  for (const sys of systems) {
+    const def = env.src.input.project.mepSystems.find(s => s.system_type === sys || s.id === sys);
+    const color = resolveMepSystemColor(sys, def?.color);
+    first ??= color;
+    if (!env.legend.has(sys)) env.legend.set(sys, { label: def?.name && def.name !== sys ? `${sys} ${def.name}` : sys, color });
+  }
+  return first!;
+}
+
+/** In an MEP sheet the services sit on top of the faded building; elsewhere walls cover them. */
+function mepPhase(env: DrawEnv): Phase {
+  return env.src.discipline === 'mep' ? Phase.MepOnTop : Phase.Mep;
+}
+
+const MEP_DEFAULT_COLOR: Record<string, string> = {
+  duct: '#0096c7', pipe: '#1d4ed8', cable_tray: '#5a8f29', conduit: '#2f7d5b',
+};
+
+function drawMepLine(env: DrawEnv, f: MepLineFacts) {
+  const { e, pm } = env;
+  e.phase = mepPhase(env);
+  const color = systemColor(env, f.systemType, MEP_DEFAULT_COLOR[f.table] ?? '#555555');
+  const layer = mepLayer(f.table, f.systemType, color);
+  const fillColor = tint(color, 0.82);
+  const singleLine = (f.table === 'pipe' || f.table === 'conduit') && f.sizeX / pm < 1.6;
+  if (f.segments.length === 0) {
+    // Vertical riser: its section at the plan; rise = X, drop = one diagonal
+    const down = f.riser === 'down';
+    if (f.shape === 'round' || f.table === 'pipe' || f.table === 'conduit') {
+      const r = Math.max(f.sizeX / 2, 0.8 * pm);
+      e.push({ kind: 'circle', layer: e.layer(layer), center: f.start, radius: r, fill: fillColor });
+      e.line(layer, add(f.start, { x: -r, y: -r }, Math.SQRT1_2), add(f.start, { x: r, y: r }, Math.SQRT1_2), { weight: 0.13 });
+      if (!down) e.line(layer, add(f.start, { x: -r, y: r }, Math.SQRT1_2), add(f.start, { x: r, y: -r }, Math.SQRT1_2), { weight: 0.13 });
+    } else if (f.footprint.length >= 3) {
+      e.fill(layer, f.footprint, fillColor);
+      e.poly(layer, f.footprint, true);
+      e.line(layer, f.footprint[0], f.footprint[2], { weight: 0.13 });
+      if (!down && f.footprint.length >= 4) e.line(layer, f.footprint[1], f.footprint[3], { weight: 0.13 });
+    }
+    return;
+  }
+  if (singleLine) {
+    e.line(layer, f.start, f.end);
+  } else {
+    for (const seg of f.segments) e.fill(layer, seg.corners, fillColor);
+    for (const pts of chainEdges(f.segments.flatMap(s => s.outline), 1e-6 * env.src.upm)) e.poly(layer, pts, false);
+    e.line(layer, f.start, f.end, { weight: 0.09, dash: 'center' });
+  }
+  if (f.horLen <= 0) return;
+  const u = { x: (f.end.x - f.start.x) / f.horLen, y: (f.end.y - f.start.y) / f.horLen };
+  const nrm = perp(u);
+  const along = (s: number, off: number): Point => add(add(f.start, u, s), nrm, off);
+  if (f.insulation > 0) {
+    // Insulation: dashed outline at the insulated size
+    const off = f.sizeX / 2 + f.insulation;
+    for (const side of [1, -1]) e.line(layer, along(0, side * off), along(f.horLen, side * off), { dash: 'dashed', weight: 0.09 });
+  }
+  if (f.flexible) {
+    const hw = f.sizeX / 2, step = Math.max(0.08, Math.min(0.2, f.sizeX / 2));
+    const pts: Point[] = [];
+    for (let s0 = 0, k = 0; s0 <= f.horLen + 1e-9; s0 += step, k++) pts.push(along(Math.min(s0, f.horLen), (k % 2 ? 1 : -1) * hw * 0.85));
+    e.poly(layer, pts, false, { weight: 0.09 });
+  }
+  const slope = f.table === 'pipe' && Math.abs(f.slope) >= 0.001;
+  if (f.label) {
+    // System + size tag beside the run (paper-sized), slope for sloped pipes
+    const h = 1.8 * pm;
+    const text = f.label + (slope ? `  i=${(Math.abs(f.slope) * 100).toFixed(1)}%` : '');
+    if (f.horLen >= Math.max(1.0, approxTextWidth(text, h) + 2 * pm)) {
+      e.phase = Phase.Tags;
+      e.text(LAYERS.mepIden, along(f.horLen / 2, f.sizeX / 2 + f.insulation + h), text, h, { rotation: uprightAngle(u), color });
+      e.phase = mepPhase(env);
+    }
+  }
+  if (slope && f.horLen > 0.6) {
+    // Arrow pointing downhill, beside the pipe
+    const dn = f.slope < 0 ? 1 : -1;
+    const L = Math.min(0.6, f.horLen * 0.3), hh = 1.2 * pm;
+    const c = along(f.horLen / 2, -(f.sizeX / 2 + f.insulation + 1.5 * pm));
+    const a = add(c, u, -dn * L / 2), b = add(c, u, dn * L / 2);
+    e.line(LAYERS.mepIden, a, b, { color });
+    const back = add(b, u, -dn * hh);
+    e.poly(LAYERS.mepIden, [b, add(back, nrm, hh / 2), add(back, nrm, -hh / 2)], true, { fill: color, color });
+  }
+}
+
+function tagOf(el: CanonicalElement): string {
+  return (el.attrs.number || el.attrs.name || el.attrs.equipment_type || '').trim();
+}
+
+/** Plan layer of a device by its kind (plumbing, lighting, power, HVAC, electrical equipment). */
+function deviceLayer(table: string, type: string): DrawingLayer {
+  if (table === 'equipment') return /panelboard|transformer|generator/.test(type) ? LAYERS.eEquip : LAYERS.mEquip;
+  if (/water_closet|urinal|lavatory|sink|shower|floor_drain|plumbing_fixture/.test(type)) return LAYERS.pFixture;
+  if (/light/.test(type)) return LAYERS.eLighting;
+  if (/outlet|switch|junction_box|fire_alarm/.test(type)) return LAYERS.ePower;
+  return LAYERS.mTerminal;
+}
+
+function drawEquipment(env: DrawEnv, el: CanonicalElement, f: EquipmentFacts) {
+  const { e, pm } = env;
+  const terminal = f.table === 'terminal';
+  const color = systemColor(env, el.attrs.system_type || '', '#1a1a1a');
+  e.phase = mepPhase(env);
+  const def = deviceLayer(f.table, f.type);
+  // The editor's plan symbol (diffuser, WC, outlet, pump, panel …) in the device frame
+  const sym = terminal ? terminalSymbol(f.type, f.width, f.depth, color, '#ffffff') : equipmentSymbol(f.type, f.width, f.depth, color, '#ffffff');
+  const m = affMul(affTranslate(f.position.x, f.position.y), rotateDeg(f.rotationDeg));
+  let drawn = 0;
+  svgToItems(sym, m, { layer: e.layer(def), layerColor: def.color, push: it => { drawn++; e.push(it); } });
+  if (drawn === 0) {
+    const pts = rectAt(f.position, f.width, f.depth, f.rotationDeg);
+    e.fill(def, pts, '#ffffff');
+    e.poly(def, pts, true, terminal ? { color } : {});
+  }
+  if (terminal) return;
+  const tag = tagOf(el) || equipmentAbbr(f.type);
+  if (tag) {
+    e.phase = Phase.Tags;
+    const h = Math.min(1.8 * pm, f.depth * 0.4);
+    e.text(LAYERS.mEquipIden, f.position, tag, h);
+  }
+}
+
+function drawMepNode(env: DrawEnv, f: MepNodeFacts) {
+  const { e } = env;
+  e.phase = mepPhase(env);
+  const color = systemColor(env, f.systemType, '#333333');
+  if (f.fitting) {
+    // Passive fitting: the elbow / tee / reducer body between the trimmed runs
+    const table = f.fitting.legs[0]?.table ?? 'duct';
+    const layer = mepLayer(table, f.systemType, color);
+    const plan = fittingPlan(f.fitting);
+    for (const poly of plan.fills) if (poly.length >= 3) e.fill(layer, poly, tint(color, 0.82));
+    for (const pts of chainEdges(plan.edges, 1e-6 * env.src.upm)) e.poly(layer, pts, false);
+    return;
+  }
+  if (f.accessory) {
+    // Valve / damper symbol along the run
+    const look = f.accessory;
+    const ang = (Math.atan2(look.dir.y, look.dir.x) * 180) / Math.PI;
+    const H = Math.max(look.width * (look.kind.includes('damper') ? 1 : 1.6), 0.09);
+    const m = affMul(affTranslate(look.at.x, look.at.y), rotateDeg(ang));
+    const L = LAYERS.mFitting;
+    svgToItems(accessorySymbol(look.kind, look.length, H, color, '#ffffff'), m, { layer: e.layer(L), layerColor: L.color, push: it => e.push(it) });
+    return;
+  }
+  if (!f.declaredKind) return;
+  const r = Math.max(Math.max(f.sizeW, f.sizeH) / 2, 0.9 * env.pm);
+  e.push({ kind: 'circle', layer: e.layer(LAYERS.mFitting), center: f.position, radius: r, fill: '#ffffff', color });
+}
+
+function drawGrids(env: DrawEnv, grids: LineElement[], clip: Box | null) {
+  const { e, pm } = env;
+  const r = 4.5 * pm;
+  for (const g of grids) {
+    let a = g.start, b = g.end;
+    if (clip) {
+      const c = clipSegment(a, b, clip);
+      if (!c) continue;
+      [a, b] = c;
+    }
+    if (len(sub(b, a)) < 1e-9) continue;
+    e.phase = Phase.GridLine;
+    e.line(LAYERS.grid, a, b);
+    const label = (g.attrs.number || '').trim();
+    if (!label) continue;
+    const u = unit(sub(b, a));
+    e.phase = Phase.GridBubble;
+    for (const [p, dir] of [[a, -1], [b, 1]] as const) {
+      const c = add(p, u, dir * r);
+      e.push({ kind: 'circle', layer: e.layer(LAYERS.gridIden), center: c, radius: r, fill: '#ffffff' });
+      e.text(LAYERS.gridIden, c, label, 3.2 * pm, { bold: true });
+    }
+  }
+}
+
+function drawEntry(env: DrawEnv, entry: Entry) {
+  const { el, facts } = entry;
+  const { e } = env;
+  switch (el.tableName) {
+    case 'wall':
+    case 'structure_wall':
+      return drawWall(env, facts as LineWallFacts);
+    case 'curtain_wall':
+      return drawCurtainWall(env, facts as CurtainWallFacts);
+    case 'door':
+      return drawDoor(env, el as LineElement, facts as DoorFacts);
+    case 'window':
+      return drawWindow(env, el as LineElement, facts as WindowFacts);
+    case 'opening': {
+      const f = facts as { kind: string; vertices: Point[] };
+      if (f.kind === 'polygon' && f.vertices.length >= 3) {
+        e.phase = Phase.Openings;
+        // Openings in structural slabs (and structural plans) go on S-FLOR-OPEN
+        const hostId = el.attrs.host_id || el.hostId || '';
+        const host = hostId ? env.src.byId.get(hostId) : undefined;
+        const open = host?.tableName === 'structure_slab' || host?.tableName === 'foundation' || (!host && env.src.discipline === 'structure')
+          ? LAYERS.sFloorOpen : LAYERS.floorOpen;
+        e.poly(open, f.vertices, true);
+        e.line(open, f.vertices[0], f.vertices[Math.floor(f.vertices.length / 2)], { weight: 0.13 });
+        if (f.vertices.length === 4) e.line(open, f.vertices[1], f.vertices[3], { weight: 0.13 });
+      } else if (el.geometry === 'line') {
+        drawWallOpening(env, el as LineElement);
+      }
+      return;
+    }
+    case 'column':
+    case 'structure_column':
+      return drawColumn(env, facts as ColumnFacts, el.tableName);
+    case 'slab':
+    case 'structure_slab': {
+      e.phase = Phase.Below;
+      const structural = el.tableName === 'structure_slab';
+      e.poly(structural ? LAYERS.sSlab : LAYERS.slab, (facts as { vertices: Point[] }).vertices, true);
+      // Inner rings (holes) of the slab outline; hosted openings draw themselves.
+      for (const h of (el as PolygonElement).holes ?? []) if (h.length >= 3) e.poly(structural ? LAYERS.sFloorOpen : LAYERS.floorOpen, h, true);
+      drawShafts(env, (facts as SlabFacts).shaftHoles ?? []);
+      // One-way slab: span direction arrow (paper-sized heads)
+      const sf = facts as SlabFacts;
+      if (structural && sf.spanDirection !== null && sf.spanDirection !== undefined) {
+        e.phase = Phase.Annotation;
+        for (const pl of spanSymbolLines(sf.vertices, sf.labelAt, sf.spanDirection, 2.5 * env.pm, 3 * env.pm)) e.poly(LAYERS.sSlabIden, pl, false);
+      }
+      // Sloped floor: its slope arrow (paper-sized head)
+      if (sf.slopeArrow) {
+        e.phase = Phase.Annotation;
+        for (const pl of slopeArrowLines(sf.slopeArrow, 2.5 * env.pm)) e.poly(structural ? LAYERS.sSlabIden : LAYERS.slab, pl, false);
+      }
+      return;
+    }
+    case 'roof':
+      return drawRoof(env, el, facts as RoofFacts);
+    case 'stair':
+      return drawStair(env, facts as StairFacts);
+    case 'stair_run':
+      return drawRun(env, (facts as StairRunFacts).run);
+    case 'stair_landing': {
+      // Beyond the plan cut: hidden lines, like the treads above it.
+      const f = facts as StairLandingFacts;
+      e.phase = Phase.Floor;
+      e.poly(f.landing.top > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, f.vertices, true);
+      // Winder risers
+      for (const l of f.winder?.lines ?? []) e.line(l.z > CUT_HEIGHT_M * env.src.upm ? LAYERS.stairAbove : LAYERS.stair, l.a, l.b);
+      return;
+    }
+    case 'ramp':
+      return drawRamp(env, facts as RampFacts);
+    case 'railing': {
+      // Sketched or derived (stair railings follow the runs and landings)
+      const f = facts as RailingFacts;
+      e.phase = Phase.Floor;
+      if (f.plan.length >= 2) e.poly(LAYERS.railing, f.plan, false);
+      return;
+    }
+    case 'room_separator': {
+      const f = facts as { start: Point; end: Point };
+      e.phase = Phase.Below;
+      e.line(LAYERS.areaBndy, f.start, f.end);
+      return;
+    }
+    case 'space':
+      return drawSpace(env, el, facts as SpaceFacts);
+    case 'beam':
+    case 'brace': {
+      e.phase = Phase.Above;
+      e.poly(el.tableName === 'beam' ? LAYERS.sBeam : LAYERS.sBrace, (facts as BeamFacts).footprint2D, true);
+      return;
+    }
+    case 'foundation':
+      return drawFoundation(env, facts as FoundationFacts);
+    case 'furniture':
+      return drawFurniture(env, facts as FurnitureFacts);
+    case 'duct':
+    case 'pipe':
+    case 'cable_tray':
+    case 'conduit':
+      return drawMepLine(env, facts as MepLineFacts);
+    case 'equipment':
+    case 'terminal':
+      return drawEquipment(env, el, facts as EquipmentFacts);
+    case 'mep_node':
+      return drawMepNode(env, facts as MepNodeFacts);
+  }
+}
+
+// ─── Bounds ─────────────────────────────────────────────────────────────────
+
+function growBox(box: Box | null, x0: number, y0: number, x1: number, y1: number): Box {
+  if (!box) return { minX: x0, minY: y0, maxX: x1, maxY: y1 };
+  box.minX = Math.min(box.minX, x0); box.minY = Math.min(box.minY, y0);
+  box.maxX = Math.max(box.maxX, x1); box.maxY = Math.max(box.maxY, y1);
+  return box;
+}
+
+export function itemsBounds(items: DrawItem[], includeDxfOnly = false): Box | null {
+  let box: Box | null = null;
+  for (const it of items) {
+    if (it.dxfOnly && !includeDxfOnly) continue;
+    switch (it.kind) {
+      case 'path':
+        for (const p of it.pts) box = growBox(box, p.x, p.y, p.x, p.y);
+        break;
+      case 'arc':
+      case 'circle':
+        box = growBox(box, it.center.x - it.radius, it.center.y - it.radius, it.center.x + it.radius, it.center.y + it.radius);
+        break;
+      case 'text': {
+        const hw = approxTextWidth(it.text, it.height) / 2 + it.height * 0.2;
+        const r = Math.max(hw, it.height);
+        box = growBox(box, it.at.x - r, it.at.y - r, it.at.x + r, it.at.y + r);
+        break;
+      }
+    }
+  }
+  return box;
+}
+
+/** Extent of the model geometry (no grids), used to fit grids and pick a scale. */
+function modelExtent(src: PlanSource): Box | null {
+  const env: DrawEnv = { src, e: new Emitter(), pm: paperMm(src.unit, 100), legend: new Map() };
+  for (const entry of src.entries) {
+    if (entry.el.tableName === 'grid' || roleOf(entry.el.tableName, entry.el.discipline, src.discipline) === 'hidden') continue;
+    drawEntry(env, entry);
+  }
+  // Labels are paper-sized, so leave them out: geometry decides the extent
+  return itemsBounds(env.e.items().filter(i => i.kind !== 'text'));
+}
+
+// ─── Public ─────────────────────────────────────────────────────────────────
+
+/** Build a level's plan at 1:`scale`. */
+export function renderPlan(src: PlanSource, scale: number): PlanDrawing {
+  const pm = paperMm(src.unit, scale);
+  const e = new Emitter();
+  const legend = new Map<string, LegendEntry>();
+  const env: DrawEnv = { src, e, pm, legend };
+  const grids: LineElement[] = [];
+  for (const entry of src.entries) {
+    if (entry.el.tableName === 'grid') { grids.push(entry.el as LineElement); continue; }
+    const role = roleOf(entry.el.tableName, entry.el.discipline, src.discipline);
+    if (role === 'hidden') continue;
+    e.halftone = role === 'halftone';
+    try { drawEntry(env, entry); } catch (err) { console.warn(`[plan] skipped ${entry.el.id}`, err); }
+  }
+  e.halftone = false;
+
+  // Grids run a little past the building (or as modelled when shorter)
+  const extent = modelExtent(src);
+  const over = 12 * pm;
+  drawGrids(env, grids, extent && {
+    minX: extent.minX - over, minY: extent.minY - over, maxX: extent.maxX + over, maxY: extent.maxY + over,
+  });
+
+  e.phase = Phase.Annotation;
+  const annotators = src.input.annotators ?? registeredPlanAnnotators();
+  if (annotators.length) {
+    const elements = [...src.byId.values()];
+    for (const fn of annotators) {
+      try {
+        fn({
+          level: src.level, unit: src.unit, scale, pm, upm: src.upm, discipline: src.discipline,
+          elements, geometry: src.ctx,
+          factsOf: el => src.factsCache.get(el.id) ?? null,
+          layer: def => e.layer(def),
+          add: item => e.push(item),
+        });
+      } catch (err) { console.warn('[plan] annotator failed', err); }
+    }
+  }
+
+  const items = e.items();
+  return {
+    levelId: src.level.id,
+    levelName: src.level.name || src.level.id,
+    elevation: src.level.elevation,
+    unit: src.unit,
+    scale, pm, items,
+    layers: e.layers,
+    bounds: itemsBounds(items),
+    legend: src.discipline === 'architecture' || src.discipline === 'structure' ? [] : [...legend.values()],
+  };
+}
+
+/** Convenience: collect + render. */
+export function buildPlanDrawing(input: PlanInput, scale: number): PlanDrawing | null {
+  const src = collectPlan(input);
+  return src ? renderPlan(src, scale) : null;
+}
+
+/** What to draw, shared by the PDF and DXF exports. */
+export interface PlanExportOptions {
+  /** `current`: only `levelId`; `all`: every level that has a floor folder. */
+  scope?: 'current' | 'all';
+  /** The level shown in the editor (used by scope `current`). */
+  levelId?: string;
+  discipline?: DrawingDiscipline;
+  /** Project grids (`state.grids`). */
+  grids?: GridData[];
+  /** Scale denominator, or `auto` for the largest standard scale that fits. */
+  scale?: number | 'auto';
+  /** Sheet language (`en` / `zh`), default the UI language. */
+  lang?: string;
+  /** Title block project name; default the metadata's project_name, else the file name. */
+  projectName?: string;
+  date?: Date;
+  annotators?: readonly PlanAnnotator[];
+}
+
+/**
+ * Roofs a level's plan shows from above: those of the storey right below,
+ * when the level has no roof of its own (the roof plan of a roof level).
+ */
+export function roofsBelow(project: ProjectData, levelId: string): { level: Level; elements: CanonicalElement[] }[] {
+  const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
+  const i = sorted.findIndex(l => l.id === levelId);
+  if (i <= 0) return [];
+  if (project.floors.get(levelId)?.layers.some(l => l.tableName === 'roof' && l.csvRows.size > 0)) return [];
+  const below = sorted[i - 1];
+  const roofLayers = project.floors.get(below.id)?.layers.filter(l => l.tableName === 'roof') ?? [];
+  const elements = roofLayers.length ? parseFloorLayers(roofLayers) : [];
+  return elements.length ? [{ level: below, elements }] : [];
+}
+
+/** Whether a level gets a plan: it has elements, or it is a roof plan. */
+export function hasPlan(project: ProjectData, levelId: string): boolean {
+  return project.floors.has(levelId) || roofsBelow(project, levelId).length > 0;
+}
+
+/** Levels to draw, bottom to top. */
+export function planLevels(project: ProjectData, opts: PlanExportOptions): Level[] {
+  const sorted = [...project.levels].sort((a, b) => a.elevation - b.elevation);
+  if ((opts.scope ?? 'all') === 'current') {
+    const lv = sorted.find(l => l.id === opts.levelId) ?? sorted.find(l => project.floors.has(l.id));
+    return lv ? [lv] : [];
+  }
+  return sorted.filter(l => hasPlan(project, l.id));
+}
+
+export function collectPlans(project: ProjectData, opts: PlanExportOptions, lang: DrawingLang): PlanSource[] {
+  const out: PlanSource[] = [];
+  for (const level of planLevels(project, opts)) {
+    const src = collectPlan({
+      project, levelId: level.id, grids: opts.grids, discipline: opts.discipline ?? 'all',
+      lang, annotators: opts.annotators,
+    });
+    if (src) out.push(src);
+  }
+  return out;
+}
+
+/** `YYYY-MM-DD`, the same in every locale. */
+export function isoDate(d: Date): string {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}

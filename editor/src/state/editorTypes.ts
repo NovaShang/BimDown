@@ -1,0 +1,250 @@
+import type { Level, ProjectData, GridData, FloorData, LayerData, SystemDef } from '../types.ts';
+import type { DocumentState } from '../model/document.ts';
+import type { CanonicalElement } from '../model/elements.ts';
+import type { HistoryState } from '../model/history.ts';
+import type { SnapType } from '../utils/snap.ts';
+import type { WallJoin } from '../geometry/wallJoins.ts';
+import type { ArcParams } from '../geometry/arc.ts';
+import type { TypeCatalog } from '../model/types/catalog.ts';
+import type { ViewOptions, ViewOptionKey } from './viewOptions.ts';
+import type { ViewsState, ViewsAction } from '../views/viewTypes.ts';
+import type { FloorWrites, LevelPatches } from './levelEdits.ts';
+
+export type Tool = 'select' | 'orbit' | 'pan' | 'zoom' | 'relocate' | 'relocate_hosted' | 'rotate' | 'mirror' | 'array' | 'align' | 'offset' | 'paste' | 'draw' | 'draw_line' | 'draw_point' | 'draw_polygon' | 'draw_grid' | 'draw_hosted' | 'draw_region' | 'draw_pick'
+  | 'trim_corner' | 'trim_single' | 'split'
+  | 'draw_dimension' | 'draw_text' | 'draw_tag'
+  | 'draw_section'
+  | 'draw_slope_arrow'
+  | 'match_type'
+  | 'underlay';
+
+export interface ViewTransform {
+  x: number;
+  y: number;
+  scale: number;
+}
+
+export type ViewMode = '2d' | '3d';
+export type Floor3DMode = 'current' | 'current+below' | 'all';
+
+export interface EditorState {
+  modelName: string;
+  project: ProjectData | null;
+  grids: GridData[];
+  loading: boolean;
+
+  currentLevel: string;
+
+  viewMode: ViewMode;
+  floor3DMode: Floor3DMode;
+
+  readonly: boolean;
+  visibleLayers: Set<string>;
+  showGrid: boolean;
+  showMinimap: boolean;
+  /** Snap types the user has turned OFF. Empty = all snap types active.
+   *  Stored as a disabled-set so newly added snap types default to enabled. */
+  disabledSnapTypes: Set<SnapType>;
+
+  activeTool: Tool;
+  previousTool: Tool;
+  activeFilter: string | null;
+  activeDiscipline: string | null;
+  showArchContext: boolean;
+  /** Display toggles: element tags, structure in the arch view, grid options. */
+  viewOptions: ViewOptions;
+  spaceHeld: boolean;
+
+  selectedIds: Set<string>;
+  /** "Select all instances in project": the matching elements on the other
+   *  levels (raw ids per level). Delete / Change type / property edits of the
+   *  selection apply to them too; any selection change drops it. */
+  projectSelection?: Map<string, string[]>;
+  hoveredId: string | null;
+
+  marquee: { x1: number; y1: number; x2: number; y2: number } | null;
+
+  // Document model (editing)
+  document: DocumentState | null;
+  history: HistoryState;
+  editMode: boolean;
+  drawingTarget: { tableName: string; discipline: string; variantId?: string } | null;
+  drawingAttrs: Record<string, string>;  // editable properties for the next element to create
+  drawingState: DrawingState | null;
+  documentVersion: number;  // bumped on every mutation, triggers auto-persist
+  lastMutation: { version: number; keys: string[] } | null;
+  /** Recent mutations of this document, oldest first (autosave reads every one it
+   *  hasn't saved yet: several mutations can land before it runs). */
+  mutationLog?: { version: number; keys: string[] }[];
+
+  /** Elevation / section pane, 3D section box, plan view range (views/viewsReducer.ts). */
+  views: ViewsState;
+
+  /** Layers of other levels changed by multi-level edits, waiting to be saved. */
+  floorWrites?: FloorWrites;
+  /** Model group being edited (its members select one by one; Finish propagates). */
+  groupEdit?: GroupEdit | null;
+  /** Named selections saved for this session. */
+  selectionSets?: SelectionSet[];
+}
+
+export interface GroupEdit {
+  groupId: string;
+  levelId: string;
+  /** The instance (row + members + their ports) when editing started. */
+  snapshot: Map<string, CanonicalElement>;
+}
+
+export interface SelectionSet {
+  name: string;
+  levelId: string;
+  ids: string[];
+}
+
+export interface DrawingState {
+  points: { x: number; y: number }[];  // placed points so far
+  cursor: { x: number; y: number } | null;  // current mouse position in SVG coords
+  baseOffset?: number;  // computed elevation offset for hosted element preview
+  /** If the first placed point was snapped to a connector port, remember the
+   *  full port reference ("host_id:port_name" or bare host_id) so the
+   *  finished line can wire `from` to it. */
+  startPortRef?: string;
+  /** Wall chain in progress: raw clicked path points and the wall created for
+   *  each segment (ids[i] spans path[i] → path[i+1]). */
+  chain?: { path: { x: number; y: number }[]; ids: string[]; through: ({ x: number; y: number } | null)[] };
+  /** Arc wall: chord end placed, waiting for the point the arc passes through. */
+  arcEnd?: { x: number; y: number };
+  /** Centrelines of the walls the next click would create (preview only). */
+  ghost?: { start: { x: number; y: number }; end: { x: number; y: number }; arc?: ArcParams }[];
+  /** Number typed while drawing / moving (length, then angle after Tab). */
+  typed?: TypedInput;
+  /** Two-pick modify tools (trim / extend): the first picked element. */
+  pick?: { id: string; point: { x: number; y: number }; line?: { start: { x: number; y: number }; end: { x: number; y: number } } };
+  /** Live rotation of a module place tool's preview (degrees CCW). */
+  rotation?: number;
+  /** Rotate / mirror / array / align / offset / paste (tools/modifyTools.ts). */
+  modify?: ModifyState;
+  /** Stair tool: the stair the clicks so far describe (preview), and the sketch of a stair by sketch. */
+  stairPreview?: import('../geometry/stairCore.ts').StairLayout;
+  stairSketch?: { boundary: { x: number; y: number }[]; risers: [{ x: number; y: number }, { x: number; y: number }][] };
+}
+
+export interface ModifyState {
+  /** Rotate centre. */
+  center?: { x: number; y: number };
+  /** The next click places the centre. */
+  pickCenter?: boolean;
+  /** Rotate: start ray point; array / drawn mirror axis: first point. */
+  ref?: { x: number; y: number };
+  /** Mirror axis or align reference, drawn dashed. */
+  axis?: { start: { x: number; y: number }; end: { x: number; y: number } };
+  /** Candidate line under the cursor (align / offset / mirror pick). */
+  hoverLine?: { start: { x: number; y: number }; end: { x: number; y: number } };
+  /** Rotate: angle the next click applies. */
+  angle?: number;
+  /** Ghosts of the result. */
+  preview?: CanonicalElement[];
+}
+
+export interface TypedInput {
+  length: string;
+  angle: string;
+  field: 'length' | 'angle';
+  /** Point placement: ΔX / ΔY from `points[0]` ('@' prefix) instead of absolute X / Y. */
+  relative?: boolean;
+}
+
+export type EditorAction =
+  | { type: 'SET_VIEW_MODE'; mode: ViewMode }
+  | { type: 'SET_FLOOR_3D_MODE'; mode: Floor3DMode }
+  | { type: 'SET_PROJECT'; model: string; project: ProjectData; grids: GridData[] }
+  | { type: 'SET_LOADING'; loading: boolean }
+  | { type: 'SET_LEVEL'; levelId: string }
+  | { type: 'TOGGLE_LAYER'; key: string }
+  | { type: 'SET_VISIBLE_LAYERS'; keys: Set<string> }
+  | { type: 'TOGGLE_GRID' }
+  | { type: 'TOGGLE_MINIMAP' }
+  | { type: 'TOGGLE_SNAP_CATEGORY'; types: SnapType[] }
+  | { type: 'SET_TOOL'; tool: Tool }
+  | { type: 'SET_SPACE_HELD'; held: boolean }
+  | { type: 'SET_FILTER'; filter: string | null }
+  | { type: 'SET_DISCIPLINE'; discipline: string | null }
+  | { type: 'TOGGLE_ARCH_CONTEXT' }
+  | { type: 'TOGGLE_VIEW_OPTION'; key: ViewOptionKey }
+  /** `exact`: select just these ids (a model group member on its own, Tab cycling). */
+  | { type: 'SELECT'; ids: string[]; additive?: boolean; exact?: boolean }
+  | { type: 'CLEAR_SELECTION' }
+  | { type: 'SET_HOVER'; id: string | null }
+  | { type: 'SET_MARQUEE'; marquee: { x1: number; y1: number; x2: number; y2: number } | null }
+  // Document editing actions
+  | { type: 'INIT_DOCUMENT'; document: DocumentState }
+  /** `wallJoins`: joins snapshotted when a drag began (see geometry/wallJoins.ts).
+   *  Omitted on a committed move → read from the current geometry; a preview
+   *  without it does not cascade. Same for RESIZE_ELEMENT. */
+  | { type: 'MOVE_ELEMENTS'; ids: string[]; dx: number; dy: number; preview?: boolean; wallJoins?: WallJoin[] }
+  | { type: 'CREATE_ELEMENT'; element: CanonicalElement }
+  | { type: 'CREATE_ELEMENTS'; elements: CanonicalElement[]; description?: string; selectPrimary?: boolean }
+  | { type: 'APPLY_PATCH'; description: string; patches: Map<string, CanonicalElement | null>; before?: Map<string, CanonicalElement | null> }
+  | { type: 'DELETE_ELEMENTS'; ids: string[] }
+  | { type: 'UPDATE_ATTRS'; id: string; attrs: Record<string, string> }
+  /** Same attrs on several elements, one undo step (multi-selection edit). */
+  | { type: 'UPDATE_ATTRS_MANY'; ids: string[]; attrs: Record<string, string> }
+  | { type: 'RESIZE_ELEMENT'; id: string; changes: Partial<CanonicalElement>; preview?: boolean; wallJoins?: WallJoin[];
+      /** Hosted doors / windows as they were when the drag began: they keep that plan location. */
+      hostedBefore?: ReadonlyMap<string, CanonicalElement> }
+  | { type: 'COMMIT_PREVIEW'; description: string; before: Map<string, CanonicalElement | null>; after: Map<string, CanonicalElement | null> }
+  | { type: 'SET_EDIT_MODE'; active: boolean }
+  | { type: 'SET_DRAWING_STATE'; state: DrawingState | null }
+  | { type: 'SET_DRAWING_TARGET'; target: { tableName: string; discipline: string; variantId?: string } | null }
+  | { type: 'SET_DRAWING_ATTRS'; attrs: Record<string, string> }
+  | { type: 'DUPLICATE_ELEMENTS'; ids: string[]; offset: { dx: number; dy: number } }
+  | { type: 'RELOAD_ELEMENTS'; elements: CanonicalElement[] }
+  | { type: 'EXTERNAL_LAYER_UPDATE'; levelId: string; elements: CanonicalElement[] }
+  | { type: 'UNDO' }
+  | { type: 'REDO' }
+  | { type: 'UPDATE_GRIDS'; grids: GridData[] }
+  | { type: 'UPDATE_MEP_SYSTEMS'; mepSystems: SystemDef[] }
+  /** Edit the element types (Edit Type dialog): undoable; every following element updates. */
+  | { type: 'UPDATE_TYPES'; types: TypeCatalog; description?: string }
+  /** Replace the types without history (type files changed on disk, starter catalog written). */
+  | { type: 'SET_TYPES'; types: TypeCatalog }
+  /** Switch elements to a type ('' = no type): one undoable command for the whole selection. */
+  | { type: 'SET_ELEMENT_TYPE'; ids: string[]; typeId: string }
+  | { type: 'UPDATE_LAYER'; levelId: string; layer: LayerData }
+  | { type: 'ADD_LEVEL'; level: Level }
+  | { type: 'REMOVE_LEVEL'; levelId: string }
+  /** `moveAbove`: every higher level shifts by the same elevation change. */
+  | { type: 'RENAME_LEVEL'; levelId: string; name: string; elevation: number; number?: string; moveAbove?: boolean }
+  /** Copy everything on a level to a new level (one undo step). */
+  | { type: 'DUPLICATE_LEVEL'; levelId: string; level: Level }
+  /** Copy selected elements (raw or selection ids on the open level) to other levels, same plan place. */
+  /** `roofOnTop`: floor slabs copied to the top level become roof slabs. */
+  | { type: 'COPY_TO_LEVELS'; ids: string[]; levelIds: string[]; roofOnTop?: boolean }
+  | { type: 'SET_PROJECT_SELECTION'; levels: Map<string, string[]> | null }
+  /** Per-level element patches (and optionally the new level list) as one undo step. */
+  | { type: 'APPLY_LEVEL_EDITS'; description: string; patches: LevelPatches; levels?: Level[]; select?: string[] }
+  | { type: 'START_GROUP_EDIT'; groupId: string }
+  /** Finish editing a model group: the edited instance's members replace every other instance's. */
+  | { type: 'FINISH_GROUP_EDIT' }
+  /** Leave group editing, restoring the instance as it was. */
+  | { type: 'CANCEL_GROUP_EDIT' }
+  | { type: 'SAVE_SELECTION_SET'; name: string }
+  | { type: 'DELETE_SELECTION_SET'; name: string }
+  | ViewsAction;
+
+
+export interface ProcessedLayer {
+  key: string;
+  tableName: string;
+  discipline: string;
+  elements: CanonicalElement[];
+}
+
+export interface LayerGroup {
+  discipline: string;
+  layers: LayerData[];
+}
+
+export function getFloorData(state: EditorState): FloorData | undefined {
+  return state.project?.floors.get(state.currentLevel);
+}

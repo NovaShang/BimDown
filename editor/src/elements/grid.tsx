@@ -1,0 +1,85 @@
+import type { ReactNode } from 'react';
+import type { ElementModule, GeometryContext } from './archetypes.ts';
+import { registerElement } from './registry.ts';
+import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
+
+/** Radius of the axis-label bubble drawn at a grid's start point (model units). */
+export const GRID_BUBBLE_RADIUS = 0.5;
+
+export interface GridFacts {
+  id: string;
+  ex1: number; ey1: number; ex2: number; ey2: number;
+  startLabel: Point;
+  endLabel: Point;
+  label: string;
+}
+
+export const gridModule: ElementModule<GridFacts> = {
+  table: 'grid',
+  discipline: 'reference',
+  archetype: 'line',
+  placementType: 'grid',
+  prefix: 'gr',
+  csvHeaders: ['number'],
+  defaults: {},
+  drawingFields: [],
+  propertyFields: [],
+  layerStyle: { displayName: 'Grids', color: '#ef476f', icon: '┼', order: 0 },
+  renderZIndex: 1,
+  isSnapTarget: false,
+  supportsArc: false, // grid axes are straight references, not curves
+
+  geometry(el: CanonicalElement, _ctx: GeometryContext): GridFacts | null {
+    if (el.geometry !== 'line') return null;
+    const ln = el as LineElement;
+    const dx = ln.end.x - ln.start.x;
+    const dy = ln.end.y - ln.start.y;
+    if (dx * dx + dy * dy < 0.000001) return null;
+    return {
+      id: ln.id,
+      ex1: ln.start.x, ey1: ln.start.y,
+      ex2: ln.end.x, ey2: ln.end.y,
+      startLabel: ln.start,
+      endLabel: ln.end,
+      label: ln.attrs.number || ln.id,
+    };
+  },
+
+  draw2D(facts, drawCtx): ReactNode {
+    const color = '#ef476f';
+    return (
+      <g data-id={facts.id}>
+        {/* Dash-dot pattern: long dash, gap, dot, gap — standard architectural
+            convention. Stroke a touch thicker + higher opacity than before so
+            grids actually read as reference lines instead of ghosts. */}
+        <line x1={facts.ex1} y1={facts.ey1} x2={facts.ex2} y2={facts.ey2}
+          stroke={color} strokeWidth={0.04}
+          strokeDasharray="0.6 0.12 0.04 0.12" opacity={0.85} />
+        {/* Transparent fat hit line for selection. */}
+        <line x1={facts.ex1} y1={facts.ey1} x2={facts.ex2} y2={facts.ey2}
+          stroke="transparent" strokeWidth={0.6} data-id={facts.id} />
+        {/* Bubble label at the start endpoint (both ends when the view option
+            is on) — Revit-style filled circle so the grid id pops against
+            the floor plan instead of blending in. */}
+        {(drawCtx.gridBubblesBothEnds ? [facts.startLabel, facts.endLabel] : [facts.startLabel]).map((p, i) => (
+          <g key={i} transform={`translate(${p.x},${p.y}) scale(1,-1)`}>
+            <circle cx={0} cy={0} r={GRID_BUBBLE_RADIUS} fill="#ffffff" stroke={color}
+              strokeWidth={0.05} opacity={0.95} />
+            <text x={0} y={0} textAnchor="middle" dominantBaseline="central"
+              fontSize={0.45} fontFamily="Inter, sans-serif" fontWeight="700"
+              fill={color}>
+              {facts.label}
+            </text>
+          </g>
+        ))}
+      </g>
+    );
+  },
+
+  draw3D(): ReactNode {
+    // Grids are 2D references only — V1 doesn't render them in 3D either.
+    return null;
+  },
+};
+
+registerElement(gridModule);

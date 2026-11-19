@@ -1,0 +1,297 @@
+import { describe, it, expect } from 'vitest';
+import '../../elements/registerAll.ts';
+import { loadProject, loadGrids } from '../../utils/loader.ts';
+import { memoryDataSource, fc } from '../../test/memoryDataSource.ts';
+import { buildPlanDrawing, chainEdges, formatArea, hasPlan, planLevels } from './plan.ts';
+import { registerPlanAnnotator } from './annotations.ts';
+import { LAYERS } from './layers.ts';
+import { buildPlanDxfFiles, planToDxf } from '../exportDxf.ts';
+import { dxfLineweight } from './dxfWriter.ts';
+import type { DrawItem } from './types.ts';
+
+/** A 4 × 3 room (scaled by `k` model units per metre) with a door, a window, a stair, a duct and two grids. */
+function room(k = 1, units = 'm') {
+  const s = (v: number) => v * k;
+  const line = (id: string, a: number[], b: number[]) =>
+    ({ type: 'Feature', properties: { id }, geometry: { type: 'LineString', coordinates: [a.map(s), b.map(s)] } });
+  return {
+    'project_metadata.json': JSON.stringify({ format_version: '3.0', units, spatial_z: 'absolute', project_name: 'Test' }),
+    'global/level.csv': `id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,${s(3)}\n`,
+    'global/grid.csv': `id,number,start_x,start_y,end_x,end_y\ngr-1,1,0,${s(-2)},0,${s(5)}\ngr-2,A,${s(-2)},0,${s(6)},0\n`,
+    'lv-1/wall.csv': `id,number,thickness,material\n${['w-1', 'w-2', 'w-3', 'w-4'].map(id => `${id},,${s(0.2)},brick`).join('\n')}\n`,
+    'lv-1/wall.geojson': fc([
+      line('w-1', [0, 0], [4, 0]), line('w-2', [4, 0], [4, 3]), line('w-3', [4, 3], [0, 3]), line('w-4', [0, 3], [0, 0]),
+    ]),
+    'lv-1/door.csv': `id,number,host_id,position,width,height,operation,hinge_position,swing_side\nd-1,,w-1,${s(1)},${s(0.9)},${s(2.1)},single_swing,start,left\n`,
+    'lv-1/window.csv': `id,number,host_id,position,width,height,base_offset\nwn-1,,w-3,${s(2)},${s(1.2)},${s(1.5)},${s(0.9)}\n`,
+    'lv-1/space.csv': `id,number,name,x,y\nsp-1,101,客厅,${s(2)},${s(1.5)}\n`,
+    'lv-1/stair.csv': `id,number,width,step_count\nst-1,,${s(1)},10\n`,
+    'lv-1/stair.geojson': fc([line('st-1', [3, 0.5, 0], [3, 2.5, 3])]),
+    'lv-1/duct.csv': `id,number,shape,size_x,size_y,system_type\ndu-1,,rect,${s(0.4)},${s(0.3)},SA\n`,
+    'lv-1/duct.geojson': fc([line('du-1', [0.5, 2, 2.7], [3.5, 2, 2.7])]),
+    'lv-2/wall.csv': `id,number,thickness\nw-5,,${s(0.2)}\n`,
+    'lv-2/wall.geojson': fc([line('w-5', [0, 0], [4, 0])]),
+  } as Record<string, string>;
+}
+
+async function open(files: Record<string, string>) {
+  const ds = memoryDataSource(files);
+  return { project: await loadProject(ds), grids: await loadGrids(ds) };
+}
+
+const on = (items: DrawItem[], layer: string) => items.filter(i => i.layer === layer);
+
+describe('plan drawing', () => {
+  it('draws cut walls with poché, a door swing, window lines, a room tag with area and grid bubbles', async () => {
+    const { project, grids } = await open(room());
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'architecture' }, 100)!;
+    expect(d.pm).toBeCloseTo(0.1, 9); // 1 mm on paper = 0.1 m at 1:100
+    const poche = on(d.items, 'A-WALL-PATT');
+    expect(poche.length).toBeGreaterThanOrEqual(5); // 4 walls, two of them split by openings
+    expect(poche.every(i => i.kind === 'path' && i.fill && i.noStroke)).toBe(true);
+    expect(on(d.items, 'A-WALL').length).toBeGreaterThan(0);
+
+    const arcs = on(d.items, 'A-DOOR-SWNG').filter(i => i.kind === 'arc');
+    expect(arcs).toHaveLength(1);
+    const arc = arcs[0] as Extract<DrawItem, { kind: 'arc' }>;
+    expect(arc.radius).toBeCloseTo(0.9, 6);
+    // Hinge on the wall face at the door's start (x = 1 − 0.45), swing to the left (+y side)
+    expect(arc.center.x).toBeCloseTo(0.55, 6);
+    expect(arc.center.y).toBeCloseTo(0.1, 6);
+    expect(on(d.items, 'A-GLAZ').length).toBe(3); // frame + two glazing lines
+
+    const texts = d.items.filter(i => i.kind === 'text').map(i => (i as { text: string }).text);
+    expect(texts).toEqual(expect.arrayContaining(['客厅', '101', '10.64 m²', '1', 'A']));
+    expect(on(d.items, 'S-GRID-IDEN').filter(i => i.kind === 'circle')).toHaveLength(4); // both ends of 2 grids
+
+    // Architecture sheets leave MEP out; an MEP sheet fades the building and lists the systems
+    expect(d.items.some(i => i.layer.startsWith('M-DUCT'))).toBe(false);
+    const mep = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'mep' }, 100)!;
+    expect(mep.items.some(i => i.layer === 'M-DUCT-SA')).toBe(true);
+    expect(on(mep.items, 'A-WALL').every(i => i.halftone)).toBe(true);
+    expect(mep.legend.map(l => l.label)).toEqual(['SA']);
+  });
+
+  it('cuts stairs at the plan height: lower treads solid, upper ones hidden, with UP', async () => {
+    const { project } = await open(room());
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', discipline: 'architecture' }, 100)!;
+    // 3 m rise over 10 steps: cut at 1.2 m → treads 1..4 below, 5..9 above
+    const below = on(d.items, 'A-FLOR-STRS').filter(i => i.kind === 'path' && i.pts.length === 2);
+    const above = on(d.items, 'A-FLOR-STRS-ABOV');
+    expect(above.length).toBeGreaterThanOrEqual(5);
+    expect(below.length).toBeGreaterThanOrEqual(4);
+    expect(d.items.some(i => i.kind === 'text' && i.text === 'UP')).toBe(true);
+  });
+
+  it('draws an L stair: second run and landing beyond the cut hidden, one walking line, derived railings', async () => {
+    const line = (id: string, a: number[], b: number[]) => ({ type: 'Feature', properties: { id }, geometry: { type: 'LineString', coordinates: [a, b] } });
+    const { project } = await open({
+      'project_metadata.json': JSON.stringify({ format_version: '3.0', units: 'm', spatial_z: 'absolute' }),
+      'global/level.csv': 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3\n',
+      'lv-1/stair.csv': 'id,number,width,step_count,stair_type\nst-1,,1.2,9,quarter_turn\n',
+      'lv-1/stair.geojson': fc([line('st-1', [0, 0, 0], [2.52, 0, 1.5])]),
+      'lv-1/stair_run.csv': 'id,number,host_id,width,step_count\nsr-1,,st-1,1.2,9\n',
+      'lv-1/stair_run.geojson': fc([line('sr-1', [3.12, 0.6, 1.5], [3.12, 3.12, 3])]),
+      'lv-1/stair_landing.csv': 'id,number,base_offset,host_id,thickness\nsl_land-1,,1.5,st-1,0.2\n',
+      'lv-1/stair_landing.geojson': fc([{ type: 'Feature', properties: { id: 'sl_land-1' }, geometry: { type: 'Polygon', coordinates: [[[2.52, -0.6], [3.72, -0.6], [3.72, 0.6], [2.52, 0.6], [2.52, -0.6]]] } }]),
+      'lv-1/railing.csv': 'id,number,host_id,side,height\nrl-1,,st-1,left,1\nrl-2,,st-1,right,1\n',
+    });
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', discipline: 'architecture' }, 100)!;
+    const above = on(d.items, 'A-FLOR-STRS-ABOV');
+    // run 2 starts at 1.5 m > cut: its treads and the landing outline are hidden lines
+    expect(above.some(i => i.kind === 'path' && i.closed && i.pts.length === 4)).toBe(true);
+    expect(above.length).toBeGreaterThan(9);
+    expect(d.items.filter(i => i.kind === 'text' && i.text === 'UP')).toHaveLength(1);
+    const rails = on(d.items, 'A-FLOR-HRAL');
+    expect(rails).toHaveLength(2);
+    // The outer rail goes round the landing (corner points), not a straight line
+    expect(Math.max(...rails.map(r => (r.kind === 'path' ? r.pts.length : 0)))).toBeGreaterThanOrEqual(5);
+  });
+
+  it('runs annotators (the hook for dimensions) and writes their items', async () => {
+    const { project } = await open(room());
+    const off = registerPlanAnnotator(ctx => {
+      ctx.add({ kind: 'text', layer: ctx.layer(LAYERS.annoDims), at: { x: 2, y: -1 }, text: '4000', height: 2.5 * ctx.pm, align: 'center', valign: 'baseline' });
+    });
+    try {
+      const d = buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!;
+      expect(on(d.items, 'G-ANNO-DIMS')).toHaveLength(1);
+      expect(planToDxf(d)).toContain('\nG-ANNO-DIMS\n');
+    } finally { off(); }
+    expect(on(buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!.items, 'G-ANNO-DIMS')).toHaveLength(0);
+  });
+
+  it('draws library furniture symbols on A-FURN (turned with the element)', async () => {
+    const files = room();
+    files['lv-1/furniture.csv'] = 'id,number,family,variant,size_x,size_y,height,mirror\nfu-1,,bed,double,1.6,2,,\nfu-2,,tree,deciduous,,,,\n';
+    files['lv-1/furniture.geojson'] = fc([
+      { type: 'Feature', properties: { id: 'fu-1', rotation: 90 }, geometry: { type: 'Point', coordinates: [2, 1.5] } },
+      { type: 'Feature', properties: { id: 'fu-2' }, geometry: { type: 'Point', coordinates: [30, 30] } },
+    ]);
+    const { project } = await open(files);
+    const d = buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!;
+    const furn = on(d.items, 'A-FURN');
+    expect(furn.length).toBeGreaterThan(4);
+    // The bed's outline (1.6 wide, 2 deep) turned 90°: 2 along X, 1.6 along Y around (2, 1.5)
+    const pts = furn.flatMap(i => (i.kind === 'path' ? i.pts : []));
+    const xs = pts.map(p => p.x).filter(x => x < 4), ys = pts.filter(p => p.x < 4).map(p => p.y);
+    expect(Math.min(...xs)).toBeCloseTo(1, 3);
+    expect(Math.max(...xs)).toBeCloseTo(3, 3);
+    expect(Math.min(...ys)).toBeCloseTo(0.7, 3);
+    expect(planToDxf(d)).toContain('\nA-FURN\n');
+  });
+
+  it('draws MEP fittings, accessories, device symbols, risers and run tags on M- / P- / E- layers', async () => {
+    const files = room();
+    const F = (id: string, coordinates: number[] | number[][]) =>
+      ({ type: 'Feature', properties: { id }, geometry: { type: Array.isArray(coordinates[0]) ? 'LineString' : 'Point', coordinates } });
+    files['lv-1/pipe.csv'] = 'id,number,shape,size_x,system_type,from,to,insulation_thickness\n'
+      + 'pi-1,,round,0.1,CHWS,,mn-1,0.03\npi-2,,round,0.1,CHWS,mn-1,mn-2,\npi-3,,round,0.1,CHWS,mn-1,,\npi-4,,round,0.1,CHWS,,,\n';
+    files['lv-1/pipe.geojson'] = fc([F('pi-1', [[10, 0, 2.8], [14, 0, 2.8]]), F('pi-2', [[14, 0, 2.8], [18, 0, 2.8]]),
+      F('pi-3', [[14, 0, 2.8], [14, 3, 2.8]]), F('pi-4', [[20, 2, 0.5], [20, 2, 2.8]])]);
+    files['lv-1/mep_node.csv'] = 'id,system_type,kind\nmn-1,CHWS,\nmn-2,CHWS,gate_valve\n';
+    files['lv-1/mep_node.geojson'] = fc([F('mn-1', [14, 0, 2.8]), F('mn-2', [18, 0, 2.8])]);
+    files['lv-1/terminal.csv'] = 'id,number,terminal_type,system_type\ntm-1,,water_closet,\ntm-2,,switch,\n';
+    files['lv-1/terminal.geojson'] = fc([F('tm-1', [11, 5, 0]), F('tm-2', [12, 5, 1.2])]);
+    const { project } = await open(files);
+    const d = buildPlanDrawing({ project, levelId: 'lv-1' }, 100)!;
+    const layers = new Set(d.items.map(i => i.layer));
+    expect(layers).toContain('P-FIXT');        // WC symbol
+    expect(layers).toContain('E-POWR-DEVC');   // switch
+    expect(on(d.items, 'M-FITT').length).toBeGreaterThan(1); // valve bow-tie
+    expect(on(d.items, 'M-ANNO-TAGS').some(i => i.kind === 'text' && /CHWS/.test(i.text))).toBe(true);
+    const pipe = on(d.items, 'P-PIPE-CHWS');
+    expect(pipe.some(i => i.kind === 'path' && i.dash === 'dashed')).toBe(true); // insulation outline
+    expect(planToDxf(d)).toContain('\nP-FIXT\n');
+  });
+
+  it('lists each system of a combined tag once in the legend', async () => {
+    const files = room();
+    files['lv-1/duct.csv'] = 'id,number,shape,size_x,size_y,system_type\ndu-1,,rect,0.4,0.3,"SA, RA"\ndu-2,,rect,0.4,0.3,RA\n';
+    const line = (id: string, y: number) => ({ type: 'Feature', properties: { id }, geometry: { type: 'LineString', coordinates: [[0.5, y, 2.7], [3.5, y, 2.7]] } });
+    files['lv-1/duct.geojson'] = fc([line('du-1', 2), line('du-2', 1)]);
+    const { project, grids } = await open(files);
+    const mep = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'mep' }, 100)!;
+    expect(mep.legend.map(l => l.label).sort()).toEqual(['RA', 'SA']);
+  });
+
+  it('writes a PDF for systems whose colour is generated (hsl)', async () => {
+    const files = room();
+    files['lv-1/duct.csv'] = 'id,number,shape,size_x,size_y,system_type\ndu-1,,rect,0.4,0.3,ZZ-CUSTOM\n';
+    const { project, grids } = await open(files);
+    const { buildPlanPdf } = await import('../exportPdf.ts');
+    const { readFileSync } = await import('node:fs');
+    const fontLoader = async () => {
+      const b = readFileSync(new URL('../../assets/fonts/NotoSansSC-Regular-subset.ttf', import.meta.url));
+      return b.buffer.slice(b.byteOffset, b.byteOffset + b.byteLength) as ArrayBuffer;
+    };
+    const pdf = await buildPlanPdf(project, 'test', { scope: 'all', discipline: 'mep', grids, fontLoader });
+    expect(pdf?.pages).toBeGreaterThan(0);
+  });
+
+  it('structural plans: span arrows on S-SLAB-IDEN, slab openings on S-FLOR-OPEN, hollow columns as rings', async () => {
+    const f = room();
+    f['lv-1/structure_slab.csv'] = 'id,number,thickness,span_direction\nss-1,,0.2,90\n';
+    f['lv-1/structure_slab.geojson'] = fc([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [4, 0], [4, 3], [0, 3], [0, 0]]] } }]);
+    f['lv-1/opening.csv'] = 'id,number,host_id\nop-1,,ss-1\n';
+    f['lv-1/opening.geojson'] = fc([{ type: 'Feature', properties: { id: 'op-1' }, geometry: { type: 'Polygon', coordinates: [[[1, 1], [2, 1], [2, 2], [1, 2], [1, 1]]] } }]);
+    f['lv-1/structure_column.csv'] = 'id,number,shape,size_x,thickness,material\nsc-1,,round_hollow,0.2191,0.008,steel\n';
+    f['lv-1/structure_column.geojson'] = fc([{ type: 'Feature', properties: { id: 'sc-1' }, geometry: { type: 'Point', coordinates: [3, 2] } }]);
+    const { project, grids } = await open(f);
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'structure' }, 100)!;
+    const span = on(d.items, 'S-SLAB-IDEN');
+    expect(span).toHaveLength(4); // shaft, two heads, tick
+    const shaft = span[0] as Extract<DrawItem, { kind: 'path' }>;
+    expect(shaft.pts[0].x).toBeCloseTo(2, 6);
+    expect(Math.abs(shaft.pts[1].y - shaft.pts[0].y)).toBeGreaterThan(0.9);
+    expect(on(d.items, 'S-FLOR-OPEN').length).toBeGreaterThan(0);
+    expect(on(d.items, 'A-FLOR-OPEN')).toHaveLength(0);
+    // CHS: outer fill + a white inner fill
+    const fills = on(d.items, 'S-COLS-PATT').filter(i => i.kind === 'path' && i.fill);
+    expect(fills.map(i => (i as { fill?: string }).fill)).toContain('#ffffff');
+  });
+
+  it('warns when a fixed PDF scale crops the plan, and names the scale that fits', async () => {
+    const f = room();
+    f['global/grid.csv'] = 'id,number,start_x,start_y,end_x,end_y\ngr-1,1,0,-2,0,30\ngr-2,A,-2,0,60,0\n';
+    f['lv-1/structure_slab.csv'] = 'id,number,thickness\nss-1,,0.2\n';
+    f['lv-1/structure_slab.geojson'] = fc([{ type: 'Feature', properties: { id: 'ss-1' }, geometry: { type: 'Polygon', coordinates: [[[0, 0], [58, 0], [58, 28], [0, 28], [0, 0]]] } }]);
+    const { project, grids } = await open(f);
+    const { planPdfOverflow } = await import('../exportPdf.ts');
+    const o = planPdfOverflow(project, { scope: 'current', levelId: 'lv-1', grids, paper: 'A3', scale: 100, discipline: 'structure' });
+    expect(o.levels).toEqual(['L1']);
+    expect(o.fitScale).toBeGreaterThan(100);
+    expect(planPdfOverflow(project, { scope: 'current', levelId: 'lv-1', grids, paper: 'A3', scale: o.fitScale!, discipline: 'structure' }).levels).toEqual([]);
+    expect(planPdfOverflow(project, { scope: 'current', levelId: 'lv-1', grids, paper: 'A3' }).levels).toEqual([]);
+  });
+
+  it('chains wall outline edges into polylines', () => {
+    const p = (x: number, y: number) => ({ x, y });
+    expect(chainEdges([[p(0, 0), p(1, 0)], [p(1, 0), p(1, 1)], [p(5, 5), p(6, 5)]], 1e-9)).toEqual([
+      [p(0, 0), p(1, 0), p(1, 1)], [p(5, 5), p(6, 5)],
+    ]);
+  });
+
+  it('formats room areas per project unit', () => {
+    expect(formatArea(12.345, 'm')).toBe('12.35 m²');
+    expect(formatArea(12_345_000, 'mm')).toBe('12.35 m²');
+    expect(formatArea(100, 'ft')).toBe('100.0 ft²');
+  });
+});
+
+describe('DXF plans', () => {
+  it('writes one file per level in model coordinates (Y up), metres', async () => {
+    const { project, grids } = await open(room());
+    const files = buildPlanDxfFiles(project, 'test', { scope: 'all', grids });
+    expect(files.map(f => f[0])).toEqual(['test-L1.dxf', 'test-L2.dxf']);
+    const dxf = files[0][1];
+    expect(dxf).toContain('$INSUNITS\n70\n6');
+    expect(dxf).toContain('$ACADVER\n1\nAC1021');
+    // The top wall's outer face is at y = 3.1, not mirrored to −3.1
+    expect(dxf).toMatch(/\n20\n3\.1\n/);
+    expect(dxf).not.toMatch(/\n20\n-3\.1\n/);
+    for (const name of ['A-WALL', 'A-WALL-PATT', 'A-DOOR', 'A-DOOR-SWNG', 'A-GLAZ', 'A-AREA-IDEN', 'S-GRID', 'S-GRID-IDEN']) {
+      expect(dxf).toContain(`\nLAYER\n5\n`);
+      expect(dxf, name).toContain(`\n2\n${name}\n`);
+    }
+    expect(dxf).toContain('\nHATCH\n');
+    expect(dxf).toContain('\nARC\n');
+    expect(dxf).toContain('\n1\n客厅\n');
+    // Handles are unique
+    const handles = [...dxf.matchAll(/\n(?:5|105)\n([0-9A-F]+)\n/g)].map(m => m[1]);
+    expect(new Set(handles).size).toBe(handles.length);
+    // Current level only
+    expect(buildPlanDxfFiles(project, 'test', { scope: 'current', levelId: 'lv-2', grids }).map(f => f[0])).toEqual(['test-L2.dxf']);
+  });
+
+  it('uses millimetres for an mm project, with text sized for the plot scale', async () => {
+    const { project, grids } = await open(room(1000, 'mm'));
+    const d = buildPlanDrawing({ project, levelId: 'lv-1', grids, discipline: 'architecture' }, 100)!;
+    expect(d.pm).toBeCloseTo(100, 6); // 1 mm on paper = 100 mm at 1:100
+    const tag = d.items.find(i => i.kind === 'text' && i.text === '10.64 m²');
+    expect(tag).toBeDefined();
+    const dxf = buildPlanDxfFiles(project, 'mm', { scope: 'current', levelId: 'lv-1', grids })[0][1];
+    expect(dxf).toContain('$INSUNITS\n70\n4');
+    expect(dxf).toMatch(/\n20\n3100\.0\n/);
+  });
+
+  it('snaps lineweights to AutoCAD values', () => {
+    expect(dxfLineweight(0.5)).toBe(50);
+    expect(dxfLineweight(0.18)).toBe(18);
+    expect(dxfLineweight(0.09)).toBe(9);
+    expect(dxfLineweight(0.33)).toBe(35);
+  });
+
+  it('draws a roof plan for a roof level from the roofs of the storey below', async () => {
+    const files = room();
+    files['global/level.csv'] += 'lv-3,3,Roof,6\n';
+    files['lv-2/roof.csv'] = 'id,number,roof_type,slope,thickness,base_offset\nro-1,,gable,30,0.2,3\n';
+    files['lv-2/roof.geojson'] = fc([{ type: 'Feature', properties: { id: 'ro-1' }, geometry: { type: 'Polygon', coordinates: [[[-0.5, -0.5], [4.5, -0.5], [4.5, 3.5], [-0.5, 3.5], [-0.5, -0.5]]] } }]);
+    const { project, grids } = await open(files);
+    expect(project.floors.has('lv-3')).toBe(false);
+    expect(hasPlan(project, 'lv-3')).toBe(true);
+    expect(planLevels(project, {}).map(l => l.id)).toEqual(['lv-1', 'lv-2', 'lv-3']);
+    const d = buildPlanDrawing({ project, levelId: 'lv-3', grids, discipline: 'architecture' }, 100)!;
+    expect(d.items.some(i => i.layer === LAYERS.roof.name)).toBe(true);
+  });
+});

@@ -1,0 +1,917 @@
+import type { CanonicalElement, Point, LineElement, SpatialLineElement } from '../model/elements.ts';
+import type { GridData, ProjectUnit } from '../types.ts';
+import { nearestPointOnArc, pointOnArc as arcPointOnArc } from '../geometry/arc.ts';
+import { formatLength } from './units.ts';
+import { getElementModule } from '../elements/registry.ts';
+import { AabbGrid, type Box2 } from '../geometry/aabbGrid.ts';
+
+// ── Snap types ──
+
+export type SnapType = 'endpoint' | 'center' | 'gridline' | 'edge' | 'midpoint' | 'angle' | 'length' | 'grid' | 'connector' | 'underlay';
+
+export type SnapGuideType = 'point' | 'vline' | 'hline' | 'edge_segment' | 'angle_line' | 'length_ring';
+
+export interface SnapGuide {
+  type: SnapGuideType;
+  x: number;
+  y: number;
+  snapType?: SnapType;
+  /** For edge_segment / angle_line: second endpoint */
+  x2?: number;
+  y2?: number;
+  label?: string;
+}
+
+/** Distance to the nearest grid line (轴网) along an axis */
+export interface GridDistanceInfo {
+  /** Distance in meters to the nearest grid line */
+  distance: number;
+  /** The point on the grid line closest to the snap point */
+  gridPoint: Point;
+}
+
+export interface SnapResult {
+  point: Point;
+  snapX: { type: SnapType; value: number } | null;
+  snapY: { type: SnapType; value: number } | null;
+  guides: SnapGuide[];
+  /** The highest-priority snap type that contributed to the result */
+  dominantType?: SnapType;
+  /** Distance to nearest grid line in X direction (perpendicular) */
+  nearestGridX?: GridDistanceInfo;
+  /** Distance to nearest grid line in Y direction (perpendicular) */
+  nearestGridY?: GridDistanceInfo;
+  /** If the result snapped to a connector, info about which one.
+   *  The drawing tool uses `portRef` (= "host_id:port_name") to wire pipe
+   *  from / to. `hostId` is the bare host id (no port suffix). */
+  connectorHit?: { hostId: string; portRef: string };
+}
+
+/** A connector snap target supplied by the drawing tool. */
+export interface ConnectorSnapPoint {
+  pos: Point;
+  dir: { x: number; y: number };
+  hostId: string;
+  /** Full port reference string "host_id:port_name". Falls back to bare
+   *  host_id if the connector has no `name` attribute. */
+  portRef: string;
+  /** Port height above the level (host base_offset + offset_z). */
+  z?: number;
+}
+
+// ── External snap targets (underlays) ──
+
+/** A snap target outside the document model, e.g. a DXF underlay vertex. */
+export interface ExternalSnapTarget {
+  x: number;
+  y: number;
+  type: 'endpoint' | 'edge' | 'midpoint';
+  edgeFrom?: Point;
+  edgeTo?: Point;
+}
+
+/** Returns targets within `radius` of `p` (plan coordinates). */
+export type ExternalSnapProvider = (p: Point, radius: number) => ExternalSnapTarget[];
+
+let underlaySnapProvider: ExternalSnapProvider | null = null;
+
+/** Register the underlay snap source (one editor per page); null to clear.
+ *  Its targets rank just below the model's own, and the 'underlay' snap
+ *  toggle turns them all off. */
+export function setUnderlaySnapProvider(provider: ExternalSnapProvider | null): void {
+  underlaySnapProvider = provider;
+}
+
+/** Model targets win ties against underlay targets of the same kind. */
+const UNDERLAY_PRIORITY: Record<ExternalSnapTarget['type'], number> = { endpoint: 1.1, edge: 2.1, midpoint: 3.1 };
+
+// ── Grid spacing ──
+
+const GRID_LEVELS = [
+  0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10, 25, 50, 100,
+];
+const GRID_TARGET_PX = 50;
+const SNAP_THRESHOLD_PX = 10;
+/** Axis-only alignment reaches this many thresholds along the other axis (~500px at default zoom). */
+const ALIGN_PERP_FACTOR = 50;
+
+/** Round-value steps (distance off a grid, segment length) are at least this many pixels apart. */
+const ROUND_STEP_MIN_PX = 8;
+/** A round value pulls the point by at most this many pixels (and a fifth of the step):
+ *  enough to land a hand click on it, never a visible offset from the click. */
+const ROUND_PULL_PX = 2;
+/** Axis-only alignment with a point far along the other axis captures within this many pixels. */
+const ALIGN_THRESHOLD_PX = 5;
+
+/** Step of the round-distance / round-length snaps at this zoom: the finest one ≥ ROUND_STEP_MIN_PX. */
+export function roundSnapStep(pixelSize: number): number {
+  return GRID_LEVELS.find(g => g / pixelSize >= ROUND_STEP_MIN_PX) ?? GRID_LEVELS[GRID_LEVELS.length - 1];
+}
+
+/** How far a round-value snap may move the point (model units). */
+export function roundSnapPull(pixelSize: number): number {
+  return Math.min(roundSnapStep(pixelSize) * 0.2, pixelSize * ROUND_PULL_PX);
+}
+
+export function adaptiveGridSpacing(pixelSize: number): number {
+  const target = pixelSize * GRID_TARGET_PX;
+  let best = GRID_LEVELS[0];
+  let bestDist = Infinity;
+  for (const g of GRID_LEVELS) {
+    const dist = Math.abs(g - target);
+    if (dist < bestDist) {
+      bestDist = dist;
+      best = g;
+    }
+  }
+  return best;
+}
+
+// ── Geometry utilities ──
+
+export function nearestPointOnSegment(p: Point, a: Point, b: Point): Point {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) return a;
+  const t = Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / lenSq));
+  return { x: a.x + t * dx, y: a.y + t * dy };
+}
+
+function perpendicularOffset(a: Point, b: Point, dist: number): { dx: number; dy: number } {
+  const ex = b.x - a.x;
+  const ey = b.y - a.y;
+  const len = Math.sqrt(ex * ex + ey * ey);
+  if (len === 0) return { dx: 0, dy: 0 };
+  return { dx: (-ey / len) * dist, dy: (ex / len) * dist };
+}
+
+/** Intersection of two infinite lines (a1→a2) and (b1→b2). Returns null if parallel. */
+function lineLineIntersection(a1: Point, a2: Point, b1: Point, b2: Point): Point | null {
+  const d1x = a2.x - a1.x, d1y = a2.y - a1.y;
+  const d2x = b2.x - b1.x, d2y = b2.y - b1.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-12) return null; // parallel
+  const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / denom;
+  return { x: a1.x + t * d1x, y: a1.y + t * d1y };
+}
+
+function dist2D(a: Point, b: Point): number {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+// ── Snap targets ──
+
+interface SnapTarget {
+  x: number;
+  y: number;
+  type: SnapType;
+  priority: number; // 1 = highest
+  edgeFrom?: Point;
+  edgeTo?: Point;
+}
+
+/**
+ * Box that contains every snap target an element can produce (endpoints,
+ * midpoints, outline edges, bbox corners, polygon vertices / edges).
+ */
+function snapTargetBounds(el: CanonicalElement): Box2 | null {
+  if (el.geometry === 'line' || el.geometry === 'spatial_line') {
+    const hw = Math.max(0, el.strokeWidth / 2);
+    let pad = hw;
+    const arc = (el as LineElement).arc;
+    if (arc) {
+      // The arc stays within 2·radius of its start (radius ≥ half the chord).
+      const chord = Math.hypot(el.end.x - el.start.x, el.end.y - el.start.y);
+      pad += 2 * Math.max(Math.abs(arc.rx), Math.abs(arc.ry), chord / 2);
+      return { minX: el.start.x - pad, minY: el.start.y - pad, maxX: el.start.x + pad, maxY: el.start.y + pad };
+    }
+    return {
+      minX: Math.min(el.start.x, el.end.x) - pad, minY: Math.min(el.start.y, el.end.y) - pad,
+      maxX: Math.max(el.start.x, el.end.x) + pad, maxY: Math.max(el.start.y, el.end.y) + pad,
+    };
+  }
+  if (el.geometry === 'point') {
+    const hw = Math.abs(el.width / 2), hh = Math.abs(el.height / 2);
+    return { minX: el.position.x - hw, minY: el.position.y - hh, maxX: el.position.x + hw, maxY: el.position.y + hh };
+  }
+  if (el.geometry === 'polygon' && el.vertices.length > 0) {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const v of el.vertices) {
+      minX = Math.min(minX, v.x); minY = Math.min(minY, v.y);
+      maxX = Math.max(maxX, v.x); maxY = Math.max(maxY, v.y);
+    }
+    return { minX, minY, maxX, maxY };
+  }
+  return null;
+}
+
+interface SnapIndex {
+  entries: [string, CanonicalElement][];
+  grid: AabbGrid;
+}
+
+/** Per element map (maps are replaced, never mutated, on edit). */
+const snapIndexCache = new WeakMap<ReadonlyMap<string, CanonicalElement>, SnapIndex>();
+
+function snapIndexFor(elements: ReadonlyMap<string, CanonicalElement>): SnapIndex {
+  let index = snapIndexCache.get(elements);
+  if (!index) {
+    const entries = Array.from(elements);
+    // Elements without targets: no box (the grid returns them every time; harmless).
+    const none: Box2 = { minX: NaN, minY: NaN, maxX: NaN, maxY: NaN };
+    const grid = new AabbGrid(entries.map(([, el]) => snapTargetBounds(el) ?? none));
+    index = { entries, grid };
+    snapIndexCache.set(elements, index);
+  }
+  return index;
+}
+
+/**
+ * Elements in map order, limited to those whose targets can fall within
+ * `reach` of the cursor on both axes (no snap pass looks further), so the
+ * result is the same as scanning every element.
+ */
+function elementsNear(
+  elements: ReadonlyMap<string, CanonicalElement>,
+  cursor: Point,
+  reach: number,
+): Iterable<[string, CanonicalElement]> {
+  if (elements.size < 64 || !Number.isFinite(reach)) return elements;
+  const { entries, grid } = snapIndexFor(elements);
+  const hits = grid.query({ minX: cursor.x - reach, minY: cursor.y - reach, maxX: cursor.x + reach, maxY: cursor.y + reach });
+  return hits.map(i => entries[i]);
+}
+
+function extractSnapTargets(
+  elements: ReadonlyMap<string, CanonicalElement>,
+  excludeIds: Set<string>,
+  cursor: Point,
+  reach: number,
+): SnapTarget[] {
+  const targets: SnapTarget[] = [];
+
+  for (const [id, el] of elementsNear(elements, cursor, reach)) {
+    if (excludeIds.has(id)) continue;
+    // Modules opt out of snap-target participation via `isSnapTarget: false`
+    // for abstract markers (grids, rooms, annotations). Grids additionally
+    // have their own snap pass via the `grids` parameter, so excluding them
+    // here avoids double-counting their endpoints as generic "Endpoint" hits.
+    if (getElementModule(el.tableName)?.isSnapTarget === false) continue;
+
+    if (el.geometry === 'line' || el.geometry === 'spatial_line') {
+      const lineEl = el as LineElement | SpatialLineElement;
+      targets.push({ x: el.start.x, y: el.start.y, type: 'endpoint', priority: 1 });
+      targets.push({ x: el.end.x, y: el.end.y, type: 'endpoint', priority: 1 });
+
+      if (lineEl.arc) {
+        const hw = el.strokeWidth / 2;
+        if (hw > 0) {
+          const nearest = nearestPointOnArc(cursor, el.start, el.end, lineEl.arc);
+          const { tangent } = arcPointOnArc(el.start, el.end, lineEl.arc, nearest.t);
+          const nx = -tangent.y, ny = tangent.x;
+          targets.push({ x: nearest.point.x + nx * hw, y: nearest.point.y + ny * hw, type: 'edge', priority: 2 });
+          targets.push({ x: nearest.point.x - nx * hw, y: nearest.point.y - ny * hw, type: 'edge', priority: 2 });
+        }
+        const mid = arcPointOnArc(el.start, el.end, lineEl.arc, 0.5).point;
+        targets.push({ x: mid.x, y: mid.y, type: 'midpoint', priority: 3 });
+      } else {
+        const hw = el.strokeWidth / 2;
+        if (hw > 0) {
+          const off = perpendicularOffset(el.start, el.end, hw);
+          const c0: Point = { x: el.start.x + off.dx, y: el.start.y + off.dy };
+          const c1: Point = { x: el.end.x + off.dx, y: el.end.y + off.dy };
+          const c2: Point = { x: el.end.x - off.dx, y: el.end.y - off.dy };
+          const c3: Point = { x: el.start.x - off.dx, y: el.start.y - off.dy };
+          const edges: [Point, Point][] = [[c0, c1], [c1, c2], [c2, c3], [c3, c0]];
+          for (const [a, b] of edges) {
+            const np = nearestPointOnSegment(cursor, a, b);
+            targets.push({ x: np.x, y: np.y, type: 'edge', priority: 2, edgeFrom: a, edgeTo: b });
+          }
+        }
+        targets.push({ x: (el.start.x + el.end.x) / 2, y: (el.start.y + el.end.y) / 2, type: 'midpoint', priority: 3 });
+      }
+    } else if (el.geometry === 'point') {
+      // Priority 1: center (location point)
+      targets.push({ x: el.position.x, y: el.position.y, type: 'center', priority: 1 });
+
+      // Priority 2: bounding box edges
+      const cx = el.position.x;
+      const cy = el.position.y;
+      const hw = el.width / 2;
+      const hh = el.height / 2;
+      const corners: Point[] = [
+        { x: cx - hw, y: cy - hh }, // top-left
+        { x: cx + hw, y: cy - hh }, // top-right
+        { x: cx + hw, y: cy + hh }, // bottom-right
+        { x: cx - hw, y: cy + hh }, // bottom-left
+      ];
+      for (let i = 0; i < 4; i++) {
+        const a = corners[i];
+        const b = corners[(i + 1) % 4];
+        const np = nearestPointOnSegment(cursor, a, b);
+        targets.push({
+          x: np.x, y: np.y, type: 'edge', priority: 2,
+          edgeFrom: a, edgeTo: b,
+        });
+      }
+    } else if (el.geometry === 'polygon') {
+      const verts = el.vertices;
+
+      // Priority 1: vertices
+      for (const v of verts) {
+        targets.push({ x: v.x, y: v.y, type: 'endpoint', priority: 1 });
+      }
+
+      // Priority 2: edge segments (nearest point projection)
+      for (let i = 0; i < verts.length; i++) {
+        const a = verts[i];
+        const b = verts[(i + 1) % verts.length];
+        const np = nearestPointOnSegment(cursor, a, b);
+        targets.push({
+          x: np.x, y: np.y, type: 'edge', priority: 2,
+          edgeFrom: a, edgeTo: b,
+        });
+      }
+
+      // Priority 3: edge midpoints
+      for (let i = 0; i < verts.length; i++) {
+        const next = verts[(i + 1) % verts.length];
+        targets.push({
+          x: (verts[i].x + next.x) / 2,
+          y: (verts[i].y + next.y) / 2,
+          type: 'midpoint', priority: 3,
+        });
+      }
+    }
+  }
+
+  return targets;
+}
+
+// ── Angle constraint ──
+
+const DEG_TO_RAD = Math.PI / 180;
+
+function computeAngleSnap(
+  input: Point,
+  anchor: Point,
+  threshold: number,
+  angleIncrement: number,
+): { point: Point; angleDeg: number; distance: number } | null {
+  const dx = input.x - anchor.x;
+  const dy = input.y - anchor.y;
+  const rawLen = Math.sqrt(dx * dx + dy * dy);
+  if (rawLen < 1e-9) return null;
+
+  const rawAngle = Math.atan2(dy, dx);
+  const incRad = angleIncrement * DEG_TO_RAD;
+  const snappedAngle = Math.round(rawAngle / incRad) * incRad;
+
+  // Project input onto the snapped-angle ray from anchor
+  const projLen = dx * Math.cos(snappedAngle) + dy * Math.sin(snappedAngle);
+  const projected: Point = {
+    x: anchor.x + projLen * Math.cos(snappedAngle),
+    y: anchor.y + projLen * Math.sin(snappedAngle),
+  };
+
+  const perpDist = dist2D(input, projected);
+  if (perpDist >= threshold) return null;
+
+  // Normalize angle to 0..360
+  let angleDeg = (snappedAngle / DEG_TO_RAD) % 360;
+  if (angleDeg < 0) angleDeg += 360;
+
+  return { point: projected, angleDeg, distance: perpDist };
+}
+
+// ── Main snap function ──
+
+const NO_DISABLED_SNAPS: ReadonlySet<SnapType> = new Set();
+
+export function computeSnap(
+  input: Point,
+  pixelSize: number,
+  elements: ReadonlyMap<string, CanonicalElement> | null,
+  excludeIds: Set<string> = new Set(),
+  anchor?: Point,
+  angleIncrement: number = 45,
+  grids?: readonly GridData[],
+  extraEndpoints?: readonly Point[],
+  connectorPoints?: readonly ConnectorSnapPoint[],
+  projectUnit: ProjectUnit = 'm',
+  disabledSnapTypes: ReadonlySet<SnapType> = NO_DISABLED_SNAPS,
+): SnapResult {
+  const threshold = pixelSize * SNAP_THRESHOLD_PX;
+  const guides: SnapGuide[] = [];
+
+  // ── Connector pass: priority 0.5, beats everything else. ──
+  // Done up front because a successful connector snap short-circuits the
+  // rest of the snap pipeline (no axis-aligned point snaps, no length /
+  // angle suggestions wandering off the port).
+  if (connectorPoints && connectorPoints.length > 0 && !disabledSnapTypes.has('connector')) {
+    let bestConn: { cp: ConnectorSnapPoint; dist: number } | null = null;
+    for (const cp of connectorPoints) {
+      const d = dist2D(input, cp.pos);
+      if (d < threshold && (!bestConn || d < bestConn.dist)) {
+        bestConn = { cp, dist: d };
+      }
+    }
+    if (bestConn) {
+      const { cp } = bestConn;
+      guides.push({ type: 'point', x: cp.pos.x, y: cp.pos.y, snapType: 'connector' });
+      return {
+        point: { x: cp.pos.x, y: cp.pos.y },
+        snapX: { type: 'connector', value: cp.pos.x },
+        snapY: { type: 'connector', value: cp.pos.y },
+        guides,
+        dominantType: 'connector',
+        connectorHit: { hostId: cp.hostId, portRef: cp.portRef },
+      };
+    }
+  }
+
+  let snapX: { type: SnapType; value: number; priority: number } | null = null;
+  let snapY: { type: SnapType; value: number; priority: number } | null = null;
+  let bestDx = threshold;
+  let bestDy = threshold;
+
+  // Track edge snap separately (needs 2D coherent snap)
+  let bestEdge: { target: SnapTarget; dist: number } | null = null;
+
+  // Set when the cursor sits on a point target (vertex, grid intersection):
+  // later angle / length rounding must not drag it off that point.
+  let onPoint = false;
+
+  // Tangent direction of the gridline that captured the cursor (Pass 0b),
+  // used by Pass 5 to keep along-line integer snapping ON the line.
+  let gridLineDir: { ux: number; uy: number; a: Point } | null = null;
+
+  // Every object-snap pass below only accepts targets within
+  // threshold · ALIGN_PERP_FACTOR of the cursor on each axis.
+  let targets = elements ? extractSnapTargets(elements, excludeIds, input, threshold * ALIGN_PERP_FACTOR) : [];
+  // Mix in extra endpoints (e.g. polygon vertices being drawn but not yet
+  // committed to the document) as high-priority snap targets.
+  if (extraEndpoints && extraEndpoints.length > 0) {
+    for (const p of extraEndpoints) {
+      targets.push({ x: p.x, y: p.y, type: 'endpoint', priority: 1 });
+    }
+  }
+  if (underlaySnapProvider && !disabledSnapTypes.has('underlay')) {
+    for (const t of underlaySnapProvider(input, threshold)) {
+      targets.push({ x: t.x, y: t.y, type: t.type, priority: UNDERLAY_PRIORITY[t.type], edgeFrom: t.edgeFrom, edgeTo: t.edgeTo });
+    }
+  }
+  // Drop object-snap targets the user has turned off (endpoint/center/midpoint/edge).
+  if (disabledSnapTypes.size > 0) {
+    targets = targets.filter(t => !disabledSnapTypes.has(t.type));
+  }
+
+  // ── Pass 0: Grid line (轴网) targets ──
+  if (grids && grids.length > 0 && !disabledSnapTypes.has('gridline')) {
+    // Pre-compute extended grid lines
+    const extLines: { a: Point; b: Point }[] = [];
+    for (const g of grids) {
+      const dx = g.x2 - g.x1, dy = g.y2 - g.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-9) continue;
+      const ux = dx / len, uy = dy / len;
+      const ext = 500;
+      extLines.push({
+        a: { x: g.x1 - ux * ext, y: g.y1 - uy * ext },
+        b: { x: g.x2 + ux * ext, y: g.y2 + uy * ext },
+      });
+    }
+
+    // Pass 0a: Grid line intersections — priority 1 (same as endpoints)
+    let bestIntersection: { pt: Point; dist: number; lineI: number; lineJ: number } | null = null;
+    for (let i = 0; i < extLines.length; i++) {
+      for (let j = i + 1; j < extLines.length; j++) {
+        const pt = lineLineIntersection(extLines[i].a, extLines[i].b, extLines[j].a, extLines[j].b);
+        if (!pt) continue;
+        const d = dist2D(input, pt);
+        if (d < threshold && (!bestIntersection || d < bestIntersection.dist)) {
+          bestIntersection = { pt, dist: d, lineI: i, lineJ: j };
+        }
+      }
+    }
+    if (bestIntersection) {
+      onPoint = true;
+      snapX = { type: 'gridline', value: bestIntersection.pt.x, priority: 1 };
+      snapY = { type: 'gridline', value: bestIntersection.pt.y, priority: 1 };
+      guides.push({ type: 'point', x: bestIntersection.pt.x, y: bestIntersection.pt.y, snapType: 'gridline' });
+      // Highlight both intersecting grid lines
+      const li = extLines[bestIntersection.lineI];
+      const lj = extLines[bestIntersection.lineJ];
+      guides.push({ type: 'edge_segment', x: li.a.x, y: li.a.y, x2: li.b.x, y2: li.b.y, snapType: 'gridline' });
+      guides.push({ type: 'edge_segment', x: lj.a.x, y: lj.a.y, x2: lj.b.x, y2: lj.b.y, snapType: 'gridline' });
+    }
+
+    // Pass 0b: Nearest point on grid line — priority 1.5
+    if (!bestIntersection) {
+      let bestGridLine: { target: SnapTarget; dist: number; line: { a: Point; b: Point } } | null = null;
+      for (const line of extLines) {
+        const np = nearestPointOnSegment(input, line.a, line.b);
+        const d = dist2D(input, np);
+        if (d < threshold && (!bestGridLine || d < bestGridLine.dist)) {
+          bestGridLine = {
+            target: { x: np.x, y: np.y, type: 'gridline', priority: 1.5, edgeFrom: line.a, edgeTo: line.b },
+            dist: d,
+            line,
+          };
+        }
+      }
+      if (bestGridLine) {
+        const t = bestGridLine.target;
+        snapX = { type: 'gridline', value: t.x, priority: 1.5 };
+        snapY = { type: 'gridline', value: t.y, priority: 1.5 };
+        if (t.edgeFrom && t.edgeTo) {
+          guides.push({
+            type: 'edge_segment', x: t.edgeFrom.x, y: t.edgeFrom.y,
+            x2: t.edgeTo.x, y2: t.edgeTo.y, snapType: 'gridline',
+          });
+        }
+        // Remember the gridline tangent so Pass 5 can do along-line integer snap.
+        const lineA = bestGridLine.line.a;
+        const lineB = bestGridLine.line.b;
+        const ldx = lineB.x - lineA.x;
+        const ldy = lineB.y - lineA.y;
+        const llen = Math.sqrt(ldx * ldx + ldy * ldy);
+        if (llen > 1e-9) {
+          gridLineDir = { ux: ldx / llen, uy: ldy / llen, a: lineA };
+        }
+      }
+    }
+  }
+
+  // ── Pass 1: Point-like targets (endpoint, center, midpoint) — independent X/Y ──
+  // Proximity limit: only align axes when the perpendicular distance is reasonable.
+  // For direct snap (both axes close), use full threshold.
+  // For axis-only alignment, require the other axis within ALIGN_PERP_FACTOR * threshold.
+  const alignPerpLimit = threshold * ALIGN_PERP_FACTOR;
+  // Aligning with a point far along the other axis captures in a narrower band
+  // than a point under the cursor, so a click near a far terminal's X stays put.
+  const alignThreshold = pixelSize * ALIGN_THRESHOLD_PX;
+
+  for (const t of targets) {
+    if (t.type === 'edge') continue; // handled in pass 2
+
+    const dx = Math.abs(input.x - t.x);
+    const dy = Math.abs(input.y - t.y);
+    const tx = dy < threshold ? threshold : alignThreshold;
+    const ty = dx < threshold ? threshold : alignThreshold;
+
+    if (dx < tx && dy < alignPerpLimit) {
+      if (!snapX || t.priority < snapX.priority || (t.priority === snapX.priority && dx < bestDx)) {
+        bestDx = dx;
+        snapX = { type: t.type, value: t.x, priority: t.priority };
+      }
+    }
+    if (dy < ty && dx < alignPerpLimit) {
+      if (!snapY || t.priority < snapY.priority || (t.priority === snapY.priority && dy < bestDy)) {
+        bestDy = dy;
+        snapY = { type: t.type, value: t.y, priority: t.priority };
+      }
+    }
+  }
+
+  // ── Pass 1b: a point target under the cursor takes both axes ──
+  // Independent X/Y alignment could otherwise combine the X of one vertex with
+  // the Y of a neighbor (e.g. the two faces of a DXF double-line wall).
+  let direct: { t: SnapTarget; d: number } | null = null;
+  for (const t of targets) {
+    if (t.type === 'edge') continue;
+    const d = dist2D(input, t);
+    if (d >= threshold) continue;
+    if (!direct || t.priority < direct.t.priority || (t.priority === direct.t.priority && d < direct.d)) direct = { t, d };
+  }
+  if (direct && direct.t.priority <= Math.min(snapX?.priority ?? Infinity, snapY?.priority ?? Infinity)) {
+    onPoint = true;
+    snapX = { type: direct.t.type, value: direct.t.x, priority: direct.t.priority };
+    snapY = { type: direct.t.type, value: direct.t.y, priority: direct.t.priority };
+  }
+
+  // ── Pass 2: Edge targets — 2D distance, coherent X+Y ──
+  for (const t of targets) {
+    if (t.type !== 'edge') continue;
+    const d = dist2D(input, { x: t.x, y: t.y });
+    if (d >= threshold) continue;
+
+    const currentBestPriority = Math.min(snapX?.priority ?? Infinity, snapY?.priority ?? Infinity);
+    if (t.priority <= currentBestPriority || (!snapX && !snapY)) {
+      if (!bestEdge || d < bestEdge.dist) {
+        bestEdge = { target: t, dist: d };
+      }
+    }
+  }
+
+  // Apply edge snap if it's the best option
+  if (bestEdge) {
+    const t = bestEdge.target;
+    const currentBestPriority = Math.min(snapX?.priority ?? Infinity, snapY?.priority ?? Infinity);
+    if (t.priority <= currentBestPriority || (!snapX && !snapY)) {
+      snapX = { type: 'edge', value: t.x, priority: t.priority };
+      snapY = { type: 'edge', value: t.y, priority: t.priority };
+      // Add edge segment guide
+      if (t.edgeFrom && t.edgeTo) {
+        guides.push({
+          type: 'edge_segment',
+          x: t.edgeFrom.x, y: t.edgeFrom.y,
+          x2: t.edgeTo.x, y2: t.edgeTo.y,
+          snapType: 'edge',
+        });
+      }
+    }
+  }
+
+  // ── Pass 3: Angle constraint ──
+  let angleResult: ReturnType<typeof computeAngleSnap> = null;
+  if (anchor && !disabledSnapTypes.has('angle')) {
+    // Use the current (possibly snapped) point as basis, but apply angle to raw input
+    angleResult = computeAngleSnap(input, anchor, threshold, angleIncrement);
+    if (angleResult) {
+      const currentBestPriority = Math.min(snapX?.priority ?? Infinity, snapY?.priority ?? Infinity);
+      const anglePriority = 3.5;
+      if (anglePriority <= currentBestPriority || (!snapX && !snapY)) {
+        snapX = { type: 'angle', value: angleResult.point.x, priority: anglePriority };
+        snapY = { type: 'angle', value: angleResult.point.y, priority: anglePriority };
+      }
+
+      // Always show the angle guide line when within threshold (even if overridden by higher-priority snap)
+      const extent = 500 * pixelSize; // extend the line far enough
+      const rad = angleResult.angleDeg * DEG_TO_RAD;
+      guides.push({
+        type: 'angle_line',
+        x: anchor.x, y: anchor.y,
+        x2: anchor.x + Math.cos(rad) * extent,
+        y2: anchor.y + Math.sin(rad) * extent,
+        snapType: 'angle',
+        label: `${Math.round(angleResult.angleDeg)}°`,
+      });
+    }
+  }
+
+  // ── Pass 4: Grid-distance snap (snap to round distances from nearest 轴网) ──
+  // Own toggle ("Round distance"); point placements turn it off near geometry.
+  // Measured from the nearest grid line on each axis only (a far grid's round
+  // distances are meaningless here), in a fine step with a pull of a pixel or two.
+  if (grids && grids.length > 0 && !disabledSnapTypes.has('grid')) {
+    const gridSpacing = roundSnapStep(pixelSize);
+    const pull = roundSnapPull(pixelSize);
+    const nearest: [{ d: number; shift: Point } | null, { d: number; shift: Point } | null] = [null, null];
+
+    for (const g of grids) {
+      const gdx = g.x2 - g.x1, gdy = g.y2 - g.y1;
+      const glen = Math.sqrt(gdx * gdx + gdy * gdy);
+      if (glen < 1e-9) continue;
+      const ux = gdx / glen, uy = gdy / glen;
+      const nx = -uy, ny = ux;
+
+      // Perpendicular distance from input to this grid line
+      const perpDist = (input.x - g.x1) * nx + (input.y - g.y1) * ny;
+      const snappedDist = Math.round(perpDist / gridSpacing) * gridSpacing;
+      // Vertical-ish grid → X, horizontal-ish → Y
+      const axis = Math.abs(ux) < Math.abs(uy) ? 0 : 1;
+      const cur = nearest[axis];
+      if (!cur || Math.abs(perpDist) < cur.d) {
+        nearest[axis] = { d: Math.abs(perpDist), shift: { x: input.x + (snappedDist - perpDist) * nx, y: input.y + (snappedDist - perpDist) * ny } };
+      }
+    }
+    const [nx, ny] = nearest;
+    if (nx && Math.abs(nx.shift.x - input.x) < pull && Math.abs(nx.shift.x - input.x) > 1e-9 && (!snapX || 4 < snapX.priority)) {
+      snapX = { type: 'grid', value: nx.shift.x, priority: 4 };
+    }
+    if (ny && Math.abs(ny.shift.y - input.y) < pull && Math.abs(ny.shift.y - input.y) > 1e-9 && (!snapY || 4 < snapY.priority)) {
+      snapY = { type: 'grid', value: ny.shift.y, priority: 4 };
+    }
+  }
+
+  // ── Pass 5: Length snap (adjust distance from anchor to round values) ──
+  // ── Pass 5a: along-gridline integer snap relative to nearest perpendicular gridline ──
+  //
+  // When the cursor is locked onto gridline A, the user wants to know "I'm
+  // N meters from gridline B" (a perpendicular axis). Pull the along-A
+  // position to integer multiples of grid spacing, measured from the
+  // intersection of A and the nearest other gridline. This is independent
+  // of any drag anchor — it works while hovering, while drawing, etc.
+  if (
+    gridLineDir &&
+    snapX?.type === 'gridline' &&
+    snapY?.type === 'gridline' &&
+    grids && grids.length > 0 &&
+    !disabledSnapTypes.has('length')
+  ) {
+    const { ux, uy, a: lineA } = gridLineDir;
+    const preX = snapX.value;
+    const preY = snapY.value;
+    const tCursor = (preX - lineA.x) * ux + (preY - lineA.y) * uy;
+
+    let bestOriginT: number | null = null;
+    let bestOriginDist = Infinity;
+    for (const g of grids) {
+      const gdx = g.x2 - g.x1, gdy = g.y2 - g.y1;
+      const glen = Math.sqrt(gdx * gdx + gdy * gdy);
+      if (glen < 1e-9) continue;
+      const gux = gdx / glen, guy = gdy / glen;
+      // Skip if parallel to A (no intersection, or same line).
+      const dot = ux * gux + uy * guy;
+      if (Math.abs(Math.abs(dot) - 1) < 1e-3) continue;
+      // Intersect parametric line A (lineA + t * u) with line g (g.start + s * gu).
+      // Solve 2x2: tA*ux - tg*gux = g.x1 - lineA.x ; tA*uy - tg*guy = g.y1 - lineA.y
+      const det = -ux * guy + uy * gux;
+      if (Math.abs(det) < 1e-9) continue;
+      const tA = ((g.x1 - lineA.x) * (-guy) - (g.y1 - lineA.y) * (-gux)) / det;
+      const distAlongA = Math.abs(tCursor - tA);
+      if (distAlongA < bestOriginDist) {
+        bestOriginDist = distAlongA;
+        bestOriginT = tA;
+      }
+    }
+
+    if (bestOriginT !== null) {
+      const along = tCursor - bestOriginT;
+      const gridSpacingLen = roundSnapStep(pixelSize);
+      const alongSnapped = Math.round(along / gridSpacingLen) * gridSpacingLen;
+      const lenDiff = Math.abs(along - alongSnapped);
+      const lenThreshold = roundSnapPull(pixelSize);
+      if (Math.abs(along) > 1e-9 && lenDiff < lenThreshold) {
+        const tNew = bestOriginT + alongSnapped;
+        const newX = lineA.x + tNew * ux;
+        const newY = lineA.y + tNew * uy;
+        snapX = { type: 'gridline', value: newX, priority: snapX.priority };
+        snapY = { type: 'gridline', value: newY, priority: snapY.priority };
+        const originX = lineA.x + bestOriginT * ux;
+        const originY = lineA.y + bestOriginT * uy;
+        guides.push({
+          type: 'length_ring',
+          x: originX, y: originY,
+          x2: Math.abs(alongSnapped),
+          snapType: 'length',
+          label: formatLength(Math.abs(alongSnapped), projectUnit),
+        });
+      }
+    }
+  }
+
+  if (anchor && !onPoint && !disabledSnapTypes.has('length')) {
+    const preX = snapX ? snapX.value : input.x;
+    const preY = snapY ? snapY.value : input.y;
+
+    // When the cursor is on a gridline, the anchor-based length-scale logic
+    // below would push the point off the line — skip it. Pass 5a above
+    // already handled along-line integer snapping relative to other grids.
+    if (
+      gridLineDir &&
+      snapX?.type === 'gridline' &&
+      snapY?.type === 'gridline'
+    ) {
+      // nothing to do — Pass 5a already produced the right point.
+    } else {
+      const adx = preX - anchor.x;
+      const ady = preY - anchor.y;
+      const rawLen = Math.sqrt(adx * adx + ady * ady);
+
+      if (rawLen > 1e-9) {
+        const gridSpacingLen = roundSnapStep(pixelSize);
+        const snappedLen = Math.round(rawLen / gridSpacingLen) * gridSpacingLen;
+        const lenDiff = Math.abs(rawLen - snappedLen);
+        const lenThreshold = roundSnapPull(pixelSize);
+
+        if (snappedLen > 0 && lenDiff < lenThreshold) {
+          const scale = snappedLen / rawLen;
+          const newX = anchor.x + adx * scale;
+          const newY = anchor.y + ady * scale;
+          snapX = { type: snapX?.type ?? 'length', value: newX, priority: snapX?.priority ?? 3.5 };
+          snapY = { type: snapY?.type ?? 'length', value: newY, priority: snapY?.priority ?? 3.5 };
+
+          // Add length ring guide (circle at snapped radius)
+          guides.push({
+            type: 'length_ring',
+            x: anchor.x, y: anchor.y,
+            x2: snappedLen, // abuse x2 to carry radius
+            snapType: 'length',
+            label: formatLength(snappedLen, projectUnit),
+          });
+        }
+      }
+    }
+  }
+
+  // ── Build guides ──
+  const finalX = snapX ? snapX.value : input.x;
+  const finalY = snapY ? snapY.value : input.y;
+  const dominantType = snapX && snapY
+    ? (snapX.priority <= snapY.priority ? snapX.type : snapY.type)
+    : (snapX?.type ?? snapY?.type);
+
+  // Axis alignment guides (only for point-like object snaps)
+  const noAxisGuide = new Set<SnapType>(['grid', 'gridline', 'edge', 'angle', 'length']);
+  if (snapX && !noAxisGuide.has(snapX.type)) {
+    guides.push({ type: 'vline', x: snapX.value, y: input.y, snapType: snapX.type });
+  }
+  if (snapY && !noAxisGuide.has(snapY.type)) {
+    guides.push({ type: 'hline', x: input.x, y: snapY.value, snapType: snapY.type });
+  }
+
+  // Snap point marker
+  if (snapX || snapY) {
+    const pointSnapType = dominantType ?? 'grid';
+    // Don't add a duplicate point guide for grid-only snaps
+    if (pointSnapType !== 'grid') {
+      guides.push({ type: 'point', x: finalX, y: finalY, snapType: pointSnapType });
+    }
+  }
+
+  // Grid snaps: no guide lines, just silently snap
+
+  // ── Pass 6: Nearest grid line distances ──
+  let nearestGridX: GridDistanceInfo | undefined;
+  let nearestGridY: GridDistanceInfo | undefined;
+  if (grids && grids.length > 0) {
+    const fp: Point = { x: finalX, y: finalY };
+    let bestDistX = Infinity;
+    let bestDistY = Infinity;
+
+    for (const g of grids) {
+      const dx = g.x2 - g.x1, dy = g.y2 - g.y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len < 1e-9) continue;
+
+      // Unit direction of grid line
+      const ux = dx / len, uy = dy / len;
+      // Perpendicular (normal) direction
+      const nx = -uy, ny = ux;
+
+      // Signed perpendicular distance from finalPoint to the grid line
+      const perpDist = (fp.x - g.x1) * nx + (fp.y - g.y1) * ny;
+      const absDist = Math.abs(perpDist);
+
+      // Project snap point onto the grid line to get the closest point
+      const projT = (fp.x - g.x1) * ux + (fp.y - g.y1) * uy;
+      const projPt: Point = { x: g.x1 + projT * ux, y: g.y1 + projT * uy };
+
+      // Classify as X-distance or Y-distance based on grid line orientation
+      // A mostly-vertical grid line (|ux| < |uy|) → measures X distance
+      // A mostly-horizontal grid line (|ux| >= |uy|) → measures Y distance
+      if (Math.abs(ux) < Math.abs(uy)) {
+        // Vertical-ish grid line → X distance
+        if (absDist < bestDistX) {
+          bestDistX = absDist;
+          nearestGridX = { distance: absDist, gridPoint: projPt };
+        }
+      } else {
+        // Horizontal-ish grid line → Y distance
+        if (absDist < bestDistY) {
+          bestDistY = absDist;
+          nearestGridY = { distance: absDist, gridPoint: projPt };
+        }
+      }
+    }
+  }
+
+  return {
+    point: { x: finalX, y: finalY },
+    snapX: snapX ? { type: snapX.type, value: snapX.value } : null,
+    snapY: snapY ? { type: snapY.type, value: snapY.value } : null,
+    guides,
+    dominantType,
+    nearestGridX,
+    nearestGridY,
+  };
+}
+
+// ── Pixel size helper ──
+
+export function computePixelSize(
+  screenToSvg: (cx: number, cy: number) => { x: number; y: number } | null,
+): number {
+  const a = screenToSvg(0, 0);
+  const b = screenToSvg(1, 0);
+  if (!a || !b) return 0.01;
+  return Math.abs(b.x - a.x) || 0.01;
+}
+
+const EMPTY_MAP = new Map<string, CanonicalElement>();
+
+/** Convenience: snap a point using ToolContext-like info */
+export function snapPoint(
+  raw: Point,
+  screenToSvg: (cx: number, cy: number) => { x: number; y: number } | null,
+  elements: ReadonlyMap<string, CanonicalElement> | null | undefined,
+  excludeIds?: Set<string>,
+  anchor?: Point,
+  angleIncrement?: number,
+  grids?: readonly GridData[],
+  extraEndpoints?: readonly Point[],
+  connectorPoints?: readonly ConnectorSnapPoint[],
+  projectUnit: ProjectUnit = 'm',
+  disabledSnapTypes: ReadonlySet<SnapType> = NO_DISABLED_SNAPS,
+): SnapResult {
+  const pixelSize = computePixelSize(screenToSvg);
+  return computeSnap(
+    raw, pixelSize, elements ?? EMPTY_MAP, excludeIds, anchor, angleIncrement,
+    grids, extraEndpoints, connectorPoints, projectUnit, disabledSnapTypes,
+  );
+}

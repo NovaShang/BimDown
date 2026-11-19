@@ -1,0 +1,146 @@
+import { SHEETS_TOGGLE_EVENT } from '../sheets/events.ts';
+import { useTranslation } from 'react-i18next';
+import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
+import { DISCIPLINES } from '../model/tableRegistry.ts';
+import type { ViewMode } from '../state/editorTypes.ts';
+import { Select, SelectTrigger, SelectContent, SelectItem } from './ui/select';
+import { Separator } from './ui/separator';
+import { cn } from '../lib/utils';
+import { getProjectUnits } from '../utils/units.ts';
+import { Icon } from './Icons.tsx';
+import { WARNINGS_TOGGLE_EVENT, WarnIcon } from './WarningsPanel.tsx';
+
+export default function TopBar({ warningCount = 0 }: { warningCount?: number }) {
+  const { t } = useTranslation();
+  const state = useEditorState();
+  const { viewMode, activeDiscipline, showArchContext } = state;
+  const projectUnit = getProjectUnits(state);
+  const dispatch = useEditorDispatch();
+
+  const showArchToggle = activeDiscipline !== 'architecture' && activeDiscipline !== 'all';
+
+  return (
+    <div data-tour="topbar" data-canvas-overlay="top" className="absolute top-3 max-md:top-16 left-1/2 z-30 flex -translate-x-1/2 items-center gap-0.5 glass-panel rounded-xl border border-border px-1.5 py-1 shadow-[var(--shadow-panel)] select-none animate-in fade-in slide-in-from-top-2 duration-200">
+      {/* Discipline selector */}
+      <Select value={activeDiscipline ?? DISCIPLINES[0]} onValueChange={(v) => { if (v) dispatch({ type: 'SET_DISCIPLINE', discipline: v }); }}>
+        <SelectTrigger className="h-8 gap-1.5 border-none bg-transparent px-2.5 text-[11px] font-medium shadow-none hover:bg-accent">
+          <span>{t(`discipline.${activeDiscipline}`, activeDiscipline ? activeDiscipline.charAt(0).toUpperCase() + activeDiscipline.slice(1) : '')}</span>
+        </SelectTrigger>
+        <SelectContent side="bottom" sideOffset={8} alignItemWithTrigger={false}>
+          {DISCIPLINES.map(d => (
+            <SelectItem key={d} value={d} className="text-[11px]">
+              {t(`discipline.${d}`, d.charAt(0).toUpperCase() + d.slice(1))}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+
+      {/* Architecture context toggle */}
+      {showArchToggle && (
+        <button
+          className={cn(
+            'flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none px-2 text-[10px] transition-all',
+            showArchContext
+              ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+          onClick={() => dispatch({ type: 'TOGGLE_ARCH_CONTEXT' })}
+          title={t('topbar.archContext', 'Show architecture as context')}
+        >
+          {t('topbar.archContextShort', 'Arch')}
+        </button>
+      )}
+
+      {/* Architecture view: show structural columns / walls / slabs */}
+      {activeDiscipline === 'architecture' && (
+        <button
+          className={cn(
+            'flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none px-2 text-[10px] transition-all',
+            state.viewOptions.showStructureInArch
+              ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+              : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+          )}
+          onClick={() => dispatch({ type: 'TOGGLE_VIEW_OPTION', key: 'showStructureInArch' })}
+          title={t('topbar.structContext')}
+        >
+          {t('topbar.structContextShort')}
+        </button>
+      )}
+
+      <Separator orientation="vertical" className="mx-0.5 self-stretch" />
+
+      {/* Project unit indicator (read-only in phase 1) */}
+      <div
+        className="flex h-8 select-none items-center px-2 text-[10px] font-medium tracking-wide text-muted-foreground"
+        title={t('topbar.projectUnit', 'Project unit (set in project_metadata.json)')}
+        data-testid="project-unit"
+      >
+        {t(`unit.${projectUnit}`, projectUnit)}
+      </div>
+
+      <Separator orientation="vertical" className="mx-0.5 self-stretch" />
+
+      {/* 2D / 3D toggle */}
+      <div className="flex items-center gap-0.5">
+        {(['2d', '3d'] as const).map((mode: ViewMode) => (
+          <button
+            key={mode}
+            className={cn(
+              'flex size-8 cursor-pointer items-center justify-center rounded-lg border-none text-[11px] font-semibold uppercase transition-all',
+              viewMode === mode
+                ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+                : 'bg-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
+            onClick={() => dispatch({ type: 'SET_VIEW_MODE', mode })}
+          >
+            {mode}
+          </button>
+        ))}
+      </div>
+
+      <Separator orientation="vertical" className="mx-0.5 self-stretch" />
+
+      {/* Schedules (quantities) */}
+      <button
+        className="flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+        onClick={() => window.dispatchEvent(new CustomEvent('bimdown:toggle-schedule'))}
+        title={t('schedule.open')}
+        data-testid="open-schedule"
+      >
+        <Icon name="schedule" width={15} height={15} />
+        <span className="max-md:hidden">{t('schedule.short')}</span>
+      </button>
+
+      {/* Warnings (Review Warnings): count badge, opens the warnings panel */}
+      <button
+        className={cn(
+          'relative flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] transition-all hover:bg-accent hover:text-foreground',
+          warningCount > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-muted-foreground',
+        )}
+        onClick={() => window.dispatchEvent(new CustomEvent(WARNINGS_TOGGLE_EVENT))}
+        title={t('warnings.open', { count: warningCount })}
+        data-testid="open-warnings"
+      >
+        <WarnIcon />
+        {warningCount > 0 && (
+          <span data-testid="warnings-badge" className="min-w-4 rounded-full bg-amber-500 px-1 text-center text-[9px] font-semibold leading-4 text-white tabular-nums">
+            {warningCount > 99 ? '99+' : warningCount}
+          </span>
+        )}
+      </button>
+
+      {/* Sheets (title block + placed views, PDF / DXF sheet sets) */}
+      <button
+        className="flex h-8 cursor-pointer items-center gap-1 rounded-lg border-none bg-transparent px-2 text-[10px] text-muted-foreground transition-all hover:bg-accent hover:text-foreground"
+        onClick={() => window.dispatchEvent(new CustomEvent(SHEETS_TOGGLE_EVENT))}
+        title={t('sheets.open')}
+        data-testid="open-sheets"
+      >
+        <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round">
+          <rect x="1.5" y="3" width="13" height="10" rx="1" /><path d="M10.5 3v10M10.5 9.5h4M3.5 5.5h5v4h-5z" />
+        </svg>
+        <span className="max-md:hidden">{t('sheets.short')}</span>
+      </button>
+    </div>
+  );
+}

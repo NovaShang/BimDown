@@ -1,0 +1,184 @@
+/**
+ * MEP line elements: duct, pipe, conduit, cable_tray.
+ * All share spatial-line archetype + sweep-along-path 3D rendering.
+ * The four modules are produced by a single factory and differ only in
+ * defaults, colors, and zIndex.
+ *
+ * (topo-line connector wiring → Step 6 Part B, paired with bimdown-spec schema.)
+ */
+import type { ReactNode } from 'react';
+import type { ElementModule, GeometryContext } from './archetypes.ts';
+import { registerElement } from './registry.ts';
+import { resolvePropertyFields } from './_propertyFields.ts';
+import type { CanonicalElement } from '../model/elements.ts';
+import { BOOLEAN_OPTIONS, DUCT_SHAPE_OPTIONS, PIPE_MATERIAL_OPTIONS } from './_options.ts';
+import type { ToolbarVariant } from './archetypes.ts';
+import { SLOPE_KEY, rememberedRouteAttrs } from '../mep/routeTool.ts';
+
+/** Run height while routing; a change mid-run inserts a rise / drop. */
+const OFFSET_FIELD = { key: 'start_z', label: 'Offset', type: 'number', unit: 'm', step: 0.1 };
+/** Top of a vertical segment (Vertical mode). */
+const RISER_TOP_FIELD = { key: 'end_z', label: 'Riser Top', type: 'number', unit: 'm', step: 0.1 };
+import {
+  mepLineGeometry, mepLineDraw2D, mepLineDraw3D, type MepLineFacts,
+} from './_mepLineShared.tsx';
+
+interface MepModuleOpts {
+  table: string;
+  prefix: string;
+  /** Extra CSV columns beyond the shared MEP line set. */
+  extraHeaders?: string[];
+  defaults: Record<string, string>;
+  drawingFields: any[];
+  defaultShape: 'round' | 'rect';
+  fill2D: string;
+  stroke2D: string;
+  strokeWidth2D: number;
+  layerStyle: any;
+  renderZIndex: number;
+  /** Toolbar tools (rigid / flexible / oval); each remembers its own settings. */
+  toolbarVariants?: ToolbarVariant[];
+}
+
+function makeMepLineModule(opts: MepModuleOpts): ElementModule<MepLineFacts> {
+  const csvHeaders = [
+    'number', 'base_offset', 'start_z', 'end_z', 'shape',
+    'size_x', 'size_y', 'system_type', 'from', 'to',
+    ...(opts.extraHeaders ?? []),
+  ];
+  return {
+    table: opts.table,
+    discipline: 'mep',
+    archetype: 'topo-line',
+    prefix: opts.prefix,
+    csvHeaders,
+    defaults: opts.defaults,
+    drawingFields: opts.drawingFields,
+    // Re-picking the tool keeps the last system / size / offset / slope.
+    placementDefaults: ctx => rememberedRouteAttrs(opts.table, ctx.variantId),
+    ...(opts.toolbarVariants ? { toolbarVariants: opts.toolbarVariants } : {}),
+    // The toolbar's Offset / Riser Top relabel start_z / end_z for routing;
+    // the property panel keeps the plain Start Z / End Z.
+    propertyFields: resolvePropertyFields(csvHeaders, opts.drawingFields.filter(f => f.key !== 'start_z' && f.key !== 'end_z')),
+    layerStyle: opts.layerStyle,
+    renderZIndex: opts.renderZIndex,
+
+    geometry(el: CanonicalElement, ctx: GeometryContext): MepLineFacts | null {
+      return mepLineGeometry(el, ctx, opts.table, opts.defaultShape);
+    },
+
+    draw2D(facts, drawCtx): ReactNode {
+      const stroke = drawCtx.selected ? '#3a7bff' : opts.stroke2D;
+      return mepLineDraw2D(facts, opts.fill2D, stroke, opts.strokeWidth2D, drawCtx.selected);
+    },
+
+    draw3D(facts, drawCtx): ReactNode {
+      return mepLineDraw3D(facts, drawCtx.selected || drawCtx.hovered);
+    },
+
+    bbox(facts) {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const p of facts.footprint) {
+        if (p.x < minX) minX = p.x;
+        if (p.y < minY) minY = p.y;
+        if (p.x > maxX) maxX = p.x;
+        if (p.y > maxY) maxY = p.y;
+      }
+      return { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+    },
+  };
+}
+
+export const ductModule = makeMepLineModule({
+  table: 'duct', prefix: 'du',
+  extraHeaders: ['insulation_thickness', 'flexible'],
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'rect', size_x: '0.4', size_y: '0.3', system_type: '' },
+  drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
+    { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'shape', label: 'Shape', type: 'select', options: DUCT_SHAPE_OPTIONS },
+    OFFSET_FIELD,
+    RISER_TOP_FIELD,
+    { key: 'flexible', label: 'Flexible', type: 'select', options: BOOLEAN_OPTIONS },
+  ],
+  defaultShape: 'rect',
+  fill2D: '#00b4d815',
+  stroke2D: '#00b4d8',
+  strokeWidth2D: 0.025,
+  layerStyle: { displayName: 'Ducts', color: '#00b4d8', icon: '═', order: 10 },
+  renderZIndex: 80,
+  toolbarVariants: [
+    { id: 'rigid', label: 'layer.duct', icon: '═', iconName: 'duct', placementType: 'spatial_line' },
+    { id: 'flex', label: 'layer.flex_duct', icon: '≈', iconName: 'duct', placementType: 'spatial_line',
+      defaults: { flexible: 'true', shape: 'round', size_x: '0.2', size_y: '0.2' } },
+    { id: 'oval', label: 'layer.oval_duct', icon: '⬭', iconName: 'duct', placementType: 'spatial_line',
+      defaults: { flexible: 'false', shape: 'oval', size_x: '0.5', size_y: '0.25' } },
+  ],
+});
+
+export const pipeModule = makeMepLineModule({
+  table: 'pipe', prefix: 'pi',
+  extraHeaders: ['insulation_thickness', 'material', 'flexible'],
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.05', size_y: '0.05', system_type: '' },
+  drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
+    { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.01, step: 0.01 },
+    { key: 'material', label: 'Material', type: 'select', options: PIPE_MATERIAL_OPTIONS },
+    OFFSET_FIELD,
+    { key: SLOPE_KEY, label: 'Slope', type: 'number', unit: '%', min: -10, max: 10, step: 0.5 },
+    RISER_TOP_FIELD,
+    { key: 'flexible', label: 'Flexible', type: 'select', options: BOOLEAN_OPTIONS },
+  ],
+  defaultShape: 'round',
+  fill2D: '#06d6a015',
+  stroke2D: '#06d6a0',
+  strokeWidth2D: 0.02,
+  layerStyle: { displayName: 'Pipes', color: '#06d6a0', icon: '║', order: 11 },
+  renderZIndex: 81,
+  toolbarVariants: [
+    { id: 'rigid', label: 'layer.pipe', icon: '║', iconName: 'pipe', placementType: 'spatial_line' },
+    { id: 'flex', label: 'layer.flex_pipe', icon: '≈', iconName: 'pipe', placementType: 'spatial_line',
+      defaults: { flexible: 'true', size_x: '0.02', size_y: '0.02' } },
+  ],
+});
+
+export const conduitModule = makeMepLineModule({
+  table: 'conduit', prefix: 'co',
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'round', size_x: '0.025', size_y: '0.025', system_type: '' },
+  drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
+    { key: 'size_x', label: 'Diameter', type: 'number', unit: 'm', min: 0.005, step: 0.005 },
+    OFFSET_FIELD,
+    RISER_TOP_FIELD,
+  ],
+  defaultShape: 'round',
+  fill2D: '#ffd16615',
+  stroke2D: '#ffd166',
+  strokeWidth2D: 0.015,
+  layerStyle: { displayName: 'Conduits', color: '#ffd166', icon: '│', order: 14 },
+  renderZIndex: 83,
+});
+
+export const cableTrayModule = makeMepLineModule({
+  table: 'cable_tray', prefix: 'ct',
+  defaults: { base_offset: '0', start_z: '3', end_z: '3', shape: 'rect', size_x: '0.1', size_y: '0.1', system_type: '' },
+  drawingFields: [
+    { key: 'system_type', label: 'System Type', type: 'select' },
+    { key: 'size_x', label: 'Width', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    { key: 'size_y', label: 'Height', type: 'number', unit: 'm', min: 0.05, step: 0.05 },
+    OFFSET_FIELD,
+    RISER_TOP_FIELD,
+  ],
+  defaultShape: 'rect',
+  fill2D: '#ffd16615',
+  stroke2D: '#ffd166',
+  strokeWidth2D: 0.02,
+  layerStyle: { displayName: 'Cable Trays', color: '#ffd166', icon: '╤', order: 15 },
+  renderZIndex: 82,
+});
+
+registerElement(ductModule);
+registerElement(pipeModule);
+registerElement(conduitModule);
+registerElement(cableTrayModule);

@@ -1,0 +1,150 @@
+/**
+ * Editor document → connectivity-check model (mepCheck.ts) and a system
+ * summary for the system browser. Coordinates stay level-relative.
+ */
+import type { CanonicalElement, LineElement, SpatialLineElement, PointElement } from '../model/elements.ts';
+import { isMepLineTable } from '../model/mepTopology.ts';
+import { endZ } from '../model/mepSplit.ts';
+import { checkMep, trayFills, type TrayFill, type MepCircuitIn, type MepModelIn, type MepProblem, type Vec3 } from './mepCheck.ts';
+import { inSystem, UNASSIGNED } from './mepView.ts';
+import type { LayerData, ProjectData } from '../types.ts';
+import { crossLevelRefs } from './externalRefs.ts';
+
+type MepCurve = LineElement | SpatialLineElement;
+
+const num = (v: string | undefined, d = 0) => { const n = parseFloat(v ?? ''); return Number.isFinite(n) ? n : d; };
+
+/** What the other levels (and global/) contribute: refs their runs make and the hosts they hold. */
+export interface ExternalMep { refs: string[]; hosts: string[] }
+
+const HOST_TABLES = new Set(['equipment', 'terminal', 'mep_node']);
+
+export function externalMep(project: ProjectData | null, currentLevel: string): ExternalMep {
+  const refs: string[] = [];
+  const hosts: string[] = [];
+  const scan = (layers: readonly LayerData[]) => {
+    refs.push(...crossLevelRefs(layers));
+    for (const layer of layers) {
+      if (HOST_TABLES.has(layer.tableName)) for (const id of layer.csvRows.keys()) hosts.push(id);
+    }
+  };
+  if (project) {
+    for (const [levelId, floor] of project.floors) if (levelId !== currentLevel) scan(floor.layers);
+    scan(project.globalLayers);
+  }
+  return { refs, hosts };
+}
+
+/** A circuit row as check input (phases, power factor, cable routing). */
+export function circuitIn(id: string, hostId: string, a: Record<string, string | undefined>): MepCircuitIn {
+  return {
+    id, hostId, number: a.number || '', voltage: num(a.voltage), rating: num(a.rating),
+    phase: (a.phase ?? '').trim(), poles: num(a.poles), powerFactor: num(a.power_factor),
+    cableSize: num(a.cable_size), trays: (a.cable_trays ?? '').split(/[;,\s]+/).map(x => x.trim()).filter(Boolean),
+  };
+}
+
+export function buildMepModel(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep): MepModelIn {
+  const m: MepModelIn = { curves: [], hosts: [], ports: [], circuits: [], complete: false, externalRefs: ext?.refs, externalHosts: ext?.hosts };
+  const hosts = new Map<string, PointElement>();
+  for (const el of elements.values()) {
+    if (isMepLineTable(el.tableName) && (el.geometry === 'line' || el.geometry === 'spatial_line')) {
+      const c = el as MepCurve;
+      m.curves.push({
+        id: c.id, table: c.tableName,
+        a: [c.start.x, c.start.y, endZ(c, 'start')], b: [c.end.x, c.end.y, endZ(c, 'end')],
+        from: c.attrs.from ?? '', to: c.attrs.to ?? '', system: (c.attrs.system_type ?? '').trim(),
+        shape: c.attrs.shape || (c.tableName === 'duct' || c.tableName === 'cable_tray' ? 'rect' : 'round'),
+        w: num(c.attrs.size_x), h: num(c.attrs.size_y),
+        ...(c.tableName === 'cable_tray' && num(c.attrs.max_fill) > 0 ? { maxFill: num(c.attrs.max_fill) } : {}),
+      });
+    } else if ((el.tableName === 'equipment' || el.tableName === 'terminal' || el.tableName === 'mep_node') && el.geometry === 'point') {
+      const p = el as PointElement;
+      hosts.set(p.id, p);
+      m.hosts.push({
+        id: p.id, table: el.tableName, pos: [p.position.x, p.position.y, num(p.attrs.base_offset)],
+        kind: (p.attrs.kind ?? '').trim(), fitting: (p.attrs.fitting ?? '').trim(),
+        system: (p.attrs.system_type ?? '').trim(), circuitId: (p.attrs.circuit_id ?? '').trim(), load: num(p.attrs.load),
+        flow: num(p.attrs.flow),
+      });
+    } else if (el.tableName === 'circuit') {
+      m.circuits!.push(circuitIn(el.id, el.hostId || el.attrs.host_id || '', el.attrs));
+    }
+  }
+  for (const el of elements.values()) {
+    if (el.tableName !== 'connector') continue;
+    const hostId = el.hostId || el.attrs.host_id || '';
+    const host = hosts.get(hostId);
+    if (!host || !el.attrs.name) continue;
+    const rot = (num(host.attrs.rotation) * Math.PI) / 180;
+    const ox = num(el.attrs.offset_x), oy = num(el.attrs.offset_y), oz = num(el.attrs.offset_z);
+    const pos: Vec3 = [
+      host.position.x + ox * Math.cos(rot) - oy * Math.sin(rot),
+      host.position.y + ox * Math.sin(rot) + oy * Math.cos(rot),
+      num(host.attrs.base_offset) + oz,
+    ];
+    m.ports.push({
+      hostId, name: el.attrs.name, pos, system: (el.attrs.system_type ?? '').trim(), domain: (el.attrs.domain ?? '').trim(),
+      shape: (el.attrs.shape ?? '').trim(), w: num(el.attrs.size_w), h: num(el.attrs.size_h), flowDir: (el.attrs.flow_dir ?? '').trim(),
+    });
+  }
+  return m;
+}
+
+export function checkDocument(elements: ReadonlyMap<string, CanonicalElement>, ext?: ExternalMep, opts: { trayFillLimit?: number } = {}): MepProblem[] {
+  return checkMep({ ...buildMepModel(elements, ext), trayFillLimit: opts.trayFillLimit });
+}
+
+/** Fill of every cable tray on the level (cables routed by circuits, conduits laid in it). */
+export function documentTrayFills(elements: ReadonlyMap<string, CanonicalElement>, trayFillLimit?: number): TrayFill[] {
+  return trayFills({ ...buildMepModel(elements), trayFillLimit });
+}
+
+export interface SystemRow {
+  system: string;
+  curves: number;
+  length: number;
+  devices: number;
+  ids: string[];
+}
+
+/** Members of each system_type on this level (curves, devices, fittings); MEP elements without one under UNASSIGNED, last. */
+export function systemRows(elements: ReadonlyMap<string, CanonicalElement>): SystemRow[] {
+  const by = new Map<string, SystemRow>();
+  const row = (s: string) => {
+    let r = by.get(s);
+    if (!r) by.set(s, r = { system: s, curves: 0, length: 0, devices: 0, ids: [] });
+    return r;
+  };
+  for (const el of elements.values()) {
+    if (!isMepMember(el)) continue;
+    const sys = (el.attrs.system_type ?? '').trim();
+    if (isMepLineTable(el.tableName)) {
+      const c = el as MepCurve;
+      const r = row(sys || UNASSIGNED);
+      r.curves++;
+      r.length += Math.hypot(c.end.x - c.start.x, c.end.y - c.start.y, endZ(c, 'end') - endZ(c, 'start'));
+      r.ids.push(c.id);
+    } else {
+      for (const s of sys ? sys.split(',').map(x => x.trim()).filter(Boolean) : [UNASSIGNED]) {
+        const r = row(s);
+        if (el.tableName !== 'mep_node') r.devices++;
+        r.ids.push(el.id);
+      }
+    }
+  }
+  return [...by.values()].sort((a, b) => (a.system === UNASSIGNED ? 1 : 0) - (b.system === UNASSIGNED ? 1 : 0) || a.system.localeCompare(b.system));
+}
+
+/** Curves, devices and fittings: what the system browser lists. */
+function isMepMember(el: CanonicalElement): boolean {
+  if (isMepLineTable(el.tableName)) return el.geometry === 'line' || el.geometry === 'spatial_line';
+  return el.tableName === 'equipment' || el.tableName === 'terminal' || el.tableName === 'mep_node';
+}
+
+/** Ids of everything on `system` (for select / isolate). */
+export function systemMemberIds(elements: ReadonlyMap<string, CanonicalElement>, system: string): string[] {
+  const out: string[] = [];
+  for (const el of elements.values()) if (isMepMember(el) && inSystem(el.attrs.system_type, system)) out.push(el.id);
+  return out;
+}

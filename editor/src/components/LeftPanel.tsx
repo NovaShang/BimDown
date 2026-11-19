@@ -1,0 +1,504 @@
+import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { Level, CsvRow, SystemDef } from '../types.ts';
+import { LAYER_STYLES } from '../types.ts';
+import { csvHeadersForTable } from '../model/tableRegistry.ts';
+import { useEditorState, useEditorDispatch } from '../state/EditorContext.tsx';
+import { PROPERTY_FIELD_DEFS } from '../elements/_propertyFields.ts';
+import type { LayerGroup } from '../state/editorTypes.ts';
+import { STRUCTURE_IN_ARCH_TABLES } from '../state/selectors.ts';
+import { ScrollArea } from './ui/scroll-area';
+import { Icon } from './Icons.tsx';
+import { cn } from '../lib/utils';
+import AddLevelDialog from './AddLevelDialog.tsx';
+import ConfirmDialog from './ConfirmDialog.tsx';
+import MepSystemDialog from './MepSystemDialog.tsx';
+import MepSystemPresetsDialog from './MepSystemPresetsDialog.tsx';
+import { usedSystemCodes } from '../mep/systemPresets.ts';
+import { collectLevels } from '../schedule/quantities.ts';
+import MepPanel from '../mep/MepPanel.tsx';
+import { resolveMepSystemColor } from '../elements/_mepLineShared.tsx';
+import { formatElevation, getProjectUnits } from '../utils/units.ts';
+import { useDataSource } from '../utils/DataSourceContext.tsx';
+import { persistMepSystems } from '../utils/persist.ts';
+import UnderlayPanel from '../underlay/UnderlayPanel.tsx';
+import { openDialog, showNotice } from '../state/modifyUi.ts';
+import { levelLabel } from '../model/displayNames.ts';
+
+interface LeftPanelProps {
+  levels: Level[];
+  currentLevel: string;
+  layerGroups: LayerGroup[];
+  visibleLayers: Set<string>;
+}
+
+/** Inline context menu for level items */
+function LevelContextMenu({
+  x, y, onRename, onDuplicate, onCopyHere, onDelete, onClose,
+}: {
+  x: number; y: number;
+  onRename: () => void; onDuplicate: () => void; onCopyHere?: () => void; onDelete: () => void; onClose: () => void;
+}) {
+  const { t } = useTranslation();
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handle = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
+    };
+    window.addEventListener('mousedown', handle);
+    return () => window.removeEventListener('mousedown', handle);
+  }, [onClose]);
+
+  return (
+    <div
+      ref={ref}
+      className="glass-panel fixed z-50 min-w-[120px] rounded-md border border-border py-1 shadow-xl"
+      style={{ left: x, top: y }}
+    >
+      <button
+        className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
+        onClick={() => { onRename(); onClose(); }}
+      >
+        {t('levels.edit')}…
+      </button>
+      <button
+        className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
+        data-testid="level-duplicate"
+        onClick={() => { onDuplicate(); onClose(); }}
+      >
+        {t('levels.duplicate')}…
+      </button>
+      {onCopyHere && (
+        <button
+          className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-foreground hover:bg-accent"
+          data-testid="level-copy-here"
+          onClick={() => { onCopyHere(); onClose(); }}
+        >
+          {t('levels.copySelectionHere')}
+        </button>
+      )}
+      <button
+        className="flex w-full cursor-pointer items-center gap-2 border-none bg-transparent px-3 py-1.5 text-left text-[11px] text-red-400 hover:bg-accent"
+        onClick={() => { onDelete(); onClose(); }}
+      >
+        {t('panel.delete')}
+      </button>
+    </div>
+  );
+}
+
+
+
+// ─── Element List (expandable per layer) ─────────────────────────────────────
+
+/** Fields not useful in the compact element list */
+const SKIP_FIELDS = new Set([
+  'number', 'base_offset', 'top_level_id', 'top_offset', 'host_id',
+  'x', 'y', 'position', 'start_z', 'end_z', 'from', 'to',
+]);
+
+interface ColumnDef {
+  key: string;
+  label: string;
+  unit?: string;
+}
+
+function getColumns(tableName: string): ColumnDef[] {
+  const headers = csvHeadersForTable(tableName);
+  if (headers.length === 0) return [];
+  return headers
+    .filter(h => !SKIP_FIELDS.has(h))
+    .slice(0, 2)
+    .map(h => {
+      const pf = PROPERTY_FIELD_DEFS[h];
+      return {
+        key: h,
+        label: pf?.label ?? h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()),
+        unit: pf?.unit,
+      };
+    });
+}
+
+function formatCellValue(val: string | undefined, unit?: string): string {
+  if (!val) return '–';
+  if (unit && !isNaN(Number(val))) return `${val}${unit}`;
+  return val;
+}
+
+function ElementList({ tableName, csvRows, selectedIds, onSelect }: {
+  tableName: string;
+  csvRows: Map<string, CsvRow>;
+  selectedIds: Set<string>;
+  onSelect: (id: string) => void;
+}) {
+  const columns = getColumns(tableName);
+
+  return (
+    <div className="mb-0.5 py-0.5 pl-7">
+      {Array.from(csvRows.entries()).map(([id, row]) => {
+        const isSelected = selectedIds.has(id);
+        const colonIdx = id.indexOf(':');
+        const rawId = colonIdx >= 0 ? id.slice(colonIdx + 1) : id;
+        return (
+          <button
+            key={id}
+            className={cn(
+              'flex w-full items-center gap-1.5 rounded px-2 py-[3px] text-[10px] transition-colors',
+              'border-none cursor-pointer text-left',
+              isSelected
+                ? 'bg-[var(--accent-dim)] text-[var(--color-accent)]'
+                : 'text-muted-foreground hover:bg-accent hover:text-foreground'
+            )}
+            onClick={() => onSelect(id)}
+          >
+            <span className="shrink-0 tabular-nums font-medium">{row.number || rawId}</span>
+            <span className="flex-1 truncate text-muted-foreground/60 tabular-nums">
+              {columns.map(col => formatCellValue(row[col.key], col.unit)).join(' · ')}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main LeftPanel ──────────────────────────────────────────────────────────
+
+export default function LeftPanel({
+  levels,
+  currentLevel,
+  layerGroups,
+  visibleLayers,
+}: LeftPanelProps) {
+  const { t } = useTranslation();
+  const dispatch = useEditorDispatch();
+  const editorState = useEditorState();
+  const { activeDiscipline, selectedIds, readonly, project } = editorState;
+  const projectUnit = getProjectUnits(editorState);
+  const mepSystems: SystemDef[] = project?.mepSystems ?? [];
+  const ds = useDataSource();
+  const [showAddLevel, setShowAddLevel] = useState(false);
+  const [expandedLayer, setExpandedLayer] = useState<string | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; level: Level } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<Level | null>(null);
+  /** When non-null, opens the MEP system dialog. `null` slot is the add path;
+   *  passing an existing SystemDef opens it in edit mode. */
+  const [mepSystemDialog, setMepSystemDialog] = useState<{ open: boolean; initial?: SystemDef }>({ open: false });
+  /** System library picker; holds the system codes the model uses while open. */
+  const [presetCodes, setPresetCodes] = useState<Set<string> | null>(null);
+  const openPresets = () => {
+    if (!project) return;
+    const { levels, global } = collectLevels(project, editorState.document?.levelId, editorState.document?.elements);
+    setPresetCodes(usedSystemCodes([...global, ...levels.flatMap(l => l.elements)]));
+  };
+
+  // Persist any change to MEP systems via the data source. Dispatch updates
+  // local state immediately so the legend re-renders before the file write
+  // completes; the file-watcher loop in App.tsx re-syncs on disk change.
+  const saveMepSystems = (next: SystemDef[]) => {
+    dispatch({ type: 'UPDATE_MEP_SYSTEMS', mepSystems: next });
+    persistMepSystems(next, ds).catch(err => console.error('Persist MEP systems failed:', err));
+  };
+
+  const handleMepSystemSubmit = (system: SystemDef) => {
+    if (system.id) {
+      // Edit: replace by id.
+      saveMepSystems(mepSystems.map(s => s.id === system.id ? system : s));
+    } else {
+      // Add: generate the next sys-N id.
+      const existing = new Set(mepSystems.map(s => s.id));
+      let n = 1;
+      while (existing.has(`sys-${n}`)) n++;
+      saveMepSystems([...mepSystems, { ...system, id: `sys-${n}` }]);
+    }
+  };
+
+  const handleMepSystemDelete = (id: string) => {
+    if (!confirm(t('panel.mepSystem.deleteConfirm', 'Delete this MEP system?'))) return;
+    saveMepSystems(mepSystems.filter(s => s.id !== id));
+  };
+
+  // The systems legend is relevant when the user is working in MEP, OR when
+  // any system has already been defined (so other disciplines can still see
+  // the legend's colors as reference). Read-only sessions still see the
+  // legend; the add/edit/delete affordances are gated on !readonly below.
+  const showMepSystemsPanel = activeDiscipline === 'mep' || mepSystems.length > 0;
+
+  const currentGroupLayers = (() => {
+    let layers: typeof layerGroups[0]['layers'];
+    if (activeDiscipline === 'all') {
+      layers = layerGroups.flatMap(g => g.layers);
+    } else {
+      const group = layerGroups.find(g => g.discipline === activeDiscipline);
+      layers = group ? group.layers : [];
+      // Architecture view also lists the structure it shows (columns, walls, slabs).
+      if (activeDiscipline === 'architecture' && editorState.viewOptions?.showStructureInArch) {
+        const str = layerGroups.find(g => g.discipline === 'structure');
+        layers = [...layers, ...(str?.layers ?? []).filter(l => STRUCTURE_IN_ARCH_TABLES.has(l.tableName))];
+      }
+    }
+    return [...layers].sort((a, b) => {
+      const oa = LAYER_STYLES[a.tableName]?.order ?? 99;
+      const ob = LAYER_STYLES[b.tableName]?.order ?? 99;
+      return oa - ob;
+    });
+  })();
+
+  return (
+    <div data-canvas-overlay="left" className="absolute left-3 top-16 bottom-[52px] z-30 flex w-52 flex-col gap-2 select-none">
+      {/* Floor Switcher */}
+      <div data-tour="floors" className="glass-panel flex shrink-0 max-h-[40%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+        <div className="flex shrink-0 items-center justify-between px-4 pb-1.5 pt-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+            {t('panel.floors')}
+          </span>
+          {!readonly && (
+            <button
+              className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              onClick={() => setShowAddLevel(true)}
+              title={t('panel.addLevel')}
+            >
+              +
+            </button>
+          )}
+        </div>
+        <div className="flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-2 pb-2">
+          {levels.map(level => (
+            <button
+              key={level.id}
+              className={cn(
+                'flex items-center justify-between rounded px-2 py-[5px] text-[11px] transition-all',
+                'border cursor-pointer text-left',
+                currentLevel === level.id
+                  ? 'border-[var(--color-accent)] bg-[var(--accent-dim)] font-medium text-[var(--color-accent)]'
+                  : 'border-transparent text-muted-foreground hover:bg-accent hover:text-foreground'
+              )}
+              onClick={() => dispatch({ type: 'SET_LEVEL', levelId: level.id })}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                if (!readonly) setContextMenu({ x: e.clientX, y: e.clientY, level });
+              }}
+              title={`${levelLabel(t, level)} (${formatElevation(level.elevation, projectUnit)})`}
+            >
+              <span className="flex-1 truncate">{levelLabel(t, level)}</span>
+              <span className={cn(
+                'ml-2 text-[9px] tabular-nums',
+                currentLevel === level.id ? 'text-[var(--color-accent)] opacity-60' : 'text-muted-foreground'
+              )}>
+                {formatElevation(level.elevation, projectUnit)}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Layers: never squeezed below ~4 rows by the panels under it (MEP view) */}
+      <div data-testid="layers-panel" className="glass-panel flex min-h-[7.5rem] shrink flex-col overflow-hidden rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+        <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">{t('panel.layers')}</span>
+        </div>
+        <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
+          <div className="mb-1">
+            {currentGroupLayers.map(layer => {
+              const key = `${layer.discipline}/${layer.tableName}`;
+              const style = LAYER_STYLES[layer.tableName];
+              const isVisible = visibleLayers.has(key);
+                const isExpanded = expandedLayer === key;
+                return (
+                  <div key={key}>
+                    <button
+                      className={cn(
+                        'flex w-full items-center gap-1.5 rounded px-2 py-1 text-[11px] transition-all hover:bg-accent',
+                        'border-none cursor-pointer text-left',
+                        isVisible ? 'text-muted-foreground' : 'text-muted-foreground opacity-35',
+                        isExpanded && 'bg-accent/50'
+                      )}
+                      onClick={() => setExpandedLayer(isExpanded ? null : key)}
+                    >
+                      <svg
+                        width="10" height="10" viewBox="0 0 10 10"
+                        className={cn('shrink-0 transition-transform duration-150', isExpanded && 'rotate-90')}
+                      >
+                        <path d="M3 1.5 L7 5 L3 8.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                      </svg>
+                      <span className="w-4.5 shrink-0 text-center"><Icon name={layer.tableName} width={16} height={16} /></span>
+                      <span className="flex-1">{style ? t(`display.${style.displayName}`) : layer.tableName}</span>
+                      <span className="text-[9px] text-muted-foreground tabular-nums">{layer.csvRows.size}</span>
+                      <span
+                        className={cn('hover:opacity-100', isVisible ? 'text-[var(--color-accent)]' : 'text-muted-foreground')}
+                        onClick={(e) => { e.stopPropagation(); dispatch({ type: 'TOGGLE_LAYER', key }); }}
+                      >
+                        <Icon name={isVisible ? 'eye-visible' : 'eye-hidden'} width={18} height={18} />
+                      </span>
+                    </button>
+                    {isExpanded && layer.csvRows.size > 0 && (
+                      <ElementList
+                        tableName={layer.tableName}
+                        csvRows={layer.csvRows}
+                        selectedIds={selectedIds}
+                        onSelect={(id) => dispatch({ type: 'SELECT', ids: [id] })}
+                      />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+        </ScrollArea>
+      </div>
+
+      <UnderlayPanel />
+
+      {/* MEP Systems Legend + editor. Header "+" adds a new system; each row
+          has hover-revealed edit / delete actions. */}
+      {showMepSystemsPanel && (
+        <div className="glass-panel flex min-h-[5rem] shrink max-h-[30%] flex-col rounded-2xl border border-[var(--panel-border)] shadow-[var(--shadow-panel)]">
+          <div className="flex shrink-0 items-center justify-between px-4 pb-1 pt-2.5">
+            <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+              {t('panel.mepSystems', 'MEP Systems')}
+            </span>
+            <div className="flex items-center gap-1">
+              <span className="text-[9px] text-muted-foreground tabular-nums">{mepSystems.length}</span>
+              {!readonly && (
+                <button
+                  className="flex h-4 cursor-pointer items-center justify-center rounded border-none bg-transparent px-1 text-[9px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={openPresets}
+                  title={t('panel.mepSystem.presetsHint')}
+                  data-testid="mep-system-presets-open"
+                >
+                  {t('panel.mepSystem.presets')}
+                </button>
+              )}
+              {!readonly && (
+                <button
+                  className="flex size-4 cursor-pointer items-center justify-center rounded border-none bg-transparent text-[11px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                  onClick={() => setMepSystemDialog({ open: true })}
+                  title={t('panel.addMepSystem', 'Add system')}
+                >
+                  +
+                </button>
+              )}
+            </div>
+          </div>
+          <ScrollArea className="min-h-0 flex-1 px-2 pb-2">
+            {mepSystems.length === 0 ? (
+              <div className="px-2 py-3 text-center text-[10px] text-muted-foreground/70">
+                {t('panel.mepSystem.empty', 'No systems yet — click + to add one.')}
+                {!readonly && (
+                  <button type="button" className="mt-1 block w-full cursor-pointer border-none bg-transparent p-0 text-[10px] text-[var(--color-accent)] hover:underline"
+                    onClick={openPresets}>{t('panel.mepSystem.addPresets')}</button>
+                )}
+              </div>
+            ) : (
+              <div className="flex flex-col gap-px">
+                {mepSystems.map(sys => {
+                  const color = resolveMepSystemColor(sys.system_type, sys.color);
+                  const label = sys.name || sys.id || sys.system_type;
+                  return (
+                    <div
+                      key={sys.id || `${sys.system_type}-${sys.name}`}
+                      className="group flex items-center gap-2 rounded px-2 py-[3px] text-[11px] text-muted-foreground hover:bg-accent"
+                      title={sys.discipline ? `${label} · ${t(`mepDiscipline.${sys.discipline}`, sys.discipline)}` : label}
+                    >
+                      <span
+                        className="size-3 shrink-0 rounded-sm border border-black/20"
+                        style={{ backgroundColor: color }}
+                      />
+                      <button
+                        type="button"
+                        className="flex-1 truncate text-left bg-transparent border-none p-0 cursor-pointer text-inherit hover:text-foreground"
+                        onClick={() => !readonly && setMepSystemDialog({ open: true, initial: sys })}
+                        disabled={readonly}
+                      >
+                        {label}
+                      </button>
+                      <span className="shrink-0 text-[9px] uppercase tracking-[0.05em] text-muted-foreground/70 tabular-nums">
+                        {sys.system_type}
+                      </span>
+                      {!readonly && (
+                        <button
+                          type="button"
+                          className="shrink-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive cursor-pointer bg-transparent border-none p-0 text-[11px] leading-none"
+                          onClick={(e) => { e.stopPropagation(); handleMepSystemDelete(sys.id); }}
+                          title={t('panel.mepSystem.delete', 'Delete system')}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
+        </div>
+      )}
+
+      {activeDiscipline === 'mep' && <MepPanel />}
+
+      <MepSystemDialog
+        open={mepSystemDialog.open}
+        initial={mepSystemDialog.initial}
+        onClose={() => setMepSystemDialog({ open: false })}
+        onConfirm={handleMepSystemSubmit}
+        existing={mepSystems}
+      />
+      <MepSystemPresetsDialog
+        open={presetCodes !== null}
+        onClose={() => setPresetCodes(null)}
+        existing={mepSystems}
+        usedCodes={presetCodes ?? new Set()}
+        onAdd={rows => saveMepSystems([...mepSystems, ...rows])}
+      />
+
+      {/* Add Level Dialog */}
+      <AddLevelDialog
+        open={showAddLevel}
+        onClose={() => setShowAddLevel(false)}
+        onConfirm={(name, elevation) => {
+          const existingIds = new Set(levels.map(l => l.id));
+          let n = 1;
+          while (existingIds.has(`lv-${n}`)) n++;
+          const id = `lv-${n}`;
+          dispatch({
+            type: 'ADD_LEVEL',
+            level: { id, number: String(n), name, elevation },
+          });
+        }}
+        defaultName={(() => {
+          let n = 1;
+          const existingNames = new Set(levels.map(l => l.name));
+          while (existingNames.has(`Level ${n}`)) n++;
+          return `Level ${n}`;
+        })()}
+        defaultElevation={levels.length > 0 ? Math.max(...levels.map(l => l.elevation)) + 3 : 0}
+      />
+
+      {deleteTarget && (
+        <ConfirmDialog
+          title={t('dialog.deleteLevel')}
+          message={t('dialog.deleteLevelMessage', { name: deleteTarget.name || deleteTarget.id })}
+          confirmLabel={t('panel.delete')}
+          danger
+          onConfirm={() => dispatch({ type: 'REMOVE_LEVEL', levelId: deleteTarget.id })}
+          onClose={() => setDeleteTarget(null)}
+        />
+      )}
+
+      {/* Context Menu */}
+      {contextMenu && (
+        <LevelContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          onRename={() => openDialog({ kind: 'editLevel', levelId: contextMenu.level.id })}
+          onDuplicate={() => openDialog({ kind: 'duplicateLevel', levelId: contextMenu.level.id })}
+          onCopyHere={selectedIds.size > 0 && contextMenu.level.id !== currentLevel
+            ? () => { dispatch({ type: 'COPY_TO_LEVELS', ids: [...selectedIds], levelIds: [contextMenu.level.id] }); showNotice('notice.copiedToLevels', { count: 1 }); }
+            : undefined}
+          onDelete={() => setDeleteTarget(contextMenu.level)}
+          onClose={() => setContextMenu(null)}
+        />
+      )}
+    </div>
+  );
+}

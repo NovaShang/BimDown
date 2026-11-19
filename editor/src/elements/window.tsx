@@ -1,0 +1,108 @@
+import type { ReactNode } from 'react';
+import type { ElementModule, GeometryContext } from './archetypes.ts';
+import { registerElement } from './registry.ts';
+import type { CanonicalElement, LineElement, Point } from '../model/elements.ts';
+import { windowPlan2D } from './_openingPlan.tsx';
+import { hostThicknessOf } from './door.tsx';
+import { windowMesh3D } from './_opening3D.tsx';
+import { SILL_HEIGHT_FIELD, WINDOW_OPERATION_OPTIONS } from './_options.ts';
+
+const BLOCK_MAP: Record<string, string> = {
+  fixed: 'window_fixed',
+  casement: 'window_casement',
+  sliding: 'window_sliding',
+  awning: 'window_awning',
+  hopper: 'window_hopper',
+  pivot: 'window_pivot',
+  double_hung: 'window_double_hung',
+  single_hung: 'window_single_hung',
+  tilt_and_turn: 'window_tilt_and_turn',
+};
+
+export interface WindowFacts {
+  id: string;
+  start: Point;
+  end: Point;
+  length: number;
+  angleDeg: number;
+  strokeWidth: number;
+  /** Host wall thickness (plan drawing). */
+  hostThickness: number;
+  height: number;
+  baseY: number;
+  width: number;
+  material: string;
+  operation: string;
+  blockName: string;
+}
+
+const DEFAULT_HEIGHT = 1.5;
+const DEFAULT_SILL = 0.9;
+const WINDOW_TABLE = 'window';
+
+export const windowModule: ElementModule<WindowFacts> = {
+  table: WINDOW_TABLE,
+  discipline: 'architecture',
+  archetype: 'hosted',
+  prefix: 'wn',
+  hostType: 'wall',
+  hostTables: ['wall', 'curtain_wall', 'structure_wall'],
+  widthAttr: 'width',
+  csvHeaders: ['number', 'base_offset', 'host_id', 'position', 'material', 'width', 'height', 'operation'],
+  defaults: {
+    base_offset: `${DEFAULT_SILL}`, host_id: '', position: '0.5',
+    material: '', width: '1.2', height: `${DEFAULT_HEIGHT}`, operation: 'fixed',
+  },
+  drawingFields: [
+    { key: 'width', label: 'Width', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+    { key: 'height', label: 'Height', type: 'number', unit: 'm', min: 0.3, step: 0.1 },
+    { key: 'operation', label: 'Operation', type: 'select', options: WINDOW_OPERATION_OPTIONS },
+    SILL_HEIGHT_FIELD,
+  ],
+  propertyFields: [],
+  layerStyle: { displayName: 'Windows', color: '#48cae4', icon: '⊟', order: 5.5 },
+  renderZIndex: 60,
+
+  geometry(el: CanonicalElement, ctx: GeometryContext): WindowFacts | null {
+    if (el.geometry !== 'line' && el.geometry !== 'spatial_line') return null;
+    const w = el as LineElement;
+    const dx = w.end.x - w.start.x;
+    const dy = w.end.y - w.start.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) return null;
+
+    const baseOffset = parseFloat(w.attrs.base_offset || `${DEFAULT_SILL}`);
+    const height = parseFloat(w.attrs.height || `${DEFAULT_HEIGHT}`) || DEFAULT_HEIGHT;
+
+    const operation = w.attrs.operation || 'fixed';
+    return {
+      id: w.id,
+      start: w.start,
+      end: w.end,
+      length: len,
+      angleDeg: (Math.atan2(dy, dx) * 180) / Math.PI,
+      strokeWidth: w.strokeWidth,
+      hostThickness: hostThicknessOf(w, ctx, w.strokeWidth || 0.2),
+      height,
+      baseY: ctx.levelElevation + baseOffset,
+      width: parseFloat(w.attrs.width || '1.2') || 1.2,
+      material: w.attrs.material || '',
+      operation,
+      blockName: BLOCK_MAP[operation] ?? 'window_fixed',
+    };
+  },
+
+  draw2D(facts, drawCtx): ReactNode {
+    return (
+      <g data-id={facts.id}>
+        {windowPlan2D({ ...facts, thickness: facts.hostThickness }, drawCtx.selected)}
+      </g>
+    );
+  },
+
+  draw3D(facts, drawCtx): ReactNode {
+    return windowMesh3D(facts, drawCtx.selected || drawCtx.hovered);
+  },
+};
+
+registerElement(windowModule);
