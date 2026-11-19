@@ -40,22 +40,40 @@ jobs:
   publish-npm:
     name: Publish CLI to NPM
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write   # npm Trusted Publishing (OIDC): no NPM_TOKEN needed
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           registry-url: 'https://registry.npmjs.org'
-          
+
+      - name: npm with trusted publishing support
+        run: npm install -g npm@^11.5.1
+
+      - name: Tag matches cli/package.json version
+        run: |
+          v="$(node -p "require('./cli/package.json').version")"
+          [ "v$v" = "${GITHUB_REF_NAME}" ] || { echo "tag ${GITHUB_REF_NAME} != cli version v$v"; exit 1; }
+
       - name: Install dependencies
-        run: cd cli && npm install
-        
+        run: npm install
+
+      - name: Test CLI
+        run: cd cli && npm test
+
       - name: Build CLI
         run: cd cli && npm run build
-        
+
       - name: Publish NPM package
-        run: cd cli && npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          cd cli
+          if npm view "bimdown-cli@$(node -p "require('./package.json').version")" version >/dev/null 2>&1; then
+            echo "already published, skipping"
+          else
+            npm publish --access public
+          fi
