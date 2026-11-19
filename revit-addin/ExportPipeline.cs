@@ -206,7 +206,7 @@ internal static class ExportPipeline
             foreach (var row in rows)
             {
                 if (row.GetValueOrDefault("_uid") is not { } uid) continue;
-                if (doc.GetElement(uid) is { } el && shortIdByUid.TryGetValue(uid, out var sid))
+                if (shortIdByUid.TryGetValue(uid, out var sid) && doc.GetElement(uid) is { } el)
                     rowByElement.TryAdd(el.Id, (row, sid));
             }
         }

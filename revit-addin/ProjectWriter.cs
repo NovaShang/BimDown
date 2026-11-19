@@ -51,10 +51,13 @@ static class ProjectWriter
     /// Assigns short ids in passes so references resolve regardless of table order:
     /// 1. global ids (level, grid, types); 2. level references (→ partitioning);
     /// 3. partitioned ids using the resolved level directory; 4. other references.
-    /// Returns the level index (level id → elevation rank).
+    /// Returns the level index (level id → elevation rank). First reshapes the MEP
+    /// graph (<see cref="MepTopology"/>); hosts runs on other levels reference get
+    /// ids no other directory uses.
     /// </summary>
-    internal static Dictionary<string, int> AssignIds(List<ExportedTable> tables, ShortIdGenerator idGen)
+    internal static Dictionary<string, int> AssignIds(List<ExportedTable> tables, ShortIdGenerator idGen, bool normalizeMep = true)
     {
+        var crossLevel = normalizeMep ? MepTopology.Normalize(tables).CrossLevelTargets : [];
         PlaceConnectorsWithHosts(tables);
         foreach (var t in tables.Where(t => t.IsGlobal))
             foreach (var row in t.Rows)
@@ -64,7 +67,10 @@ static class ProjectWriter
                 idGen.ResolveLevelReferences(row);
         var levelIndex = BuildLevelIndex(tables);
         foreach (var t in tables.Where(t => !t.IsGlobal))
-            foreach (var row in t.Rows)
+            foreach (var row in t.Rows.Where(r => crossLevel.Contains(r.GetValueOrDefault("id") ?? "")))
+                idGen.AssignRowId(t.TableName, row, GetPartitionDir(row, levelIndex), unique: true);
+        foreach (var t in tables.Where(t => !t.IsGlobal))
+            foreach (var row in t.Rows.Where(r => !r.ContainsKey("_uid")))
                 idGen.AssignRowId(t.TableName, row, GetPartitionDir(row, levelIndex));
         DropUnplaceableTags(tables, levelIndex);
         foreach (var t in tables)
@@ -271,10 +277,10 @@ static class ProjectWriter
 
     /// <summary>Runs every pure step and writes the project (used by tests and the pipeline).</summary>
     internal static void WriteProject(string outputDir, List<ExportedTable> tables, ShortIdGenerator idGen,
-        string projectName, string source)
+        string projectName, string source, bool normalizeMep = true)
     {
         ApplyTypes(tables);
-        var levelIndex = AssignIds(tables, idGen);
+        var levelIndex = AssignIds(tables, idGen, normalizeMep);
         Finalize(tables, levelIndex);
         Directory.CreateDirectory(outputDir);
         WriteCsvs(outputDir, tables, levelIndex);

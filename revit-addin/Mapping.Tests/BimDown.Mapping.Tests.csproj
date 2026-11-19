@@ -19,7 +19,7 @@
 
   <ItemGroup>
     <Compile Include="..\Mapping\**\*.cs" Link="Linked\Mapping\%(RecursiveDir)%(Filename)%(Extension)" />
-    <Compile Include="..\UnitConverter.cs;..\CsvWriter.cs;..\ShortIdGenerator.cs;..\ProjectWriter.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\UnitConverter.cs;..\CsvWriter.cs;..\ShortIdGenerator.cs;..\ProjectWriter.cs;..\MepTopology.cs;..\CsvReader.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Include="..\Geojson\GeoJsonWriter.cs;..\Geojson\GeoJsonTableConfig.cs" Link="Linked\Geojson\%(Filename)%(Extension)" />
   </ItemGroup>
 
