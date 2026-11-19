@@ -1,7 +1,7 @@
 /**
  * Element types (Revit "family types"): global/<category>_type.csv rows that
  * elements reference through `type_id`, plus the ordered layers of layered
- * types (global/type_layer.csv). Spec: bimdown-spec/spec/readme.md, "Element Types".
+ * types (global/type_layer.csv). Spec: spec/readme.md, "Element Types".
  *
  * In memory every typed element's attrs hold EFFECTIVE values (type values
  * filled into the empty type parameters), so renderers, tools and exports need

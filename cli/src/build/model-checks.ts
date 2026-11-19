@@ -1,5 +1,5 @@
 /**
- * Copy of bimdown-editor/editor/src/geometry/modelChecks.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
+ * Copy of editor/src/geometry/modelChecks.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
  */
 /**
  * Model checks shared by `bimdown build` / `validate` and the editor
@@ -7,7 +7,7 @@
  * one host, walls overlapping each other, and numeric fields that must be
  * positive (thickness, widths…). Pure core on a flat,
  * unit-agnostic model; callers pass a tolerance in project units. The CLI
- * keeps a verbatim copy in bimdown-spec/cli/src/build/model-checks.ts
+ * keeps a verbatim copy in cli/src/build/model-checks.ts
  * (web/src/lib/shared-code-drift.test.ts).
  */
 interface P { x: number; y: number }

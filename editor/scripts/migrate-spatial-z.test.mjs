@@ -1,4 +1,4 @@
-// node --test scripts/
+// node --test editor/scripts/
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';

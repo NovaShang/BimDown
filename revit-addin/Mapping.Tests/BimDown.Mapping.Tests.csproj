@@ -5,7 +5,7 @@
     ProjectWriter, CSV / GeoJSON writers). Cross-platform (net8.0, no Revit API):
     the sources are compiled in directly, so it runs on macOS / Linux CI.
       dotnet test revit-addin/Mapping.Tests
-    Set BIMDOWN_CLI=<path to bimdown-spec/cli/dist/cli.js> to also run
+    Set BIMDOWN_CLI=<path to cli/dist/cli.js> to also run
     `bimdown validate` on the fixture project the tests write.
   -->
 

@@ -1,5 +1,5 @@
 /**
- * Copy of bimdown-editor/editor/src/geometry/curtainEmbed.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
+ * Copy of editor/src/geometry/curtainEmbed.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
  */
 /**
  * Curtain walls embedded in walls (Revit "Automatically Embed"; spec readme
@@ -8,7 +8,7 @@
  * wall's thickness — cuts a void the length of the overlap and the height of
  * the curtain wall out of that wall. Derived, not stored: moving or deleting
  * the curtain wall updates its host. The CLI keeps a verbatim copy in
- * bimdown-spec/cli/src/curtain-embed.ts (web/src/lib/shared-code-drift.test.ts).
+ * cli/src/curtain-embed.ts (web/src/lib/shared-code-drift.test.ts).
  */
 interface P { x: number; y: number }
 /** Circular arc of a line (editor ArcParams `rx` / `largeArc`, or GeoJSON `radius` / `large_arc`), SVG-A semantics. */

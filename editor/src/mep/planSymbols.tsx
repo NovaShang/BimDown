@@ -4,7 +4,7 @@
  * equipment by type with a tag, inline accessories (valves, dampers) and the
  * small helpers they share (upright text, problem markers).
  *
- * The CLI renderer draws the same shapes (bimdown-spec/cli/src/render-mep.ts).
+ * The CLI renderer draws the same shapes (cli/src/render-mep.ts).
  */
 import type { ReactNode } from 'react';
 import type { ProblemMarker } from './mepView.ts';

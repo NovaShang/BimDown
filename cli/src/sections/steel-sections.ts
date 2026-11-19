@@ -1,5 +1,5 @@
 /**
- * Copy of bimdown-editor/editor/src/families/sections/steelSections.ts (the
+ * Copy of editor/src/families/sections/steelSections.ts (the
  * editor's steel section library), so import-ifc maps catalogue designations
  * to the same sections. Keep the two identical (shared-code-drift test).
  */

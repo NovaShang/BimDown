@@ -1,6 +1,6 @@
 /**
  * Built-in starter type catalog (metric) that new projects get: path → CSV.
- * Identical to bimdown-spec/spec/starter-types/global/*.csv (the CLI's `init`
+ * Identical to spec/starter-types/global/*.csv (the CLI's `init`
  * copies those); web/src/lib/starter-types.test.ts keeps the two in sync.
  * Plain data so the API Worker can import it too.
  */

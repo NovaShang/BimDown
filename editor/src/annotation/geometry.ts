@@ -1,6 +1,6 @@
 /**
  * Pure annotation geometry shared by the plan renderer, the tools, the
- * associativity pass and the PDF export. Mirrors bimdown-spec/cli/src/annotations.ts
+ * associativity pass and the PDF export. Mirrors cli/src/annotations.ts
  * so `bimdown render` and the editor agree.
  *
  * Dimension references ("<id>[:anchor]"):

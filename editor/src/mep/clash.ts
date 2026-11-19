@@ -2,7 +2,7 @@
  * MEP clash detection — pure core, no I/O.
  *
  * Two identical copies: bimdown-spec `cli/src/mep/clash.ts` (`bimdown clash`)
- * and bimdown-editor `editor/src/mep/clash.ts` (MEP panel, Clash tab). Edit
+ * and `editor/src/mep/clash.ts` (MEP panel, Clash tab). Edit
  * one, copy it over the other.
  *
  * Input is flat and unit-agnostic (one length unit, one z frame): MEP curves

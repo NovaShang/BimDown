@@ -1,8 +1,9 @@
-# BimDown Spec
+# BimDown (format spec, CLI, editor, Revit add-in)
 
 ## Structure
 - `spec/` — BimDown format spec (YAML schemas)
 - `cli/` — BimDown CLI (validate, query, render, gen-skill, info, merge)
+- `editor/` — 2D/3D editor component (npm workspace `bimdown-editor`, React + Three.js + Vite), consumed as source by the hosted web app
 - `revit-addin/` — Revit plugin (C#) for import/export
 - `sample_data/` — CSV/SVG exports from Revit models
 - `scripts/` — Migration and utility scripts
@@ -11,6 +12,9 @@
 - Package manager: npm workspaces
 - CLI build: `cd cli && npm run build`
 - CLI dev: source is in `cli/src/`, uses tsup for bundling
+- Editor: `cd editor && npm run dev` (Vite, port 5174, serves `../sample_data`), `npm run build` (`tsc -b && vite build`)
+- Editor src: `model/` (parse/serialize, tableRegistry), `renderers/` (2D SVG), `three/` (3D), `tools/`, `state/` (reducer), `i18n/`
+- Shared verbatim with the CLI (keep byte-identical, only a leading "Copy of" note allowed): roofSolver, stairCore, steelSections, mep clash/mepCheck, curtainEmbed, modelChecks; furniture library is generated (`node editor/scripts/gen-furniture-library.mjs`), spec columns too (`gen-spec-columns.mjs`)
 
 ## Format Key Concepts
 - CSV for attributes; geometry layer is SVG (2D, `format_version: 1`) or GeoJSON (2D/3D, `format_version: 2`, default) — both encodings supported, both human and AI readable. CSV attribute layer is identical for both.
@@ -27,6 +31,7 @@
 
 ## Testing
 - CLI tests: `cd cli && npm test` (vitest)
+- Editor tests: `cd editor && npm test` (vitest), `node --test editor/scripts/`
 - Tests use `sample_data/rac_advanced/` for fixture data
 
 ### Revit Tests

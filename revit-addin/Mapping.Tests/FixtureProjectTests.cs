@@ -9,7 +9,7 @@ namespace BimDown.RevitAddin.Tests;
 /// <summary>
 /// Builds the rows the Revit exporters produce for a small two-storey building
 /// (through the same mappers and ProjectWriter the add-in uses), writes the
-/// project and — when BIMDOWN_CLI points at bimdown-spec/cli/dist/cli.js — runs
+/// project and — when BIMDOWN_CLI points at cli/dist/cli.js — runs
 /// `bimdown validate` on it. BIMDOWN_FIXTURE_DIR keeps the project for inspection.
 /// </summary>
 public class FixtureProjectTests(ITestOutputHelper output)

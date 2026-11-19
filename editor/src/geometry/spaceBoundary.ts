@@ -1,6 +1,6 @@
 /**
  * Derives the polygon boundary of a `space` seed point from surrounding wall
- * line elements. Ported from `bimdown-spec/cli/src/build/space-boundary.ts`,
+ * line elements. Ported from `cli/src/build/space-boundary.ts`,
  * adapted to operate on `CanonicalElement` (LineElement) inputs rather than
  * GeoJSON files.
  *

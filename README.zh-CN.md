@@ -266,7 +266,7 @@ BimDown 是一个 **LOD 200 级别的轻量格式**，面向既有建筑记录�
 ## 相关项目
 
 - **[BimDown 在线版](https://bim.jouledown.com)**：在线编辑器和查看器，AI 智能体能从图纸、照片或文字建模
-- **[BimEditor](https://github.com/NovaShang/BimEditor)**：背后的浏览器 2D/3D 编辑器组件
+- **[编辑器](editor/)**：背后的浏览器 2D/3D 编辑器组件（React + Three.js），位于本仓库 `editor/`
 
 ## 许可证
 

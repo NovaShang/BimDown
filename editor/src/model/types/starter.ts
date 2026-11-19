@@ -1,6 +1,6 @@
 /**
  * Built-in starter type catalog that new projects get (files in starterFiles.mjs,
- * identical to bimdown-spec/spec/starter-types/global/*.csv). The files are
+ * identical to spec/starter-types/global/*.csv). The files are
  * metric; the catalog is scaled to the project's units.
  */
 import { parseTypeFiles, type ElementType, type TypeCatalog } from './catalog.ts';

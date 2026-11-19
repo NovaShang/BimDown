@@ -1,5 +1,5 @@
 /**
- * Copy of bimdown-editor/editor/src/geometry/roofSolver.ts (the editor's
+ * Copy of editor/src/geometry/roofSolver.ts (the editor's
  * footprint roof solver), so `render` draws the same ridges, hips, valleys
  * and slope arrows the editor does. Keep the two in sync.
  */

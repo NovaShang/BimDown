@@ -3,7 +3,7 @@
  * multi-storey repetitions, derived railing paths, plan symbols and the stair
  * calculator. Shared by the editor (geometry/stair.ts adds the element-level
  * helpers) and the CLI, which keeps a verbatim copy in
- * bimdown-spec/cli/src/stair/geometry.ts (web/src/lib/shared-code-drift.test.ts).
+ * cli/src/stair/geometry.ts (web/src/lib/shared-code-drift.test.ts).
  * Values are in model units (metres for the built-in rule limits).
  */
 export interface Point { x: number; y: number }

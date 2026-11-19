@@ -51,7 +51,7 @@ fields:
       Written by tools that guarantee it (CLI `init`, bim.jouledown.com, the BimDown
       editor, the legacy migration script). Older hosted projects (bim-claw.com, formerly BimClaw) without it
       may hold level-relative Z written by earlier editor versions; see
-      bimdown-editor/scripts/migrate-spatial-z.mjs.
+      editor/scripts/migrate-spatial-z.mjs.
 
   - name: discipline
     type: enum

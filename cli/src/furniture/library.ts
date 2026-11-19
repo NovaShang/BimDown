@@ -4,8 +4,8 @@
  * scale figures and generic placeholders.
  *
  * Pure TypeScript, no imports: the BimDown CLI renders the plan symbols, and
- * the editor (bimdown-editor/editor/src/library/furnitureLibrary.generated.ts,
- * a verbatim copy made by bimdown-editor/scripts/gen-furniture-library.mjs)
+ * the editor (editor/src/library/furnitureLibrary.generated.ts,
+ * a verbatim copy made by editor/scripts/gen-furniture-library.mjs)
  * draws the same symbols and builds the 3D massing from the same parts.
  *
  * Local frame of every family (meters): origin at the footprint centre, +X to

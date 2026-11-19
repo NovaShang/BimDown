@@ -19,3 +19,18 @@ jobs:
         run: cd cli && npm test
       - name: Build CLI
         run: cd cli && npm run build
+
+  test-editor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install
+      - name: Test editor
+        run: cd editor && npm test
+      - name: Test editor scripts
+        run: node --test editor/scripts/
+      - name: Build editor (tsc -b + vite)
+        run: cd editor && npm run build

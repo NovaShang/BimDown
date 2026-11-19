@@ -9,8 +9,8 @@
  * the editor since the marker — store absolute Z in the coordinates.
  *
  * Usage:
- *   node scripts/migrate-spatial-z.mjs <project_dir>            # dry run: report only
- *   node scripts/migrate-spatial-z.mjs <project_dir> --apply    # rewrite files + stamp marker
+ *   node editor/scripts/migrate-spatial-z.mjs <project_dir>            # dry run: report only
+ *   node editor/scripts/migrate-spatial-z.mjs <project_dir> --apply    # rewrite files + stamp marker
  *   ... --force   also run when the gate says no (see below)
  *
  * Gate (what makes it one-shot and idempotent):

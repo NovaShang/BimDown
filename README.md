@@ -266,7 +266,7 @@ The following Revit scenarios fall outside BimDown's scope and will be exported 
 ## Related Projects
 
 - **[BimDown on the web](https://bim.jouledown.com)**: hosted editor and viewer, with an AI agent that builds models from drawings, photos, or text
-- **[BimEditor](https://github.com/NovaShang/BimEditor)**: the browser-based 2D/3D editor component behind it
+- **[Editor](editor/)**: the browser-based 2D/3D editor component behind it (React + Three.js), in `editor/` of this repository
 
 ## License
 

@@ -2,7 +2,7 @@
  * Curtain wall grid, panels and members (spec readme "Curtain Wall Grids and
  * Panels"). Pure: shared by the 2D / 3D draw, the properties-panel editor and
  * the IFC / plan / glTF exports. The CLI mirrors the parsing in
- * bimdown-spec/cli/src/curtain-grid.ts; keep the two in step.
+ * cli/src/curtain-grid.ts; keep the two in step.
  *
  * Columns run along the wall from its start, rows up from its base. Explicit
  * `v_grids` / `u_grids` (semicolon lists) win over `*_grid_count` (a cell
