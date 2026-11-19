@@ -31,7 +31,7 @@
 
 ## Testing
 - CLI tests: `cd cli && npm test` (vitest)
-- Editor tests: `cd editor && npm test` (vitest), `node --test editor/scripts/`
+- Editor tests: `cd editor && npm test` (vitest), `node --test editor/scripts/*.test.mjs`
 - Tests use `sample_data/rac_advanced/` for fixture data
 
 ### Revit Tests

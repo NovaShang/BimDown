@@ -31,6 +31,6 @@ jobs:
       - name: Test editor
         run: cd editor && npm test
       - name: Test editor scripts
-        run: node --test editor/scripts/
+        run: node --test editor/scripts/*.test.mjs
       - name: Build editor (tsc -b + vite)
         run: cd editor && npm run build
