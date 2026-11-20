@@ -52,3 +52,32 @@ describe('validateStructure — project_metadata.json', () => {
     expect([...PROJECT_METADATA_FIELDS].sort()).toEqual(declared);
   });
 });
+
+describe('validateStructure — level folders vs global/level.csv', () => {
+  const dir = join(__dirname, 'test-structure-levels');
+  beforeEach(() => {
+    if (existsSync(dir)) rmSync(dir, { recursive: true, force: true });
+    mkdirSync(join(dir, 'global'), { recursive: true });
+    mkdirSync(join(dir, 'lv-1'), { recursive: true });
+    mkdirSync(join(dir, 'lv-2'), { recursive: true });
+    writeFileSync(join(dir, 'project_metadata.json'), JSON.stringify({ format_version: '3.0', units: 'm' }));
+  });
+  afterEach(() => { if (existsSync(dir)) rmSync(dir, { recursive: true, force: true }); });
+
+  it('errors on a header-only level.csv when level folders exist', () => {
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\n');
+    expect(validateStructure(dir)).toEqual([
+      'global/level.csv  has no levels but the project has level folders (lv-1, lv-2) — add one row per folder',
+    ]);
+  });
+
+  it('errors on a level folder without a row', () => {
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\nlv-1,1,L1,0\n');
+    expect(validateStructure(dir)).toEqual(['lv-2/  level folder has no row in global/level.csv (id lv-2)']);
+  });
+
+  it('accepts declared folders and declared levels without a folder', () => {
+    writeFileSync(join(dir, 'global', 'level.csv'), 'id,number,name,elevation\nlv-1,1,L1,0\nlv-2,2,L2,3\nlv-R,R,Roof,6\n');
+    expect(validateStructure(dir)).toEqual([]);
+  });
+});

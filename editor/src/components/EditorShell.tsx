@@ -8,6 +8,7 @@ import { persistDocument, persistLevels, persistGrids, persistGlobalLayer, persi
 import { groupByLayer, serializeToGeoJson } from '../model/serialize.ts';
 import { csvHeadersForTable } from '../model/tableRegistry.ts';
 import { gridsToElements, elementsToGrids } from '../utils/gridBridge.ts';
+import { isLoadedLevels } from '../utils/loader.ts';
 import { useDataSource } from '../utils/DataSourceContext.tsx';
 import LeftPanel from './LeftPanel.tsx';
 import Canvas from './Canvas.tsx';
@@ -249,8 +250,11 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     return () => clearTimeout(persistTimer.current);
   }, [state.documentVersion, state.lastMutation]);
 
-  // Persist levels when they change (add, remove, rename). A removed level's
-  // folder is deleted (contents kept here so undo can write them back).
+  // Persist levels when the user changes them (add, remove, rename). A removed
+  // level's folder is deleted (contents kept here so undo can write them back).
+  // A list just read from disk (project load, reload after an AI write) is not
+  // an edit: echoing it back would turn a failed read into an empty
+  // global/level.csv and deleted level folders.
   const prevLevelsRef = useRef(state.project?.levels);
   const removedLevelFiles = useRef(new Map<string, Record<string, string>>());
   const levelFileOps = useRef<Promise<void>>(Promise.resolve());
@@ -259,7 +263,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     const prev = prevLevelsRef.current;
     if (!levels || levels === prev) return;
     prevLevelsRef.current = levels;
-    if (!prev) return;
+    if (!prev || isLoadedLevels(levels) || state.readonly) return;
     persistLevels(levels, ds).catch(err => console.error('Persist levels failed:', err));
     const now = new Set(levels.map(l => l.id));
     const was = new Set(prev.map(l => l.id));
@@ -280,7 +284,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         })
         .catch(err => console.error('Restore level files failed:', err));
     }
-  }, [state.project?.levels, ds]);
+  }, [state.project?.levels, state.readonly, ds]);
 
   // Layers of other levels changed by a multi-level edit (copy to levels,
   // duplicate level, elevation change, group edit): write them after the

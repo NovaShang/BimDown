@@ -1677,7 +1677,8 @@ function applyLevelSnapshot(state: EditorState, snap: LevelSnapshot): EditorStat
   let next: EditorState = state;
   if (snap.floor === null) {
     floors.delete(snap.levelId);
-    next = { ...state, project: { ...state.project, levels: snap.levels, floors } };
+    // A fresh array: an undo back to the list read from disk is still an edit to save (isLoadedLevels)
+    next = { ...state, project: { ...state.project, levels: [...snap.levels], floors } };
     if (state.currentLevel === snap.levelId) {
       // The open level is gone: drop its document (EditorShell must not save
       // it back into the removed folder) and open the first remaining level.
@@ -1688,7 +1689,7 @@ function applyLevelSnapshot(state: EditorState, snap: LevelSnapshot): EditorStat
     return next;
   }
   if (snap.floor) floors.set(snap.levelId, snap.floor);
-  next = { ...state, project: { ...state.project, levels: snap.levels, floors } };
+  next = { ...state, project: { ...state.project, levels: [...snap.levels], floors } };
   // A level that (re)appears is opened, like Add Level does.
   if (snap.floor && state.currentLevel !== snap.levelId) {
     next = editorReducer(next, { type: 'SET_LEVEL', levelId: snap.levelId });

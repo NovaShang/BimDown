@@ -41,9 +41,14 @@ export function useLiveProject(model: string): void {
   useEffect(() => {
     let active = true;
 
+    // A failed read keeps the current project (never a partial one)
     const loadData = async () => {
-      const [project, grids] = await Promise.all([loadProject(ds), loadGrids(ds)]);
-      if (active) dispatch({ type: 'SET_PROJECT', model, project, grids });
+      try {
+        const [project, grids] = await Promise.all([loadProject(ds), loadGrids(ds)]);
+        if (active) dispatch({ type: 'SET_PROJECT', model, project, grids });
+      } catch (err) {
+        console.error('Project load failed:', err);
+      }
     };
 
     loadData();

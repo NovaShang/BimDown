@@ -222,6 +222,19 @@ export async function loadTypeCatalog(
   return { types: parseTypeFiles(files), saved: true, fromDisk: true };
 }
 
+/** Level lists read from disk by loadProject (as opposed to level edits made in the editor). */
+const loadedLevelLists = new WeakSet<Level[]>();
+
+/**
+ * True for a `project.levels` array exactly as loadProject read it. A reload
+ * after an external write (AI agent, another tab) must not be saved back as if
+ * the user had edited the levels: a failed or partial read would write an
+ * empty global/level.csv and delete level folders.
+ */
+export function isLoadedLevels(levels: Level[] | undefined): boolean {
+  return !!levels && loadedLevelLists.has(levels);
+}
+
 export async function loadProject(ds: DataSource): Promise<ProjectData> {
   const metadataPromise = loadProjectMetadata(ds);
   const manifest = await listManifest(ds);
@@ -244,6 +257,7 @@ export async function loadProject(ds: DataSource): Promise<ProjectData> {
   }
 
   levels.sort((a, b) => a.elevation - b.elevation);
+  loadedLevelLists.add(levels);
 
   const floors = new Map<string, FloorData>();
 

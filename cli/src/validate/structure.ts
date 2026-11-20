@@ -39,6 +39,16 @@ export function validateStructure(dir: string): string[] {
   const globalFiles = listFiles(layout.globalDir);
   if (!globalFiles.includes('level.csv')) {
     issues.push('global/  missing level.csv');
+  } else {
+    // Every lv-* folder is one level of global/level.csv; without its row the
+    // folder is invisible to the editor (an emptied level.csv blanks the model)
+    const levelIds = new Set(readCsv(join(layout.globalDir, 'level.csv')).rows.map((r) => r.id).filter(Boolean));
+    const undeclared = layout.levelDirs.map((ld) => ld.name).filter((n) => /^lv-.+$/.test(n) && !levelIds.has(n));
+    if (levelIds.size === 0 && undeclared.length > 0) {
+      issues.push(`global/level.csv  has no levels but the project has level folders (${undeclared.join(', ')}) — add one row per folder`);
+    } else {
+      for (const n of undeclared) issues.push(`${n}/  level folder has no row in global/level.csv (id ${n})`);
+    }
   }
 
   // global/ — CSVs and GeoJSON files (cross-floor elements may have geometry in global/) allowed
