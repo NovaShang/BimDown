@@ -1,7 +1,7 @@
 {
   "name": "bimdown-cli",
   "version": "0.5.1",
-  "description": "CLI for BimDown, an open building data format (CSV + GeoJSON): build, render, query with SQL, diff, publish.",
+  "description": "CLI for BimDown, an open plain-text BIM format (CSV + GeoJSON): validate, build, render floor plans, query with SQL, import IFC, diff and merge. Toolchain for AI agents.",
   "author": "NovaShang",
   "license": "MIT",
   "repository": {
@@ -14,16 +14,21 @@
   },
   "keywords": [
     "bim",
-    "revit",
-    "duckdb",
-    "csv",
-    "svg",
-    "geojson",
+    "building-information-modeling",
     "ifc",
+    "revit",
+    "aec",
+    "architecture",
+    "floor-plan",
+    "geojson",
+    "csv",
+    "duckdb",
+    "sql",
+    "cli",
     "llm",
-    "ai",
-    "agent",
-    "skill"
+    "ai-agents",
+    "agent-skill",
+    "claude-code"
   ],
   "files": [
     "dist",

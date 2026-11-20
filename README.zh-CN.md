@@ -5,58 +5,142 @@
   </picture>
 </p>
 
-# BimDown
+# BimDown：人和 AI Agent 都能读写的开放纯文本 BIM 格式
 
 [![NPM Version](https://img.shields.io/npm/v/bimdown-cli.svg)](https://www.npmjs.com/package/bimdown-cli)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI Status](https://github.com/NovaShang/BimDown/actions/workflows/ci.yml/badge.svg)](https://github.com/NovaShang/BimDown/actions)
 
-[English](./README.md)
+[English](./README.md) · [官网](https://bim.jouledown.com/zh) · [示例](https://bim.jouledown.com/examples) · [格式规范](./spec/) · [Agent Skill](./agent-skill-zh/SKILL.md)
 
-开源的纯文本轻量 BIM 数据格式，附带命令行工具、**AI Agent Skill**，并**支持与 Autodesk Revit 双向互通（Round-Trip）**。
+**BimDown 是一种开放的纯文本 BIM 格式：一栋建筑就是一个文件夹，用 CSV 属性表加 GeoJSON（或 SVG）几何描述，每个楼层一个子文件夹，人、脚本和 AI Agent 都能直接读写、对比差异、用 SQL 查询。**
 
-**在浏览器里试用：[bim.jouledown.com](https://bim.jouledown.com)**。在线编辑器和分享查看器，以及能从图纸、照片或文字为既有建筑建模的 AI 智能体。BimDown 是 [JouleDown](https://jouledown.com) 的一部分。
+本仓库包含格式规范、`bimdown` 命令行工具（校验、构建、渲染、SQL 查询、IFC 导入）、浏览器 2D/3D 编辑器、Revit 2025+ 插件，以及适用于 Claude Code、Codex、Cursor 等编程 Agent 的 Skill。同一格式也支撑着免费的在线应用 **[bim.jouledown.com](https://bim.jouledown.com/zh)**：用文字、草图或照片描述一栋建筑，AI 帮你建出真正的 BIM 模型，在浏览器里编辑，导出平面、立面、剖面、三维和 IFC。
 
-BimDown 用 **CSV** 存储属性，几何层可以用 **SVG**（二维）或 **GeoJSON**（二维/三维）两种方式编码 — 简单到任何大语言模型都能直接读写，同时又足够结构化来支撑真实的 BIM 工作流。两种几何编码都是一等公民、可互相转换；新项目默认使用 GeoJSON。内置的 Revit 插件实现了**双向同步**：从 Revit 导出到 BimDown，用 AI 或手动修改数据，再导回 Revit，改动完整保留。
+<p align="center">
+  <a href="https://bim.jouledown.com/examples/small-office-building"><img src="assets/hero-small-office.png" alt="一个两层办公楼的 BimDown 模型：平面图与同一模型的三维视图" width="900" /></a>
+  <br /><sub><a href="https://bim.jouledown.com/examples/small-office-building">小型办公楼示例</a>：同一个 BimDown 模型的平面和三维。在浏览器中打开，无需注册。</sub>
+</p>
 
-## 配合 AI Agent 使用 (BIM Skill)
+## 能用它做什么
 
-BimDown 天生为 AI Agent 设计，支持 **OpenClaw**、**Claude Code**、**Gemini CLI**、**Cursor**、**VS Code + Copilot**、**Antigravity** 等所有支持 Agent Skill / 自定义指令的 Agent。通过安装 **BimDown AI Agent Skill**，你的小龙虾可以学习完整的 BIM 数据模式、坐标规则和 CLI 用法 — 从而自主创建、查询和修改建筑模型。
+- **用文本描述建筑**：墙、门、窗、房间、楼板、屋顶、楼梯、柱、梁、基础、风管、水管等，都是 CSV 行加 GeoJSON 线和多边形。
+- **让 AI Agent 建模或改模型**：安装 [Agent Skill](#配合-ai-agent-使用)，让 Claude Code、Codex、Cursor 或 Gemini CLI 画平面图，再校验和渲染。
+- **用 SQL 查询建筑**：`bimdown query` 把模型载入 DuckDB，长度、面积、包围盒等由几何自动计算。
+- **命令行渲染平面图**为 PNG 或 SVG，并检查模型（校验、房间边界、MEP 连通性、碰撞）。
+- **用 Git 管理模型版本**：每处修改都是可读的行级差异；`bimdown diff` 和 `bimdown merge` 可对整个项目操作。
+- **在工具之间流转**：CLI 导入 IFC，编辑器导出 IFC、glTF、DXF、PDF，通过插件与 Revit 2025+ 双向互通。
+- **在浏览器里编辑**：用[编辑器](https://bim.jouledown.com/editor)打开本地项目文件夹（二维/三维、平面、剖面、立面、图纸）。
 
-### 配置
+## 快速上手
 
-将以下内容复制粘贴到你的 AI 对话中：
+需要 Node.js 20+。新建项目、加一个房间、校验并渲染平面图：
+
+```bash
+npx bimdown-cli@latest init my-building
+mkdir my-building/lv-1 && cd my-building/lv-1
+
+cat > wall.csv <<'EOF'
+id,type_id
+w-1,wt-concrete-200
+w-2,wt-concrete-200
+w-3,wt-concrete-200
+w-4,wt-concrete-200
+EOF
+cat > wall.geojson <<'EOF'
+{"type":"FeatureCollection","features":[
+ {"type":"Feature","properties":{"id":"w-1"},"geometry":{"type":"LineString","coordinates":[[0,0],[6,0]]}},
+ {"type":"Feature","properties":{"id":"w-2"},"geometry":{"type":"LineString","coordinates":[[6,0],[6,4]]}},
+ {"type":"Feature","properties":{"id":"w-3"},"geometry":{"type":"LineString","coordinates":[[6,4],[0,4]]}},
+ {"type":"Feature","properties":{"id":"w-4"},"geometry":{"type":"LineString","coordinates":[[0,4],[0,0]]}}]}
+EOF
+printf 'id,number,host_id,position,type_id\nd-1,D1,w-1,2.5,dt-single-900\n' > door.csv
+printf 'id,x,y,name\nsp-1,3,2,Studio\n' > space.csv
+cd ../..
+
+npx bimdown-cli@latest validate my-building              # Build successful. No issues found.
+npx bimdown-cli@latest build my-building                 # 推导房间边界（lv-1/space.geojson）
+npx bimdown-cli@latest render my-building -o plan.png    # 或 -o plan.svg
+npx bimdown-cli@latest query my-building "SELECT id, name, area FROM space"
+```
+
+`init` 会写入墙、门、窗等起步类型（`global/*_type.csv`），上面的行引用了它们。门位于墙 `w-1` 起点 2.5 m 处；房间是一个种子点，边界由墙推导。想看更大的模型，可以渲染本仓库里从 Revit 导出的示例：
+
+```bash
+git clone --depth 1 https://github.com/NovaShang/BimDown.git && cd BimDown
+npx bimdown-cli@latest info sample_data/rac_advanced
+npx bimdown-cli@latest render sample_data/rac_advanced -l lv-1 -o plan.png
+```
+
+在克隆的仓库里请用 `npx bimdown-cli@latest`（或 `npm install -g bimdown-cli` 后用 `bimdown`）：直接 `npx bimdown-cli` 会解析到尚未构建的 `cli/` 工作区。
+
+## 示例
+
+可在浏览器编辑器中直接打开的完整 BimDown 模型，无需账号。本仓库自带的数据见 [sample_data/README.md](./sample_data/README.md)。
+
+| 示例 | 内容 |
+|---|---|
+| [小型办公楼](https://bim.jouledown.com/examples/small-office-building) | 两层办公楼：房间、楼梯和卫生间核心筒、柱、梁、平屋顶 |
+| [Duplex 双拼住宅](https://bim.jouledown.com/examples/duplex-apartment) | buildingSMART 的 Duplex IFC 测试模型转换而来：基础、屋顶、楼梯、给排水、电气 |
+| [DigitalHub 办公楼（亚琛工业大学）](https://bim.jouledown.com/examples/digitalhub-office-building) | 真实办公楼：地下一层加地上两层、64 个房间、结构、完整通风管网 |
+| [机房与办公（MEP）](https://bim.jouledown.com/examples/mep-plant-room) | 空调箱、冷水机组、水泵、冷却塔，以及连通的风管和水管 |
+| [照片生成 BIM](https://bim.jouledown.com/use-cases/photo-to-bim) | 使用场景：AI Agent 根据现场照片建出可编辑模型 |
+
+## 配合 AI Agent 使用
+
+BimDown 适用于所有支持 Skill 或自定义指令的 Agent：**Claude Code**、**Codex**、**Cursor**、**Gemini CLI**、**VS Code + Copilot**、**OpenClaw**、**Antigravity** 等。[Skill](./agent-skill-zh/SKILL.md)（[English](./agent-skill/SKILL.md)）教会 Agent 数据模式、坐标规则、建模流程和 CLI 用法。
+
+把以下内容粘贴给你的 Agent：
 
 > 安装 BimDown CLI：`npm install -g bimdown-cli`。下载 Skill 文件 https://raw.githubusercontent.com/NovaShang/BimDown/main/agent-skill/SKILL.md ，并安装到 `<你的全局Skill目录>/bimdown/SKILL.md`。
 
-### Agent 能做什么
+然后就可以提出"画一套 12 × 9 m 的两居室""找出所有厚度超过 0.3 m 的墙""给 lv-2 每个房间加一扇窗"这样的要求。Agent 会写 CSV + GeoJSON，反复运行 `bimdown build` 直到没有问题，再用 `bimdown render` 目视检查结果。
 
-配置完成后，Agent 可以：
-- 根据自然语言描述创建建筑平面图
-- 用 SQL 查询建筑数据（例如"找出所有厚度超过 0.3m 的墙"）
-- 修改几何和属性，然后验证结果
-- 渲染可视化蓝图供审查
+想看着 Agent 建模：在 [bim.jouledown.com/editor](https://bim.jouledown.com/editor) 用"打开本地文件夹"打开项目目录（Chrome 或 Edge）。Agent 的修改约 10 秒内出现在二维/三维视图中，你的编辑会写回该文件夹，不会上传任何内容。
 
-想看着 Agent 建模：在 [bim.jouledown.com/editor](https://bim.jouledown.com/editor) 用“打开本地文件夹”打开项目目录（Chrome 或 Edge）。Agent 的修改约 10 秒内出现在二维/三维视图中，你的编辑会写回该文件夹，不会上传任何内容。
+## BimDown 与 IFC
 
-### 自定义 Skill
+IFC（ISO 16739）是 BIM 数据交换的行业标准，BimDown 并不取代它。两者适合不同的事：
 
-要添加自定义领域能力（如能耗模型、ESG 报告），可以生成你自己的 Skill 定义：
+| | IFC | BimDown |
+|---|---|---|
+| 是什么 | 国际交换标准，几乎所有 BIM 软件都支持 | 一个项目的开放格式（MIT），由配套工具读写 |
+| 结构 | 单个文件：用数字引用相连的实体图（STEP 文本） | 一个文件夹：每类构件一张 CSV 表加 GeoJSON 几何，按楼层分 |
+| 精细度 | 任意几何与全生命周期数据 | 约 LOD 200：是什么、在哪里、多大 |
+| 差异与审阅 | 行级差异难以阅读 | Git 中的行级差异 |
+| 查询 | 需要工具包或先转换 | 内置 SQL |
 
-```bash
-bimdown generate-skill
-```
+在我们自己的评测（2026 年 10 月）中，前沿大模型通过 IFC、BimDown 和 Revit 三套工具链建模的表现大致相当，所以格式本身并不会让 AI 更擅长 BIM。BimDown 的价值在于：一个轻量模型，编辑器、CLI 和 Agent 都直接读写，差异清晰，可以用 SQL 查询。与其他 BIM 软件交换请用 IFC：`bimdown import-ifc` 可读取 IFC2x3 和 IFC4，编辑器可导出 IFC2x3 或 IFC4。
+
+## 常见问题
+
+**BimDown 是什么？**
+一种开放的纯文本 BIM 格式：一栋建筑就是一个文件夹，用 CSV 属性表加 GeoJSON（或 SVG）几何描述，每个楼层一个子文件夹。配套有 CLI、浏览器编辑器、Revit 插件和 Agent Skill，并支撑免费在线应用 [bim.jouledown.com](https://bim.jouledown.com/zh)。
+
+**ChatGPT、Claude 等 AI 能建 BIM 模型吗？**
+能。装了 BimDown Skill 和 CLI 的编程 Agent 会写模型文件、校验，并渲染平面图检查自己的结果。不想配置的话，[在线应用](https://bim.jouledown.com/zh)内置 AI Agent，可以根据文字、草图或照片建出可编辑的模型。
+
+**免费吗？开源吗？**
+本仓库中的格式、CLI、编辑器、Revit 插件和 Skill 均为 MIT 许可。在线应用免费使用，编辑器无需账号。
+
+**能把 IFC 或 Revit 模型转成 BimDown 再转回去吗？**
+IFC：`bimdown import-ifc model.ifc ./out` 把 IFC2x3/IFC4 转成 BimDown 项目，编辑器可导出 IFC（以及 glTF、DXF、PDF）。Revit 2025+：插件可导出为 BimDown，并把修改导回原模型。超出格式范围的内容（见[下文](#bimdown-无法表达的内容)）会被简化、保留为 mesh 或丢弃。
+
+**BimDown 能替代 Revit 或 IFC 吗？**
+不能。它是轻量（约 LOD 200）格式，面向方案设计、既有建筑和 AI 工作流。施工级深度请用 Revit 等完整 BIM 工具，BIM 软件之间交换请用 IFC。
+
+**为什么用 CSV 和 GeoJSON，而不是二进制或单个 JSON 文件？**
+所有编程语言、电子表格、GIS 工具和大模型都能直接读它们。每类构件一张表，文件小、差异有意义，而且能直接载入 DuckDB 用 SQL 查询。
 
 ## Revit 双向互通
 
-`revit-addin/` 目录包含一个适用于 Autodesk Revit 2025+ 的 C# 插件，实现 Revit 模型与 BimDown 格式之间的**双向同步**：
+`revit-addin/` 目录包含一个适用于 Autodesk Revit 2025+ 的 C# 插件，在 Revit 模型与 BimDown 之间双向同步：
 
-- **导出**：Revit 模型 -> BimDown（CSV + SVG 或 GeoJSON 文件）
-- **导入**：BimDown（CSV + SVG 或 GeoJSON 文件）-> Revit 模型
-- **Round-Trip**：导出、用 AI 或手工编辑、导回 — 改动应用到原始 Revit 模型
+- **导出**：Revit 模型 -> BimDown（CSV + GeoJSON 或 SVG 文件）
+- **导入**：BimDown -> Revit 模型
+- **Round-Trip**：导出、用 AI 或手工编辑、导回，改动应用到原始 Revit 模型
 
-**安装**：
-从 [GitHub Releases](https://github.com/NovaShang/BimDown/releases) 页面下载最新的 `BimDownInstaller.exe` 并运行。
+**安装**：从 [GitHub Releases](https://github.com/NovaShang/BimDown/releases) 下载最新的 `BimDownInstaller.exe` 并运行。
 
 **手动构建（Windows）**：
 ```powershell
@@ -70,75 +154,62 @@ cd revit-addin
 npm install -g bimdown-cli
 ```
 
+完整参考：[cli/README.md](./cli/README.md) 与 `bimdown --help`。
+
 ### 项目管理
 
 ```bash
-bimdown init ./my-project               # 创建新的 BimDown 项目(--units m|mm|ft|in,缺省 m)
-bimdown build ./my-project               # 验证并计算边界（会写入修正和 space.geojson）
-bimdown validate ./my-project            # 同样的检查，只读
-bimdown info ./my-project                # 打印项目概要（楼层、构件数量）
+bimdown init ./my-project               # 新建项目（--units m|mm|ft|in，默认 m），附起步类型
+bimdown build ./my-project              # 校验并计算边界（写入修正和 space.geojson）
+bimdown validate ./my-project           # 同样的检查，只读
+bimdown info ./my-project               # 项目摘要（楼层、构件数量）
+bimdown import-ifc model.ifc ./out      # 把 IFC2x3/IFC4 模型转成 BimDown 项目
 ```
 
 ### 查询
 
-BimDown 将所有 CSV 文件加载到内存中的 DuckDB 数据库，几何字段（长度、面积、起止坐标）从几何层（SVG 或 GeoJSON）自动计算。使用标准 SQL 查询：
+BimDown 把所有 CSV 载入内存中的 DuckDB 数据库，几何字段（长度、面积、起止坐标、包围盒）由几何层自动计算。用标准 SQL 查询：
 
 ```bash
-# 列出所有墙及其长度
 bimdown query ./my-project "SELECT id, material, length FROM wall"
-
-# 查找厚墙
 bimdown query ./my-project "SELECT id, thickness FROM wall WHERE thickness > 0.3"
-
-# 按楼层统计门的数量
 bimdown query ./my-project "SELECT level_id, COUNT(*) FROM door GROUP BY level_id"
-
-# JSON 输出（便于脚本处理）
 bimdown query ./my-project "SELECT * FROM wall" --json
 ```
 
 ### Schema 查看
 
 ```bash
-bimdown schema              # 所有构件类型的索引(每类一行)
-bimdown schema wall          # 查看特定构件类型的字段
+bimdown schema              # 所有构件类型的索引（每类一行）
+bimdown schema wall         # 某一构件类型的字段
 ```
 
 ### 渲染
 
 ```bash
-bimdown render ./my-project                     # 渲染 lv-1 到 render.svg
+bimdown render ./my-project                     # 渲染 lv-1 到 render.png
 bimdown render ./my-project -l lv-3             # 渲染指定楼层
-bimdown render ./my-project -o blueprint.svg    # 自定义输出路径
+bimdown render ./my-project -o blueprint.svg    # SVG 输出（按扩展名决定）
 ```
 
-### 差异对比与合并
+### 检查、差异对比与合并
 
 ```bash
-bimdown diff ./project-v1 ./project-v2          # 显示结构差异（+, -, ~）
-bimdown merge ./projectA ./projectB -o ./merged  # 合并项目，自动解决 ID 冲突
+bimdown resolve-topology ./my-project           # MEP：检测重合端点，生成 mep_nodes
+bimdown mep-check ./my-project                  # MEP 连通性报告
+bimdown clash ./my-project                      # MEP 碰撞检查
+bimdown diff ./project-v1 ./project-v2          # 结构差异（+、-、~）
+bimdown merge ./projectA ./projectB -o ./merged # 合并项目，自动解决 ID 冲突
 ```
 
-### 发布
+### 发布与同步
 
 ```bash
-bimdown publish ./my-project          # 发布到 bim.jouledown.com 并获取分享链接
+bimdown publish ./my-project   # 上传到 bim.jouledown.com 并获得分享链接
+bimdown sync ./my-project      # 载入 DuckDB 后写回 CSV + GeoJSON/SVG
 ```
 
-### MEP 拓扑
-
-```bash
-bimdown resolve-topology ./my-project   # 自动检测重合端点，
-                                         # 生成 mep_node，填充连接关系
-```
-
-### 同步
-
-```bash
-bimdown sync ./my-project   # 加载到 DuckDB，再写回 CSV + SVG/GeoJSON
-```
-
-## 快速一览
+## 格式一览
 
 ```
 project/
@@ -146,6 +217,7 @@ project/
   global/
     level.csv                   # 建筑楼层
     grid.csv                    # 结构轴网
+    wall_type.csv ...           # 构件类型（可选）
   lv-1/
     wall.csv + wall.geojson     # 墙（CSV 属性 + 几何；v1 项目里是 .svg）
     door.csv                    # 门（仅 CSV，参数化定位在宿主墙上）
@@ -154,7 +226,7 @@ project/
     ...
 ```
 
-无论用哪种编码，CSV 属性层完全相同：
+无论用哪种几何编码，CSV 属性层完全相同：
 
 **wall.csv**
 ```csv
@@ -188,85 +260,71 @@ w-2,concrete,0.2
 </svg>
 ```
 
-**door.csv**（两种编码下都无需几何文件 — 位置是参数化的）
+**door.csv**（两种编码下都没有几何文件，位置是参数化的）
 ```csv
 id,host_id,position,width,height,operation
 d-1,w-1,3.0,0.9,2.1,single_swing
 ```
 
-## 定位
+## 适用范围
 
-BimDown 是一个 **LOD 200 级别的轻量格式**，面向既有建筑记录和方案设计阶段，不是 Revit 的替代品。它记录建筑构件的"是什么、在哪里、多大" — 而不是"具体怎么构造"。
+BimDown 是 **LOD 200 级别的轻量格式**，面向方案设计和既有建筑记录。它记录构件"是什么、在哪里、多大"，而不是"具体怎么构造"。
 
 适合使用 BimDown 的场景：
 - AI Agent 直接读写和推理建筑数据
-- **与 Revit 双向互通** — 导出、编辑（人工或 AI）、导回
-- 基于 Git 的建筑模型版本控制与差异对比
+- 与 Revit 双向互通：导出、编辑（人工或 AI）、导回
+- 用 Git 做建筑模型版本控制与差异对比
 - 用 SQL 查询建筑数据（通过 DuckDB）
-- 设计工具之间的轻量交换格式
+- 在自己的工具和脚本之间做轻量交换
 
-适合使用 Revit（或其他完整 BIM 工具）的场景：
-- 施工级别的详细程度（LOD 300+）
-- 多层墙体 / 楼板构造
-- 结构 / 能耗分析（需要物理材料属性）
-- 施工图和详图
+适合使用 Revit 或其他完整 BIM 工具的场景：
+- 施工级别的精细度（LOD 300+）
+- 结构或机电工程计算
+- 完整的施工图和详图
 
 ## 格式规范
 
-完整的格式规范在 [`spec/`](./spec/) 目录。核心概念：
+完整规范在 [`spec/`](./spec/) 目录。核心概念：
 
-- **单位由项目声明**（`project_metadata.json` 的 `units`：m、ft、in、mm；默认 m），Y 轴 = 北
-- **ID 按楼层隔离** — 在每个 `lv-N/` 目录内唯一
+- **单位由项目声明**（`project_metadata.json` 的 `units`：m、ft、in、mm；默认 m），+Y = 北
+- **ID 按楼层隔离**：在每个 `lv-N/` 目录内唯一
 - **宿主构件**（门、窗、洞口）使用 `host_id` + `position`（距宿主墙起点的距离）
-- **空间**是种子点 — 边界从周围的墙自动推导
+- **空间**是种子点，边界由周围的墙推导
+- **类型**：可选的 `global/*_type.csv` 类型目录（含墙、楼板、屋顶的分层构造）；实例留空的字段继承类型的值
 - **材料**使用固定枚举：`concrete, steel, wood, clt, glass, aluminum, brick, stone, gypsum, insulation, copper, pvc, ceramic, fiber_cement, composite`
 - **几何层**为 SVG **或** GeoJSON，由 `format_version` 选择（`1` = SVG，`2` = GeoJSON）：
-  - **GeoJSON**（默认）：`Point` / `LineString` / `Polygon`（不支持 Multi\*）；支持二维和三维坐标
-  - **SVG**：`<path>`（M, L, A 命令）、`<rect>`、`<circle>`、`<polygon>` — 不支持贝塞尔曲线；仅二维
-- **Mesh 回退** — 任何构件可以附带可选的 `mesh_file`（GLB）用于 3D 可视化
-- **MEP 拓扑** — 管线和节点组成的二部图，由 CLI 自动解析
+  - **GeoJSON**（默认）：`Point` / `LineString` / `Polygon`（不支持 Multi\*）；二维和三维坐标；圆弧用 `properties.arc`
+  - **SVG**：`<path>`（M、L、A 命令）、`<rect>`、`<circle>`、`<polygon>`；不支持贝塞尔曲线；仅二维
+- **Mesh 回退**：任何构件可以附带可选的 `mesh_file`（GLB）用于三维显示
+- **MEP 拓扑**：管线和节点组成的图，由 CLI 解析
 
 ### 构件类型
 
 | 类别 | 构件 |
 |---|---|
-| 建筑 | wall, column, slab, door, window, opening, space, stair, ramp, railing, curtain_wall, ceiling, roof, room_separator |
-| 结构 | structure_wall, structure_column, structure_slab, beam, brace, foundation |
-| MEP | duct, pipe, cable_tray, conduit, equipment, terminal, mep_node |
-| 其他 | level, grid, mesh（非参数化回退） |
+| 建筑 | wall, column, slab, door, window, opening, space, stair（梯段、平台）, ramp, railing, curtain_wall, ceiling, roof, room_separator, furniture |
+| 结构 | structure_wall, structure_column, structure_slab, beam, beam_system, brace, foundation |
+| MEP | duct, pipe, cable_tray, conduit, equipment, terminal, mep_node, mep_system, circuit |
+| 图纸 | view（剖面）, sheet, dimension, tag, text_note |
+| 其他 | level, grid, 构件类型, mesh（非参数化回退） |
 
 ## BimDown 无法表达的内容
 
-以下 Revit 场景超出 BimDown 的范围，导出时会被转为 `mesh`（GLB 回退）或丢失：
+以下 Revit 场景超出 BimDown 的范围，导出时会转为 `mesh`（GLB 回退）、被简化或丢失：
 
-### 几何限制
-- **自由曲面 / NURBS 几何** — 概念体量、自适应族、具有复杂形状的内建族
-- **非圆弧曲线墙** — 椭圆弧、样条墙（圆弧是支持的）
-- **斜楼板** — 子图元形状编辑、坡度箭头、变厚度楼板
-- **编辑过的墙轮廓** — 非矩形墙截面（如带坡顶的山墙）
-- **幕墙单元面板细节** — 各面板材质、嵌入式门、非矩形面板
-
-### 数据限制
-- **多层构造** — 墙 / 楼板 / 屋顶的层构造（核心层、饰面层、保温层）
-- **族类型与参数** — Revit 类型系统、实例参数、公式、约束
-- **阶段** — 现有 / 拆除 / 新建的施工阶段
-- **设计选项** — 同一模型中的备选设计方案
-- **组和阵列** — 重复构件模式
-- **嵌套族** — 包含其他族的族
-- **工作集与链接模型** — 多用户协作、跨模型引用
-
-### 专业限制
-- **结构分析** — 荷载、边界条件、钢筋详图
-- **MEP 计算** — 流量、压降、电气负荷、冷热负荷
-- **能耗模型** — 热工性能（U 值、SHGC）、使用时间表（几何足够但热工属性缺失）
-- **场地与地形** — 地形实体、用地红线、场地构件
-- **家具与固定装置** — 导出为 `mesh`（GLB）而非参数化构件
-- **视图与图纸** — 剖面、立面、详图视图、标注、尺寸、明细表
+- **自由曲面几何**：概念体量、自适应族、形状复杂的内建族、NURBS
+- **非圆弧曲线**：椭圆或样条墙（圆弧是支持的）
+- **编辑过的墙轮廓**：非矩形墙立面（如带坡顶的山墙）
+- **族逻辑**：带公式和约束的实例参数、嵌套族
+- **项目组织**：阶段、设计选项、阵列、工作集、链接模型
+- **工程分析**：结构荷载与钢筋、MEP 流量、压降和负荷计算
+- **场地**：地形实体、用地红线、场地构件
 
 ## 相关项目
 
-- **[BimDown 在线版](https://bim.jouledown.com)**：在线编辑器和查看器，AI 智能体能从图纸、照片或文字建模
-- **[编辑器](editor/)**：背后的浏览器 2D/3D 编辑器组件（React + Three.js），位于本仓库 `editor/`
+- **[BimDown 在线应用](https://bim.jouledown.com/zh)**：免费的浏览器 AI BIM 建模与编辑，附[示例](https://bim.jouledown.com/examples)
+- **[编辑器](editor/)**：背后的浏览器 2D/3D 编辑器（React + Three.js），位于本仓库
+- **[JouleDown](https://jouledown.com)**：BimDown 所属的总品牌
 
 ## 许可证
 

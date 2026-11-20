@@ -1,6 +1,13 @@
 # BimDown CLI
 
-Command-line tool for [BimDown](https://bim.jouledown.com), an open building data format (CSV attributes + GeoJSON or SVG geometry, one folder per level). Validates and builds projects, renders plans, loads models into DuckDB for SQL queries, diffs and merges, and publishes share links to bim.jouledown.com. Format spec and agent skill: [NovaShang/BimDown](https://github.com/NovaShang/BimDown).
+Command-line tool for BimDown, an open, plain-text BIM format: a building is a folder of CSV attribute tables and GeoJSON (or SVG) geometry, one folder per level, that people, scripts and AI agents can read, edit, diff and query with SQL. The CLI validates and builds projects, renders floor plans to PNG or SVG, loads models into DuckDB for SQL queries, imports IFC, checks MEP connectivity and clashes, diffs and merges projects, and publishes share links. It is the toolchain behind the BimDown agent skill for Claude Code, Codex, Cursor and other coding agents.
+
+Format spec, agent skill and examples: [NovaShang/BimDown](https://github.com/NovaShang/BimDown). Free web app (AI modeling from text, sketches or photos, browser editor, IFC export): [bim.jouledown.com](https://bim.jouledown.com).
+
+```bash
+npx bimdown-cli@latest init my-building
+npx bimdown-cli@latest validate my-building
+```
 
 ## Install
 
