@@ -8,7 +8,7 @@ import type { CanonicalElement, LineElement, SpatialLineElement } from '../../mo
 import type { GeometryContext } from '../../elements/archetypes.ts';
 import type { FurnitureFacts } from '../../elements/furniture.tsx';
 import type { MepNodeFacts } from '../../elements/mep_node.tsx';
-import { furnitureMass, type MassColor } from '../../library/furnitureLibrary.generated.ts';
+import { furnitureMass, type MassColor } from '../../library/furnitureLibrary.ts';
 import { furniturePartGeometry } from '../../library/furniture3D.ts';
 import { effectiveMepLine } from '../../model/mepFittingRender.ts';
 import { accessoryBasis, accessoryGeometry, fittingGeometry, type AccessoryLook } from '../../mep/FittingView.tsx';

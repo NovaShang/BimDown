@@ -46,7 +46,7 @@ import { curtainDoors, curtainWallPieces } from '../elements/curtainWallLayout.t
 import type { EquipmentFacts } from '../elements/equipment.tsx';
 import type { SpaceFacts } from '../elements/space.tsx';
 import type { FurnitureFacts } from '../elements/furniture.tsx';
-import { MASS_COLORS } from '../library/furnitureLibrary.generated.ts';
+import { MASS_COLORS } from '../library/furnitureLibrary.ts';
 import { effectiveMepLine } from '../model/mepFittingRender.ts';
 import type { MepNodeFacts } from '../elements/mep_node.tsx';
 import { furnitureSolids, accessoryIfcSolids, fittingIfcSolids, mepNodeSolids } from './ifc/componentSolids.ts';

@@ -8,7 +8,7 @@ import { parseFloorLayers } from '../model/parse.ts';
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 import type { EditorState } from '../state/editorTypes.ts';
 import { SPEC_COLUMNS } from '../model/specColumns.generated.ts';
-import { furnitureFamilies, resolveFurniture } from './furnitureLibrary.generated.ts';
+import { furnitureFamilies, resolveFurniture } from './furnitureLibrary.ts';
 import { buildFurnitureGeometry, furnitureGeometry } from './furniture3D.ts';
 import { snapBackToWall } from './wallSnap.ts';
 import { filterFamilies } from './search.ts';

@@ -5,7 +5,7 @@
  */
 import { metre } from '../annotation/geometry.ts';
 import type { CanonicalElement, LineElement, PointElement, Point } from '../model/elements.ts';
-import { resolveFurniture } from './furnitureLibrary.generated.ts';
+import { resolveFurniture } from './furnitureLibrary.ts';
 
 const WALL_TABLES = new Set(['wall', 'structure_wall', 'curtain_wall']);
 /** How far beyond the component's own depth the cursor may be to still snap. */

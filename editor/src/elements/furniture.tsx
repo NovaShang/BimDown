@@ -3,7 +3,7 @@
  * appliances without ports, toilet partitions, cars, planting, people,
  * generic placeholders). Point archetype; the family / variant / size_x /
  * size_y / height / mirror attrs drive a plan symbol and a merged low-poly
- * 3D mesh from library/furnitureLibrary.generated.ts (shared with the CLI).
+ * 3D mesh from library/furnitureLibrary.ts (shared with the CLI).
  *
  * Local frame: +Y is the back (against the wall), rotation is CCW degrees.
  */
@@ -17,7 +17,7 @@ import type { DrawingField } from '../model/tableRegistry.ts';
 import {
   defaultSize, furnitureFamilies, furniturePlan, getFurnitureFamily, resolveFurniture,
   type PlanPrim, type ResolvedFurniture,
-} from '../library/furnitureLibrary.generated.ts';
+} from '../library/furnitureLibrary.ts';
 import { renderPrims } from '../library/FurnitureSymbol.tsx';
 import { metre } from '../annotation/geometry.ts';
 import { furnitureGeometry, furnitureMaterial } from '../library/furniture3D.ts';

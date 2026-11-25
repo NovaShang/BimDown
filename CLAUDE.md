@@ -14,7 +14,7 @@
 - CLI dev: source is in `cli/src/`, uses tsup for bundling
 - Editor: `cd editor && npm run dev` (Vite, port 5174, serves `../sample_data`), `npm run build` (`tsc -b && vite build`)
 - Editor src: `model/` (parse/serialize, tableRegistry), `renderers/` (2D SVG), `three/` (3D), `tools/`, `state/` (reducer), `i18n/`
-- Shared verbatim with the CLI (keep byte-identical, only a leading "Copy of" note allowed): roofSolver, stairCore, steelSections, mep clash/mepCheck, curtainEmbed, modelChecks; furniture library is generated (`node editor/scripts/gen-furniture-library.mjs`), spec columns too (`gen-spec-columns.mjs`)
+- Shared with the CLI: roofSolver, stairCore, steelSections, mep clash/mepCheck, curtainEmbed, modelChecks, furnitureLibrary in `editor/src` re-export `cli/src` files; keep those import-free (`editor/src/test/sharedWithCli.test.ts`). Spec columns are generated (`node editor/scripts/gen-spec-columns.mjs`)
 
 ## Format Key Concepts
 - CSV for attributes; geometry layer is SVG (2D, `format_version: 1`) or GeoJSON (2D/3D, `format_version: 2`, default) — both encodings supported, both human and AI readable. CSV attribute layer is identical for both.

@@ -4,7 +4,7 @@
  * `bimdown render`.
  */
 import type { CSSProperties, ReactNode } from 'react';
-import { arcPath, type PlanFill, type PlanPrim } from './furnitureLibrary.generated.ts';
+import { arcPath, type PlanFill, type PlanPrim } from './furnitureLibrary.ts';
 
 export interface SymbolStyle {
   stroke: string;

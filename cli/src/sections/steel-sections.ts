@@ -1,9 +1,4 @@
 /**
- * Copy of editor/src/families/sections/steelSections.ts (the
- * editor's steel section library), so import-ifc maps catalogue designations
- * to the same sections. Keep the two identical (shared-code-drift test).
- */
-/**
  * Steel section library: common catalogue sizes with their real dimensions,
  * to create column / beam types from (Edit Type ▸ From library).
  *   EN   HEA / HEB / IPE (EN 10365), UPN, RHS / SHS / CHS (EN 10210 hot
@@ -16,8 +11,8 @@
  *   US   K-series open-web joists (SJI): depth and standard weight per foot;
  *        the chord angle thickness is fitted so the open_web area gives it
  * Stored in metres; `sectionTypeValues` scales to the project unit. No
- * imports: the CLI keeps a verbatim copy (cli/src/sections/steel-sections.ts,
- * web/src/lib/shared-code-drift.test.ts) for import-ifc designations.
+ * imports: the editor re-exports this file (families/sections/steelSections.ts);
+ * import-ifc maps catalogue designations with it.
  */
 export type SectionStandard = 'EN' | 'US' | 'CN';
 

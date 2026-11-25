@@ -12,7 +12,7 @@ import { defaultAttrs } from '../model/defaults.ts';
 import { snapPoint } from '../utils/snap.ts';
 import { getProjectUnits } from '../utils/units.ts';
 import { resolveNextLevelId } from '../tools/levelUtil.ts';
-import { resolveFurniture } from './furnitureLibrary.generated.ts';
+import { resolveFurniture } from './furnitureLibrary.ts';
 import { snapBackToWall } from './wallSnap.ts';
 import { metre } from '../annotation/geometry.ts';
 

@@ -1,14 +1,10 @@
 /**
- * Copy of editor/src/geometry/modelChecks.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
- */
-/**
  * Model checks shared by `bimdown build` / `validate` and the editor
  * (Warnings panel, properties): overlapping doors / windows / openings on
  * one host, walls overlapping each other, and numeric fields that must be
  * positive (thickness, widths…). Pure core on a flat,
- * unit-agnostic model; callers pass a tolerance in project units. The CLI
- * keeps a verbatim copy in cli/src/build/model-checks.ts
- * (web/src/lib/shared-code-drift.test.ts).
+ * unit-agnostic model; callers pass a tolerance in project units. No
+ * imports: the editor re-exports this file (editor/src/geometry/modelChecks.ts).
  */
 interface P { x: number; y: number }
 

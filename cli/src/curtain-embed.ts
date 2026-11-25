@@ -1,14 +1,11 @@
 /**
- * Copy of editor/src/geometry/curtainEmbed.ts (verbatim; web/src/lib/shared-code-drift.test.ts).
- */
-/**
  * Curtain walls embedded in walls (Revit "Automatically Embed"; spec readme
  * "Curtain Wall Grids and Panels"): a curtain wall lying along a wall — both
  * straight and parallel, or both arcs on the same centre, its line inside the
  * wall's thickness — cuts a void the length of the overlap and the height of
  * the curtain wall out of that wall. Derived, not stored: moving or deleting
- * the curtain wall updates its host. The CLI keeps a verbatim copy in
- * cli/src/curtain-embed.ts (web/src/lib/shared-code-drift.test.ts).
+ * the curtain wall updates its host. No imports: the editor re-exports this
+ * file (editor/src/geometry/curtainEmbed.ts).
  */
 interface P { x: number; y: number }
 /** Circular arc of a line (editor ArcParams `rx` / `largeArc`, or GeoJSON `radius` / `large_arc`), SVG-A semantics. */

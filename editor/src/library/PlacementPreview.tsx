@@ -1,7 +1,7 @@
 /** Placement ghost for library components (DrawingOverlay, model Y-up group). */
 import type { ReactNode } from 'react';
 import type { Point } from '../model/elements.ts';
-import { furniturePlan, resolveFurniture } from './furnitureLibrary.generated.ts';
+import { furniturePlan, resolveFurniture } from './furnitureLibrary.ts';
 import { renderPrims } from './FurnitureSymbol.tsx';
 import { metre } from '../annotation/geometry.ts';
 

@@ -1,5 +1,5 @@
 /** Library search: every query token must appear in a family's names / keywords. */
-import { CATEGORY_LABELS, furnitureFamilies, type FurnitureCategory, type FurnitureFamily } from './furnitureLibrary.generated.ts';
+import { CATEGORY_LABELS, furnitureFamilies, type FurnitureCategory, type FurnitureFamily } from './furnitureLibrary.ts';
 
 /** Lower-case haystack for search: ids, both languages, keywords, variants, category. */
 function haystack(f: FurnitureFamily): string {

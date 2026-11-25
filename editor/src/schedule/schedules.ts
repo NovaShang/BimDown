@@ -14,7 +14,7 @@ import { collectLevels, elementQuantities } from './quantities.ts';
 import type { ElementQuantities } from './quantities.ts';
 import { boundaryWalls, roomPolygon } from '../annotation/rooms.ts';
 import { pointInPolygon } from '../geometry/spaceBoundary.ts';
-import { resolveFurniture } from '../library/furnitureLibrary.generated.ts';
+import { resolveFurniture } from '../library/furnitureLibrary.ts';
 import { MEP_SCHEDULES, mepValueFn } from './mepSchedules.ts';
 import { FOUNDATION_KIND_OPTIONS, MATERIAL_OPTIONS, OPERATION_OPTIONS, WINDOW_OPERATION_OPTIONS } from '../elements/_options.ts';
 import { drawingLabel, drawingLang, type DrawingLang } from '../export/drawing/labels.ts';

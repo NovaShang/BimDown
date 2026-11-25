@@ -11,7 +11,7 @@ import {
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 import {
   furnitureMass, MASS_COLORS, resolveFurniture, type MassColor, type MassPart, type ResolvedFurniture,
-} from './furnitureLibrary.generated.ts';
+} from './furnitureLibrary.ts';
 import type { CanonicalElement, PointElement } from '../model/elements.ts';
 
 const COLORS = new Map<MassColor, Color>();

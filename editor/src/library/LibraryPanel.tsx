@@ -16,7 +16,7 @@ import { cn } from '../lib/utils';
 import {
   CATEGORY_LABELS, CATEGORY_ORDER, furnitureFamilies, furniturePlan, resolveFurniture,
   type FurnitureCategory, type FurnitureFamily,
-} from './furnitureLibrary.generated.ts';
+} from './furnitureLibrary.ts';
 import { filterFamilies } from './search.ts';
 import { renderPrims } from './FurnitureSymbol.tsx';
 import { furniturePlacementAttrs } from '../elements/furniture.tsx';

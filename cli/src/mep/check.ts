@@ -1,9 +1,8 @@
 /**
  * MEP connectivity check — pure core, no I/O.
  *
- * Two identical copies: bimdown-spec `cli/src/mep/check.ts` (bimdown build /
- * mep-check / resolve-topology) and `editor/src/mep/mepCheck.ts`
- * (connectivity panel). Edit one, copy it over the other.
+ * Used by bimdown build / mep-check / resolve-topology and, re-exported as
+ * `editor/src/mep/mepCheck.ts`, the connectivity panel. No imports.
  *
  * Input is a flat, unit-agnostic model: curves (duct / pipe / conduit /
  * cable_tray) with 3D end points and `from` / `to` port refs, hosts

@@ -1,8 +1,8 @@
 /**
  * Project warnings for the Warnings panel (Revit "Review Warnings"): the
  * checks `bimdown build` reports, run on the live model. Overlapping inserts
- * and walls come from the shared core (geometry/modelChecks.ts, copied into
- * the CLI), rooms from the same face derivation as the CLI (redundant /
+ * and walls come from the shared core (geometry/modelChecks.ts, also the
+ * CLI's), rooms from the same face derivation as the CLI (redundant /
  * unbounded), stairs from the stair calculator (geometry/stairCore.ts, also
  * the CLI's), MEP from the connectivity check (mep/mepCheck.ts, also the
  * CLI's). Messages are i18n keys + params.

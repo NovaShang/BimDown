@@ -1,9 +1,4 @@
 /**
- * Copy of editor/src/geometry/roofSolver.ts (the editor's
- * footprint roof solver), so `render` draws the same ridges, hips, valleys
- * and slope arrows the editor does. Keep the two in sync.
- */
-/**
  * Footprint roof solver (Revit "roof by footprint").
  *
  * Every footprint edge either defines a slope (an eave: a plane rising inward
@@ -20,7 +15,8 @@
  * profile across the first edge, extruded along it) and convex-decomposed
  * openings, so the roof mesh needs no CSG.
  *
- * Pure geometry, no three.js: the CLI renderer carries a copy of this file.
+ * Pure geometry, no imports: the editor re-exports this file
+ * (editor/src/geometry/roofSolver.ts).
  */
 
 export type P2 = { x: number; y: number };

@@ -1,14 +1,8 @@
 /**
- * Copy of editor/src/geometry/stairCore.ts (the editor's stair
- * geometry without element types), so validate / render derive the same runs,
- * railings and repetitions. Keep the two identical (shared-code-drift test).
- */
-/**
  * Stair geometry without element types: runs, landings, the riser rule,
  * multi-storey repetitions, derived railing paths, plan symbols and the stair
  * calculator. Shared by the editor (geometry/stair.ts adds the element-level
- * helpers) and the CLI, which keeps a verbatim copy in
- * cli/src/stair/geometry.ts (web/src/lib/shared-code-drift.test.ts).
+ * helpers, re-exporting this file as geometry/stairCore.ts) and the CLI. No imports.
  * Values are in model units (metres for the built-in rule limits).
  */
 export interface Point { x: number; y: number }
