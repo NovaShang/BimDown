@@ -85,6 +85,13 @@ describe('stairs and railings', () => {
     expect(issues).toMatch(/rl-2 {2}host_id "w-9" must be a stair or a slab/);
   });
 
+  it('warns about a sketched railing without geometry unless it has a mesh', () => {
+    lStair({ railingCsv: 'id,number,host_id,side,mesh_file\nrl-1,,st-1,left,\nrl-2,,,,\nrl-3,,,,mesh/rl-3.glb\n' });
+    const warnings = build(testDir).warnings.filter(w => w.includes('no geometry'));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/rl-2 {2}no geometry/);
+  });
+
   it('renders runs, landings, the walking line and the derived railings; repetitions on upper storeys', () => {
     lStair({ multistory: 'lv-3' });
     const svg = renderLevel(testDir, 'lv-1');

@@ -72,7 +72,7 @@ npx bimdown-cli@latest info sample_data/rac_advanced
 npx bimdown-cli@latest render sample_data/rac_advanced -l lv-1 -o plan.png
 ```
 
-Inside a clone, use `npx bimdown-cli@latest` (or `npm install -g bimdown-cli`, then `bimdown`): a bare `npx bimdown-cli` there resolves to the unbuilt `cli/` workspace.
+`@latest` runs the published CLI. To run the clone's own `cli/` source instead, `npm install` once at the repository root, then `npx bimdown-cli …` (it builds `cli/` on first use).
 
 ## Examples
 

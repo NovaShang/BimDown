@@ -16,6 +16,7 @@ const ATTACH_TARGETS = new Set(['roof', 'slab', 'structure_slab']);
 /** Tables whose outline may be associated with walls (`boundary_walls`), and what they may list. */
 const BOUNDED = new Set(['slab', 'structure_slab', 'roof', 'ceiling']);
 const BOUNDING = new Set(['wall', 'structure_wall', 'curtain_wall', 'room_separator']);
+const WALL_HOSTS = new Set(['wall', 'structure_wall', 'curtain_wall']);
 
 /** Features of `<dir>/<file>.geojson` by id (empty when missing / unreadable). */
 function features(dirPath: string, file: string): Map<string, BimDownFeature> {
@@ -110,6 +111,8 @@ export function validateEnvelope(
           }
         } else if (!row.host_id) {
           issues.push(`${at(i)}  host_id is required (a wall, slab or roof), unless the opening is a shaft with top_level_id`);
+        } else if (WALL_HOSTS.has(ids.allIds.get(row.host_id)?.table ?? '') && !(Number(row.width) > 0)) {
+          issues.push(`${at(i)}  a wall opening needs width > 0 (and height)`);
         }
       });
     }

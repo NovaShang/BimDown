@@ -5,7 +5,7 @@
 - `cli/` — BimDown CLI (validate, query, render, gen-skill, info, merge)
 - `editor/` — 2D/3D editor component (npm workspace `bimdown-editor`, React + Three.js + Vite), consumed as source by the hosted web app
 - `revit-addin/` — Revit plugin (C#) for import/export
-- `sample_data/` — CSV/SVG exports from Revit models
+- `sample_data/` — CSV/GeoJSON exports from Revit models
 - `scripts/` — Migration and utility scripts
 
 ## Development
@@ -45,7 +45,7 @@
   2. `powershell -Command "Stop-Process -Id <parent_PID> -Force"`
 
 ## Sample Data
-- `sample_data/rac_advanced/` is the reference CSV/SVG dataset exported from Revit (5 levels, includes doors/windows hosted on global curtain walls — exercises the renderer's global-wall lookup and hydrate's height fallback)
+- `sample_data/rac_advanced/` is the reference CSV/GeoJSON dataset exported from Revit (5 levels, includes doors/windows hosted on global curtain walls — exercises the renderer's global-wall lookup and hydrate's height fallback). Repaired by `scripts/fix-rac-advanced.mjs`; keep `bimdown validate` at 0 issues
 - Source Revit projects: `SourceRevitModels/*.rvt` (gitignored)
 
 ## Git Commits

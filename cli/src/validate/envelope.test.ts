@@ -57,6 +57,13 @@ describe('validate / render — roofs, wall attach, shafts', () => {
     expect(issues).toMatch(/extrusion roof needs profile/);
   });
 
+  it('requires a width on wall openings', () => {
+    project({ ...valid, 'lv-1/opening.csv': 'id,host_id,position,width,height\nop-3,w-1,2,1,2\n', 'lv-1/opening.geojson': fc([]) });
+    expect(validate(testDir)).toEqual([]);
+    project({ ...valid, 'lv-1/opening.csv': 'id,host_id,position,width,height\nop-3,w-1,,,\n', 'lv-1/opening.geojson': fc([]) });
+    expect(validate(testDir).join('\n')).toMatch(/opening.csv:2  a wall opening needs width > 0/);
+  });
+
   it('checks boundary_walls (floors / roofs picked from walls)', () => {
     project({ ...valid, 'lv-1/slab.csv': 'id,thickness,boundary_walls,boundary_face\nsl-2,0.2,w-1,core\n' });
     expect(validate(testDir)).toEqual([]);

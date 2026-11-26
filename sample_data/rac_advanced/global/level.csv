@@ -1,6 +1,6 @@
 ﻿id,number,name,elevation
-lv-1,,01 - Entry Level,0
-lv-2,,02 - Floor,3.8
-lv-3,,03 - Floor,7.6
-lv-4,,Roof,11.4
-lv-5,,Parapet,12
+lv-1,01,01 - Entry Level,0
+lv-2,02,02 - Floor,3.8
+lv-3,03,03 - Floor,7.6
+lv-4,R,Roof,11.4
+lv-5,P,Parapet,12
