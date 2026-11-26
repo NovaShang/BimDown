@@ -6,9 +6,9 @@
 
 Autodesk's Revit "rac_advanced_sample_project" (a 3-storey building with a roof and parapet level), exported to BimDown with the [Revit add-in](../revit-addin/). GeoJSON geometry (`format_version: 2`), metres.
 
-- 5 levels (`lv-1` to `lv-5`), 22 grids, about 990 elements: 146 walls, 34 curtain walls, 101 doors, 24 windows, 91 rooms, 176 structural columns, 37 beams, slabs, ceilings, roofs, stairs, railings, air terminals, plus 179 `mesh` elements (13 GLB files in `mesh/`) for geometry outside the format's scope
+- 5 levels (`lv-1` to `lv-5`), 22 grids, about 980 elements: 146 walls, 34 curtain walls, 100 doors, 24 windows, 91 rooms, 176 structural columns, 37 beams, slabs, ceilings, roofs, stairs, railings, air terminals, 105 furniture rows (cafeteria tables and chairs, trees and shrubs from the Revit families, as built-in library components), plus 71 `mesh` elements (12 GLB files in `mesh/`) for geometry outside the format's scope
 - Used as the fixture for the CLI and editor tests
-- It is a raw export: elements have no types (`type_id`), and `bimdown validate` reports issues that a Revit export leaves open (empty required fields such as column `shape`, duplicate opening ids, overlapping rooms). Useful for testing tools against imperfect real data; not a reference for clean modeling.
+- `bimdown validate` reports no issues. The raw export was repaired by [`scripts/fix-rac-advanced.mjs`](../scripts/fix-rac-advanced.mjs) (re-runnable; its header lists every change: section shapes, level numbers, slab openings, furniture, wall ends joined to the wall they meet so the rooms close). The remaining warnings are the model as drawn in Revit: free wall ends at openings, one duplicated wall (lv-2 `w-103` / `w-104`), and stair railings whose stairs were exported without geometry. Elements have no types (`type_id`) apart from furniture.
 
 ```bash
 npx bimdown-cli@latest info sample_data/rac_advanced

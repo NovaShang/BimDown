@@ -1,0 +1,10 @@
+id,name,family,variant,size_x,size_y,height
+fut-1,0915mm Diameter,dining_table,round,0.915,0.915,
+fut-2,M_Chair-Breuer,chair,,0.43,0.49,0.81
+fut-3,Scarlet Oak - 12.5 Meters,tree,,,,12.5
+fut-4,Honey Locust - 7.6 Meters,tree,,,,7.6
+fut-5,Barberry - 1.0 Meters,plant,,,,1
+fut-6,Red Maple - 9 Meters,tree,,,,9
+fut-7,Golden Chain - 5.5 Meters,tree,,,,5.5
+fut-8,Japanese Cherry - 4.5 Meters,tree,,,,4.5
+fut-9,Golden Flame Spirea - 0.8 Meters,plant,,,,0.8

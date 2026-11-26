@@ -59,7 +59,8 @@ export function validateStairs(dir: string): StairFindings {
       if (r.host === 'stair' && r.row.side !== 'left' && r.row.side !== 'right') {
         issues.push(`${at}  a railing on a stair needs side = left | right`);
       }
-      if (r.host !== 'stair' && r.paths.length === 0 && r.host !== 'missing') {
+      // A railing with a mesh_file draws from its GLB (exported from Revit); only a bare row has no geometry.
+      if (r.host !== 'stair' && r.paths.length === 0 && r.host !== 'missing' && !r.row.mesh_file) {
         warnings.push(`${at}  no geometry: a sketched railing needs a LineString in railing.geojson (or host_id = a stair)`);
       }
     }
