@@ -264,7 +264,10 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
     if (!levels || levels === prev) return;
     prevLevelsRef.current = levels;
     if (!prev || isLoadedLevels(levels) || state.readonly) return;
-    persistLevels(levels, ds).catch(err => console.error('Persist levels failed:', err));
+    const saveLevels = () => persistLevels(levels, ds).catch(err => console.error('Persist levels failed:', err));
+    // An empty table is written after the folders are gone: the server refuses
+    // a header-only level.csv while level folders exist.
+    if (levels.length > 0) void saveLevels();
     const now = new Set(levels.map(l => l.id));
     const was = new Set(prev.map(l => l.id));
     for (const { id } of prev) {
@@ -274,6 +277,7 @@ export default function EditorShell({ paddingRight = 0 }: { paddingRight?: numbe
         .then(files => { removedLevelFiles.current.set(id, files); })
         .catch(err => console.error('Remove level files failed:', err));
     }
+    if (levels.length === 0) levelFileOps.current = levelFileOps.current.then(saveLevels);
     for (const { id } of levels) {
       if (was.has(id)) continue;
       levelFileOps.current = levelFileOps.current
