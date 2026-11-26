@@ -32,13 +32,14 @@
   ],
   "files": [
     "dist",
+    "bin",
     "README.md",
     "LICENSE",
     "package.json"
   ],
   "type": "module",
   "bin": {
-    "bimdown": "dist/cli.js"
+    "bimdown": "bin/bimdown.js"
   },
   "main": "./dist/lib.js",
   "types": "./dist/lib.d.ts",

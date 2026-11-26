@@ -3,6 +3,7 @@ libs/
 
 # .NET build outputs
 **/bin/
+!cli/bin/
 **/obj/
 
 # VS / Rider

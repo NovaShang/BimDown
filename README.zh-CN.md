@@ -72,7 +72,7 @@ npx bimdown-cli@latest info sample_data/rac_advanced
 npx bimdown-cli@latest render sample_data/rac_advanced -l lv-1 -o plan.png
 ```
 
-在克隆的仓库里请用 `npx bimdown-cli@latest`（或 `npm install -g bimdown-cli` 后用 `bimdown`）：直接 `npx bimdown-cli` 会解析到尚未构建的 `cli/` 工作区。
+`@latest` 运行已发布的 CLI。要运行克隆仓库里 `cli/` 的源码：先在仓库根目录 `npm install` 一次，再用 `npx bimdown-cli …`（首次运行时会自动构建 `cli/`）。
 
 ## 示例
 
